@@ -1,10 +1,7 @@
-using System.Net;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Domain.ResourceTable;
-using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
-using ResourceManager.ReadWrite.Windows.Devices;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
@@ -14,22 +11,13 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
     private readonly EtwNetworkTcpIpCaptureOwner owner;
     private readonly object captureLifetimeGate = new();
     private bool disposed;
-    internal const int MaximumRetainedEvents = EtwNetworkTcpIpCaptureOwner.MaximumRetainedEvents;
     public EtwNetworkTcpIpAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger)
         : this(broker, logger, static () => Environment.TickCount64) { }
     internal EtwNetworkTcpIpAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger, Func<long> clock)
     {
         owner = new(broker, new(value => KernelEtwSessionBroker.Report(logger, value)), clock);
     }
-    internal EtwNetworkTcpIpAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger, Func<long> clock,
-        Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess)
-    {
-        owner = new(broker, new(value => KernelEtwSessionBroker.Report(logger, value)), clock, openProcess);
-    }
     public NetworkAttributionSnapshot Read(bool includeObservedTraffic = false) => owner.Read(includeObservedTraffic);
-    internal void ObserveBoundNetworkTransfer(KernelEtwEventSource source, KernelEtwSessionContext context,
-        int processId, int size, bool isSend, bool isUdp, IPAddress? remoteAddress, long observedTick, ulong? eventFileTime = null)
-        => owner.ObserveBoundNetworkTransfer(source, context, processId, size, isSend, isUdp, remoteAddress, observedTick, eventFileTime);
     internal static ulong? ToEventFileTime(DateTime timestamp) => EtwNetworkTcpIpCaptureOwner.ToEventFileTime(timestamp);
 
     public IReadOnlyList<ResourceTableProviderState> GetStates(IReadOnlyList<ResourceTableColumn> columns)

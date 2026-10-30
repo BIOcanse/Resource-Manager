@@ -341,7 +341,7 @@ test "capacity diagnostics retain exact bucket span and lagging processor before
     try self.residency.seedThread(10, 20);
     try self.residency.observeContextSwitch(0, 0, 0, 0, 0, 10, null, 20);
     try self.residency.observeContextSwitch(0, 0, 1, 0, 0, 0, null, 0);
-    try std.testing.expectError(error.CapacityExceeded, self.residency.observeContextSwitch(500, 500, 0, 10, 20, 0, null, 0));
+    try self.residency.observeContextSwitch(500, 500, 0, 10, 20, 0, null, 0);
     var failure: r.CapacityFailure = .{};
     try std.testing.expectEqual(code(.ok), rm_kernel_etw_query_capacity_failure(self, &failure, @sizeOf(r.CapacityFailure)));
     try std.testing.expectEqual(@as(usize, 112), @sizeOf(r.CapacityFailure));

@@ -9,6 +9,7 @@
     <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.48" />
     <InternalsVisibleTo Include="ResourceManager" />
     <InternalsVisibleTo Include="ResourceManager.FrontendPreferencesBuild" />
+    <InternalsVisibleTo Include="ResourceManager.ReadWriteNativeDefaultsBuild" />
     <InternalsVisibleTo Include="ResourceManager.FreedomPointCheck" />
     <InternalsVisibleTo Include="Resource Manager-APP.Tests" />
   </ItemGroup>

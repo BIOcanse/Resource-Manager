@@ -229,7 +229,24 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 provider.GetRequiredService<IDiskUsageVolumeCatalog>(),
                 provider.GetRequiredService<DirectoryWalkDiskUsageScanner>()));
 
-        services.AddSingleton<KernelEtwSessionBroker>();
+        services.AddSingleton<KernelEtwConsumerThreadDiagnostics>();
+        services.AddSingleton<KernelEtwSessionBroker>(provider =>
+        {
+            var logger = provider.GetRequiredService<ILogger<KernelEtwSessionBroker>>();
+            var regions = new NativeKernelEtwLedgerRegionProvider(
+                provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>());
+            var factory = new NativeKernelEtwSessionRuntimeFactory(regions, () =>
+            {
+                var plan = provider.GetRequiredService<IRuntimePlanProvider>().Current.HostManager.RequirePublished();
+                return KernelEtwNativeSettings.CreateConfiguration(
+                    plan.KernelEtwLimits ?? throw new InvalidOperationException("Kernel ETW limits are unpublished."),
+                    plan.CpuCoreResidency,
+                    checked((uint)plan.CpuCoreResidency.PhysicalCoreByLogicalProcessor.Count));
+            }, sessionName => ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
+                ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName),
+                provider.GetRequiredService<KernelEtwConsumerThreadDiagnostics>());
+            return new KernelEtwSessionBroker(factory, logger);
+        });
         services.AddSingleton<IKernelEtwSessionBroker>(static provider => provider.GetRequiredService<KernelEtwSessionBroker>());
 
         services.AddSingleton<PortableSoftwareDiscoveryService>();
@@ -268,8 +285,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
         services.AddSingleton<EtwPhysicalDiskIoAttributionReader>(static provider => new(
             provider.GetRequiredService<IKernelEtwSessionBroker>(),
-            provider.GetRequiredService<ILogger<EtwPhysicalDiskIoAttributionReader>>(),
-            provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
+            provider.GetRequiredService<ILogger<EtwPhysicalDiskIoAttributionReader>>()));
         services.AddSingleton<IPhysicalDiskIoAttributionReader>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddHostedServiceAlias<EtwPhysicalDiskIoAttributionReader>(BlockUids.EtwPhysicalDiskIoAttributionReader, static service => service.ExecuteTask, forwardRunFailureToHost: false);

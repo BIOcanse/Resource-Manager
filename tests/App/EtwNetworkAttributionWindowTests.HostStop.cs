@@ -1,6 +1,7 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 namespace Resource_Manager_APP.Tests;
 
-public sealed partial class EtwNetworkAttributionWindowTests
+public sealed partial class OracleNetworkAttributionWindowTests
 {
     [Fact]
     public async Task ReadWithoutHostedStartDoesNotAcquireALeaseAndRepeatedCleanupIsIdempotent()

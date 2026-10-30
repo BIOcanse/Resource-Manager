@@ -1229,8 +1229,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         private long nextPublicationAt;
         private readonly ResourceManager.ReadWrite.Publications.CurrentValuePublicationSignal publications = new();
         private readonly TaskCompletionSource subscribed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource subscriptionCanceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal Task InitialPublicationReady { get; init; } = Task.CompletedTask;
         internal long NextPublicationAt => Interlocked.Read(ref nextPublicationAt);
+        internal Task SubscriptionCanceled => Volatile.Read(ref subscriptionCanceled).Task;
         internal HostedResidencyOutput(HostedScoreOnlyEpochSource source, TimeProvider clock, bool controlled = false)
             : this(source.ReadCpuCoreResidency, clock, controlled) { }
         internal Task WaitForSubscriptionAsync() => subscribed.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -1261,6 +1263,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             using var demand = AcquireSubscription(id, interval);
             using var publication = controlled ? publications.Subscribe() : null;
+            var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref subscriptionCanceled, canceled);
+            using var cancellationRegistration = cancellationToken.Register(
+                () => canceled.TrySetResult());
             subscribed.TrySetResult();
             try
             {

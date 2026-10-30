@@ -160,6 +160,7 @@ pub const Sink = struct {
     // Optional native routing of disk/file/network and other shared-session
     // records. A null callback does not claim those owners were migrated.
     on_unhandled: ?*const fn (?*anyopaque, decoder.RawEvent) bool = null,
+    on_buffer: ?*const fn (?*anyopaque) bool = null,
 };
 pub const Counters = struct { records: u64 = 0, decoded: u64 = 0, rejected: u64 = 0, unhandled: u64 = 0, lost_markers: u64 = 0, events_lost: u32 = 0, buffers_lost: u32 = 0 };
 pub const ConsumerError = error{ AlreadyOpen, NotOpen, Processing, OpenFailed, UnsupportedClock, InvalidTraceMetadata, ClockSamplingFailed, CleanupFailed };
@@ -285,6 +286,7 @@ pub const Consumer = struct {
     fn bufferCallback(logfile: *LogFile) callconv(.winapi) u32 {
         const self: *Consumer = @ptrCast(@alignCast(logfile.context orelse return 0));
         self.observeLoss(.buffer_callback, @max(logfile.events_lost, logfile.header.events_lost), logfile.header.buffers_lost);
+        if (self.sink.on_buffer) |handler| if (!handler(self.sink.context)) self.requestStop();
         return if (self.stop_requested.load(.acquire)) 0 else 1;
     }
     fn eventCallback(record: *EventRecord) callconv(.winapi) void {

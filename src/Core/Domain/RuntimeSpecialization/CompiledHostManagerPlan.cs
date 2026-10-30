@@ -41,6 +41,8 @@ public sealed record CompiledHostManagerPlan(
     public Application.Notifications.NotificationOptions? Notifications { get; init; }
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.MemoryProtection)]
     public Application.MemoryProtection.HostMemoryProtectionRecordOptions? HostMemoryProtectionRecords { get; init; }
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.KernelEtwLimits)]
+    public CompiledKernelEtwLimits? KernelEtwLimits { get; init; }
     public CompiledDataHistoryPlan DataHistory { get; init; } = CompiledDataHistoryPlan.Empty;
     public CompiledFreedomPointTree FreedomPoints { get; init; } = CompiledFreedomPointTree.Empty;
     public CompiledCpuCoreResidencyPlan CpuCoreResidency { get; init; } = CompiledCpuCoreResidencyPlan.Unpublished;
@@ -80,6 +82,7 @@ public sealed record CompiledHostManagerPlan(
         && BackendControlSettings.IsPublished
         && HardwareControl is not null
         && Monitoring is not null
+        && KernelEtwLimits is { IsPublished: true }
         && CpuScoring is not null
         && SchedulerSamplingInterval > TimeSpan.Zero
         && HardwareBridgeAvailabilityCheckInterval >= TimeSpan.Zero

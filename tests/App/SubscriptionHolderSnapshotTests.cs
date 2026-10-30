@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Endpoints;
@@ -101,7 +102,7 @@ public sealed class SubscriptionHolderSnapshotTests
         var tracker = CreateMetricTracker(fixture);
         tracker.TrackPersistent("tray", MetricSampleRequest.ForIds(["cpu.usage"]), DateTimeOffset.UtcNow, TimeSpan.FromSeconds(1));
         await using var present = PresentFrameEtwTestHarness.Create();
-        using var kernel = new KernelEtwSessionBroker(NullLogger<KernelEtwSessionBroker>.Instance);
+        using var kernel = new KernelEtwSessionBroker(new UnstartedKernelFactory(), NullLogger<KernelEtwSessionBroker>.Instance);
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -134,6 +135,16 @@ public sealed class SubscriptionHolderSnapshotTests
         }
         finally { await app.StopAsync(); }
         Assert.Single(tracker.ReadHolders().Holders);
+    }
+
+    // The endpoint test holds no kernel subscription, so the broker never creates a session.
+    private sealed class UnstartedKernelFactory : IKernelEtwSessionRuntimeFactory
+    {
+        public bool TryGetAvailability(out string state, out string message)
+        { state = "Available"; message = ""; return true; }
+        public IKernelEtwSessionRuntime Create(string name, KernelTraceEventParser.Keywords keywords,
+            KernelEtwSessionContext context, IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions)
+            => throw new InvalidOperationException("The subscription endpoint test acquires no kernel holder.");
     }
 
     private static NativeItemSamplingSubscriptionTracker<MetricSampleRequest> CreateMetricTracker(

@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Diagnostics.Tracing;
@@ -226,7 +227,7 @@ public sealed class KernelEtwZigEquivalenceTests
         using var replay = new Replay(frequency, 5000, 65536, 50, compareEveryEvent: false);
         replay.ExpectedProcessors = Enumerable.Range(0, source.NumberOfProcessors).ToArray();
         var parser = new KernelTraceEventParser(source);
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
         dispatcher.AttachParser(parser);
         const int maximumSwitches = 2_000_000;
         const int maximumEvents = 4_000_000;
@@ -308,14 +309,14 @@ public sealed class KernelEtwZigEquivalenceTests
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var frequency = Assert.IsType<long>(frequencyProperty?.GetValue(source));
         Assert.True(frequency > 0);
-        var managed = new CpuResidencyAggregationBuffer(frequency, 5000, 65536, 50);
+        var managed = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, 50);
         var initialEventsLost = checked((uint)source.EventsLost);
         // OpenTrace reports historical session loss before delivering any records.
         // Match that empty-state reset; a later loss must not be absorbed into this baseline.
         if (initialEventsLost != 0) managed.ResetAfterEventLoss();
         var processors = Enumerable.Range(0, source.NumberOfProcessors).ToArray();
         var parser = new KernelTraceEventParser(source);
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
         dispatcher.AttachParser(parser);
         var switches = 0;
         dispatcher.InitializeSubscriptions(
@@ -325,7 +326,7 @@ public sealed class KernelEtwZigEquivalenceTests
                 {
                     // The production binding runs first, including the exact final switch.
                     // No events after that boundary may enter the managed owner.
-                    EtwCpuCoreResidencyReader.BindKernelEventCallbacks(callbacks, managed,
+                    OracleCpuResidencyEventAdapter.BindKernelEventCallbacks(callbacks, managed,
                         () => switches < switchLimit, static _ => null);
                     callbacks.ThreadCSwitch += _ =>
                     {
@@ -387,7 +388,7 @@ public sealed class KernelEtwZigEquivalenceTests
 
     private sealed class Replay : IDisposable
     {
-        private readonly CpuResidencyAggregationBuffer managed;
+        private readonly OracleCpuResidencyAggregationBuffer managed;
         private readonly NativeReplay native;
         private readonly bool compareEveryEvent;
         public int[] ExpectedProcessors { get; set; } = [0];

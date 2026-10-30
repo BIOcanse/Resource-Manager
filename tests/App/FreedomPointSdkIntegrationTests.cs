@@ -21,7 +21,7 @@ public sealed class FreedomPointSdkIntegrationTests
         Assert.Equal(registry.ContractFingerprint, groups["contractFingerprint"]!.GetValue<string>());
         var monitoring = groups["groups"]!.AsArray().Single(group => group!["key"]!.GetValue<string>() == "resource-manager/backend/monitoring");
         Assert.Equal(["0001000200040001", "0001000200040002", "0001000200050000", "0001000200050001", "0001000200050002",
-                "0001000200050003"],
+                "0001000200050003", "0001000200050004"],
             monitoring!["points"]!.AsArray().Select(point => point!.GetValue<string>()));
     }
 
@@ -37,19 +37,28 @@ public sealed class FreedomPointSdkIntegrationTests
             .Where(static type => type.Namespace == "ResourceManager.App.Domain.RuntimeSpecialization")
             .SelectMany(static type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
             .SelectMany(static member => member.GetCustomAttributes<FreedomPointBindingAttribute>().Select(attribute => (Member: member, Path: PointPath.FromRaw(attribute.Path))))
+            .Concat(typeof(ResourceManager.App.Infrastructure.Telemetry.Etw.NativeKernelEtwSession).Assembly
+                .GetType("ResourceManager.App.Infrastructure.Telemetry.Etw.KernelEtwNativeDefaults", throwOnError: true)!
+                .GetProperties(BindingFlags.NonPublic | BindingFlags.Static)
+                .SelectMany(static member => member.GetCustomAttributes<FreedomPointBindingAttribute>()
+                    .Select(attribute => (Member: member, Path: PointPath.FromRaw(attribute.Path)))))
             .ToArray();
-        Assert.Equal(39, members.Length);
-        Assert.Equal(39, members.Select(static m => m.Path).Distinct().Count());
+        Assert.Equal(41, members.Length);
+        Assert.Equal(40, members.Select(static m => m.Path).Distinct().Count());
         Assert.All(registry.Points, point =>
         {
             if (point.Status == DeclarationStatus.Active)
             {
-                var member = Assert.Single(members, member => member.Path == point.Path).Member;
-                var target = Assert.Single(point.GenerationTargets);
-                Assert.Equal(GenerationLanguage.HostArtifact, target.Language);
-                Assert.Equal(point.Path.Family == PointFamily.Build ? GenerationForm.BuildConstant : GenerationForm.RuntimeImmutable, target.Form);
-                Assert.Equal(member.DeclaringType!.FullName, target.Scope);
-                Assert.Equal(member.Name, target.Symbol);
+                var bound = members.Where(member => member.Path == point.Path).ToArray();
+                Assert.Equal(point.GenerationTargets.Length, bound.Length);
+                foreach (var target in point.GenerationTargets)
+                {
+                    var member = Assert.Single(bound, member => member.Member.DeclaringType!.FullName == target.Scope && member.Member.Name == target.Symbol).Member;
+                    Assert.Equal(GenerationLanguage.HostArtifact, target.Language);
+                    Assert.Equal(point.Path.Family == PointFamily.Build ? GenerationForm.BuildConstant : GenerationForm.RuntimeImmutable, target.Form);
+                    Assert.Equal(member.DeclaringType!.FullName, target.Scope);
+                    Assert.Equal(member.Name, target.Symbol);
+                }
             }
             else
             {
@@ -86,7 +95,11 @@ public sealed class FreedomPointSdkIntegrationTests
         var host = FreedomPointRegistry.LoadEmbedded();
         var cpu = new CompiledCpuScoringPlan(1.25, CompiledCpuCoreWeights.Empty);
         var compilation = host.BeginCompilation(Profile(), cpu);
-        Assert.Equal(39, compilation.Facts.Items.Length);
+        Assert.Equal(40, compilation.Facts.Items.Length);
+        // The native kernel owner adds one active compiled limits declaration.
+        _ = compilation.Facts.Require(host.Sdk.RequirePath(BackendFreedomPointPaths.KernelEtwLimits));
+        var availability = host.Sdk.RequirePath(BackendFreedomPointPaths.HardwareBridgeAvailabilityCheckInterval);
+        Assert.Equal(30000L, compilation.Facts.Require(availability).Value.Slots[0].Integer);
         var ratio = host.Sdk.RequirePath(BackendFreedomPointPaths.CpuBaselineRatio);
         Assert.Equal(1.25, compilation.Facts.Require(ratio).Value.Slots[0].Decimal);
         Assert.Equal(1.25, compilation.Consume<double>(BackendFreedomPointPaths.CpuBaselineRatio, "HostManagerPlanCompiler.CompileCpuScoring"));

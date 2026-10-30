@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -11,40 +12,8 @@ namespace Resource_Manager_APP.Tests;
 [Collection("Owned Windows kernel ETW")]
 public sealed partial class KernelEtwNativeKeywordUpdateTests
 {
-    // Use the existing production runtime and parser while omitting the global
-    // orphan reconciler: this test may only touch its own newly created session.
-    private sealed class OwnedRuntimeFactory : IKernelEtwSessionRuntimeFactory
-    {
-        public int Created { get; private set; }
-        public Action<KernelTraceEventParser>? ObserveParser { get; init; }
-        public bool TryGetAvailability(out string state, out string message)
-        {
-            state = "Available"; message = "Owned native regression"; return true;
-        }
-
-        public IKernelEtwSessionRuntime Create(string name, KernelTraceEventParser.Keywords keywords,
-            KernelEtwSessionContext context, IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions)
-        {
-            Assert.Equal(ResourceManagerEtwSessionNames.KernelSessionName, name);
-            Assert.DoesNotContain(name, TraceEventSession.GetActiveSessionNames());
-            var session = new TraceEventSession(name, TraceEventSessionOptions.Create) { StopOnDispose = true };
-            try
-            {
-                session.EnableKernelProvider(keywords);
-                var controller = new KernelEtwSessionKeywordControl(name, new WindowsKernelEtwNativeSessionControl());
-                var dispatcher = new KernelEtwSubscriptionDispatcher();
-                dispatcher.AttachParser(session.Source.Kernel);
-                ObserveParser?.Invoke(session.Source.Kernel);
-                dispatcher.InitializeSubscriptions(subscriptions, context);
-                Created++;
-                return new TraceEventSessionProcessingRuntime(session, controller, dispatcher);
-            }
-            catch { session.Dispose(); throw; }
-        }
-    }
-
     [EnvironmentVariableFact("RESOURCE_MANAGER_NATIVE_ETW_TEST", "1")]
-    public async Task LiveHotAdditionDeliversFileWritesAndRetainsTheOriginalProcessBinding()
+    public async Task ManagedOracleHotAdditionDeliversFileWritesAndRetainsTheOriginalProcessBinding()
     {
         Assert.True(OperatingSystem.IsWindows());
         Assert.True(TraceEventSession.IsElevated());
@@ -54,7 +23,7 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         var context = new KernelEtwSessionContext(17, DateTimeOffset.UtcNow);
         var children = new ConcurrentDictionary<int, ulong>();
         var processBindings = 0;
-        var processRegistration = new KernelEtwSubscriptionRegistration(1, "native-test.process",
+        var processRegistration = new OracleKernelEtwSubscriptionRegistration(1, "native-test.process",
             KernelTraceEventParser.Keywords.Process, (events, boundContext) =>
             {
                 Assert.Same(context, boundContext);
@@ -74,10 +43,10 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
             session.EnableKernelProvider(processRegistration.Keywords);
             var native = new WindowsKernelEtwNativeSessionControl();
             var identity = native.Query(name);
-            var dispatcher = new KernelEtwSubscriptionDispatcher();
+            var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
             dispatcher.AttachParser(session.Source.Kernel);
             dispatcher.InitializeSubscriptions([processRegistration], context);
-            using var runtime = new TraceEventSessionProcessingRuntime(session,
+            using var runtime = new OracleTraceEventSessionProcessingRuntime(session,
                 new KernelEtwSessionKeywordControl(name, native), dispatcher);
             Exception? processingFailure = null;
             runtime.StartProcessing(error => processingFailure = error);
@@ -86,8 +55,8 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
                 var first = RunOwnedProcessProbe();
                 await UntilAsync(() => children.ContainsKey(first), "initial process callback was not delivered");
                 var written = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-                KernelEtwEventSource? fileSource = null;
-                var fileRegistration = new KernelEtwSubscriptionRegistration(2, "native-test.file",
+                OracleKernelEtwEventSource? fileSource = null;
+                var fileRegistration = new OracleKernelEtwSubscriptionRegistration(2, "native-test.file",
                     KernelTraceEventParser.Keywords.FileIO | KernelTraceEventParser.Keywords.FileIOInit,
                     (events, boundContext) =>
                     {
@@ -135,6 +104,13 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         Assert.DoesNotContain(name, TraceEventSession.GetActiveSessionNames());
     }
 
+    private static NativeConsumerRuntimeFactory CreateNativeConsumerFactory()
+    {
+        var topology = new ResourceManager.App.Infrastructure.CpuTopology.WindowsCpuTopologyReader(new EmptyConsumerOverrides()).CaptureTopology();
+        var plan = HostManagerTestPlanFactory.CreatePlan(cpuTopology: topology);
+        return new NativeConsumerRuntimeFactory(KernelEtwNativeSettings.CreateConfiguration(plan.KernelEtwLimits!,
+            plan.CpuCoreResidency, checked((uint)plan.CpuCoreResidency.PhysicalCoreByLogicalProcessor.Count)));
+    }
     private static int RunOwnedProcessProbe()
     {
         using var child = Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"))

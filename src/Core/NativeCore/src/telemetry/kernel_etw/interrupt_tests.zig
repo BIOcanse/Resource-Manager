@@ -4,6 +4,127 @@ const interrupts = @import("interrupts.zig");
 const u = std.unicode.utf8ToUtf16LeStringLiteral;
 const config: interrupts.Config = .{ .max_modules = 32, .max_identities = 32, .max_slices = 128, .max_slice_drivers = 256 };
 
+test "native IRQ normalized admission preserves five receives and four managed rejection reasons" {
+    const counters = @import("admission_counters.zig");
+    var store = try counters.Store.init(testing.allocator, 1);
+    defer store.deinit();
+    var descriptor: counters.Config = .{ .token = 1, .generation = 17, .kind_mask = counters.bit(.dpc),
+        .output_mask = 2, .flags = counters.active | counters.current_binding | counters.window_active,
+        .window_start = 100, .incomplete_through = -1 };
+    try store.configure(descriptor);
+    var owner = try interrupts.Owner.init(testing.allocator, config, 17, 100, 0);
+    defer owner.deinit();
+    const Callback = struct {
+        fn deliver(s: *counters.Store, o: *interrupts.Owner, facts: counters.Facts) !bool {
+            s.recordPhysical(.dpc, true);
+            const accepted = try s.observeAdmitted(1, .dpc, facts);
+            if (accepted) try o.observe(.dpc, facts.duration_ms, 0, facts.observed_tick);
+            return accepted;
+        }
+    };
+    try testing.expect(try Callback.deliver(&store, &owner, .{ .generation = 17, .observed_tick = 101, .duration_ms = 2 }));
+    descriptor.window_start = 105;
+    try store.configure(descriptor);
+    try testing.expect(!try Callback.deliver(&store, &owner, .{ .generation = 17, .observed_tick = 104, .duration_ms = 2 }));
+    try testing.expect(!try Callback.deliver(&store, &owner, .{ .generation = 999, .observed_tick = 105, .duration_ms = 2 }));
+    try testing.expect(!try Callback.deliver(&store, &owner, .{ .generation = 17, .observed_tick = 105, .duration_ms = std.math.nan(f64) }));
+    // The legacy dispatcher could capture a callback before Cancel. Native
+    // production intake has no such managed payload callback; observeAdmitted
+    // proves the same policy before the ordered descriptor retirement.
+    descriptor.flags &= ~counters.active;
+    try store.configure(descriptor);
+    try testing.expect(!try Callback.deliver(&store, &owner, .{ .generation = 17, .observed_tick = 105, .duration_ms = 2 }));
+    try testing.expectEqual(counters.Pair{ .received = 5, .dropped = 4 }, store.query(1, .dpc, .none).?);
+    for ([_]counters.Reason{ .before_window, .generation_mismatch, .invalid_duration, .inactive_binding }) |reason|
+        try testing.expectEqual(counters.Pair{ .received = 1, .dropped = 1 }, store.query(1, .dpc, reason).?);
+    try testing.expectEqual(counters.Pair{ .received = 5 }, store.queryPhysical(.dpc));
+    try testing.expectEqual(counters.Pair{}, store.query(1, .dpc, .reserved_2).?);
+    var published = try owner.publish(testing.allocator, 10100, 1);
+    defer published.deinit();
+    try testing.expectEqual(@as(u64, 1), published.event_count);
+    try testing.expectEqual(@as(f64, 2), published.total_duration_ms);
+    store.retire(1);
+    try testing.expect(store.query(1, .dpc, .none) == null);
+}
+
+test "address index allocates by occupied ranges instead of its compiled cap" {
+    const Budget = @import("budget.zig").Budget;
+    var budget: Budget = .{ .backing = testing.allocator, .cap = 1024 * 1024 };
+    var map = try interrupts.ModuleMap.init(budget.allocator(), .{
+        .max_modules = 1 << 20,
+        .max_path_units = 128,
+    });
+    defer map.deinit();
+    try testing.expectEqual(@as(usize, 0), budget.current);
+    try testing.expectEqual(@as(usize, 0), map.ranges.len);
+    try testing.expectEqual(@as(usize, 0), map.tree.len);
+    for (0..17) |index| try map.upsert(100 + index * 100, 200, u("driver.sys"));
+    try testing.expectEqual(@as(usize, 17), map.len);
+    try testing.expectEqual(@as(usize, 32), map.ranges.len);
+    try testing.expectEqualSlices(u16, u("driver.sys"), map.resolve(1799).?.name.?);
+    try testing.expect(budget.current < 16 * 1024);
+    for (0..17) |index| map.remove(100 + index * 100);
+    try testing.expectEqual(@as(usize, 0), map.len);
+    try testing.expectEqual(@as(usize, 0), budget.current);
+    try testing.expect(map.resolve(100) == null);
+}
+
+test "IRQ metadata starts small and reset returns all duration storage" {
+    const Budget = @import("budget.zig").Budget;
+    var budget: Budget = .{ .backing = testing.allocator, .cap = 1024 * 1024 };
+    var owner = try interrupts.Owner.init(budget.allocator(), .{
+        .max_modules = 65536,
+        .max_path_units = 128,
+        .max_identities = 65536,
+        .max_slices = 4096,
+        .max_slice_drivers = 1 << 20,
+    }, 1, 0, 0);
+    defer owner.deinit();
+    try testing.expect(budget.current < 4096);
+    try testing.expectEqual(@as(usize, 0), owner.slices.len);
+    try testing.expectEqual(@as(usize, 0), owner.cells.len);
+    try owner.upsertImage(100, 100, u("C:\\driver.sys"), 0);
+    const metadata_bytes = budget.current;
+    const metadata_revision = owner.modules.revision;
+    try owner.observe(.dpc, 1, 101, 1);
+    try testing.expect(budget.current > metadata_bytes);
+    var held = try owner.publish(testing.allocator, 10000, 1);
+    defer held.deinit();
+    owner.reset(20000, 0);
+    try testing.expectEqual(@as(usize, 0), owner.slice_len);
+    try testing.expectEqual(@as(usize, 0), owner.cell_len);
+    try testing.expectEqual(@as(usize, 0), owner.slices.len);
+    try testing.expectEqual(@as(usize, 0), owner.cells.len);
+    try testing.expect(budget.current < metadata_bytes);
+    try testing.expectEqual(@as(usize, 0), owner.modules.len);
+    try testing.expect(owner.modules.revision > metadata_revision);
+    try testing.expect(owner.modules.resolve(101) == null);
+    try testing.expectEqualSlices(u16, u("driver.sys"), held.drivers[0].module.name.?);
+}
+
+test "module revision tracks successful metadata mutations and survives a no-op" {
+    var map = try interrupts.ModuleMap.init(testing.allocator, config);
+    defer map.deinit();
+    try testing.expectEqual(@as(u64, 0), map.revision);
+    try map.upsert(0, 10, u("invalid.sys"));
+    map.remove(100);
+    map.clear();
+    try testing.expectEqual(@as(u64, 0), map.revision);
+    try map.upsert(100, 10, u("driver.sys"));
+    try testing.expectEqual(@as(u64, 1), map.revision);
+    try map.upsert(100, 10, u("driver.sys"));
+    try testing.expectEqual(@as(u64, 1), map.revision);
+    try map.upsert(100, 20, u("driver.sys"));
+    try testing.expectEqual(@as(u64, 2), map.revision);
+    try map.upsert(100, 20, u("replacement.sys"));
+    try testing.expectEqual(@as(u64, 3), map.revision);
+    map.remove(100);
+    try testing.expectEqual(@as(u64, 4), map.revision);
+    try map.upsert(100, 10, null);
+    map.clear();
+    try testing.expectEqual(@as(u64, 6), map.revision);
+}
+
 test "address index chooses highest containing base through overlaps and holes" {
     var map = try interrupts.ModuleMap.init(testing.allocator, config);
     defer map.deinit();
@@ -60,6 +181,54 @@ test "address index matches subtraction oracle across adversarial ranges" {
         const actual = map.resolve(@intCast(address));
         try testing.expectEqual(expected, if (actual) |found| found.tag else null);
     }
+}
+
+test "address index replacements and shifted suffixes match a linear oracle" {
+    var map = try interrupts.ModuleMap.init(testing.allocator, config);
+    defer map.deinit();
+    var active: [32]bool = @splat(false);
+    var sizes: [32]u64 = @splat(0);
+    var random: u64 = 73;
+    for (0..1000) |step| {
+        random = random *% 6364136223846793005 +% 1;
+        const slot: usize = @intCast((random >> 16) % 32);
+        const base: u64 = 1 + slot * 17;
+        if (step % 4 == 0) {
+            map.remove(base);
+            active[slot] = false;
+        } else {
+            sizes[slot] = 1 + (random >> 24) % 1000;
+            active[slot] = true;
+            try map.upsert(base, sizes[slot], null);
+            for (map.ranges[0..map.len]) |*range| if (range.base == base) {
+                range.tag = @intCast(slot + 1);
+                break;
+            };
+        }
+        for (0..16) |_| {
+            random = random *% 6364136223846793005 +% 1;
+            const address = 1 + (random >> 16) % 1600;
+            var expected: ?u32 = null;
+            for (active, sizes, 0..) |present, size, index| {
+                const candidate: u64 = 1 + index * 17;
+                if (present and address >= candidate and address - candidate < size) expected = @intCast(index + 1);
+            }
+            const actual = map.resolve(address);
+            try testing.expectEqual(expected, if (actual) |found| found.tag else null);
+        }
+    }
+}
+
+test "unchanged image names require no allocation on range replacement" {
+    var map = try interrupts.ModuleMap.init(testing.allocator, config);
+    defer map.deinit();
+    try map.upsert(100, 200, u("C:\\driver.sys"));
+    var failing = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
+    map.allocator = failing.allocator();
+    defer map.allocator = testing.allocator;
+    try map.upsert(100, 400, u("C:\\driver.sys"));
+    try testing.expectEqualSlices(u16, u("C:\\driver.sys"), map.resolve(499).?.path.?);
+    try testing.expect(map.resolve(500) == null);
 }
 
 test "window publishes complete coverage buckets without resetting totals" {
@@ -250,3 +419,4 @@ fn allocationScenario(allocator: std.mem.Allocator) !void {
 test "every allocation failure unwinds with no leaks" {
     try testing.checkAllAllocationFailures(testing.allocator, allocationScenario, .{});
 }
+

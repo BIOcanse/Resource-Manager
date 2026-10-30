@@ -1,6 +1,9 @@
 const std = @import("std");
 
 pub const Kind = enum(u32) { isr = 1, dpc = 2, threaded_dpc = 3, timer_dpc = 4 };
+pub fn isKernelAddress(address: u64) bool {
+    return address >= 0xFFFF800000000000;
+}
 pub const Config = struct {
     max_modules: u32 = 4096,
     max_path_units: u32 = 32768,
@@ -32,6 +35,11 @@ fn trimmed(path: ?[]const u16) ?[]const u16 {
     return if (start == end) null else value[start..end];
 }
 
+fn samePath(a: ?[]const u16, b: ?[]const u16) bool {
+    if (a) |left| return if (b) |right| std.mem.eql(u16, left, right) else false;
+    return b == null;
+}
+
 fn identity(path: ?[]const u16, tag: u32) Identity {
     const p = path orelse return .{ .tag = tag };
     var start: usize = if (p.len >= 2 and p[1] == ':' and ((p[0] >= 'a' and p[0] <= 'z') or (p[0] >= 'A' and p[0] <= 'Z'))) 2 else 0;
@@ -45,38 +53,65 @@ const Range = struct { base: u64, last: u64, path: ?[]u16, tag: u32 = 0 };
 
 /// Sorted bases plus a max-last-address segment tree. Queries search the rightmost
 /// containing interval in O(log capacity), including nested and crossing ranges.
-/// Image mutation is cold: insertion/removal shifts entries and rebuilds the tree.
+/// Insertion/removal shifts occupied entries; only affected leaves/ancestors
+/// are refreshed. Existing-base updates never scan configured spare capacity.
 pub const ModuleMap = struct {
     allocator: std.mem.Allocator,
-    ranges: []Range,
-    tree: []u64,
-    leaves: usize,
+    ranges: []Range = &.{},
+    tree: []u64 = &.{},
+    leaves: usize = 0,
     len: usize = 0,
+    revision: u64 = 0,
+    max_modules: usize,
     max_path_units: usize,
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !ModuleMap {
         if (config.max_modules == 0 or config.max_modules > 1 << 24 or config.max_path_units == 0) return Error.InvalidConfig;
-        const ranges = try allocator.alloc(Range, config.max_modules);
-        errdefer allocator.free(ranges);
-        const leaves = std.math.ceilPowerOfTwo(usize, config.max_modules) catch return Error.InvalidConfig;
-        const tree = try allocator.alloc(u64, leaves * 2);
-        @memset(tree, 0);
-        return .{ .allocator = allocator, .ranges = ranges, .tree = tree, .leaves = leaves, .max_path_units = config.max_path_units };
+        return .{ .allocator = allocator, .max_modules = config.max_modules, .max_path_units = config.max_path_units };
     }
 
     pub fn deinit(self: *ModuleMap) void {
         self.clear();
-        self.allocator.free(self.tree);
-        self.allocator.free(self.ranges);
         self.* = undefined;
     }
 
     pub fn clear(self: *ModuleMap) void {
+        if (self.len != 0) self.revision +%= 1;
         for (self.ranges[0..self.len]) |range| if (range.path) |p| {
             self.allocator.free(p);
         };
         self.len = 0;
-        @memset(self.tree, 0);
+        self.releaseIndex();
+    }
+
+    fn releaseIndex(self: *ModuleMap) void {
+        self.allocator.free(self.tree);
+        self.allocator.free(self.ranges);
+        self.tree = &.{};
+        self.ranges = &.{};
+        self.leaves = 0;
+    }
+
+    fn ensureCapacity(self: *ModuleMap, required: usize) !void {
+        if (required > self.max_modules) return Error.CapacityExceeded;
+        if (required <= self.ranges.len) return;
+        const next = @min(self.max_modules, @max(required, @max(@as(usize, 4), self.ranges.len * 2)));
+        const leaves = std.math.ceilPowerOfTwo(usize, next) catch return Error.InvalidConfig;
+        const ranges = try self.allocator.alloc(Range, next);
+        errdefer self.allocator.free(ranges);
+        const tree = try self.allocator.alloc(u64, leaves * 2);
+        @memset(tree, 0);
+        @memcpy(ranges[0..self.len], self.ranges[0..self.len]);
+        for (ranges[0..self.len], 0..) |range, index| tree[leaves + index] = range.last;
+        var node = leaves;
+        while (node > 1) {
+            node -= 1;
+            tree[node] = @max(tree[node * 2], tree[node * 2 + 1]);
+        }
+        self.releaseIndex();
+        self.ranges = ranges;
+        self.tree = tree;
+        self.leaves = leaves;
     }
 
     fn lowerBound(self: *const ModuleMap, base: u64) usize {
@@ -89,13 +124,18 @@ pub const ModuleMap = struct {
         return lo;
     }
 
-    fn rebuild(self: *ModuleMap) void {
-        @memset(self.tree[self.leaves..], 0);
-        for (self.ranges[0..self.len], 0..) |range, i| self.tree[self.leaves + i] = range.last;
-        var i = self.leaves;
-        while (i > 1) {
-            i -= 1;
-            self.tree[i] = @max(self.tree[i * 2], self.tree[i * 2 + 1]);
+    // Update exactly the changed contiguous leaves and their ancestors. A
+    // replacement touches one leaf, whereas insertion/removal also shifts the
+    // occupied suffix. Unused configured capacity is never scanned per image.
+    fn refresh(self: *ModuleMap, start: usize, end: usize) void {
+        std.debug.assert(start < end and end <= self.leaves);
+        for (start..end) |index| self.tree[self.leaves + index] = if (index < self.len) self.ranges[index].last else 0;
+        var first = (self.leaves + start) / 2;
+        var last = (self.leaves + end - 1) / 2;
+        while (first != 0) {
+            for (first..last + 1) |index| self.tree[index] = @max(self.tree[index * 2], self.tree[index * 2 + 1]);
+            first /= 2;
+            last /= 2;
         }
     }
 
@@ -105,8 +145,18 @@ pub const ModuleMap = struct {
         if (p) |value| if (value.len > self.max_path_units) return Error.CapacityExceeded;
         const index = self.lowerBound(base);
         const existing = index < self.len and self.ranges[index].base == base;
-        if (!existing and self.len == self.ranges.len) return Error.CapacityExceeded;
+        if (!existing and self.len == self.max_modules) return Error.CapacityExceeded;
+        if (existing and samePath(self.ranges[index].path, p)) {
+            const last = base +| (size - 1);
+            if (self.ranges[index].last != last) self.revision +%= 1;
+            self.ranges[index].last = last;
+            self.ranges[index].tag = 0;
+            self.refresh(index, index + 1);
+            return;
+        }
         const copy = if (p) |value| try self.allocator.dupe(u16, value) else null;
+        errdefer if (copy) |value| self.allocator.free(value);
+        if (!existing) try self.ensureCapacity(self.len + 1);
         if (existing) {
             if (self.ranges[index].path) |old| self.allocator.free(old);
         } else {
@@ -114,7 +164,8 @@ pub const ModuleMap = struct {
             self.len += 1;
         }
         self.ranges[index] = .{ .base = base, .last = base +| (size - 1), .path = copy };
-        self.rebuild();
+        self.revision +%= 1;
+        self.refresh(index, if (existing) index + 1 else self.len);
     }
 
     pub fn remove(self: *ModuleMap, base: u64) void {
@@ -122,8 +173,10 @@ pub const ModuleMap = struct {
         if (index == self.len or self.ranges[index].base != base) return;
         if (self.ranges[index].path) |p| self.allocator.free(p);
         std.mem.copyForwards(Range, self.ranges[index .. self.len - 1], self.ranges[index + 1 .. self.len]);
+        const previous_len = self.len;
         self.len -= 1;
-        self.rebuild();
+        self.revision +%= 1;
+        if (self.len == 0) self.releaseIndex() else self.refresh(index, previous_len);
     }
 
     pub fn resolve(self: *const ModuleMap, address: u64) ?Identity {
@@ -259,6 +312,8 @@ pub const Owner = struct {
     config: Config,
     modules: ModuleMap,
     identities: []StoredIdentity,
+    identity_len: usize = 1,
+    publication_round: std.heap.ArenaAllocator,
     slices: []Slice,
     slice_len: usize = 0,
     cells: []Cell,
@@ -269,26 +324,19 @@ pub const Owner = struct {
     started_tick_ms: i64,
     events_lost: u64,
     invalidated: bool = false,
+    // Set by the first holder binding. Only that binding may adopt the modules
+    // recorded since this owner was created.
+    bound: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, config: Config, generation: u64, started_tick_ms: i64, events_lost: u64) !Owner {
         if (config.max_identities < 1 or config.max_slices < 1 or config.max_slice_drivers < 1 or config.max_path_units > std.math.maxInt(c_int)) return Error.InvalidConfig;
         var modules = try ModuleMap.init(allocator, config);
         errdefer modules.deinit();
-        const identities = try allocator.alloc(StoredIdentity, config.max_identities);
+        const identities = try allocator.alloc(StoredIdentity, 1);
         errdefer allocator.free(identities);
         @memset(identities, .{});
         identities[0].used = true;
-        const slices = try allocator.alloc(Slice, config.max_slices);
-        errdefer allocator.free(slices);
-        const cells = try allocator.alloc(Cell, config.max_slice_drivers);
-        errdefer allocator.free(cells);
-        var slice_index: std.AutoHashMapUnmanaged(i64, u32) = .empty;
-        errdefer slice_index.deinit(allocator);
-        try slice_index.ensureTotalCapacity(allocator, config.max_slices);
-        var cell_index: std.AutoHashMapUnmanaged(CellKey, u32) = .empty;
-        errdefer cell_index.deinit(allocator);
-        try cell_index.ensureTotalCapacity(allocator, config.max_slice_drivers);
-        return .{ .allocator = allocator, .config = config, .modules = modules, .identities = identities, .slices = slices, .cells = cells, .slice_index = slice_index, .cell_index = cell_index, .generation = generation, .started_tick_ms = started_tick_ms, .events_lost = events_lost };
+        return .{ .allocator = allocator, .config = config, .modules = modules, .identities = identities, .publication_round = std.heap.ArenaAllocator.init(allocator), .slices = &.{}, .cells = &.{}, .generation = generation, .started_tick_ms = started_tick_ms, .events_lost = events_lost };
     }
 
     pub fn deinit(self: *Owner) void {
@@ -299,20 +347,42 @@ pub const Owner = struct {
         self.allocator.free(self.identities);
         self.allocator.free(self.slices);
         self.allocator.free(self.cells);
+        self.publication_round.deinit();
         self.* = undefined;
     }
 
+    /// Starts a holder binding window. The ImageLoad rundown is emitted once, at
+    /// the keyword change before this binding's command applies, and is never
+    /// repeated. The first binding of an intact owner therefore keeps the modules
+    /// recorded since the output was created; a loss in that interval has already
+    /// reset them. A successor binding or an invalidated owner starts a new
+    /// module inventory.
+    pub fn bind(self: *Owner, started_tick_ms: i64, events_lost: u64) void {
+        const adopt = !self.bound and !self.invalidated;
+        self.bound = true;
+        if (adopt) self.resetWindow(started_tick_ms, events_lost) else self.reset(started_tick_ms, events_lost);
+    }
+
     pub fn reset(self: *Owner, started_tick_ms: i64, events_lost: u64) void {
+        // A successor binding or event loss discards the complete module inventory.
         self.modules.clear();
-        for (self.identities) |*item| {
-            if (item.path) |p| self.allocator.free(p);
-            item.* = .{};
-        }
-        self.identities[0].used = true;
+        self.resetWindow(started_tick_ms, events_lost);
+    }
+
+    fn resetWindow(self: *Owner, started_tick_ms: i64, events_lost: u64) void {
         self.slice_len = 0;
         self.cell_len = 0;
-        self.slice_index.clearRetainingCapacity();
-        self.cell_index.clearRetainingCapacity();
+        self.slice_index.deinit(self.allocator);
+        self.cell_index.deinit(self.allocator);
+        self.slice_index = .empty;
+        self.cell_index = .empty;
+        self.allocator.free(self.slices);
+        self.allocator.free(self.cells);
+        self.slices = &.{};
+        self.cells = &.{};
+        _ = self.publication_round.reset(.free_all);
+        // Drop duration references before collecting their identity storage.
+        self.collectIdentities();
         self.started_tick_ms = started_tick_ms;
         self.events_lost = events_lost;
         self.invalidated = false;
@@ -332,7 +402,7 @@ pub const Owner = struct {
         var free: ?usize = null;
         const unknown = std.unicode.utf8ToUtf16LeStringLiteral("未知内核模块");
         var group: ?u32 = if (compare(p, unknown) == .eq) 0 else null;
-        for (self.identities[1..], 1..) |item, i| {
+        for (self.identities[1..self.identity_len], 1..) |item, i| {
             if (!item.used) {
                 if (free == null) free = i;
                 continue;
@@ -340,8 +410,17 @@ pub const Owner = struct {
             if (std.mem.eql(u16, item.path.?, p)) return @intCast(i);
             if (group == null and compare(item.path.?, p) == .eq) group = item.group;
         }
-        const index = free orelse return Error.CapacityExceeded;
-        self.identities[index] = .{ .used = true, .path = try self.allocator.dupe(u16, p), .group = group orelse @intCast(index) };
+        const index = free orelse if (self.identity_len < self.config.max_identities) self.identity_len else return Error.CapacityExceeded;
+        const copy = try self.allocator.dupe(u16, p);
+        errdefer self.allocator.free(copy);
+        if (index == self.identities.len) {
+            const previous_len = self.identities.len;
+            const next = @min(self.config.max_identities, @max(index + 1, previous_len * 2));
+            self.identities = try self.allocator.realloc(self.identities, next);
+            @memset(self.identities[previous_len..], .{});
+        }
+        self.identities[index] = .{ .used = true, .path = copy, .group = group orelse @intCast(index) };
+        if (index == self.identity_len) self.identity_len += 1;
         return @intCast(index);
     }
 
@@ -349,7 +428,11 @@ pub const Owner = struct {
         if (self.invalidated) return Error.Invalidated;
         errdefer self.invalidated = true;
         if (observed_tick_ms < self.started_tick_ms or base == 0 or size == 0) return;
-        const tag = try self.intern(path);
+        const index = self.modules.lowerBound(base);
+        const tag = if (index < self.modules.len and self.modules.ranges[index].base == base and samePath(self.modules.ranges[index].path, trimmed(path)))
+            self.modules.ranges[index].tag
+        else
+            try self.intern(path);
         errdefer self.collectIdentities();
         try self.modules.upsert(base, size, path);
         self.modules.ranges[self.modules.lowerBound(base)].tag = tag;
@@ -370,8 +453,18 @@ pub const Owner = struct {
         const key = CellKey{ .second = second, .driver = self.identities[module.tag].group };
         const old_slice = self.slice_index.get(second);
         const old_cell = self.cell_index.get(key);
-        if (old_slice == null and self.slice_len == self.slices.len) return Error.CapacityExceeded;
-        if (old_cell == null and self.cell_len == self.cells.len) return Error.CapacityExceeded;
+        if (old_slice == null) {
+            if (self.slice_len == self.config.max_slices) return Error.CapacityExceeded;
+            if (self.slice_len == self.slices.len)
+                self.slices = try self.allocator.realloc(self.slices, @min(self.config.max_slices, @max(@as(usize, 4), self.slices.len * 2)));
+            try self.slice_index.ensureUnusedCapacity(self.allocator, 1);
+        }
+        if (old_cell == null) {
+            if (self.cell_len == self.config.max_slice_drivers) return Error.CapacityExceeded;
+            if (self.cell_len == self.cells.len)
+                self.cells = try self.allocator.realloc(self.cells, @min(self.config.max_slice_drivers, @max(@as(usize, 4), self.cells.len * 2)));
+            try self.cell_index.ensureUnusedCapacity(self.allocator, 1);
+        }
         const slice_id = old_slice orelse block: {
             const index: u32 = @intCast(self.slice_len);
             self.slices[index] = .{ .key = second };
@@ -398,7 +491,7 @@ pub const Owner = struct {
     fn collectIdentities(self: *Owner) void {
         // Cold collection only: mark retained module/slice references, then free
         // retired paths. Avoid an ever-growing identity history across windows.
-        for (self.identities[1..]) |*item| item.used = false;
+        for (self.identities[1..self.identity_len]) |*item| item.used = false;
         for (self.modules.ranges[0..self.modules.len]) |range| self.identities[range.tag].used = true;
         for (self.slices[0..self.slice_len]) |slice| if (slice.maximum_kind != null) {
             self.identities[slice.maximum_identity].used = true;
@@ -407,13 +500,14 @@ pub const Owner = struct {
             self.identities[cell.key.driver].used = true;
             self.identities[cell.identity_tag].used = true;
         }
-        for (self.identities[1..]) |item| if (item.used) {
+        for (self.identities[1..self.identity_len]) |item| if (item.used) {
             self.identities[item.group].used = true;
         };
-        for (self.identities[1..]) |*item| if (!item.used) {
+        for (self.identities[1..self.identity_len]) |*item| if (!item.used) {
             if (item.path) |p| self.allocator.free(p);
             item.* = .{};
         };
+        while (self.identity_len > 1 and !self.identities[self.identity_len - 1].used) self.identity_len -= 1;
     }
 
     fn prune(self: *Owner, cutoff: i64) void {
@@ -464,9 +558,10 @@ pub const Owner = struct {
         std.mem.sort(Slice, self.slices[0..self.slice_len], {}, sliceLess);
         self.slice_index.clearRetainingCapacity();
         for (self.slices[0..self.slice_len], 0..) |slice, i| self.slice_index.putAssumeCapacity(slice.key, @intCast(i));
-        var round = std.heap.ArenaAllocator.init(self.allocator);
-        defer round.deinit();
-        const aggregates = try round.allocator().alloc(Aggregate, self.identities.len);
+        // Scratch belongs only to this publication. Output strings and rows are
+        // copied to the caller's independently retained allocation below.
+        defer _ = self.publication_round.reset(.free_all);
+        const aggregates = try self.publication_round.allocator().alloc(Aggregate, self.identity_len);
         for (aggregates, 0..) |*a, i| a.* = .{ .tag = @intCast(i) };
         var total: Totals = .{};
         var maximum_kind: ?Kind = null;
@@ -510,6 +605,7 @@ pub const Owner = struct {
             string_units += p.len;
         };
         const strings = try output.alloc(u16, string_units);
+        errdefer output.free(strings);
         var cursor: usize = 0;
         var snapshot = Snapshot{ .allocator = output, .strings = strings, .drivers = drivers, .generation = self.generation, .events_lost = self.events_lost, .started_tick_ms = self.started_tick_ms + start, .ended_tick_ms = now_tick_ms, .window_ms = window, .processor_count = @max(1, processor_count), .available = window >= 10000, .total_duration_ms = total.duration_ms, .maximum_single_duration_ms = total.maximum_ms, .maximum_kind = maximum_kind, .event_count = total.event_count, .long_event_count = total.long_event_count, .cpu_capacity_percent = capacity(total.duration_ms, window, processor_count) };
         for (aggregates[0..driver_count], drivers) |a, *driver| {
@@ -544,4 +640,37 @@ fn copyIdentity(path: ?[]const u16, tag: u32, strings: []u16, cursor: *usize) Id
     @memcpy(copy, p);
     cursor.* += p.len;
     return identity(copy, tag);
+}
+test "IRQ publication returns round scratch while immutable output islands remain" {
+    const Region = @import("region_allocator.zig").RegionAllocator;
+    const Budget = @import("budget.zig").Budget;
+    const backing = try std.testing.allocator.alloc(u8, 8 * 1024 * 1024);
+    defer std.testing.allocator.free(backing);
+    var region = try Region.init(backing);
+    defer region.deinit();
+    var owner_budget: Budget = .{ .backing = region.allocator(), .cap = backing.len };
+    var other_budget: Budget = .{ .backing = region.allocator(), .cap = 1024 * 1024 };
+    var owner = try Owner.init(owner_budget.allocator(), .{ .max_modules = 8, .max_path_units = 128, .max_identities = 32768, .max_slices = 8, .max_slice_drivers = 16 }, 1, 0, 0);
+    defer owner.deinit();
+    try owner.upsertImage(100, 16, std.unicode.utf8ToUtf16LeStringLiteral("Z:\\driver.sys"), 0);
+    try owner.observe(.isr, 1, 101, 1);
+    const initial_owner_bytes = owner_budget.current;
+    var publications: [8]?Snapshot = @splat(null);
+    var pins: [8]?[]u8 = @splat(null);
+    defer {
+        for (&publications) |*item| if (item.*) |*snapshot| snapshot.deinit();
+        for (pins) |item| if (item) |pin| other_budget.allocator().free(pin);
+    }
+    for (0..8) |index| {
+        // Final publication strings/rows remain alive past the large temporary
+        // aggregate. A following long-lived small owner allocation punctures
+        // its freed span, as CPU metadata does between ETW buffers.
+        publications[index] = try owner.publish(other_budget.allocator(), 10000 + @as(i64, @intCast(index)), 1);
+        pins[index] = try other_budget.allocator().alloc(u8, 256);
+        try std.testing.expectEqual(initial_owner_bytes, owner_budget.current);
+    }
+    for (publications) |item| try std.testing.expectEqual(@as(u64, 1), item.?.event_count);
+    try std.testing.expect(other_budget.current < 8 * 1024);
+    try std.testing.expect(owner_budget.current - initial_owner_bytes < 256 * 1024);
+    try std.testing.expect(region.peak < 4 * 1024 * 1024);
 }

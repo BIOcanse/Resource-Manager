@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -14,6 +15,7 @@ using ResourceManager.ReadWrite.ProcessFields;
 using ResourceManager.ReadWrite.Windows.Processes;
 using ResourceManager.ReadWrite.Windows.Devices;
 using ResourceManager.Subscription;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -69,27 +71,36 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     }
     private static CpuCoreResidencySnapshot Window()
     {
-        var buffer = EtwCpuResidencyCaptureOwner.CreateAggregationBuffer(Configuration(), 1000);
-        buffer.ObserveProcessStart(0, At.AddSeconds(-1), 100, 11, 1000, "recorded");
-        buffer.ObserveThreadStart(0, At.AddSeconds(-1), 100, 10);
-        buffer.ObserveContextSwitch(0, At.AddSeconds(-1), 0, 0, 0, 100, "recorded", 10);
-        buffer.ObserveContextSwitch(0, At.AddSeconds(-1), 1, 0, 0, 0, null, 0);
-        buffer.ObserveContextSwitch(250, At.AddMilliseconds(-750), 0, 100, 10, 0, null, 0);
-        // Original buffer requires globally nondecreasing delivery QPC; boundaries for CPU1 start at 250.
-        buffer.ObserveContextSwitch(250, At.AddMilliseconds(-750), 1, 0, 0, 100, "recorded", 10);
-        buffer.ObserveContextSwitch(1250, At.AddMilliseconds(250), 0, 0, 0, 0, null, 0);
-        buffer.ObserveContextSwitch(1250, At.AddMilliseconds(250), 1, 100, 10, 0, null, 0);
-        var aggregate = buffer.Snapshot([0, 1]);
-        Assert.True(aggregate.IsComplete);
-        var through = aggregate.MeasuredThrough!.Value;
-        return new(through.AddSeconds(99), TimeSpan.FromSeconds(1), 7, through.AddSeconds(-1), through,
-            EtwCpuResidencyCaptureOwner.BuildProcessSnapshot(Configuration(), 7, aggregate));
+        var plan = Configuration();
+        var config = NativeKernelEtwTestResource.SmallConfiguration(qpcFrequency: 1000, maximumProcessors: 2);
+        config.Residency.MaximumPairs = checked((uint)plan.MaximumActivePairs);
+        config.Residency.MaximumCells = 4096;
+        using var resource = new NativeKernelEtwTestResource(config, At.AddSeconds(-1));
+        using var owner = new EtwCpuResidencyCaptureOwner(resource, () => plan);
+        owner.EnsureStarted(); owner.BeginWindow();
+        resource.Publish(0);
+        resource.ProcessStart(0, At.AddSeconds(-1), 100, 11, 1000, "recorded");
+        resource.ThreadStart(0, At.AddSeconds(-1), 100, 10);
+        resource.CSwitch(0, At.AddSeconds(-1), 0, 0, 0, 100, 10);
+        resource.CSwitch(0, At.AddSeconds(-1), 1, 0, 0, 0, 0);
+        resource.CSwitch(250, At.AddMilliseconds(-750), 0, 100, 10, 0, 0);
+        resource.CSwitch(250, At.AddMilliseconds(-750), 1, 0, 0, 100, 10);
+        resource.CSwitch(1250, At.AddMilliseconds(250), 0, 0, 0, 0, 0);
+        resource.CSwitch(1250, At.AddMilliseconds(250), 1, 100, 10, 0, 0);
+        resource.Publish(1250);
+        Assert.True(owner.Collect());
+        var window = Assert.IsType<CpuCoreResidencySnapshot>(owner.Read());
+        Assert.Equal(TimeSpan.FromSeconds(1), window.Window);
+        Assert.Equal(At.AddMilliseconds(250), window.MeasuredThrough);
+        Assert.InRange(resource.RegionUsage.CurrentBytes, 1UL, config.ByteCap);
+        Assert.Empty(resource.CallbackFailures);
+        return window;
     }
 
     [Fact]
     public void OriginalAggregationAndRecordsNowHaveTheActualSdkAssembly()
     {
-        Assert.Equal(typeof(WindowsProcessFieldOwner).Assembly, typeof(CpuResidencyAggregationBuffer).Assembly);
+        Assert.Equal(typeof(WindowsProcessFieldOwner).Assembly, typeof(CpuResidencyAggregationSnapshot).Assembly);
         Assert.Equal(typeof(WindowsProcessFieldOwner).Assembly, typeof(CpuCoreResidencySnapshot).Assembly);
         Assert.Equal(23, (int)ProcessMetricFieldCode.CpuResidency);
         var field = ProcessMetricFieldRegistry.Find(Name)!;
@@ -203,7 +214,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Fact]
     public void PidOnlyStartCannotMergeAnInstanceOrGainBirthFromALaterInventory()
     {
-        var buffer = new CpuResidencyAggregationBuffer(1000, 1000, 1024);
+        var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1000, 1024);
         buffer.ObserveProcessStart(0, At, 100, 11, null, "unverified");
         Assert.Null(buffer.CaptureInventorySeed().SeedProcess(100, 1000, "later PID scan"));
         buffer.ObserveProcessStart(1, At, 200, 0, null, "first unknown");
@@ -219,15 +230,15 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     {
         var eventTime = new DateTimeOffset(DateTime.FromFileTimeUtc(1000));
         using var identity = new IdentityLease(100, [1000, 1000]);
-        Assert.Equal(1000, EtwCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, identity));
+        Assert.Equal(1000, OracleCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, identity));
         using var denied = new IdentityLease(100, []);
-        Assert.Null(EtwCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, denied));
+        Assert.Null(OracleCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, denied));
         using var laterBirth = new IdentityLease(100, [2000]);
-        Assert.Null(EtwCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, laterBirth));
+        Assert.Null(OracleCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, laterBirth));
         using var changed = new IdentityLease(100, [1000, 2000]);
-        Assert.Null(EtwCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, changed));
+        Assert.Null(OracleCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, changed));
         using var wrongPid = new IdentityLease(200, [1000, 1000]);
-        Assert.Null(EtwCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, wrongPid));
+        Assert.Null(OracleCpuResidencyCaptureOwner.ResolveEventCreation(100, eventTime, wrongPid));
     }
 
     [Fact]
@@ -249,7 +260,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Fact]
     public void RawOwnerStartsOnlyOnDemandAndStopPreservesBorrowedBrokerLifetime()
     {
-        var broker = new Broker();
+        using var broker = new Broker();
         using var capture = Capture(broker);
         Assert.Null(capture.Read()); Assert.False(capture.HasSessionLease); Assert.Equal(0, broker.Acquires);
         capture.EnsureStarted();
@@ -268,30 +279,37 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Fact]
     public async Task OriginalLossRecoveryInvalidatesTheWindowAndReseedsTheSameSdkOwner()
     {
-        var broker = new Broker(); var seeded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var reseeded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); var attempts = 0;
-        using var capture = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), (inventory, active) =>
+        using var broker = new Broker();
+        var first = new TaskCompletionSource<EtwCpuResidencyCaptureOwner.InventorySeed>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reseeded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scans = 0;
+        using var capture = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), null, (inventory, current) =>
         {
-            if (!active()) return;
-            inventory.SeedProcess(100, 1000, "recorded")!.SeedThread(10);
-            if (Interlocked.Increment(ref attempts) == 1) seeded.TrySetResult(); else reseeded.TrySetResult();
+            Assert.True(current());
+            var scan = Interlocked.Increment(ref scans);
+            var process = inventory.SeedProcess(100, scan * 1000L, "inventory");
+            Assert.NotNull(process);
+            Assert.True(process.SeedThread(10)); Assert.True(process.SeedThread(11));
+            if (scan == 1) first.TrySetResult(inventory); else reseeded.TrySetResult();
         });
-        capture.EnsureStarted(); capture.BeginWindow(); await seeded.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var initial = capture.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
-        Volatile.Write(ref broker.EventsLost, 1); capture.Collect();
-        await reseeded.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(capture.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > initial);
-        Assert.Equal(2, broker.Acquires); Assert.Equal(2, attempts); Assert.Null(capture.Read());
+        capture.EnsureStarted(); capture.BeginWindow();
+        var oldInventory = await first.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var generation = broker.Resource.Generation;
+        var end = NativeCpuReaderTestFeed.ClosedWindow(capture, [0, 1], 1000, firstTid: 10, seedIdentities: false);
+        Assert.True(capture.Collect()); Assert.NotNull(capture.Read());
+        broker.Resource.Loss(broker.Resource.Tick + 1, 1);
+        broker.Resource.Publish(broker.Resource.Tick);
+        Assert.True(capture.Collect()); Assert.Null(capture.Read());
         Assert.Equal("Warming", capture.State);
-        var buffer = EtwCpuResidencyCaptureOwner.CreateAggregationBuffer(Configuration(), 1000);
-        buffer.SeedProcess(100, 1000, "old"); buffer.SeedThread(100, 10);
-        buffer.ObserveContextSwitch(0, At.AddSeconds(-1), 0, 0, 0, 100, "old", 10);
-        buffer.ObserveContextSwitch(0, At.AddSeconds(-1), 1, 0, 0, 0, null, 0);
-        buffer.ObserveContextSwitch(1000, At, 0, 100, 10, 0, null, 0);
-        buffer.ObserveContextSwitch(1000, At, 1, 0, 0, 0, null, 0);
-        Assert.True(buffer.Snapshot([0, 1]).IsComplete);
-        buffer.ResetAfterEventLoss(); Assert.False(buffer.Snapshot([0, 1]).IsComplete);
-        Assert.Empty(buffer.Snapshot([0, 1]).Records);
+        await reseeded.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Null(oldInventory.SeedProcess(999, 9999, "stale"));
+        NativeCpuReaderTestFeed.ClosedWindow(capture, [0, 1], 1000, birth: 2000, firstTid: 10,
+            previousEnd: end, seedIdentities: false);
+        Assert.True(capture.Collect());
+        var process = Assert.Single(capture.Read()!.Processes);
+        Assert.Equal(100, process.ProcessId); Assert.Equal("2000", process.ProcessStartKey);
+        Assert.Equal(2, scans); Assert.Equal(1, broker.Resource.Creations);
+        Assert.Equal(generation, broker.Resource.Generation); Assert.Equal(2, broker.Acquires);
     }
 
     [Theory]
@@ -299,20 +317,9 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [InlineData(true)]
     public void StopOrPausePreservesPublishedWindowAndRejectsAnAlreadyCollectedWindow(bool pause)
     {
-        var broker = new Broker(); using var capture = Capture(broker);
-        capture.EnsureStarted();
-        capture.BeginWindow();
-        // Feed the existing owner buffer without introducing a production capture/test API.
-        var session = typeof(EtwCpuResidencyCaptureOwner)
-            .GetField("activeSession", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(capture)!;
-        var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
-        buffer.ObserveProcessStart(0, At.AddSeconds(-1), 100, 11, 1000, "recorded");
-        buffer.ObserveThreadStart(0, At.AddSeconds(-1), 100, 10);
-        buffer.ObserveContextSwitch(0, At.AddSeconds(-1), 0, 0, 0, 100, "recorded", 10);
-        buffer.ObserveContextSwitch(0, At.AddSeconds(-1), 1, 0, 0, 0, null, 0);
-        buffer.ObserveContextSwitch(Stopwatch.Frequency, At, 0, 100, 10, 0, null, 0);
-        buffer.ObserveContextSwitch(Stopwatch.Frequency, At, 1, 0, 0, 0, null, 0);
+        using var broker = new Broker(); using var capture = Capture(broker);
+        capture.EnsureStarted(); capture.BeginWindow();
+        NativeCpuReaderTestFeed.ClosedWindow(capture, [0, 1], 1000, firstTid: 10);
         Assert.True(capture.Collect());
         Assert.NotNull(capture.Read());
         var published = capture.Read();
@@ -341,7 +348,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Fact]
     public async Task CanonicalDefaultUsesSameCurrentAndSubscriptionWithdrawalKeepsHostCpuHolder()
     {
-        var broker = new Broker(); using var owner = Owner(broker);
+        using var broker = new Broker(); using var owner = Owner(broker);
         owner.StartCpuResidencyCapture();
         var warming = await owner.CollectAsync([Name]);
         Assert.Equal(2, warming.Processes.Count); Assert.All(warming.Processes, row => Assert.Null(row.Values.Single().NumericValue));
@@ -358,7 +365,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Fact]
     public async Task OnlyExplicitCpuRunEntryAndExitAcquireAndReleaseTheHolder()
     {
-        var broker = new Broker(); using var owner = Owner(broker);
+        using var broker = new Broker(); using var owner = Owner(broker);
         var initial = WindowsCpuResidencyProcessFields.Project([Name], CurrentInventory(), Scopes(), CurrentWindow());
         owner.Current.SetPart(ProcessMetricDatasetIds.ObservedCpuResidency, initial);
         var refs = owner.Backend.Catalog.Fields.Select(field => field.Field).ToImmutableArray();
@@ -394,7 +401,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         using var hosted = new WindowsProcessFieldOwner(new ProcessFieldCurrentState());
         Assert.Throws<InvalidOperationException>(hosted.StartCpuResidencyCapture);
         Assert.Throws<InvalidOperationException>(hosted.StopCpuResidencyCapture);
-        var broker = new Broker();
+        using var broker = new Broker();
         var owner = Owner(broker);
         owner.Dispose();
         Assert.Throws<ObjectDisposedException>(owner.StartCpuResidencyCapture);
@@ -405,7 +412,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Fact]
     public async Task RejectedCanceledAndRetiredRequestsPreserveOrClearTheOriginalCurrentPrecisely()
     {
-        var broker = new Broker(); using var owner = Owner(broker);
+        using var broker = new Broker(); using var owner = Owner(broker);
         var initial = WindowsCpuResidencyProcessFields.Project([Name], CurrentInventory(), Scopes(), CurrentWindow());
         owner.Current.SetPart(ProcessMetricDatasetIds.ObservedCpuResidency, initial);
         var refs = owner.Backend.Catalog.Fields.Select(field => field.Field).ToImmutableArray();
@@ -427,9 +434,9 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Fact]
     public async Task HostCanonicalBackendKeepsTheOriginalRole6DemandAndSdkCurrent()
     {
-        using var sampling = new HostManagerSamplingSubscriptionTestFixture(); var broker = new Broker();
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture(); using var broker = new Broker();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+            NullLogger<EtwCpuCoreResidencyReader>.Instance);
         var backend = new HostCpuResidencyFieldBackend(reader);
         Assert.Empty(backend.Catalog.Fields); Assert.Equal(0, broker.Acquires);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -451,7 +458,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Fact]
     public async Task ExternalNativeCompositionPublishesFromTheSameCurrentWhileHostOwnsCpuLease()
     {
-        var broker = new Broker(); using var owner = Owner(broker);
+        using var broker = new Broker(); using var owner = Owner(broker);
         owner.Current.SetPart(ProcessMetricDatasetIds.ObservedCpuResidency,
             WindowsCpuResidencyProcessFields.Project([Name], CurrentInventory(), Scopes(), CurrentWindow()));
         var fields = owner.Backend.Catalog.Fields.Select(field => field.Field).ToImmutableArray();
@@ -477,7 +484,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         Assert.NotNull(owner.ReadCachedSnapshot());
     }
 
-    private static EtwCpuResidencyCaptureOwner Capture(Broker broker) => new(broker, Configuration, new(), static (_, _) => { });
+    private static EtwCpuResidencyCaptureOwner Capture(Broker broker) => new(broker, Configuration, new());
     private static ProcessMetricFieldSnapshot CurrentInventory()
     {
         using var process = Process.GetCurrentProcess();
@@ -520,48 +527,5 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         public ulong WorkspaceIncarnation => 1; public ulong ConfigurationGeneration => 1; public bool IsActive => true;
         public bool TryPublish(Action commit) { beforeCommit(); commit(); return true; }
     }
-    private sealed class Broker : IKernelEtwSessionBroker
-    {
-        public int Acquires, Releases, EventsLost;
-        public Action? BeforeLeaseReturn;
-        public TaskCompletionSource Bound { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly object gate = new();
-        private readonly List<Lease> leases = [];
-        private KernelEtwEventSource? metadataSource;
-        public KernelTraceEventParser.Keywords Keywords
-        {
-            get { lock (gate) return leases.Aggregate(KernelTraceEventParser.Keywords.None, (value, lease) => value | lease.Keywords); }
-        }
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
-        {
-            var metadata = request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process);
-            var source = metadata ? new KernelEtwEventSource() : metadataSource!;
-            var lease = new Lease(this, metadata ? source : null, request.Keywords);
-            lock (gate) leases.Add(lease);
-            Interlocked.Increment(ref Acquires);
-            if (metadata) metadataSource = source;
-            request.Bind(source, new(7, At));
-            if (metadata)
-            {
-                source.Activate();
-                Bound.TrySetResult();
-                BeforeLeaseReturn?.Invoke();
-            }
-            return lease;
-        }
-        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", 7, At, Keywords, Acquires - Releases, Volatile.Read(ref EventsLost));
-        private sealed class Lease(Broker broker, KernelEtwEventSource? source, KernelTraceEventParser.Keywords keywords) : IKernelEtwSubscription
-        {
-            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
-            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
-            private int disposed;
-            public void Dispose()
-            {
-                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-                lock (broker.gate) broker.leases.Remove(this);
-                source?.Cancel();
-                Interlocked.Increment(ref broker.Releases);
-            }
-        }
-    }
+    private sealed class Broker : CpuResidencyHeldTestBroker { internal Broker() : base(7, At) { } }
 }

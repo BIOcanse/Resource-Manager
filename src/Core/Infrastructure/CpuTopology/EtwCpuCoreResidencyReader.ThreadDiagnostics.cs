@@ -44,7 +44,7 @@ public sealed partial class EtwCpuCoreResidencyReader
                     continue;
                 }
                 if (snapshot.MeasuredFrom < request.RequestedAt) continue;
-                return request.ReadWindow(snapshot);
+                return await request.ReadWindowAsync(snapshot, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException error) when (cancellationToken.IsCancellationRequested)

@@ -87,8 +87,9 @@ internal sealed class KernelEtwSessionKeywordControl
         {
             throw new NotSupportedException("TraceEvent extension keywords require their own enable protocol.");
         }
-        // Preserve TraceEvent's process/thread metadata fixups for the active session.
-        return (uint)(keywords | KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread);
+        // The native consumer has no parser-history fixup. Every dependency is
+        // declared by its holder; an IRQ-only run must stay ImageLoad/ISR/DPC-only.
+        return (uint)keywords;
     }
 
     private static void ValidateIdentity(KernelEtwNativeSessionIdentity candidate, string expectedName)

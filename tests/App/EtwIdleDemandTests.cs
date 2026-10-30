@@ -44,6 +44,8 @@ public sealed class EtwIdleDemandTests
             network.Read();
             disk.Read();
             Assert.Equal(1, networkBroker.Acquisitions);
+            Assert.Equal(KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.NetworkTCPIP,
+                Assert.Single(networkBroker.RequestedKeywords));
             Assert.Equal(1, diskBroker.Acquisitions);
         }
         finally
@@ -67,17 +69,20 @@ public sealed class EtwIdleDemandTests
     {
         internal int Releases;
         internal int Acquisitions;
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        internal System.Collections.Concurrent.ConcurrentQueue<KernelTraceEventParser.Keywords> RequestedKeywords { get; } = new();
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
+            RequestedKeywords.Enqueue(request.Keywords);
             Interlocked.Increment(ref Acquisitions);
             return new Lease(this);
         }
         public KernelEtwSessionSnapshot GetSnapshot() => new("Unavailable", "denied", 0,
-            DateTimeOffset.UnixEpoch, KernelTraceEventParser.Keywords.None, 1, 0);
+            DateTimeOffset.UnixEpoch, KernelTraceEventParser.Keywords.None, Acquisitions - Releases, 0);
         private sealed class Lease(DeniedBroker owner) : IKernelEtwSubscription
         {
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-            public void Dispose() => owner.Releases++;
+            private int disposed;
+            public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) Interlocked.Increment(ref owner.Releases); }
         }
     }
 }

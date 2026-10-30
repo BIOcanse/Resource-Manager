@@ -267,7 +267,7 @@ public sealed class ProcessThreadCountFieldTests
     private sealed class Inventory : IWindowsProcessInventoryReader { public Process[] GetProcesses() => [Process.GetCurrentProcess()]; }
     private sealed class NoEtw : IKernelEtwSessionBroker
     {
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request) => throw new InvalidOperationException("Thread count must not start ETW.");
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request) => throw new InvalidOperationException("Thread count must not start ETW.");
         public KernelEtwSessionSnapshot GetSnapshot() => throw new InvalidOperationException("Unexpected ETW query.");
     }
     private sealed class Permit : IMetricPublicationPermit

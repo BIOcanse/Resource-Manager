@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "2149BDB701BB82D34A3B8493E61A999C329E48F19BCA30DD04FAF698F7E79487",
+  "contractFingerprint": "B01C420AE126E5A2B5991DECE7B39309B1292FD610B5033E23DA4EB9D0B4BE2A",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -21,7 +21,8 @@
         "0001000200050000",
         "0001000200050001",
         "0001000200050002",
-        "0001000200050003"
+        "0001000200050003",
+        "0001000200050004"
       ]
     },
     {

@@ -1,4 +1,5 @@
 using System.Reflection;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -17,21 +18,22 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class KernelEtwActualUseHoldTests
 {
-    private const KernelTraceEventParser.Keywords Network = KernelTraceEventParser.Keywords.NetworkTCPIP;
+    private const KernelTraceEventParser.Keywords Network = KernelTraceEventParser.Keywords.NetworkTCPIP
+        | KernelTraceEventParser.Keywords.Thread;
     private const KernelTraceEventParser.Keywords Disk = KernelTraceEventParser.Keywords.DiskIO
-        | KernelTraceEventParser.Keywords.Process;
+        | KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread;
     private const KernelTraceEventParser.Keywords Renderer = KernelTraceEventParser.Keywords.Process
         | KernelTraceEventParser.Keywords.ImageLoad;
 
     [Fact]
     public async Task LongRunningNetworkAndDiskRunsHoldResourcesUntilTheirRunsReturn()
     {
-        var broker = new RecordingBroker();
+        using var broker = new RecordingBroker();
         long tick = 0;
         using var network = new EtwNetworkTcpIpAttributionReader(broker,
-            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => tick, static _ => null);
+            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => tick);
         using var disk = new EtwPhysicalDiskIoAttributionReader(new EtwPhysicalDiskIoCaptureOwner(
-            broker, new(), () => tick, static _ => null));
+            broker, new(), () => tick));
         Assert.Null(network.Read(true).ObservedTraffic);
         Assert.Null(disk.Read(true).ObservedTraffic);
         broker.Checkpoint("no running users");
@@ -45,6 +47,7 @@ public sealed class KernelEtwActualUseHoldTests
             for (var round = 0; round < 12; round++)
             {
                 tick += 10_000;
+                broker.Publish(tick);
                 broker.Checkpoint($"{round}: both used", ("network-tcpip-attribution", Network), ("physical-disk-io-attribution", Disk));
                 var observedTraffic = network.Read(true).ObservedTraffic;
                 Assert.NotNull(observedTraffic);
@@ -83,7 +86,7 @@ public sealed class KernelEtwActualUseHoldTests
     [Fact]
     public void StandaloneProcessFieldsHoldOnlyExplicitlyRunningCaptureLanes()
     {
-        var broker = new RecordingBroker();
+        using var broker = new RecordingBroker();
         using var owner = WindowsProcessFieldOwner.CreateDefault(broker);
         Assert.Null(owner.ReadCachedSnapshot());
         broker.Checkpoint("constructed and cached read");
@@ -105,7 +108,7 @@ public sealed class KernelEtwActualUseHoldTests
     [Fact]
     public void ExternalRuntimeAndRendererCacheKeepInvalidationOnlyUntilLastActualObserverReturns()
     {
-        var broker = new RecordingBroker();
+        using var broker = new RecordingBroker();
         using var cache = new RendererAbsenceCache(broker);
         var runtime = new WindowsExternalGpuPlacementRuntime(new FixtureEnvironment(), null!,
             NullLogger<WindowsExternalGpuPlacementRuntime>.Instance, null!, cache);
@@ -134,7 +137,7 @@ public sealed class KernelEtwActualUseHoldTests
     [Fact]
     public async Task DiscoveryReturnsProcessHoldOnWorkerFailureBeforeHostedStop()
     {
-        var broker = new RecordingBroker();
+        using var broker = new RecordingBroker();
         var provider = new GatedFailureCatalog();
         using var service = new PortableSoftwareDiscoveryService(broker, provider, null!, null!,
             NullLogger<PortableSoftwareDiscoveryService>.Instance, () => [new(42)], static _ => null);
@@ -191,9 +194,10 @@ public sealed class KernelEtwActualUseHoldTests
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
-    private sealed class RecordingBroker : IKernelEtwSessionBroker
+    private sealed class RecordingBroker : IKernelEtwSessionBroker, IDisposable
     {
         private readonly object gate = new();
+        private readonly NativeKernelEtwTestResource resource = new(NativeKernelEtwTestResource.SmallConfiguration());
         private readonly Dictionary<string, KernelTraceEventParser.Keywords> held = [];
         internal List<(string Phase, KeyValuePair<string, KernelTraceEventParser.Keywords>[] Holds)> Checkpoints { get; } = [];
         internal int Acquires { get; private set; }
@@ -210,27 +214,24 @@ public sealed class KernelEtwActualUseHoldTests
                     $"{phase}: held [{string.Join(", ", observed.Select(static item => $"{item.Key}={item.Value}"))}]");
             }
         }
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
-            var source = new KernelEtwEventSource();
-            request.Bind(source, new(1, DateTimeOffset.UnixEpoch));
-            source.Activate();
+            var acquired = resource.Acquire(request);
+            if ((request.NativeOutputs & KernelEtwNativeOutputs.Renderer) != 0) resource.Publish(0);
             lock (gate) { held.Add(request.Id, request.Keywords); Acquires++; }
-            return new Hold(this, request.Id, source);
+            return new Hold(this, request.Id, acquired);
         }
-        public KernelEtwSessionSnapshot GetSnapshot()
-        {
-            lock (gate) return new("Running", "recorded", 1, DateTimeOffset.UnixEpoch,
-                held.Values.Aggregate(KernelTraceEventParser.Keywords.None, static (all, value) => all | value), held.Count, 0);
-        }
-        private sealed class Hold(RecordingBroker broker, string id, KernelEtwEventSource source) : IKernelEtwSubscription
+        public KernelEtwSessionSnapshot GetSnapshot() => resource.GetSnapshot();
+        internal void Publish(long tick) => resource.Publish(tick);
+        public void Dispose() => resource.Dispose();
+        private sealed class Hold(RecordingBroker broker, string id, IKernelEtwSubscription acquired) : IKernelEtwSubscription
         {
             private int disposed;
-            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
+            public KernelEtwSessionSnapshot GetSnapshot() => acquired.GetSnapshot();
             public void Dispose()
             {
                 if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-                source.Cancel();
+                acquired.Dispose();
                 lock (broker.gate) { Assert.True(broker.held.Remove(id)); broker.Releases++; }
             }
         }

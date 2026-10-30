@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using System.Text.Json.Nodes;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -39,9 +40,16 @@ public sealed class HostManagerFreedomPointPlanTests
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();
         var points = plan.FreedomPoints.EnumeratePoints().ToArray();
-        Assert.Equal(45, points.Length);
-        Assert.Equal(39, points.Count(point => point.Status == "active"));
+        Assert.Equal(46, points.Length);
+        Assert.Equal(40, points.Count(point => point.Status == "active"));
         Assert.Equal(6, points.Count(point => point.Status == "pending"));
+        var kernelLimits = Assert.Single(points, point => point.Address == BackendFreedomPointPaths.KernelEtwLimits);
+        Assert.Equal("active", kernelLimits.Status);
+        Assert.Equal("KernelEtwNativeSettings.Compile", Assert.Single(kernelLimits.Consumers));
+        Assert.NotNull(plan.KernelEtwLimits);
+        var availability = Assert.Single(points, point => point.Address == BackendFreedomPointPaths.HardwareBridgeAvailabilityCheckInterval);
+        Assert.Equal("active", availability.Status);
+        Assert.Equal("HostManagerPlanCompiler.CompileHardwareBridgeAvailabilityCheckInterval", Assert.Single(availability.Consumers));
         Assert.Equal(new CompiledGpuOverflowPolicy(95, 80), plan.HotPublish.PlacementCoordinator.GpuOverflow);
         Assert.DoesNotContain(points, point => point.Address == "resource-manager/backend/scheduling/placement/runtime/complex/1");
         Assert.Equal(TimeSpan.FromSeconds(5), plan.SchedulerSamplingInterval);
@@ -193,15 +201,13 @@ public sealed class HostManagerFreedomPointPlanTests
                 ["value"]!["maximum_active_pairs"] = 262144;
         });
 
-        var buffer = EtwCpuCoreResidencyReader.CreateAggregationBuffer(
-            changed.CpuCoreResidency,
-            qpcFrequency: 1000);
-        var diagnostics = buffer.GetDiagnostics();
-
-        Assert.Equal(1000, diagnostics.QpcFrequency);
-        Assert.Equal(7500, diagnostics.WindowQpc);
-        Assert.Equal(262144, diagnostics.MaximumActivePairs);
-        Assert.Equal(25, diagnostics.BucketWidthQpc);
+        var native = KernelEtwNativeSettings.CreateConfiguration(changed.KernelEtwLimits
+            ?? throw new InvalidDataException("The fixture did not publish native kernel limits."),
+            changed.CpuCoreResidency, checked((uint)changed.CpuCoreResidency.PhysicalCoreByLogicalProcessor.Count));
+        Assert.Equal(System.Diagnostics.Stopwatch.Frequency, native.Residency.QpcFrequency);
+        Assert.Equal(7500u, native.Residency.WindowMilliseconds);
+        Assert.Equal(262144u, native.Residency.MaximumPairs);
+        Assert.Equal(25u, native.Residency.BucketMilliseconds);
     }
 
     [Fact]

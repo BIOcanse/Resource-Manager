@@ -10,6 +10,7 @@ internal static class BackendFreedomPointPositions
     public const ulong Notifications = 0x0001000200050001UL;
     public const ulong MemoryProtection = 0x0001000200050002UL;
     public const ulong TargetedRecording = 0x0001000200050003UL;
+    public const ulong KernelEtwLimits = 0x0001000200050004UL;
     public const ulong ObservationWindowMs = 0x0001000200080000UL;
     public const ulong ExecutionTimeSource = 0x0001000200090000UL;
     public const ulong SubscriptionIntervalMs = 0x00010002000C0000UL;

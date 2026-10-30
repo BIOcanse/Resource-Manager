@@ -29,10 +29,14 @@ pub const Snapshot = struct {
     measured_through_qpc: i64 = 0,
     measured_through: ?i64 = null,
     is_complete: bool = false,
+    boundaries_ready: bool = false,
     records: []Record = &.{},
+    // Borrowed-name snapshots exist only during a serialized publication call.
+    // Record storage is always owned by the supplied snapshot allocator.
+    owns_process_names: bool = true,
 
     pub fn deinit(self: *Snapshot, allocator: Allocator) void {
-        for (self.records) |row| allocator.free(row.process_name);
+        if (self.owns_process_names) for (self.records) |row| allocator.free(row.process_name);
         allocator.free(self.records);
         self.* = undefined;
     }
@@ -49,6 +53,32 @@ pub const CapacityReason = enum(u32) {
     thread_identities = 6,
     processors = 7,
     name_bytes = 8,
+    bucket_resize = 9,
+    bucket_collision = 10,
+};
+pub const CapacityResetReason = enum(u32) {
+    none = 0,
+    active_pair_limit = 1,
+    bucket_storage_limit = 2,
+    bucket_retention_span = 3,
+    bucket_resize_limit = 4,
+    bucket_collision = 5,
+};
+/// One pre-reset snapshot. reason=0 means absent; minInt start means no retained
+/// boundary. These are the managed LastCapacityReset fields, without strings.
+pub const CapacityReset = extern struct {
+    reason: u32 = 0,
+    reserved: u32 = 0,
+    event_qpc: i64 = 0,
+    retained_window_start_qpc: i64 = std.math.minInt(i64),
+    active_pair_count: u64 = 0,
+    maximum_active_pairs: u64 = 0,
+    retained_bucket_slots: u64 = 0,
+    maximum_bucket_slots: u64 = 0,
+    required_bucket_count: u64 = 0,
+    maximum_bucket_count: u64 = 0,
+    current_process_count: u64 = 0,
+    current_thread_count: u64 = 0,
 };
 /// Captured before continuity reset; never reconstructed from already-cleared
 /// state. The oldest boundary substitutes this switch's prospective boundary.
@@ -87,9 +117,14 @@ pub const Diagnostics = struct {
     continuity_epoch: i64,
     capacity_reset_count: i64,
     name_bytes: usize,
+    retained_bucket_bytes: usize,
+    peak_retained_bucket_bytes: usize,
+    retained_bucket_slots: i64,
+    maximum_bucket_slots: i64,
+    last_capacity_reset: CapacityReset,
 };
 const Process = struct { instance_id: i64, process_id: i32, unique_key: u64, start_key: ?i64, name: []u8, current: bool = true, references: usize = 1, index: usize };
-const Thread = struct { instance_id: i64, thread_id: i32, process: *Process, current: bool = true, references: usize = 1, index: usize };
+const Thread = struct { instance_id: i64, thread_id: i32, process: *Process, current: bool = true, references: usize = 1, index: usize, observed_filetime: i64 = 0 };
 const Running = struct { raw_process_id: i32, raw_thread_id: i32, thread: ?*Thread, start_qpc: i64, idle: bool };
 const Processor = struct { running: Running, continuous_since: i64, boundary_qpc: i64, boundary_time: i64 };
 const PairKey = struct { thread_instance_id: i64, processor_id: i32 };
@@ -100,6 +135,8 @@ const Pair = struct { thread: *Thread, cells: std.AutoHashMapUnmanaged(i64, Cell
 /// the persistent owner allocator; snapshots use a separate temporary allocator.
 pub const Owner = struct {
     allocator: Allocator,
+    window_allocator: Allocator,
+    profile: ?*@import("publication_profile.zig").Profile = null,
     config: Config,
     window_qpc: i64,
     bucket_width_qpc: i64,
@@ -115,29 +152,43 @@ pub const Owner = struct {
     current_threads: std.AutoHashMapUnmanaged(i32, *Thread) = .empty,
     processors: std.AutoHashMapUnmanaged(i32, Processor) = .empty,
     pairs: std.AutoHashMapUnmanaged(PairKey, Pair) = .empty,
+    retention_pair_keys: std.ArrayList(PairKey) = .empty,
+    retention_cell_keys: std.ArrayList(i64) = .empty,
     retained_window_start_qpc: i64 = std.math.minInt(i64),
     last_pruned_bucket: i64 = -1,
     last_retention_attempt_bucket: i64 = -1,
     latest_event_qpc: i64 = -1,
+    context_switch_floor_qpc: i64 = 0,
     next_process_instance_id: i64 = 0,
     next_thread_instance_id: i64 = 0,
     continuity_epoch: i64 = 0,
     inventory_version: i64 = 0,
     capacity_reset_count: i64 = 0,
     last_capacity_failure: CapacityFailure = .{},
+    last_capacity_reset: CapacityReset = .{},
+    bucket_storage_bytes: usize = 0,
+    bucket_storage_peak: usize = 0,
 
     pub fn init(allocator: Allocator, config: Config) !Owner {
+        return initWithWindowAllocator(allocator, allocator, config);
+    }
+
+    /// Run identities and per-window mutable state can use separate backing.
+    /// The window allocator context must remain valid until storage is released.
+    pub fn initWithWindowAllocator(allocator: Allocator, window_allocator: Allocator, config: Config) !Owner {
         if (config.qpc_frequency <= 0 or config.window_ms <= 0 or config.bucket_ms <= 0 or config.max_pairs == 0 or config.max_cells == 0 or config.max_processes == 0 or config.max_threads == 0 or config.max_processors == 0 or config.max_name_bytes == 0) return error.InvalidConfig;
         const window = try ceilDiv(try std.math.mul(i64, config.qpc_frequency, config.window_ms), 1000);
         const width = try ceilDiv(try std.math.mul(i64, config.qpc_frequency, config.bucket_ms), 1000);
         const buckets = try std.math.add(i64, try ceilDiv(window, width), 2);
-        return .{ .allocator = allocator, .config = config, .window_qpc = window, .bucket_width_qpc = width, .bucket_count = buckets, .maximum_bucket_count = try std.math.mul(i64, buckets, 2), .maximum_bucket_slots = try std.math.mul(i64, std.math.cast(i64, config.max_pairs) orelse return error.InvalidConfig, buckets) };
+        return .{ .allocator = allocator, .window_allocator = window_allocator, .config = config, .window_qpc = window, .bucket_width_qpc = width, .bucket_count = buckets, .maximum_bucket_count = try std.math.mul(i64, buckets, 2), .maximum_bucket_slots = try std.math.mul(i64, std.math.cast(i64, config.max_pairs) orelse return error.InvalidConfig, buckets) };
     }
 
     pub fn deinit(self: *Owner) void {
         self.clearPairs();
-        self.pairs.deinit(self.allocator);
-        self.processors.deinit(self.allocator);
+        self.retention_pair_keys.deinit(self.window_allocator);
+        self.retention_cell_keys.deinit(self.window_allocator);
+        self.pairs.deinit(self.window_allocator);
+        self.processors.deinit(self.window_allocator);
         self.current_threads.deinit(self.allocator);
         self.current_processes.deinit(self.allocator);
         for (self.threads.items) |thread| self.allocator.destroy(thread);
@@ -244,11 +295,11 @@ pub const Owner = struct {
     }
 
     pub fn observeContextSwitch(self: *Owner, qpc: i64, time: i64, lp: i32, old_pid: i32, old_tid: i32, new_pid: i32, name: ?[]const u8, new_tid: i32) !void {
-        if (lp < 0 or !try self.advance(qpc)) return;
-        var preserve_capacity_boundary = false;
-        errdefer if (!preserve_capacity_boundary) self.resetContinuity() catch {};
+        // A delayed record from the prior closed window is not a discontinuity
+        // in the new one and must not establish a new boundary or mutate time.
+        if (lp < 0 or !self.contextSwitchBelongsToWindow(qpc) or !try self.advance(qpc)) return;
+        errdefer self.resetContinuity() catch {};
         var since = qpc;
-        var capacity_failure = false;
         if (self.processors.get(lp)) |previous| {
             since = previous.continuous_since;
             if (previous.running.raw_thread_id != old_tid or (previous.running.raw_process_id > 0 and old_pid > 0 and previous.running.raw_process_id != old_pid)) {
@@ -257,32 +308,81 @@ pub const Owner = struct {
                 self.appendClosed(previous.running, lp, qpc) catch |err| {
                     if (err != error.CapacityExceeded) return err;
                     self.capacity_reset_count = try std.math.add(i64, self.capacity_reset_count, 1);
+                    if (!isContinuityCapacityReason(self.last_capacity_failure.reason)) return err;
                     try self.resetContinuity();
                     since = qpc;
-                    capacity_failure = true;
                 };
             }
         } else if (self.processors.count() >= self.config.max_processors) return self.capacityExceeded(.processors, self.processors.count() + 1, self.config.max_processors, lp);
         const running = try self.resolve(qpc, new_pid, name, new_tid);
         const old_thread = if (self.processors.get(lp)) |processor| processor.running.thread else null;
-        try self.processors.put(self.allocator, lp, .{ .running = running, .continuous_since = since, .boundary_qpc = qpc, .boundary_time = time });
+        try self.processors.put(self.window_allocator, lp, .{ .running = running, .continuous_since = since, .boundary_qpc = qpc, .boundary_time = time });
         if (running.thread) |thread| thread.references += 1;
         if (old_thread) |thread| self.releaseThread(thread);
-        if (capacity_failure) {
-            // The C# owner begins the next interval at the failing switch after
-            // clearing totals. Retain that incomplete boundary and new running
-            // lifetime while still reporting the native capacity error.
-            preserve_capacity_boundary = true;
-            return error.CapacityExceeded;
-        }
+        // A managed-style closed-interval rejection was handled above. The
+        // failing switch is the first boundary of a fresh CPU window, not a
+        // fatal error in the shared trace. Other capacity errors still escape.
     }
 
     pub fn resetContinuity(self: *Owner) !void {
         var processors = self.processors.valueIterator();
         while (processors.next()) |processor| if (processor.running.thread) |thread| self.releaseThread(thread);
-        self.processors.clearAndFree(self.allocator);
+        self.processors.clearAndFree(self.window_allocator);
         self.clearPairs();
         self.continuity_epoch = try std.math.add(i64, self.continuity_epoch, 1);
+    }
+
+    /// Explicit window cleanup, after closed output has been copied/published.
+    /// Process/thread identity ownership remains with the CPU run.
+    pub fn releaseWindowStorage(self: *Owner) !void {
+        try self.resetContinuity();
+        self.retention_pair_keys.deinit(self.window_allocator);
+        self.retention_pair_keys = .empty;
+        self.retention_cell_keys.deinit(self.window_allocator);
+        self.retention_cell_keys = .empty;
+        std.debug.assert(self.bucket_storage_bytes == 0);
+    }
+
+    pub fn beginWindow(self: *Owner) !void {
+        try self.beginWindowAt(@max(0, self.latest_event_qpc));
+    }
+
+    pub fn beginWindowAt(self: *Owner, qpc_floor: i64) !void {
+        if (qpc_floor < 0) return error.InvalidWindowBoundary;
+        const floor = @max(qpc_floor, @max(0, self.latest_event_qpc));
+        try self.releaseWindowStorage();
+        self.context_switch_floor_qpc = floor;
+    }
+
+    /// The trace owner uses the same predicate for per-consumer rejection
+    /// accounting before dispatching a well-formed context-switch record.
+    pub fn contextSwitchBelongsToWindow(self: *const Owner, qpc: i64) bool {
+        return qpc >= self.context_switch_floor_qpc;
+    }
+
+    pub fn setWindowAllocator(self: *Owner, allocator: Allocator) error{WindowStorageInUse}!void {
+        if (self.pairs.capacity() != 0 or self.processors.capacity() != 0 or self.retention_pair_keys.capacity != 0 or self.retention_cell_keys.capacity != 0 or self.bucket_storage_bytes != 0)
+            return error.WindowStorageInUse;
+        self.window_allocator = allocator;
+    }
+
+    /// Cold consumer command: change window shape without discarding verified
+    /// process/thread lifetimes or retaining cells using the previous shape.
+    pub fn configureWindow(self: *Owner, window_ms: i64, bucket_ms: i64, max_pairs: usize) !void {
+        if (self.config.window_ms == window_ms and self.config.bucket_ms == bucket_ms and self.config.max_pairs == max_pairs) return;
+        var config = self.config;
+        config.window_ms = window_ms;
+        config.bucket_ms = bucket_ms;
+        config.max_pairs = max_pairs;
+        var shape = try Owner.initWithWindowAllocator(self.allocator, self.window_allocator, config);
+        defer shape.deinit();
+        try self.resetContinuity();
+        self.config = config;
+        self.window_qpc = shape.window_qpc;
+        self.bucket_width_qpc = shape.bucket_width_qpc;
+        self.bucket_count = shape.bucket_count;
+        self.maximum_bucket_count = shape.maximum_bucket_count;
+        self.maximum_bucket_slots = shape.maximum_bucket_slots;
     }
 
     pub fn resetAfterEventLoss(self: *Owner) !void {
@@ -307,16 +407,29 @@ pub const Owner = struct {
     pub fn clear(self: *Owner) !void {
         try self.resetAfterEventLoss();
         self.latest_event_qpc = -1;
+        self.context_switch_floor_qpc = 0;
         self.next_process_instance_id = 0;
         self.next_thread_instance_id = 0;
         self.last_capacity_failure = .{};
     }
 
     pub fn getDiagnostics(self: *const Owner) Diagnostics {
-        return .{ .qpc_frequency = self.config.qpc_frequency, .window_qpc = self.window_qpc, .maximum_active_pairs = self.config.max_pairs, .active_pair_count = self.pairs.count(), .bucket_count = self.bucket_count, .maximum_bucket_count = self.maximum_bucket_count, .bucket_width_qpc = self.bucket_width_qpc, .retained_cell_count = self.cell_count, .maximum_cell_count = self.config.max_cells, .current_process_count = self.current_processes.count(), .current_thread_count = self.current_threads.count(), .retained_process_identity_count = self.processes.items.len, .retained_thread_identity_count = self.threads.items.len, .continuity_epoch = self.continuity_epoch, .capacity_reset_count = self.capacity_reset_count, .name_bytes = self.name_bytes };
+        return .{ .qpc_frequency = self.config.qpc_frequency, .window_qpc = self.window_qpc, .maximum_active_pairs = self.config.max_pairs, .active_pair_count = self.pairs.count(), .bucket_count = self.bucket_count, .maximum_bucket_count = self.maximum_bucket_count, .bucket_width_qpc = self.bucket_width_qpc, .retained_cell_count = self.cell_count, .maximum_cell_count = self.config.max_cells, .current_process_count = self.current_processes.count(), .current_thread_count = self.current_threads.count(), .retained_process_identity_count = self.processes.items.len, .retained_thread_identity_count = self.threads.items.len, .continuity_epoch = self.continuity_epoch, .capacity_reset_count = self.capacity_reset_count, .name_bytes = self.name_bytes, .retained_bucket_bytes = self.bucket_storage_bytes, .peak_retained_bucket_bytes = self.bucket_storage_peak, .retained_bucket_slots = self.retained_bucket_slots, .maximum_bucket_slots = self.maximum_bucket_slots, .last_capacity_reset = self.last_capacity_reset };
     }
 
     pub fn snapshot(self: *Owner, allocator: Allocator, expected: []const i32) !Snapshot {
+        return self.snapshotCore(allocator, expected, true);
+    }
+
+    /// Only the names borrow owner storage. The single consumer must finish
+    /// copying final publication rows before any further owner mutation.
+    /// Snapshot.deinit still releases its allocator-owned Record storage.
+    pub fn snapshotBorrowedNames(self: *Owner, allocator: Allocator, expected: []const i32) !Snapshot {
+        return self.snapshotCore(allocator, expected, false);
+    }
+
+    /// Pure closed-boundary coverage; no pruning, row scan or allocation.
+    pub fn snapshotMetadata(self: *const Owner, expected: []const i32) Snapshot {
         var result: Snapshot = .{ .qpc_frequency = self.config.qpc_frequency };
         if (expected.len == 0) return result;
         var through: i64 = std.math.maxInt(i64);
@@ -329,18 +442,34 @@ pub const Owner = struct {
                 through_time = processor.boundary_time;
             }
         }
+        result.boundaries_ready = true;
         const start = @max(0, through - self.window_qpc);
-        try self.advanceRetention(start);
         result.window_start_qpc = start;
         result.measured_through_qpc = through;
         result.measured_through = through_time;
         if (through < self.window_qpc) return result;
         for (expected) |lp| if (self.processors.get(lp).?.continuous_since > start) return result;
+        result.is_complete = true;
+        return result;
+    }
+
+    fn snapshotCore(self: *Owner, allocator: Allocator, expected: []const i32, comptime own_names: bool) !Snapshot {
+        var result = self.snapshotMetadata(expected);
+        result.owns_process_names = own_names;
+        if (result.measured_through == null) return result;
+        const start = result.window_start_qpc;
+        const through = result.measured_through_qpc;
+        try self.advanceRetention(start, .snapshot);
+        if (!result.is_complete) return result;
         var rows: std.ArrayList(Record) = .empty;
         errdefer {
-            for (rows.items) |row| allocator.free(row.process_name);
+            if (own_names) for (rows.items) |row| allocator.free(row.process_name);
             rows.deinit(allocator);
         }
+        // Retention has pruned expired pairs. Reserve the actual occupied bound
+        // once so arena-backed publication scratch does not retain old growth
+        // buffers interleaved with per-row name allocations.
+        if (!own_names) try rows.ensureTotalCapacityPrecise(allocator, self.pairs.count());
         const first = @divTrunc(start, self.bucket_width_qpc);
         const last = @divTrunc(through - 1, self.bucket_width_qpc);
         var iterator = self.pairs.iterator();
@@ -373,8 +502,8 @@ pub const Owner = struct {
             if (duration == 0 and switches == 0) continue;
             const thread = entry.value_ptr.thread;
             const process = thread.process;
-            const name = try allocator.dupe(u8, process.name);
-            errdefer allocator.free(name);
+            const name = if (own_names) try allocator.dupe(u8, process.name) else process.name;
+            errdefer if (own_names) allocator.free(name);
             try rows.append(allocator, .{ .process_instance_id = process.instance_id, .process_id = process.process_id, .process_start_key = process.start_key, .process_name = name, .thread_instance_id = thread.instance_id, .thread_id = thread.thread_id, .logical_processor_id = lp, .execution_time_qpc = duration, .switch_count = switches });
         }
         result.records = try rows.toOwnedSlice(allocator);
@@ -487,7 +616,7 @@ pub const Owner = struct {
             while (processors.next()) |entry| if (entry.key_ptr.* != lp) {
                 minimum = @min(minimum, entry.value_ptr.boundary_qpc);
             };
-            if (minimum >= self.window_qpc) try self.advanceRetention(minimum - self.window_qpc);
+            if (minimum >= self.window_qpc) try self.advanceRetention(minimum - self.window_qpc, .event);
             self.last_retention_attempt_bucket = event_bucket;
         }
         const start = @max(previous.start_qpc, @max(0, self.retained_window_start_qpc));
@@ -495,9 +624,9 @@ pub const Owner = struct {
         const thread = previous.thread.?;
         const key: PairKey = .{ .thread_instance_id = thread.instance_id, .processor_id = lp };
         if (!self.pairs.contains(key)) {
-            if (self.pairs.count() >= self.config.max_pairs) return self.capacityExceeded(.active_pairs, self.pairs.count() + 1, self.config.max_pairs, lp);
-            if (self.retained_bucket_slots + self.bucket_count > self.maximum_bucket_slots) return self.capacityExceeded(.bucket_slots, @intCast(self.retained_bucket_slots + self.bucket_count), @intCast(self.maximum_bucket_slots), lp);
-            try self.pairs.put(self.allocator, key, .{ .thread = thread, .cell_count = self.bucket_count });
+            if (self.pairs.count() >= self.config.max_pairs) return self.closedCapacityExceeded(.active_pairs, self.pairs.count() + 1, self.config.max_pairs, lp, self.bucket_count);
+            if (self.retained_bucket_slots + self.bucket_count > self.maximum_bucket_slots) return self.closedCapacityExceeded(.bucket_slots, @intCast(self.retained_bucket_slots + self.bucket_count), @intCast(self.maximum_bucket_slots), lp, self.bucket_count);
+            try self.pairs.put(self.window_allocator, key, .{ .thread = thread, .cell_count = self.bucket_count });
             thread.references += 1;
             self.retained_bucket_slots += self.bucket_count;
         }
@@ -506,12 +635,12 @@ pub const Owner = struct {
         const last = @divTrunc(qpc - 1, self.bucket_width_qpc);
         const retained_id = @divTrunc(@max(0, self.retained_window_start_qpc), self.bucket_width_qpc);
         const required = last - retained_id + 1;
-        if (required > self.maximum_bucket_count) return self.capacityExceeded(.bucket_span, @intCast(required), @intCast(self.maximum_bucket_count), lp);
+        if (required > self.maximum_bucket_count) return self.closedCapacityExceeded(.bucket_span, @intCast(required), @intCast(self.maximum_bucket_count), lp, required);
         if (required > pair.cell_count) try self.resizePair(pair, required);
         var id = first;
         while (id <= last) : (id += 1) {
             if (!pair.cells.contains(id) and self.cell_count >= self.config.max_cells) return self.capacityExceeded(.sparse_cells, self.cell_count + 1, self.config.max_cells, lp);
-            const entry = try pair.cells.getOrPut(self.allocator, id);
+            const entry = try pair.cells.getOrPut(self.bucketAllocator(), id);
             if (!entry.found_existing) {
                 entry.value_ptr.* = .{};
                 self.cell_count += 1;
@@ -526,48 +655,77 @@ pub const Owner = struct {
 
     fn resizePair(self: *Owner, pair: *Pair, count: i64) !void {
         const slots = self.retained_bucket_slots - pair.cell_count + count;
-        if (slots > self.maximum_bucket_slots) return self.capacityExceeded(.bucket_slots, @intCast(slots), @intCast(self.maximum_bucket_slots), -1);
+        if (slots > self.maximum_bucket_slots) return self.closedCapacityExceeded(.bucket_resize, @intCast(slots), @intCast(self.maximum_bucket_slots), -1, count);
         self.retained_bucket_slots = slots;
         pair.cell_count = count;
     }
 
-    fn advanceRetention(self: *Owner, start: i64) !void {
+    fn advanceRetention(self: *Owner, start: i64, caller: @import("publication_profile.zig").RetentionCaller) !void {
         if (start <= self.retained_window_start_qpc) return;
-        self.retained_window_start_qpc = start;
         const bucket = @divTrunc(start, self.bucket_width_qpc);
-        if (bucket <= self.last_pruned_bucket) return;
-        self.last_pruned_bucket = bucket;
-        // Remove one entry then restart: no iterator survives a hash-map mutation.
-        while (true) {
-            var removed = false;
-            var pairs = self.pairs.iterator();
-            while (pairs.next()) |entry| {
-                if (entry.value_ptr.last_end_qpc <= bucket * self.bucket_width_qpc) {
-                    self.cell_count -= entry.value_ptr.cells.count();
-                    self.retained_bucket_slots -= entry.value_ptr.cell_count;
-                    entry.value_ptr.cells.deinit(self.allocator);
-                    self.releaseThread(entry.value_ptr.thread);
-                    const key = entry.key_ptr.*;
-                    _ = self.pairs.remove(key);
-                    removed = true;
-                    break;
-                }
-            }
-            if (!removed) break;
+        if (bucket <= self.last_pruned_bucket) {
+            self.retained_window_start_qpc = start;
+            return;
         }
-        var pairs = self.pairs.valueIterator();
-        while (pairs.next()) |pair| {
-            while (true) {
-                var removed = false;
-                var cells = pair.cells.keyIterator();
-                while (cells.next()) |id| if (id.* < bucket) {
-                    const key = id.*;
-                    _ = pair.cells.remove(key);
-                    self.cell_count -= 1;
-                    removed = true;
-                    break;
-                };
-                if (!removed) break;
+        // Optional diagnostics only after a new bucket passes both guards.
+        const profiling: ?*@import("publication_profile.zig").Profile = if (self.profile) |value| (if (value.enabled) value else null) else null;
+        const stats = if (profiling) |profile| profile.retentionStats(caller) else null;
+        const started = if (profiling) |profile| profile.detailStart() else null;
+        defer if (profiling) |profile| profile.finishRetention(started, caller);
+        // Reserve from occupied state, not configured maxima. A failed reserve
+        // must not advance the cutoff or remove any owner state.
+        const pair_count = self.pairs.count();
+        try self.retention_pair_keys.ensureTotalCapacityPrecise(self.window_allocator, pair_count);
+        self.retention_pair_keys.items.len = pair_count;
+        var expired_count: usize = 0;
+        var survivor_start: usize = pair_count;
+        var maximum_cells: usize = 0;
+        const cutoff = bucket * self.bucket_width_qpc;
+        var pairs = self.pairs.iterator();
+        while (pairs.next()) |entry| {
+            if (stats) |value| value.pair_entry_visits +|= 1;
+            if (entry.value_ptr.last_end_qpc <= cutoff) {
+                self.retention_pair_keys.items[expired_count] = entry.key_ptr.*;
+                expired_count += 1;
+            } else {
+                survivor_start -= 1;
+                self.retention_pair_keys.items[survivor_start] = entry.key_ptr.*;
+                maximum_cells = @max(maximum_cells, entry.value_ptr.cells.count());
+            }
+        }
+        std.debug.assert(expired_count == survivor_start);
+        try self.retention_cell_keys.ensureTotalCapacityPrecise(self.window_allocator, maximum_cells);
+        self.retained_window_start_qpc = start;
+        self.last_pruned_bucket = bucket;
+        // No hash-map iterator survives a mutation. Expired pairs retain their
+        // original scan order; survivor order cannot change independent sums.
+        for (self.retention_pair_keys.items[0..expired_count]) |key| {
+            const pair = self.pairs.getPtr(key).?;
+            if (stats) |value| {
+                value.pairs_removed +|= 1;
+                value.cells_removed +|= pair.cells.count();
+            }
+            self.cell_count -= pair.cells.count();
+            self.retained_bucket_slots -= pair.cell_count;
+            pair.cells.deinit(self.bucketAllocator());
+            self.releaseThread(pair.thread);
+            const removed = self.pairs.remove(key);
+            std.debug.assert(removed);
+        }
+        for (self.retention_pair_keys.items[survivor_start..]) |key| {
+            if (stats) |value| value.pair_entry_visits +|= 1;
+            const pair = self.pairs.getPtr(key).?;
+            self.retention_cell_keys.clearRetainingCapacity();
+            var cells = pair.cells.keyIterator();
+            while (cells.next()) |id| {
+                if (stats) |value| value.cell_entry_visits +|= 1;
+                if (id.* < bucket) self.retention_cell_keys.appendAssumeCapacity(id.*);
+            }
+            for (self.retention_cell_keys.items) |id| {
+                const removed = pair.cells.remove(id);
+                std.debug.assert(removed);
+                self.cell_count -= 1;
+                if (stats) |value| value.cells_removed +|= 1;
             }
             if (pair.cell_count > self.bucket_count and @divTrunc(pair.last_end_qpc - 1, self.bucket_width_qpc) - bucket + 1 <= self.bucket_count) try self.resizePair(pair, self.bucket_count);
         }
@@ -576,10 +734,10 @@ pub const Owner = struct {
     fn clearPairs(self: *Owner) void {
         var iterator = self.pairs.valueIterator();
         while (iterator.next()) |pair| {
-            pair.cells.deinit(self.allocator);
+            pair.cells.deinit(self.bucketAllocator());
             self.releaseThread(pair.thread);
         }
-        self.pairs.clearAndFree(self.allocator);
+        self.pairs.clearAndFree(self.window_allocator);
         self.cell_count = 0;
         self.retained_bucket_slots = 0;
         self.retained_window_start_qpc = std.math.minInt(i64);
@@ -625,7 +783,72 @@ pub const Owner = struct {
         self.last_capacity_failure = .{ .reason = @intFromEnum(reason), .logical_processor = lp, .event_qpc = self.latest_event_qpc, .observed = observed, .limit = limit, .pairs = self.pairs.count(), .cells = self.cell_count, .retained_slots = @intCast(self.retained_bucket_slots), .retained_start_qpc = self.retained_window_start_qpc, .oldest_processor = oldest_lp, .oldest_boundary_qpc = if (oldest_lp == -1) -1 else oldest_qpc, .processors = self.processors.count(), .processes = self.processes.items.len, .threads = self.threads.items.len, .name_bytes = self.name_bytes };
         return error.CapacityExceeded;
     }
+
+    fn closedCapacityExceeded(self: *Owner, reason: CapacityReason, observed: u64, limit: u64, lp: i32, required_bucket_count: i64) error{CapacityExceeded} {
+        const reset_reason: CapacityResetReason = switch (reason) {
+            .active_pairs => .active_pair_limit,
+            .bucket_slots => .bucket_storage_limit,
+            .bucket_span => .bucket_retention_span,
+            .bucket_resize => .bucket_resize_limit,
+            .bucket_collision => .bucket_collision,
+            else => unreachable,
+        };
+        self.last_capacity_reset = .{
+            .reason = @intFromEnum(reset_reason),
+            .event_qpc = self.latest_event_qpc,
+            .retained_window_start_qpc = self.retained_window_start_qpc,
+            .active_pair_count = self.pairs.count(),
+            .maximum_active_pairs = self.config.max_pairs,
+            .retained_bucket_slots = @intCast(self.retained_bucket_slots),
+            .maximum_bucket_slots = @intCast(self.maximum_bucket_slots),
+            .required_bucket_count = @intCast(required_bucket_count),
+            .maximum_bucket_count = @intCast(self.maximum_bucket_count),
+            .current_process_count = self.current_processes.count(),
+            .current_thread_count = self.current_threads.count(),
+        };
+        return self.capacityExceeded(reason, observed, limit, lp);
+    }
+
+    /// Exact requested bytes used by sparse bucket maps, not dense logical slot
+    /// accounting and not OS committed bytes. The supplied backing owns commit.
+    fn bucketAllocator(self: *Owner) Allocator {
+        return .{ .ptr = self, .vtable = &.{ .alloc = allocBucket, .resize = resizeBucket, .remap = remapBucket, .free = freeBucket } };
+    }
+    fn accountBucket(self: *Owner, old: usize, new: usize) void {
+        self.bucket_storage_bytes = self.bucket_storage_bytes - old + new;
+        self.bucket_storage_peak = @max(self.bucket_storage_peak, self.bucket_storage_bytes);
+    }
+    fn allocBucket(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret: usize) ?[*]u8 {
+        const self: *Owner = @ptrCast(@alignCast(ctx));
+        const ptr = self.window_allocator.rawAlloc(len, alignment, ret) orelse return null;
+        self.accountBucket(0, len);
+        return ptr;
+    }
+    fn resizeBucket(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, len: usize, ret: usize) bool {
+        const self: *Owner = @ptrCast(@alignCast(ctx));
+        if (!self.window_allocator.rawResize(memory, alignment, len, ret)) return false;
+        self.accountBucket(memory.len, len);
+        return true;
+    }
+    fn remapBucket(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, len: usize, ret: usize) ?[*]u8 {
+        const self: *Owner = @ptrCast(@alignCast(ctx));
+        const ptr = self.window_allocator.rawRemap(memory, alignment, len, ret) orelse return null;
+        self.accountBucket(memory.len, len);
+        return ptr;
+    }
+    fn freeBucket(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret: usize) void {
+        const self: *Owner = @ptrCast(@alignCast(ctx));
+        self.window_allocator.rawFree(memory, alignment, ret);
+        self.accountBucket(memory.len, 0);
+    }
 };
+
+fn isContinuityCapacityReason(reason: u32) bool {
+    return switch (reason) {
+        @intFromEnum(CapacityReason.active_pairs), @intFromEnum(CapacityReason.bucket_slots), @intFromEnum(CapacityReason.bucket_span), @intFromEnum(CapacityReason.bucket_resize), @intFromEnum(CapacityReason.bucket_collision) => true,
+        else => false,
+    };
+}
 
 fn positive(value: ?i64) bool {
     return if (value) |v| v > 0 else false;

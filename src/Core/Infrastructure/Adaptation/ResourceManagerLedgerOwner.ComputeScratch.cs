@@ -128,7 +128,7 @@ public sealed partial class ResourceManagerLedgerOwner
         : IComputeScratch
     {
         internal LedgerUid128 Uid { get; } = LedgerUid128.FromBytes(Guid.NewGuid().ToByteArray());
-        public ulong Length { get; } = length;
+        public ulong Length { get; internal set; } = length;
         internal bool InLedger { get; } = inLedger;
         internal byte[]? Managed;
         internal int Active;
@@ -176,6 +176,48 @@ public sealed partial class ResourceManagerLedgerOwner
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             if (native is { IsLoading: true }) native.PublishOnDispose();
+        }
+        internal override void PublishAndRetain()
+        {
+            lock (owner.operationGate)
+            {
+                ObjectDisposedException.ThrowIf(disposed, this);
+                if (native is not { IsLoading: true }) return;
+                // Tick, close and other structural changes use this same gate.
+                // No eviction can occur between publication and counted use.
+                var allocation = native.AllocationNumber;
+                native.PublishOnDispose();
+                native.Dispose();
+                native = null;
+                var used = owner.owner.Use(scratch.Uid);
+                if (used.Status != LedgerStatus.InMemory || used.Lease is null
+                    || used.Lease.AllocationNumber != allocation)
+                {
+                    used.Lease?.Dispose();
+                    disposed = true;
+                    owner.ScratchEnded(scratch);
+                    throw new LedgerException(used.Status, "retain published native region");
+                }
+                native = used.Lease;
+            }
+        }
+        internal override void Grow(ulong length)
+        {
+            lock (owner.operationGate)
+            {
+                ObjectDisposedException.ThrowIf(disposed, this);
+                owner.ThrowIfDisposed();
+                if (owner.closing || scratch.Retiring || scratch.Closed)
+                    throw new ObjectDisposedException(nameof(ComputeScratch));
+                if (native is null || !scratch.InLedger)
+                    throw new NotSupportedException("Only Ledger-backed retained scratch can grow.");
+                if (length < scratch.Length) throw new ArgumentOutOfRangeException(nameof(length));
+                var status = native.Update(new LedgerUpdate { AllocationBytes = length });
+                if (status != LedgerStatus.Updated) throw new LedgerException(status, "grow retained compute scratch");
+                // The SDK refreshed this same lease's pointer and length. No
+                // sibling view can observe a new declared length on failure.
+                scratch.Length = length;
+            }
         }
         public override void Dispose()
         {

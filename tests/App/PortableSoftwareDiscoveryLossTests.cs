@@ -1,9 +1,6 @@
 using System.Reflection;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 using System.Threading.Channels;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using Microsoft.Diagnostics.Tracing;
-using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Infrastructure.SoftwareDiscovery;
@@ -20,12 +17,172 @@ namespace Resource_Manager_APP.Tests;
 public sealed class PortableSoftwareDiscoveryLossTests
 {
     [Fact]
+    public async Task MissingCurrentIdentityDoesNotInventAPathAndLaterEventFallbackStillWorks()
+    {
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        using var factory = new DiscoveryRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
+            TimeSpan.FromHours(1));
+        var registry = new RecordingRegistry();
+        var logger = new RecordingLogger();
+        var missing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var service = new PortableSoftwareDiscoveryService(broker, new CatalogProvider(catalog),
+            new MatchingCatalog(), registry, logger, () => [new(Environment.ProcessId)], candidate =>
+            {
+                if (candidate.ExecutablePath is null) { missing.TrySetResult(); return null; }
+                return new RuntimeProcessIdentity(candidate.ProcessId, candidate.ParentProcessId,
+                    candidate.ProcessName!, candidate.ExecutablePath, false);
+            });
+        await service.StartAsync(default);
+        try
+        {
+            await missing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(0, registry.Observations);
+            Assert.False(Worker(service).IsCompleted);
+            Assert.Single(factory.Runtimes).EmitProcessStart(service);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await registry.Observed.Reader.ReadAsync(deadline.Token);
+            Assert.Equal(1, registry.Observations);
+            Assert.Single(logger.Warnings);
+            Assert.Empty(logger.Errors);
+        }
+        finally { await service.StopAsync(default); }
+    }
+
+    [Fact]
+    public async Task NativeBatchPreservesFallbackIdentityAndRundownAndRejectsNonStartRows()
+    {
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        using var factory = new DiscoveryRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
+            TimeSpan.FromHours(1));
+        var registry = new RecordingRegistry();
+        var candidateRead = new TaskCompletionSource<PortableProcessCandidate>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var service = new PortableSoftwareDiscoveryService(broker, new CatalogProvider(catalog),
+            new MatchingCatalog(), registry, new RecordingLogger(), () => [], candidate =>
+            {
+                candidateRead.TrySetResult(candidate);
+                // The fallback candidate remains usable after the native batch lease has returned.
+                Assert.Equal(@"D:\便携\fixture.exe", candidate.ExecutablePath);
+                return new RuntimeProcessIdentity(candidate.ProcessId, candidate.ParentProcessId,
+                    candidate.ProcessName!, candidate.ExecutablePath!, false);
+            });
+        await service.StartAsync(default);
+        try
+        {
+            var runtime = Assert.Single(factory.Runtimes);
+            runtime.EmitProcessStart(service, kind: 8, publish: false);
+            Assert.False(candidateRead.Task.IsCompleted);
+            runtime.EmitProcessStart(service, @"D:\便携\fixture.exe", flags: 1, publish: false);
+            runtime.EmitProcessStart(service, @"D:\便携\fixture.exe");
+            var candidate = await candidateRead.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(Environment.ProcessId, candidate.ProcessId);
+            Assert.Equal(2, candidate.ParentProcessId);
+            Assert.Equal("fixture", candidate.ProcessName);
+            Assert.Equal(133_000_000_000_000_000, candidate.StartedNoLaterThan);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await registry.Observed.Reader.ReadAsync(deadline.Token);
+            await registry.Observed.Reader.ReadAsync(deadline.Token);
+            Assert.Equal(2, registry.Observations);
+        }
+        finally { await service.StopAsync(default); }
+    }
+
+    [Fact]
+    public async Task NativeProcessStartConsumerCountsSystemRejectionAndPreservesItsReason()
+    {
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        using var factory = new DiscoveryRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
+            TimeSpan.FromHours(1));
+        var registry = new RecordingRegistry();
+        using var service = new PortableSoftwareDiscoveryService(broker, new CatalogProvider(catalog),
+            new MatchingCatalog(), registry, new RecordingLogger(), () => [], ReadFixtureIdentity);
+        await service.StartAsync(default);
+        try
+        {
+            var runtime = Assert.Single(factory.Runtimes);
+            runtime.EmitProcessStart(service, processId: 4, publish: false);
+            runtime.EmitProcessStart(service);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await registry.Observed.Reader.ReadAsync(deadline.Token);
+            var consumed = runtime.Source.ConsumerCounter("process-start").Read();
+            Assert.Equal(2, consumed.Received);
+            Assert.Equal(1, consumed.Dropped);
+            var rejected = (EtwEventDropCounter)typeof(KernelEtwEventSource)
+                .GetMethod("Counter", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(runtime.Source, ["process-start", "system-process"])!;
+            Assert.Equal(1, rejected.Read().Received);
+            Assert.Equal(1, rejected.Read().Dropped);
+            Assert.Equal(1, registry.Observations);
+            Assert.Equal(KernelTraceEventParser.Keywords.Process, broker.GetSnapshot().EnabledKeywords);
+        }
+        finally { await service.StopAsync(default); }
+    }
+
+    [Fact]
+    public async Task NativePublicationGapRefreshesInventoryAndInactiveSourceCannotPublish()
+    {
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        using var broker = new Broker(keepSiblingLease: true);
+        var inventories = 0;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var provider = new CatalogProvider(catalog) { BeforeAcquire = release.Task, AcquisitionStarted = entered };
+        using var service = new PortableSoftwareDiscoveryService(broker, provider, new MatchingCatalog(),
+            new RecordingRegistry(), new RecordingLogger(),
+            () => { Interlocked.Increment(ref inventories); return [new(Environment.ProcessId, 2)]; }, ReadFixtureIdentity);
+        await service.StartAsync(default);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, inventories);
+            Assert.Equal(KernelEtwNativeOutputs.Notifications, broker.Request!.NativeOutputs);
+            Assert.Equal(KernelTraceEventParser.Keywords.Process, broker.Request.Keywords);
+            await WaitForNativePublication(service, broker.PublishedSequence);
+            Assert.Equal(1, inventories);
+            // The running business worker is blocked in its existing catalog acquire,
+            // so two real native publications force an observable skipped sequence.
+            broker.Publish();
+            broker.Publish();
+            release.TrySetResult();
+            await WaitForNativePublication(service, broker.PublishedSequence);
+            Assert.Equal(2, inventories);
+            broker.EventsLost = 1;
+            await WaitForNativePublication(service, broker.PublishedSequence);
+            Assert.Equal(3, inventories);
+            // The same loss seen by the ordinary health check is the same refill,
+            // rather than a second, independent inventory refresh.
+            service.RefreshInventoryAfterLoss(broker.GetSnapshot());
+            Assert.Equal(3, inventories);
+            broker.Publish();
+            await WaitForNativePublication(service, broker.PublishedSequence);
+            Assert.Equal(3, inventories);
+            await service.StopAsync(default);
+            Assert.False(broker.Source.IsActive);
+            broker.EventsLost = 2; // The explicit sibling still owns the actual resource.
+            Assert.Equal(3, inventories);
+        }
+        finally { release.TrySetResult(); await service.StopAsync(default); }
+        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(1, broker.ReleaseCount);
+    }
+
+    [Fact]
     public async Task RunningDiscoveryReceivesProcessStartsAfterItsHeldRuntimeIsRebuilt()
     {
         using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
             new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
             SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
-        var factory = new DiscoveryRuntimeFactory();
+        using var factory = new DiscoveryRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromHours(1));
         var registry = new RecordingRegistry();
@@ -37,7 +194,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
         try
         {
             var firstRuntime = Assert.Single(factory.Runtimes);
-            firstRuntime.EmitProcessStart();
+            firstRuntime.EmitProcessStart(service);
             await registry.Observed.Reader.ReadAsync(deadline.Token);
 
             firstRuntime.StopProcessingUnexpectedly();
@@ -46,10 +203,10 @@ public sealed class PortableSoftwareDiscoveryLossTests
             Assert.False(discoveryWorker.IsCompleted);
             // Rebuilding the held resource retains discovery's active reader.
             // An independent reader cannot restore discovery or enumerate inventory.
-            using var independentReader = broker.Subscribe(new("independent-process-reader",
-                KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+            using var independentReader = broker.Acquire(new("independent-process-reader",
+                KernelTraceEventParser.Keywords.Process, static (_, _) => { }) { NativeOutputs = KernelEtwNativeOutputs.Notifications });
             var secondRuntime = factory.Runtimes[1];
-            secondRuntime.EmitProcessStart();
+            secondRuntime.EmitProcessStart(service);
             await registry.Observed.Reader.ReadAsync(deadline.Token);
 
             Assert.Equal(2, registry.Observations);
@@ -69,7 +226,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
             new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
             SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
         var registry = new RecordingRegistry();
-        var broker = new Broker();
+        using var broker = new Broker();
         using var service = new PortableSoftwareDiscoveryService(broker, new CatalogProvider(catalog),
             new MatchingCatalog(), registry, new RecordingLogger(),
             () => [new(Environment.ProcessId, 2)], ReadFixtureIdentity);
@@ -99,7 +256,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
             SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
         var provider = new CatalogProvider(catalog);
         var registry = new RecordingRegistry { BlockAdmission = true };
-        var broker = new Broker();
+        using var broker = new Broker();
         var logger = new RecordingLogger();
         using var service = new PortableSoftwareDiscoveryService(broker, provider,
             new MatchingCatalog(), registry, logger,
@@ -146,7 +303,8 @@ public sealed class PortableSoftwareDiscoveryLossTests
         var exited = new PortableProcessCandidate(Environment.ProcessId, 2);
         PortableProcessCandidate candidate = exited;
         var reads = 0;
-        using var service = new PortableSoftwareDiscoveryService(new Broker(), new CatalogProvider(catalog),
+        using var candidateBroker = new Broker();
+        using var service = new PortableSoftwareDiscoveryService(candidateBroker, new CatalogProvider(catalog),
             new MatchingCatalog(), registry, logger, () => [new(0), new(-1), new(4), candidate], item =>
             {
                 reads++;
@@ -185,7 +343,8 @@ public sealed class PortableSoftwareDiscoveryLossTests
             SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
         var registry = new RecordingRegistry();
         var logger = new RecordingLogger();
-        using var service = new PortableSoftwareDiscoveryService(new Broker(), new CatalogProvider(catalog),
+        using var candidateBroker = new Broker();
+        using var service = new PortableSoftwareDiscoveryService(candidateBroker, new CatalogProvider(catalog),
             new MatchingCatalog(), registry, logger,
             () => Enumerable.Range(0, 24).Select(_ => new PortableProcessCandidate(Environment.ProcessId, 2)).ToArray(), ReadFixtureIdentity);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -216,7 +375,8 @@ public sealed class PortableSoftwareDiscoveryLossTests
         var registry = new RecordingRegistry();
         var candidates = new[] { new PortableProcessCandidate(Environment.ProcessId, 1),
             new PortableProcessCandidate(Environment.ProcessId, 1), new PortableProcessCandidate(Environment.ProcessId, 2) };
-        using var service = new PortableSoftwareDiscoveryService(new Broker(), new CatalogProvider(catalog),
+        using var candidateBroker = new Broker();
+        using var service = new PortableSoftwareDiscoveryService(candidateBroker, new CatalogProvider(catalog),
             new MatchingCatalog(), registry, logger, () => candidates, ReadFixtureIdentity);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         if (scan) await service.ScanRunningProcessesAsync(timeout.Token);
@@ -241,7 +401,8 @@ public sealed class PortableSoftwareDiscoveryLossTests
             new MissingSessionResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
             SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
         var logger = new RecordingLogger();
-        using var service = new PortableSoftwareDiscoveryService(new Broker(), new CatalogProvider(catalog),
+        using var candidateBroker = new Broker();
+        using var service = new PortableSoftwareDiscoveryService(candidateBroker, new CatalogProvider(catalog),
             new MatchingCatalog(), null!, logger, () => [new(Environment.ProcessId)]);
         await service.StartAsync(CancellationToken.None);
         await Assert.ThrowsAsync<ObjectDisposedException>(() => Worker(service).WaitAsync(TimeSpan.FromSeconds(10)));
@@ -260,7 +421,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
         var error = new InvalidOperationException("terminal catalog fixture");
         var diagnostics = new RecordingBlockDiagnostics();
         var logger = new RecordingLogger();
-        var broker = new Broker();
+        using var broker = new Broker();
         using var service = new PortableSoftwareDiscoveryService(
             broker,
             new FailingCatalogProvider(error),
@@ -279,6 +440,8 @@ public sealed class PortableSoftwareDiscoveryLossTests
         // The worker has returned: no process event consumer remains, even
         // though the hosted service has not yet received its StopAsync call.
         Assert.Equal(1, broker.ReleaseCount);
+        Assert.Null(typeof(PortableSoftwareDiscoveryService)
+            .GetField("nativeBinding", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service));
         await service.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Same(worker, service.ExecutionTask);
         Assert.Same(error, await Assert.ThrowsAsync<InvalidOperationException>(() => worker));
@@ -336,6 +499,19 @@ public sealed class PortableSoftwareDiscoveryLossTests
 
     private static Task Worker(PortableSoftwareDiscoveryService service) => (Task)typeof(PortableSoftwareDiscoveryService)
         .GetField("workerTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!;
+
+    private static async Task WaitForNativePublication(PortableSoftwareDiscoveryService service, ulong sequence)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (true)
+        {
+            var binding = typeof(PortableSoftwareDiscoveryService)
+                .GetField("nativeBinding", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service);
+            if (binding is not null && (ulong)binding.GetType().GetField("Sequence", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .GetValue(binding)! >= sequence) return;
+            await Task.Delay(1, timeout.Token);
+        }
+    }
 
     private static RuntimeProcessIdentity ReadFixtureIdentity(PortableProcessCandidate candidate)
         => new(candidate.ProcessId, candidate.ParentProcessId, "fixture", @"D:\Fixture\fixture.exe", false);
@@ -520,7 +696,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
     [InlineData(true)]
     public async Task IdleWorkerDetectsNewLossAndStopStillCancelsItWhenLeaseReleaseFails(bool workerReleases)
     {
-        var broker = new Broker();
+        using var broker = new Broker();
         var scans = 0;
         using var service = new PortableSoftwareDiscoveryService(broker, null!, null!, null!,
             NullLogger<PortableSoftwareDiscoveryService>.Instance, () => { Interlocked.Increment(ref scans); return []; });
@@ -557,7 +733,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
     [Fact]
     public async Task InitialInventoryFailureReleasesItsLeaseWithoutStartingAWorker()
     {
-        var broker = new Broker();
+        using var broker = new Broker();
         using var service = new PortableSoftwareDiscoveryService(broker, null!, null!, null!,
             NullLogger<PortableSoftwareDiscoveryService>.Instance, () => throw new IOException("inventory fixture"));
         await Assert.ThrowsAsync<IOException>(() => service.StartAsync(CancellationToken.None));
@@ -631,119 +807,114 @@ public sealed class PortableSoftwareDiscoveryLossTests
         return ids.ToArray();
     }
 
-    private sealed class DiscoveryRuntimeFactory : IKernelEtwSessionRuntimeFactory
+    private sealed class DiscoveryRuntimeFactory : IKernelEtwSessionRuntimeFactory, IDisposable
     {
+        private readonly NativeKernelEtwTestResource resource = new(
+            NativeKernelEtwTestResource.SmallConfiguration(qpcFrequency: 1000),
+            new DateTimeOffset(DateTime.FromFileTimeUtc(133_000_000_000_000_000)));
         internal List<DiscoveryRuntime> Runtimes { get; } = [];
+        public void ValidateRequest(KernelEtwSubscriptionRequest request) => resource.RuntimeFactory.ValidateRequest(request);
         public bool TryGetAvailability(out string state, out string message)
-        {
-            state = "Available";
-            message = "fixture";
-            return true;
-        }
+            => resource.RuntimeFactory.TryGetAvailability(out state, out message);
         public IKernelEtwSessionRuntime Create(string sessionName, KernelTraceEventParser.Keywords keywords,
             KernelEtwSessionContext context, IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions)
         {
-            var runtime = new DiscoveryRuntime();
-            runtime.Dispatcher.InitializeSubscriptions(subscriptions, context);
+            var runtime = new DiscoveryRuntime(resource);
+            runtime.Inner = resource.RuntimeFactory.Create(sessionName, keywords, context,
+                subscriptions.Select(subscription => subscription with
+                {
+                    Bind = (source, bindingContext) =>
+                    {
+                        if (subscription.Id == "portable-software-discovery") runtime.Source = source;
+                        subscription.Bind(source, bindingContext);
+                    }
+                }).ToArray());
             Runtimes.Add(runtime);
             return runtime;
         }
+        public void Dispose() => resource.Dispose();
     }
 
-    private sealed class DiscoveryRuntime : IKernelEtwSessionRuntime
+    private sealed class DiscoveryRuntime(NativeKernelEtwTestResource resource) : IKernelEtwSessionRuntime
     {
-        internal KernelEtwSubscriptionDispatcher Dispatcher { get; } = new();
+        internal IKernelEtwSessionRuntime Inner { get; set; } = null!;
+        internal KernelEtwEventSource Source { get; set; } = null!;
         internal bool Disposed { get; private set; }
-        public bool IsProcessing { get; private set; }
-        public int EventsLost => 0;
-        public void StartProcessing(Action<Exception?> completed) => IsProcessing = true;
-        internal void StopProcessingUnexpectedly() => IsProcessing = false;
+        public bool IsProcessing => Inner.IsProcessing;
+        public int EventsLost => Inner.EventsLost;
+        public void StartProcessing(Action<Exception?> completed) => Inner.StartProcessing(completed);
+        internal void StopProcessingUnexpectedly() => resource.Fail(6);
         public void UpdateSubscriptions(IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions,
-            KernelEtwSessionContext context) => Dispatcher.UpdateSubscriptions(subscriptions, context, static _ => { });
-        public KernelEtwSessionStopResult Stop(TimeSpan waitTimeout)
-        {
-            Dispatcher.CancelAll();
-            IsProcessing = false;
-            return KernelEtwSessionStopResult.Released;
-        }
-        public void Dispose()
-        {
-            Stop(TimeSpan.Zero);
-            Disposed = true;
-        }
+            KernelEtwSessionContext context) => Inner.UpdateSubscriptions(subscriptions, context);
+        public KernelEtwSessionStopResult Stop(TimeSpan waitTimeout) => Inner.Stop(waitTimeout);
+        public void Dispose() { Inner.Dispose(); Disposed = true; }
 
-        internal unsafe void EmitProcessStart()
+        internal void EmitProcessStart(PortableSoftwareDiscoveryService service,
+            string path = @"D:\Fixture\fixture.exe", uint flags = 0, uint kind = 7, bool publish = true,
+            uint? processId = null)
         {
-            // Version-zero process payload: the fixture needs only the process
-            // header and parent ID. No ETW session, OS event or real process is needed.
-            var data = (ProcessTraceData)RuntimeHelpers.GetUninitializedObject(typeof(ProcessTraceData));
-            var source = (ETWTraceEventSource)RuntimeHelpers.GetUninitializedObject(typeof(ETWTraceEventSource));
-            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
-            typeof(ETWTraceEventSource).GetField("processNameForID", fields)!
-                .SetValue(source, new Dictionary<int, string> { [Environment.ProcessId] = "fixture" });
-            typeof(TraceEventSource).GetField("pointerSize", fields)!.SetValue(source, 8);
-            typeof(TraceEventSource).GetField("_QPCFreq", fields)!.SetValue(source, 1L);
-            typeof(TraceEventSource).GetField("_syncTimeUTC", fields)!.SetValue(source, DateTime.UnixEpoch);
-            var record = (byte*)NativeMemory.AllocZeroed(256);
-            var payload = (byte*)NativeMemory.AllocZeroed(32);
-            try
-            {
-                *(ushort*)(record + 4) = 0x40; // EVENT_HEADER_FLAG_64_BIT_HEADER
-                *(int*)(record + 12) = Environment.ProcessId;
-                *(ushort*)(record + 86) = 32; // EVENT_RECORD.UserDataLength
-                *(long*)(payload + 8) = 2;
-                var recordField = typeof(TraceEvent).GetField("eventRecord", fields)!;
-                recordField.SetValue(data, Pointer.Box(record, recordField.FieldType));
-                typeof(TraceEvent).GetField("userData", fields)!.SetValue(data, (IntPtr)payload);
-                typeof(TraceEvent).GetField("traceEventSource", fields)!.SetValue(data, source);
-                Dispatcher.Dispatch(KernelEtwEventKind.ProcessStartGroup, data, static (callbacks, item) => callbacks.DeliverProcessStartGroup(item));
-            }
-            finally
-            {
-                NativeMemory.Free(payload);
-                NativeMemory.Free(record);
-            }
+            var opcode = kind == 8 ? (byte)2 : (flags & 1) != 0 ? (byte)3 : (byte)1;
+            resource.RawProcess(0, processId ?? checked((uint)Environment.ProcessId), 2, path, opcode: opcode);
+            if (publish) resource.Publish(0);
+            // Consumption belongs to the running service's existing native publication worker.
+            GC.KeepAlive(service);
         }
     }
 
-    private sealed class Broker : IKernelEtwSessionBroker
+    private sealed class Broker : IKernelEtwSessionBroker, IDisposable
     {
-        internal int EventsLost;
-        internal int ReleaseCount;
-        internal int SubscribeCount;
-        internal bool FailRelease;
-        public KernelEtwSessionSnapshot GetSnapshot() => Snapshot(1, Volatile.Read(ref EventsLost));
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        private readonly NativeRendererTestBroker native;
+        internal Broker(bool keepSiblingLease = false) => native = new(keepSiblingLease: keepSiblingLease);
+        internal KernelEtwEventSource Source => native.Source;
+        internal KernelEtwSubscriptionRequest? Request => native.Request;
+        internal int EventsLost
         {
-            SubscribeCount++;
-            return new Lease(this);
+            get => native.GetSnapshot().EventsLost;
+            set => native.SetEventsLost(value);
         }
-        private sealed class Lease(Broker broker) : IKernelEtwSubscription
+        internal ulong PublishedSequence => native.PublishedSequence;
+        internal int ReleaseCount, SubscribeCount;
+        internal bool FailRelease;
+        public KernelEtwSessionSnapshot GetSnapshot() => native.GetSnapshot();
+        internal void Publish() => native.Publish();
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
+            var lease = native.Acquire(request);
+            SubscribeCount++;
+            return new Lease(this, lease);
+        }
+        public void Dispose() => native.Dispose();
+        private sealed class Lease(Broker broker, IKernelEtwSubscription lease) : IKernelEtwSubscription
+        {
+            private int disposed;
             public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
-
             public void Dispose()
             {
+                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
                 broker.ReleaseCount++;
+                lease.Dispose();
                 if (broker.FailRelease) throw new IOException("release fixture");
             }
         }
     }
-
     private sealed class CatalogProvider(RuntimeProcessAttributionCatalog catalog) : IRuntimeProcessAttributionCatalogProvider
     {
         internal int ActiveReaders;
         internal int ReturnedLeases;
+        internal Task? BeforeAcquire;
+        internal TaskCompletionSource? AcquisitionStarted;
         public long SoftwareSnapshotGeneration => 0;
-        public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(string? windowsSid, CancellationToken cancellationToken)
+        public async Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(string? windowsSid, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            AcquisitionStarted?.TrySetResult();
+            if (BeforeAcquire is { } wait) await wait.WaitAsync(cancellationToken);
             Interlocked.Increment(ref ActiveReaders);
-            return Task.FromResult(new RuntimeProcessAttributionCatalogLease(catalog, () =>
+            return new RuntimeProcessAttributionCatalogLease(catalog, () =>
             {
                 Interlocked.Decrement(ref ActiveReaders);
                 Interlocked.Increment(ref ReturnedLeases);
-            }));
+            });
         }
         public Task InvalidateSoftwareSnapshotAsync() => Task.CompletedTask;
     }

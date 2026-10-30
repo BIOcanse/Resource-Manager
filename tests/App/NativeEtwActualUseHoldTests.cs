@@ -9,10 +9,12 @@ public sealed class NativeEtwActualUseHoldTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
     private static readonly Guid Boundary = EventSource.GetGuid(typeof(GpuAllocationBoundary));
+    // API-only observation enables PID-filtered DXGI and D3D9 Present events; Kernel-Process lifetimes are
+    // enabled only for the frame ledger (dev bd935440).
     private static readonly Guid[] ApiProviders =
-    [PresentFrameEtwSource.KernelProcessProvider, PresentFrameEtwSource.DxgiProvider, PresentFrameEtwSource.Direct3D9Provider];
+    [PresentFrameEtwSource.DxgiProvider, PresentFrameEtwSource.Direct3D9Provider];
     private static readonly Guid[] FrameProviders =
-    [.. ApiProviders, PresentFrameEtwSource.GraphicsKernelProvider, PresentFrameEtwSource.Win32kProvider];
+    [.. ApiProviders, PresentFrameEtwSource.KernelProcessProvider, PresentFrameEtwSource.GraphicsKernelProvider, PresentFrameEtwSource.Win32kProvider];
 
     [Fact]
     public async Task PresentHoldsFollowTheCurrentOutputsAcrossLongRunningUse()

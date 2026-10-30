@@ -73,6 +73,7 @@ internal static partial class Program
         var app = builder.Build();
         var cases = new List<AcceptanceCaseResult>();
         var samples = new List<ActualUseSample>();
+        var memorySamples = new List<ActualUseKernelMemorySample>();
         var eventRates = new List<ActualUseEventRateInterval>();
         var nativeSamples = new List<ActualUseNativeSample>();
         var names = new[] { ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.PresentFramesPrefix,
@@ -162,6 +163,8 @@ internal static partial class Program
                 var native = QueryOwnedKernel(names[0]);
                 var after = capture.IsWindowActive;
                 var managed = broker.GetSnapshot();
+                var aggregation = capture.GetDiagnostics().Aggregation;
+                memorySamples.Add(new(phase, DateTimeOffset.UtcNow, before, after, managed.AllocationUsage, aggregation, GC.GetTotalAllocatedBytes()));
                 var holders = ReadActualUseHolders(app.Services, broker);
                 var expectedBefore = ReadNativeExpectedUse(app.Services);
                 var nativeStates = names.Skip(1).Select(QueryOwnedKernel).ToArray();
@@ -207,7 +210,7 @@ internal static partial class Program
                             | (holders.Kernel.Any(value => value.Id == "system-interrupts") ? imageMask : 0)
                             | (expectedInterrupts == true ? irqMask : 0);
                         wrong |= native.Flags != expectedMask;
-                        wrong |= holders.Kernel.Any(value => value.Id is not ("cpu-core-residency" or "cpu-core-residency-window" or "system-interrupts" or "system-interrupts-events"));
+                        wrong |= holders.Kernel.Any(value => value.Id is not ("cpu-core-residency" or "cpu-core-residency-duration" or "system-interrupts" or "system-interrupts-duration"));
                     }
                     if (noUsers) wrong |= native.Exists || native.Flags != 0 || holders.Kernel.Length != 0
                         || holders.Activity.Any(value => value.InUse) || holders.Present.Length != 0
@@ -251,6 +254,10 @@ internal static partial class Program
                 await app.Services.GetRequiredService<IAppSettingsStore>().SaveAsync(settings, token);
                 pipeline.ConfigureApplication(app);
                 await app.StartAsync(token);
+                // Every case reads plan-derived facts. Startup ends once the coordinator has published the run
+                // plan; portable discovery's stop below is not that signal when its catalog is not available yet.
+                await WaitAsync(() => app.Services.GetRequiredService<RuntimePlanProvider>().Current is { Version: > 0 } plan
+                    && plan.HostManager.IsPublished, token);
                 await SetConsumers(false, false, token);
                 // Portable discovery is an unrelated real ETW consumer. The
                 // existing host admission switch excludes it from this probe,
@@ -275,6 +282,12 @@ internal static partial class Program
                 {
                     await WaitForNoUsers(token);
                     await Observe("a-no-subscriptions", TimeSpan.FromSeconds(120), false, token, noUsers: true);
+                }, deadline.Token);
+                await RunCaseAsync(cases, evidence, "native-irq-only-memory", TimeSpan.FromSeconds(20), async token =>
+                {
+                    await WaitForNoUsers(token);
+                    await ObserveIrqOnlyMemory(broker, memorySamples, token);
+                    await WaitForNoUsers(token);
                 }, deadline.Token);
                 var residencyInterval = TimeSpan.FromSeconds(30);
                 var residencyPlan = app.Services.GetRequiredService<RuntimePlanProvider>().Current.HostManager.RequirePublished();
@@ -334,7 +347,9 @@ internal static partial class Program
                         }
                         if (windows.Count >= 3 && active && idle && diagnostics.State == "Idle") break;
                     }
-                    const double cadenceToleranceMilliseconds = 500;
+                    // A due may be serviced up to the role's declared freshness grace late while the schedule stays
+                    // anchored, so steady spacing is held to the interval within that grace on both sides.
+                    var cadenceToleranceMilliseconds = residencyGrace.TotalMilliseconds;
                     await SaveAsync(evidence, "b-publications.json", new { windows, active, idle,
                         idleBucketSamples = idleBucketSamples.Select(value => new { value.At, value.RetainedBucketBytes, value.ActivePairCount }).ToArray(),
                         requestedIntervalMilliseconds = 30000, cadenceToleranceMilliseconds,
@@ -360,7 +375,10 @@ internal static partial class Program
                         var separated = samples.Any(value => value.Phase == "b-residency" && !value.WindowActive
                             && value.At > previous.MeasuredThrough && value.At < current.MeasuredFrom
                             && (value.Native.Flags & (uint)KernelTraceEventParser.Keywords.ContextSwitch) == 0);
-                        if (spacing < 30000 - cadenceToleranceMilliseconds || current.MeasuredFrom <= previous.MeasuredThrough
+                        // Dues stay on the subscription's 30 s schedule. The cold window may complete late, so only
+                        // steady-to-steady spacing is held to the cadence; every pair must still be ordered and idle between.
+                        var steady = index >= 2;
+                        if (steady && Math.Abs(spacing - 30000) > cadenceToleranceMilliseconds || current.MeasuredFrom <= previous.MeasuredThrough
                             || !Active(previous) || !Active(current) || !separated)
                             throw new InvalidDataException($"Residency cadence/window separation failed: spacing={spacing}ms, idleBetween={separated}.");
                     }
@@ -448,7 +466,7 @@ internal static partial class Program
                         || !holders.Interrupts.Any(value => value.InUse && value.Id.Contains("host-manager.reports.system-interrupts", StringComparison.Ordinal))
                         || holders.Interrupts.Concat(holders.Residency).Any(value => value.InUse && value.Id.Contains("actual-use:", StringComparison.Ordinal)))
                         throw new InvalidDataException($"Tray must use the actual report and Smart consumers, with no probe lease; {DescribeHolders(holders)}");
-                    if (ReadInterruptModules(interrupts).Count == 0) throw new InvalidDataException("Real interrupt session did not retain any kernel module metadata.");
+                    if (ReadInterruptModules(interrupts).ActiveModules == 0) throw new InvalidDataException("Real interrupt session did not retain any kernel module metadata.");
                 }, deadline.Token);
 
 
@@ -481,6 +499,20 @@ internal static partial class Program
             await SaveAsync(evidence, "event-rate-intervals.json", eventRates);
             await SaveAsync(evidence, "event-rate-summary.json", SummarizeEventRates(eventRates));
             await SaveAsync(evidence, "native-session-samples.json", nativeSamples);
+            await RunCaseAsync(cases, evidence, "native-memory", TimeSpan.FromSeconds(5), async token =>
+            {
+                token.ThrowIfCancellationRequested();
+                await SaveAsync(evidence, "native-memory.json", new { status = "checking", samples = memorySamples });
+                var table = ValidateNativeMemoryEvidence(memorySamples);
+                await SaveAsync(evidence, "native-memory.json", new { status = "passed", table, samples = memorySamples });
+            }, CancellationToken.None);
+            await RunCaseAsync(cases, evidence, "managed-window-allocation", TimeSpan.FromSeconds(5), async token =>
+            {
+                token.ThrowIfCancellationRequested();
+                var rows = SummarizeManagedWindowAllocation(memorySamples);
+                await SaveAsync(evidence, "managed-window-allocation.json", rows);
+                ValidateManagedWindowAllocation(rows);
+            }, CancellationToken.None);
             await RunCaseAsync(cases, evidence, "owned-session-cleanup", TimeSpan.FromSeconds(15), async token =>
             {
                 var result = await QueryOwnedSessionsAsync(evidence, "cleanup", names, token);
@@ -491,24 +523,20 @@ internal static partial class Program
                 status = cases.All(value => value.Status == "passed") ? "passed" : "failed", processId = Environment.ProcessId,
                 names, address, pipe, image, root, cases, overrides = EffectBoundaries.Overrides,
                 limitations = new[] { "Process and hardware effects rejected by development overrides.",
-                    "Native keyword observations sampled every 100 ms; window boundary races require two consecutive contradictory observations.",
-                    "Freeze validates retained real module map identity and ImageLoad keyword; it does not load or unload a kernel driver." } });
+                    "Native keyword observations sampled every 100 ms; window boundary races require two consecutive contradictory observations." } });
         }
         return cases.All(value => value.Status == "passed") ? 0 : 1;
     }
 
-    // Map is the session's KernelModuleAddressMap, which freeze keeps; it replaces its sorted
-    // table whole on every change, so Count is read from the table each call.
-    private static (object Map, int Count) ReadInterruptModules(EtwSystemInterruptSnapshotSource source)
+    private static ActualUseInterruptModuleIdentity ReadInterruptModules(EtwSystemInterruptSnapshotSource source)
     {
         var session = source.GetType().GetField("currentSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(source)
             ?? throw new InvalidDataException("No real interrupt session.");
-        var window = session.GetType().GetProperty("Window")!.GetValue(session)!;
-        var map = window.GetType().GetProperty("Modules")!.GetValue(window)!;
-        var table = map.GetType().GetField("table", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(map)
-            ?? throw new InvalidDataException("The kernel module map has no table.");
-        var ranges = (Array)table.GetType().GetProperty("Ranges")!.GetValue(table)!;
-        return (map, ranges.Length);
+        var native = (NativeKernelEtwSession)(session.GetType().GetProperty("Native")!.GetValue(session)
+            ?? throw new InvalidDataException("No native interrupt owner."));
+        var metadata = native.QueryInterruptMetadata()
+            ?? throw new InvalidDataException("Native interrupt module metadata is unavailable.");
+        return new(metadata.SessionGeneration, metadata.OwnerSerial, metadata.ActiveModules);
     }
 
     private sealed record OwnedSessionQuery(string Name, int ExitCode, string Output, string Error);

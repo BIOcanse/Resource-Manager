@@ -1,3 +1,6 @@
+using System.Collections.Frozen;
+using ResourceManager.ReadWrite.Windows.Processes;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 using System.Runtime.InteropServices;
 using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.Windows;
@@ -28,9 +31,33 @@ public sealed class ProcessorGroupUsageTests
         var usage = WindowsCpuOsTopologyReader.CalculateProcessorUsage(previous, current, 66);
         Assert.Equal(20d, usage[47]); Assert.Null(usage[48]); Assert.Equal(90d, usage[64]); Assert.Null(usage[65]);
         var topologyIds = Enumerable.Range(0, 48).Concat(Enumerable.Range(64, 48)).ToArray();
-        Assert.Equal(64, EtwCpuCoreResidencyReader.ResolveEventLogicalProcessorId(48, topologyIds));
-        Assert.Equal(111, EtwCpuCoreResidencyReader.ResolveEventLogicalProcessorId(95, topologyIds));
-        Assert.Null(EtwCpuCoreResidencyReader.ResolveEventLogicalProcessorId(96, topologyIds));
+        var config = NativeKernelEtwTestResource.SmallConfiguration(maximumProcessors: 96);
+        config.Residency.MaximumCells = 8192;
+        using var broker = new RecordingNativeKernelEtwBroker(config);
+        var plan = new CpuResidencyCaptureConfiguration(1000, 128,
+            topologyIds.ToFrozenDictionary(id => id, id => new CpuResidencyCoreAccounting($"core:{id}", "", 1, 1)),
+            "native sparse group map", 50);
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, () => plan);
+        owner.EnsureStarted();
+        Assert.False(owner.IsWindowActive); // The run holds metadata only.
+        owner.BeginWindow();
+        Assert.True(owner.IsWindowActive);
+        // The fixture delivers RAW indices through the actual shared trace
+        // processor hook, so index48 becomes64 and index95 becomes111.
+        // This controlled recording starts at native QPC origin0. Machine
+        // uptime would add an unrelated retained window to every CPU pair.
+        NativeCpuReaderTestFeed.ClosedWindow(owner, topologyIds, 1000, startQpc: 0);
+        Assert.True(owner.Collect());
+        var nativeIds = Assert.Single(owner.Read()!.Processes).LogicalProcessors
+            .Select(row => row.LogicalProcessorId).Order().ToArray();
+        Assert.Equal(topologyIds, nativeIds);
+        var before = owner.Read();
+        broker.Resource.CSwitchFromThreadIds(System.Diagnostics.Stopwatch.Frequency / 2,
+            before!.MeasuredFrom.AddMilliseconds(500), 96, 0, 0);
+        broker.Resource.Publish(broker.Resource.Tick);
+        Assert.True(owner.Collect());
+        Assert.Equal(before!.Processes.Single().SwitchCount, owner.Read()!.Processes.Single().SwitchCount);
+        Assert.Equal(topologyIds, owner.Read()!.Processes.Single().LogicalProcessors.Select(row => row.LogicalProcessorId).Order());
     }
 
     [Theory]

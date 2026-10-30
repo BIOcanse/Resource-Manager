@@ -1,3 +1,106 @@
+const kernel_etw_shared_abi = @import("telemetry/kernel_etw/shared_abi.zig");
+comptime {
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_create_with_allocator;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_set_outputs;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_residency_diagnostics;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_interrupt_metadata;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_configure_consumer_counter;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_consumer_counter;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_event_counter;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_retire_consumer_counter;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_take_retired_consumer_counter;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_renderer_stamp;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire_outputs;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_create_in_region;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_open;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_process;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_request_stop;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_stop;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_close_trace;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_destroy;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_submit;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_configure;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_request_refresh;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_request_residency;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_configure_processors;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_set_enabled;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire_residency;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire_interrupts;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire_interrupts_at;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_release;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_status;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_published_progress;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_events_lost;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_region_usage;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_set_replay_clock;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire_io;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire_notifications;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire_renderer;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_set_publication_callback;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire_thread_diagnostics;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_acquire_thread_diagnostics_at;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_clock;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_owner_usage;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_submit_tracked;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_reset_io_at;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_failure;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_failure_detail;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_failure_allocation;
+    _ = kernel_etw_shared_abi.rm_kernel_etw_shared_query_disk_config;
+}
+const kernel_etw_owned_test = @import("telemetry/kernel_etw/owned_allocator_test_abi.zig");
+comptime {
+    _ = kernel_etw_owned_test.rm_kernel_etw_test_owned_drain;
+    _ = kernel_etw_owned_test.rm_kernel_etw_test_owned_publish;
+    _ = kernel_etw_owned_test.rm_kernel_etw_test_owned_cswitch;
+}
+
+const kernel_etw_profile_abi = @import("telemetry/kernel_etw/shared_profile_abi.zig");
+comptime {
+    _ = kernel_etw_profile_abi.rm_kernel_etw_shared_profile_enable;
+    _ = kernel_etw_profile_abi.rm_kernel_etw_shared_profile_query;
+    _ = kernel_etw_profile_abi.rm_kernel_etw_shared_profile_query_cpu_detail;
+}
+
+const kernel_etw_io_replay_abi = @import("telemetry/kernel_etw/io_replay_abi.zig");
+comptime {
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_create;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_destroy;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_disk;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_network;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_process_changed;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_invalidate;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_snapshot;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_shared_create;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_shared_destroy;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_shared_snapshot;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_shared_disk;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_shared_fail;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_shared_loss;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_shared_irq_counts;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_file_create;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_file_usage;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_file_destroy;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_io_replay_file_observe;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_disk;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_network;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_image;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_interrupt;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_loss;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_thread;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_process;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_cswitch;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_initialize;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_raw;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_diagnostic_usage;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_diagnostic_clock;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_diagnostic_process;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_diagnostic_thread;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_pending_diagnostic_samples;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_diagnostic_input_usage;
+    _ = kernel_etw_io_replay_abi.rm_kernel_etw_test_shared_chain_publication;
+}
 const std = @import("std");
 const data_area_abi = @import("data_area/exports.zig");
 comptime {

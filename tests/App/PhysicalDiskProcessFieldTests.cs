@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.ReadWrite;
@@ -7,7 +8,7 @@ using ResourceManager.ReadWrite.Windows.Processes;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class PhysicalDiskProcessFieldTests
+public sealed class OraclePhysicalDiskProcessFieldTests
 {
     private const string Read = "process_all_physical_disk_read_bytes_attributed";
     private const string Write = "process_all_physical_disk_write_bytes_attributed";
@@ -16,7 +17,7 @@ public sealed class PhysicalDiskProcessFieldTests
     public void OriginalSharedQueuePreservesDiskScopeBirthAndBytesAboveDoublePrecision()
     {
         long tick = 1000; var broker = new Broker(); var releases = 0;
-        using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick,
+        using var owner = new OraclePhysicalDiskIoCaptureOwner(broker, new(), () => tick,
             pid => new ProcessLease(pid, 100, () => releases++));
         Assert.Null(owner.Read(true).ObservedTraffic);
         Assert.Equal(0, broker.Acquires);
@@ -38,14 +39,14 @@ public sealed class PhysicalDiskProcessFieldTests
         Assert.All(complete.ObservedTraffic.Processes, row => Assert.Equal("100", row.CreationWindowsFileTime100Ns));
         Assert.Equal(2, releases); // One intake identity lease plus one read/recheck lease shared by both disks.
         Assert.True(broker.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process));
-        Assert.Equal(typeof(ProcessMetricFieldRegistry).Assembly, typeof(EtwPhysicalDiskIoCaptureOwner).Assembly);
+        Assert.Equal(typeof(ProcessMetricFieldRegistry).Assembly, typeof(ResourceManager.ReadWrite.Windows.Processes.EtwPhysicalDiskIoCaptureOwner).Assembly);
     }
 
     [Fact]
     public void ReusedPidCannotReceiveTransfersFromBeforeItsCreationAndFailedRecheckIsUnavailable()
     {
         long tick = 1000; var broker = new Broker(); var recheck = false;
-        using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick,
+        using var owner = new OraclePhysicalDiskIoCaptureOwner(broker, new(), () => tick,
             pid => { var reads = 0; return new ProcessLease(pid, 200, static () => { }, () => !recheck || ++reads == 1); });
         owner.Start();
         owner.Read(true);
@@ -68,7 +69,7 @@ public sealed class PhysicalDiskProcessFieldTests
     public void LostGenerationAndCancelledLeaseCannotReturnTheOldExactWindow()
     {
         long tick = 1000; var broker = new Broker();
-        using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick,
+        using var owner = new OraclePhysicalDiskIoCaptureOwner(broker, new(), () => tick,
             pid => new ProcessLease(pid, 100, static () => { }));
         owner.Start();
         owner.Read(true); var previous = broker.Source!;
@@ -90,7 +91,7 @@ public sealed class PhysicalDiskProcessFieldTests
     public void UnsignedSumOverflowIsUnavailableInsteadOfWrappedOrRounded()
     {
         long tick = 1000; var broker = new Broker();
-        using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick,
+        using var owner = new OraclePhysicalDiskIoCaptureOwner(broker, new(), () => tick,
             pid => new ProcessLease(pid, 100, static () => { }));
         owner.Start();
         owner.Read(true);
@@ -134,17 +135,17 @@ public sealed class PhysicalDiskProcessFieldTests
         public bool TryReadCreationFileTime(out ulong creation) { creation = birth; return valid?.Invoke() ?? true; }
         public void Dispose() => release();
     }
-    private sealed class Broker : IKernelEtwSessionBroker
+    private sealed class Broker : IOracleKernelEtwSessionBroker
     {
         internal int Acquires, Releases, Lost;
         internal long Generation = 17;
-        internal KernelEtwEventSource? Source;
+        internal OracleKernelEtwEventSource? Source;
         internal KernelTraceEventParser.Keywords Keywords;
         internal KernelEtwSessionContext Context => new(Generation, DateTimeOffset.UnixEpoch);
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IOracleKernelEtwSubscription Acquire(OracleKernelEtwSubscriptionRequest request)
         { Acquires++; Keywords = request.Keywords; Source = new(); request.Bind(Source, Context); Source.Activate(); return new Lease(this, Source); }
         public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", Generation, DateTimeOffset.UnixEpoch, Keywords, Acquires - Releases, Lost);
-        private sealed class Lease(Broker owner, KernelEtwEventSource source) : IKernelEtwSubscription
+        private sealed class Lease(Broker owner, OracleKernelEtwEventSource source) : IOracleKernelEtwSubscription
         {
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
             public void Dispose() { source.Cancel(); owner.Releases++; }

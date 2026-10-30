@@ -225,7 +225,7 @@ public sealed class ProcessCommandLineFieldTests
             => new(Empty ? [] : [new(Environment.ProcessId, new(ProcessReadStatus.Current, Birth), 0, "fixture")]);
     }
     private sealed class NoEtw : IKernelEtwSessionBroker
-    { public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request) => throw new Xunit.Sdk.XunitException("Unexpected ETW"); public KernelEtwSessionSnapshot GetSnapshot() => throw new Xunit.Sdk.XunitException("Unexpected ETW"); }
+    { public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request) => throw new Xunit.Sdk.XunitException("Unexpected ETW"); public KernelEtwSessionSnapshot GetSnapshot() => throw new Xunit.Sdk.XunitException("Unexpected ETW"); }
     private sealed class Permit : IMetricPublicationPermit
     { internal bool Active = true; public ulong WorkspaceIncarnation => 1; public ulong ConfigurationGeneration => 1; public bool IsActive => Active; public bool TryPublish(Action commit) { if (!Active) return false; commit(); return true; } }
 }

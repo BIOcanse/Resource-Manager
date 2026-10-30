@@ -1,7 +1,14 @@
+using System.Collections.Frozen;
+using ResourceManager.ReadWrite.Windows.Processes;
+using ResourceManager.App.Domain.RuntimeSpecialization;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Diagnostics;
+using System.Reflection;
+using Xunit.Abstractions;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
@@ -14,7 +21,7 @@ using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class EtwCpuCoreResidencyEtlReplayTests
+public sealed class EtwCpuCoreResidencyEtlReplayTests(ITestOutputHelper output)
 {
     private const int ReplayWindowMilliseconds = 1000;
 
@@ -26,99 +33,278 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
     public Task RealKernelEtlReaderPublishesTheCompiledMixedPhysicalCoreMapping()
         => VerifyProductionReaderPlanAsync(mixedPhysicalCores: true);
 
-    private static async Task VerifyProductionReaderPlanAsync(bool mixedPhysicalCores)
+    [EnvironmentVariableFact("RESOURCE_MANAGER_ETL_REPLAY_PATH")]
+    public async Task ConcurrentRealKernelEtlReadersKeepTheirFirstCompletePublications()
     {
+        for (var round = 0; round < 4; round++)
+            await Task.WhenAll(VerifyProductionReaderPlanAsync(mixedPhysicalCores: true),
+                VerifyProductionReaderPlanAsync(mixedPhysicalCores: false));
+    }
+
+    [Fact]
+    public async Task CompleteReplayBankCannotStopTheFlowBeforeTheReadersPendingSampleIsAcknowledged()
+    {
+        using var broker = new CpuResidencyHeldTestBroker();
+        var plan = new CpuResidencyCaptureConfiguration(1000, 32,
+            new Dictionary<int, CpuResidencyCoreAccounting>
+            {
+                [0] = new("core:0", "", 2, 0.5), [1] = new("core:0", "", 2, 0.5)
+            }.ToFrozenDictionary(), "controlled SMT replay barrier");
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, () => plan, new(), null, static (_, _) => { });
+        owner.EnsureStarted();
+        owner.BeginWindow();
+        var end = NativeCpuReaderTestFeed.ClosedWindow(owner, [0, 1], 1000, startQpc: 0);
+        Assert.True(owner.Collect());
+        Assert.NotNull(owner.Read());
+        Assert.True(RecordedPublicationGate.CanHoldBank(broker.Resource.Session, () => TryReadRequiredTicket(owner)));
+
+        // Working state has advanced beyond the still-complete immutable bank.
+        // The real collection therefore submits a new tracked CPU sample.
+        broker.Resource.CSwitch(end + 1, DateTimeOffset.UtcNow, 0, 0, 0, 0, 0);
+        using var cancellation = new CancellationTokenSource();
+        var collection = owner.CollectAsync(cancellationToken: cancellation.Token);
+        try
+        {
+            Assert.False(collection.IsCompleted);
+            ulong sequence = 0;
+            var bank = KernelEtwNativeReaders.ReadResidency(broker.Resource.Session, ref sequence, 0, 0, null,
+                static view => new(view.Frequency, view.StartQpc, view.ThroughQpc, null, (view.Flags & 1) != 0, []));
+            Assert.True(bank!.IsComplete); // The old policy stopped the flow here.
+            Assert.False(RecordedPublicationGate.CanHoldBank(broker.Resource.Session, () => TryReadRequiredTicket(owner)));
+            Assert.False(RecordedPublicationGate.CanHoldBank(broker.Resource.Session, static () => null));
+
+            // Let the original consumer boundary acknowledge the sample first.
+            broker.Resource.Publish(broker.Resource.Tick);
+            Assert.True(await collection);
+            Assert.True(RecordedPublicationGate.CanHoldBank(broker.Resource.Session, () => TryReadRequiredTicket(owner)));
+            Assert.NotNull(owner.Read());
+        }
+        finally
+        {
+            cancellation.Cancel();
+            try { await collection; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        }
+    }
+
+    private async Task VerifyProductionReaderPlanAsync(bool mixedPhysicalCores)
+    {
+        var elapsed = Stopwatch.StartNew();
         const int configuredWindowMilliseconds = 1250;
         const int configuredMaximumActivePairs = 262144;
         var path = Environment.GetEnvironmentVariable("RESOURCE_MANAGER_ETL_REPLAY_PATH");
-        Assert.False(string.IsNullOrWhiteSpace(path));
-        Assert.True(File.Exists(path), $"Kernel ETL does not exist: {path}");
-        using var broker = new ReplayKernelEtwBroker(path);
-        var topology = mixedPhysicalCores
-            ? CreateMixedReplayTopology(broker.ProcessorCount)
-            : new ReplayTopologySampler(broker.ProcessorCount).CaptureTopology();
-        var hostPlan = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+        Assert.False(string.IsNullOrWhiteSpace(path)); Assert.True(File.Exists(path));
+        CompiledHostManagerPlan? preparedPlan = null;
+        CpuTopologySnapshot? preparedTopology = null;
+        using var broker = new NativeKernelEtwRecordedTestResource(path!, metadata =>
         {
-            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyObservationWindow)
-                ["value"] = configuredWindowMilliseconds;
-            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)
-                ["value"]!["maximum_active_pairs"] = configuredMaximumActivePairs;
-        }, cpuTopology: topology);
-        using var sampling = new HostManagerSamplingSubscriptionTestFixture(hostPlan);
+            preparedTopology = mixedPhysicalCores ? CreateMixedReplayTopology(metadata.ProcessorCount)
+                : new ReplayTopologySampler(metadata.ProcessorCount).CaptureTopology();
+            preparedPlan = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+            {
+                FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyObservationWindow)["value"] = configuredWindowMilliseconds;
+                FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)["value"]!["maximum_active_pairs"] = configuredMaximumActivePairs;
+            }, cpuTopology: preparedTopology);
+            var config = KernelEtwNativeSettings.CreateConfiguration(preparedPlan.KernelEtwLimits
+                ?? throw new InvalidOperationException("Native ETW limits are unpublished."), preparedPlan.CpuCoreResidency,
+                checked((uint)metadata.ProcessorCount));
+            config.Residency.QpcFrequency = metadata.QpcFrequency;
+            return config;
+        });
+        var hostPlan = preparedPlan ?? throw new InvalidOperationException("The fixture did not prepare its plan.");
+        var topology = preparedTopology ?? throw new InvalidOperationException("The fixture did not prepare its topology.");
         Assert.Equal(Stopwatch.Frequency, broker.QpcFrequency);
-        using var reader = new EtwCpuCoreResidencyReader(
-            broker,
-            sampling.Provider,
-            sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance,
-            static (_, _) => { });
-        await reader.StartAsync(CancellationToken.None);
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture(hostPlan);
+        using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
+            NullLogger<EtwCpuCoreResidencyReader>.Instance);
+        RecordedPublicationGate? preparedBanks = null;
+        KernelEtwEventSource? preparedSource = null;
+        using var preparation = broker.Acquire(new("recorded-test-publication-observer",
+            KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread,
+            (source, _) =>
+            {
+                preparedSource = source;
+                preparedBanks = new(broker, () => TryReadRequiredTicket(NativeCpuReaderTestFeed.Owner(reader)));
+            })
+            { NativeOutputs = KernelEtwNativeOutputs.Residency });
+        var banks = preparedBanks ?? throw new InvalidOperationException("The fixture did not bind its native publication observer.");
+        var boundSource = preparedSource ?? throw new InvalidOperationException("The fixture did not bind its native source.");
+        var nativeSession = boundSource.NativeSession;
+        var generation = preparation.GetSnapshot().Generation;
+        using var firstWindowDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var firstWindowStarted = elapsed.Elapsed;
         try
         {
-            using var subscription = reader.AcquireSubscription(
-                "test.real-etl-reader-plan",
-                TimeSpan.FromMilliseconds(100));
-            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
-            CpuCoreResidencySnapshot? complete;
-            while ((complete = reader.Read()) is null
-                && DateTimeOffset.UtcNow < deadline)
-            {
-                await Task.Delay(25);
-            }
-
-            if (complete is null)
-            {
-                var diagnostics = reader.GetDiagnostics();
-                throw new InvalidOperationException(
-                    "Production reader did not publish a complete window. "
-                    + $"readerState={diagnostics.State}; readerMessage={diagnostics.Message}; "
-                    + $"bindingEpoch={diagnostics.BindingEpoch}; session={diagnostics.SessionGeneration}; "
-                    + $"planWindow={diagnostics.SessionPlan?.ObservationWindowMilliseconds}; "
-                    + $"aggregation={diagnostics.Aggregation}; {broker.Describe()}");
-            }
-
-            Assert.NotNull(complete);
-            Assert.Equal(
-                TimeSpan.FromMilliseconds(configuredWindowMilliseconds),
-                complete.Window);
+            await reader.StartAsync(CancellationToken.None);
+            Assert.Same(boundSource, preparedSource);
+            Assert.Same(nativeSession, broker.Session);
+            Assert.Equal(generation, broker.GetSnapshot().Generation);
+            using var subscription = reader.AcquireSubscription("test.real-etl-reader-plan", TimeSpan.FromMilliseconds(100));
+            Assert.Same(boundSource, preparedSource);
+            Assert.Same(nativeSession, broker.Session);
+            Assert.Equal(generation, broker.GetSnapshot().Generation);
+            await banks.Ready(0).WaitAsync(firstWindowDeadline.Token);
+            output.WriteLine($"mixed={mixedPhysicalCores}; first bank ready at {elapsed.Elapsed.TotalMilliseconds:F3}ms; {banks.Describe()}");
+            CpuCoreResidencySnapshot? complete = null;
+            await WaitUntilAsync(() => (complete = reader.Read()) is not null, firstWindowDeadline.Token);
+            output.WriteLine($"mixed={mixedPhysicalCores}; first reader current at {elapsed.Elapsed.TotalMilliseconds:F3}ms; {banks.Describe()}");
+            Assert.Equal(TimeSpan.FromMilliseconds(configuredWindowMilliseconds), complete!.Window);
             Assert.Equal(complete.Window, complete.MeasuredThrough - complete.MeasuredFrom);
             Assert.NotEmpty(complete.Processes);
             Assert.Same(hostPlan.CpuCoreResidency, reader.GetDiagnostics().SessionPlan);
             AssertPublishedCoreMapping(complete, topology);
-            var physicalCores = complete.Processes.SelectMany(static process => process.PhysicalCores).ToArray();
-            Assert.Contains(physicalCores, static core => core.UsagePercent > 0);
-            Assert.All(physicalCores, static core => Assert.InRange(core.UsagePercent, 0, 100));
-            Assert.All(physicalCores.GroupBy(static core => core.PhysicalCoreId), static group =>
-                Assert.InRange(Math.Round(group.Sum(static core => core.UsagePercent), 9), 0, 100));
-            Assert.Equal(2, broker.SubscribeCount);
-            Assert.Equal(1, broker.MetadataBindingCount);
-            Assert.Equal(1, broker.WindowHoldCount);
-            Assert.Equal(73, complete.SessionGeneration);
+            var physical = complete.Processes.SelectMany(process => process.PhysicalCores).ToArray();
+            Assert.Contains(physical, core => core.UsagePercent > 0);
+            Assert.All(physical, core => Assert.InRange(core.UsagePercent, 0, 100));
+            Assert.All(physical.GroupBy(core => core.PhysicalCoreId), group =>
+                Assert.InRange(Math.Round(group.Sum(core => core.UsagePercent), 9), 0, 100));
+            Assert.Equal(2, broker.SubscribeCount); // Fixture observer and original product metadata hold.
+            Assert.Equal(1, broker.DurationCount);
             Assert.True(broker.BoundKeywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch));
             Assert.True(broker.BoundKeywords.HasFlag(KernelTraceEventParser.Keywords.Process));
             Assert.True(broker.BoundKeywords.HasFlag(KernelTraceEventParser.Keywords.Thread));
             broker.ThrowIfProcessingFailed();
-
+            using var nextWindowDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            banks.Release(0);
+            await banks.Ready(1).WaitAsync(nextWindowDeadline.Token);
             CpuCoreResidencySnapshot? next = null;
-            await WaitUntilAsync(() => (next = reader.Read()) is not null && !ReferenceEquals(complete, next));
+            await WaitUntilAsync(() => (next = reader.Read()) is not null && !ReferenceEquals(complete, next), nextWindowDeadline.Token);
+            Assert.True(next!.MeasuredThrough > complete.MeasuredThrough);
             AssertPublishedCoreMapping(next!, topology);
             subscription.Dispose();
             await reader.StopAsync(CancellationToken.None);
-            await WaitUntilAsync(() => !broker.IsRunning);
-            // The owner stops the worker to release capture; the canonical
-            // published value remains readable after that run has drained.
+            Assert.Same(boundSource, preparedSource);
+            Assert.Same(nativeSession, broker.Session);
+            Assert.Equal(generation, broker.GetSnapshot().Generation);
+            Assert.True(boundSource.IsActive);
+            Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
+            Assert.Equal(0, broker.DurationCount);
+            Assert.False(broker.BoundKeywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch));
+            Assert.False(broker.ProcessingCompletion.IsCompleted);
             var retained = Assert.IsType<CpuCoreResidencySnapshot>(reader.Read());
             AssertPublishedCoreMapping(retained, topology);
-
-            await reader.StopAsync(CancellationToken.None);
+            await reader.StopAsync(CancellationToken.None); Assert.Same(retained, reader.Read());
+            banks.ReleaseAll(); preparation.Dispose();
+            await WaitUntilAsync(() => !broker.IsRunning);
+            broker.ThrowIfProcessingFailed(); Assert.True(broker.ContextSwitchCount > 0);
+            Assert.False(boundSource.IsActive);
+            Assert.Equal(0UL, broker.RegionUsage.CurrentBytes);
             Assert.Same(retained, reader.Read());
+        }
+        catch (OperationCanceledException) when (firstWindowDeadline.IsCancellationRequested)
+        {
+            output.WriteLine($"REPLAY TIMEOUT mixed={mixedPhysicalCores}; elapsedMs={elapsed.Elapsed.TotalMilliseconds:F3}; "
+                + $"firstWindowMs={(elapsed.Elapsed - firstWindowStarted).TotalMilliseconds:F3}; "
+                + $"worker={reader.ExecuteTask?.Status}; {banks.Describe()}; {broker.Describe()}");
+            var diagnostics = reader.GetDiagnostics();
+            output.WriteLine($"reader={diagnostics.State}; message={diagnostics.Message}; "
+                + $"binding={diagnostics.BindingEpoch}; generation={diagnostics.SessionGeneration}; aggregation={diagnostics.Aggregation}");
+            output.WriteLine(DescribeNativeReader(NativeCpuReaderTestFeed.Owner(reader)));
+            broker.ThrowIfProcessingFailed();
+            throw;
         }
         finally
         {
+            banks.ReleaseAll();
             await reader.StopAsync(CancellationToken.None);
+            preparation.Dispose(); banks.Dispose();
         }
     }
 
+    private static string DescribeNativeReader(EtwCpuResidencyCaptureOwner owner)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var state = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", flags)!.GetValue(owner);
+        if (state is null) return "CPU binding absent";
+        var native = state.GetType().GetProperty("Native")!.GetValue(state)!;
+        var type = native.GetType();
+        var gate = type.GetField("gate", flags)!.GetValue(native)!;
+        var windowActive = owner.IsWindowActive;
+        if (!Monitor.TryEnter(gate, TimeSpan.FromMilliseconds(50))) return "CPU reader gate held at timeout";
+        try
+        {
+            var ticket = (ulong)type.GetField("requiredTicket", flags)!.GetValue(native)!;
+            return $"CPU windowActive={windowActive}; revision={owner.Revision}; "
+                + $"requiredTicket={ticket}; applied={KernelEtwNativeReaders.IsResidencyApplied((NativeKernelEtwSession)type.GetProperty("Session", flags)!.GetValue(native)!, ticket)}; "
+                + $"floor={type.GetField("minimumWindowQpc", flags)!.GetValue(native)}; "
+                + $"sequence={type.GetField("sequence", flags)!.GetValue(native)}; aggregate={type.GetField("aggregate", flags)!.GetValue(native)}";
+        }
+        finally { Monitor.Exit(gate); }
+    }
+
+    private static ulong? TryReadRequiredTicket(EtwCpuResidencyCaptureOwner owner)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var state = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", flags)!.GetValue(owner);
+        if (state is null) return null;
+        var native = state.GetType().GetProperty("Native")!.GetValue(state)!;
+        var gate = native.GetType().GetField("gate", flags)!.GetValue(native)!;
+        // A worker may be between submitting a ticket and storing it. Do not
+        // stop its consumer using a stale ticket, or block it on this test hook.
+        if (!Monitor.TryEnter(gate)) return null;
+        try { return (ulong)native.GetType().GetField("requiredTicket", flags)!.GetValue(native)!; }
+        finally { Monitor.Exit(gate); }
+    }
+
+    // Two bounded barriers AFTER the native signal retain advancing CPU banks
+    // only once they acknowledge the ORIGINAL reader's current sample ticket.
+    // Passive shared banks may retain an unchanged CPU component and do not count.
+    // There is no per-event callback, QPC rewrite, sleep, or fake Running state.
+    private sealed class RecordedPublicationGate : IDisposable
+    {
+        private readonly TaskCompletionSource<bool>[] ready = [new(TaskCreationOptions.RunContinuationsAsynchronously), new(TaskCreationOptions.RunContinuationsAsynchronously)];
+        private readonly ManualResetEventSlim[] releases = [new(false), new(false)];
+        private readonly IDisposable observation;
+        private CpuResidencyAggregationSnapshot current = new(1, 0, 0, null, false, []);
+        private ulong sequence;
+        private int index;
+        private long? previousThrough;
+        private readonly Stopwatch elapsed = Stopwatch.StartNew();
+        private string lastObserved = "No publication observed";
+        private string firstReady = "No complete publication observed";
+        private int deferredForReader;
+        internal string Describe() => $"firstReady=[{Volatile.Read(ref firstReady)}]; latest=[{Volatile.Read(ref lastObserved)}]; slots={Volatile.Read(ref index)}; deferredForReader={Volatile.Read(ref deferredForReader)}";
+        internal static bool CanHoldBank(NativeKernelEtwSession session, Func<ulong?> readRequiredTicket)
+            => readRequiredTicket() is { } ticket && KernelEtwNativeReaders.IsResidencyApplied(session, ticket);
+        internal RecordedPublicationGate(NativeKernelEtwRecordedTestResource resource, Func<ulong?> readRequiredTicket)
+        {
+            var session = resource.Session;
+            observation = resource.ObservePublicationsAfterSignals(() =>
+            {
+                try
+                {
+                    current = KernelEtwNativeReaders.ReadResidency(session, ref sequence, session.EventsLost, 0, current,
+                        static view => new(view.Frequency, view.StartQpc, view.ThroughQpc,
+                            (view.Flags & 2) != 0 ? new DateTimeOffset(view.TimeTicks, TimeSpan.Zero) : null,
+                            (view.Flags & 1) != 0, []) { HasBoundaries = (view.Flags & 5) != 0 }) ?? current;
+                    Volatile.Write(ref lastObserved, $"elapsedMs={elapsed.Elapsed.TotalMilliseconds:F3}; sequence={sequence}; "
+                        + $"complete={current.IsComplete}; boundaries={current.HasBoundaries}; start={current.WindowStartQpc}; through={current.MeasuredThroughQpc}");
+                    if (!current.IsComplete || index >= releases.Length) return;
+                    if (!CanHoldBank(session, readRequiredTicket))
+                    {
+                        Interlocked.Increment(ref deferredForReader);
+                        return; // The queued sample must reach the next consumer boundary.
+                    }
+                    if (previousThrough is { } previous && current.MeasuredThroughQpc <= previous) return;
+                    previousThrough = current.MeasuredThroughQpc;
+                    var slot = index++;
+                    if (slot == 0) Volatile.Write(ref firstReady, Volatile.Read(ref lastObserved));
+                    ready[slot].TrySetResult(true);
+                    if (!releases[slot].Wait(TimeSpan.FromSeconds(20)))
+                        throw new TimeoutException("The test did not release its recorded publication barrier.");
+                }
+                catch (Exception error)
+                {
+                    foreach (var signal in ready) signal.TrySetException(error);
+                    ReleaseAll();
+                }
+            });
+        }
+        internal Task Ready(int slot) => ready[slot].Task;
+        internal void Release(int slot) => releases[slot].Set();
+        internal void ReleaseAll() { foreach (var release in releases) release.Set(); }
+        public void Dispose() { ReleaseAll(); observation.Dispose(); foreach (var release in releases) release.Dispose(); }
+    }
     private static CpuTopologySnapshot CreateMixedReplayTopology(int logicalProcessorCount)
     {
         Assert.True(logicalProcessorCount >= 7, "The mixed-core replay needs at least seven recorded logical CPUs.");
@@ -157,7 +343,7 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
     }
 
     [EnvironmentVariableFact("RESOURCE_MANAGER_ETL_REPLAY_PATH")]
-    public void RealKernelEtlUsesTheProductionCallbacksToBuildExecutionDurations()
+    public void RealKernelEtlUsesTheRetainedManagedOracleCallbacksToBuildExecutionDurations()
     {
         var path = Environment.GetEnvironmentVariable("RESOURCE_MANAGER_ETL_REPLAY_PATH");
         Assert.False(string.IsNullOrWhiteSpace(path));
@@ -168,17 +354,17 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             .CpuCoreResidency.RequirePublished();
         var qpcFrequency = ReadQpcFrequency(source);
         var kernel = new KernelTraceEventParser(source);
-        var buffer = new CpuResidencyAggregationBuffer(
+        var buffer = new OracleCpuResidencyAggregationBuffer(
             qpcFrequency,
             observationWindowMilliseconds: ReplayWindowMilliseconds,
             maximumActivePairs: compiledPlan.ExecutionTimeSource.MaximumActivePairs);
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
         dispatcher.AttachParser(kernel);
         dispatcher.InitializeSubscriptions(
             [new(1, "etl-production-residency",
                 KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread
                     | KernelTraceEventParser.Keywords.ContextSwitch,
-                (callbacks, _) => EtwCpuCoreResidencyReader.BindKernelEventCallbacks(
+                (callbacks, _) => OracleCpuResidencyEventAdapter.BindKernelEventCallbacks(
                     callbacks, buffer, static () => true, static _ => null))],
             new(1, DateTimeOffset.UnixEpoch));
 
@@ -300,13 +486,13 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
         using var source = new ETWTraceEventSource(path);
         var topology = new ReplayTopologySampler(source.NumberOfProcessors).CaptureTopology();
         var plan = HostManagerTestPlanFactory.CreatePlan(cpuTopology: topology).CpuCoreResidency.RequirePublished();
-        var buffer = EtwCpuCoreResidencyReader.CreateAggregationBuffer(plan, ReadQpcFrequency(source));
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        var buffer = new OracleCpuResidencyAggregationBuffer(ReadQpcFrequency(source), plan.ObservationWindowMilliseconds, plan.ExecutionTimeSource.MaximumActivePairs, plan.ExecutionTimeSource.BucketWidthMilliseconds);
+        var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
         dispatcher.AttachParser(new KernelTraceEventParser(source));
         dispatcher.InitializeSubscriptions(
             [new(1, "etl-pair-capacity", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread
                 | KernelTraceEventParser.Keywords.ContextSwitch,
-                (callbacks, _) => EtwCpuCoreResidencyReader.BindKernelEventCallbacks(callbacks, buffer, static () => true, static _ => null))],
+                (callbacks, _) => OracleCpuResidencyEventAdapter.BindKernelEventCallbacks(callbacks, buffer, static () => true, static _ => null))],
             new(1, DateTimeOffset.UnixEpoch));
         source.Process();
         var diagnostics = buffer.GetDiagnostics();
@@ -324,197 +510,6 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             : throw new InvalidDataException("The ETL source did not expose a positive QPC frequency.");
     }
 
-    private sealed class ReplayKernelEtwBroker : IKernelEtwSessionBroker, IDisposable
-    {
-        private readonly object sync = new();
-        private readonly ETWTraceEventSource source;
-        private readonly KernelEtwSubscriptionDispatcher dispatcher = new();
-        private readonly List<(long LeaseId, KernelEtwSubscriptionRequest Request)> subscriptions = [];
-        private readonly KernelEtwSessionContext context = new(73, DateTimeOffset.UnixEpoch);
-        private long nextLeaseId;
-        private bool initialized;
-        private Task? processing;
-        private Exception? processingFailure;
-        private bool running;
-        private bool disposed;
-
-        public ReplayKernelEtwBroker(string path)
-        {
-            source = new ETWTraceEventSource(path);
-            ProcessorCount = source.NumberOfProcessors;
-            QpcFrequency = ReadQpcFrequency(source);
-            var parser = new KernelTraceEventParser(source);
-            parser.ThreadCSwitch += _ =>
-            {
-                var count = Interlocked.Increment(ref contextSwitchCount);
-                if ((count & 4095) == 0) Thread.Sleep(1);
-            };
-            dispatcher.AttachParser(parser);
-        }
-
-        public int ProcessorCount { get; }
-        public long QpcFrequency { get; }
-        public int SubscribeCount { get; private set; }
-        public int MetadataBindingCount { get; private set; }
-        public int WindowHoldCount { get; private set; }
-        public KernelTraceEventParser.Keywords BoundKeywords { get; private set; }
-        public long ContextSwitchCount => Interlocked.Read(ref contextSwitchCount);
-        public bool IsRunning
-        {
-            get
-            {
-                lock (sync)
-                {
-                    return running;
-                }
-            }
-        }
-        private long contextSwitchCount;
-
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
-        {
-            lock (sync)
-            {
-                ObjectDisposedException.ThrowIf(disposed, this);
-                if (subscriptions.Count == 0 && initialized)
-                {
-                    throw new InvalidOperationException("The ETL replay broker accepts one production reader session.");
-                }
-
-                SubscribeCount++;
-                if (request.Keywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch)) WindowHoldCount++;
-                var leaseId = ++nextLeaseId;
-                subscriptions.Add((leaseId, request));
-                running = true;
-                UpdateBindings();
-                // Metadata must be bound before replay, but the file cannot be
-                // consumed until the first real observation window holds CSwitch.
-                if (processing is null && request.Keywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch))
-                {
-                    processing = Task.Run(() =>
-                    {
-                        try { source.Process(); }
-                        catch (Exception ex)
-                        {
-                            lock (sync) processingFailure = ex;
-                        }
-                    });
-                }
-                return new ReplayLease(this, leaseId);
-            }
-        }
-
-        // Keep existing callback sources by lease ID, exactly as the live
-        // dispatcher does when keyword holders change without a session restart.
-        private void UpdateBindings()
-        {
-            var registrations = subscriptions.Select(subscription =>
-                new KernelEtwSubscriptionRegistration(subscription.LeaseId, subscription.Request.Id,
-                    subscription.Request.Keywords, (callbacks, session) =>
-                    {
-                        if (subscription.Request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process)) MetadataBindingCount++;
-                        subscription.Request.Bind(callbacks, session);
-                    })).ToArray();
-            var keywords = subscriptions.Aggregate(KernelTraceEventParser.Keywords.None,
-                (value, subscription) => value | subscription.Request.Keywords);
-            if (!initialized)
-            {
-                dispatcher.InitializeSubscriptions(registrations, context);
-                initialized = true;
-            }
-            else dispatcher.UpdateSubscriptions(registrations, context, static _ => { });
-            BoundKeywords = keywords;
-        }
-
-        public KernelEtwSessionSnapshot GetSnapshot()
-        {
-            lock (sync)
-            {
-                return new KernelEtwSessionSnapshot(
-                    running ? "Running" : "Idle",
-                    running ? "ETL replay is bound." : "ETL replay is idle.",
-                    running ? 73 : 0,
-                    running ? DateTimeOffset.UnixEpoch : DateTimeOffset.MinValue,
-                    running ? BoundKeywords : KernelTraceEventParser.Keywords.None,
-                    subscriptions.Count,
-                    0);
-            }
-        }
-
-        public void ThrowIfProcessingFailed()
-        {
-            lock (sync)
-            {
-                if (processingFailure is not null)
-                {
-                    throw new InvalidOperationException(
-                        "The real ETL replay failed while driving the production reader.",
-                        processingFailure);
-                }
-            }
-        }
-
-        public string Describe()
-        {
-            lock (sync)
-            {
-                return $"subscribes={SubscribeCount}; switches={contextSwitchCount}; "
-                    + $"processingCreated={processing is not null}; processingCompleted={processing?.IsCompleted}; "
-                    + $"running={running}; failure={processingFailure?.GetType().Name}: {processingFailure?.Message}";
-            }
-        }
-
-        public void Dispose()
-        {
-            Task? task;
-            lock (sync)
-            {
-                if (disposed)
-                {
-                    return;
-                }
-
-                disposed = true;
-                running = false;
-                dispatcher.CancelAll();
-                subscriptions.Clear();
-                task = processing;
-            }
-
-            source.StopProcessing();
-            task?.Wait(TimeSpan.FromSeconds(5));
-            source.Dispose();
-        }
-
-        private void Release(long leaseId)
-        {
-            bool stop;
-            lock (sync)
-            {
-                subscriptions.RemoveAll(subscription => subscription.LeaseId == leaseId);
-                UpdateBindings();
-                stop = subscriptions.Count == 0;
-                if (stop) running = false;
-            }
-            if (stop) source.StopProcessing();
-        }
-
-        private sealed class ReplayLease(ReplayKernelEtwBroker owner, long leaseId) : IKernelEtwSubscription
-        {
-            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-
-            private int disposed;
-
-            public void Dispose()
-            {
-                if (Interlocked.Exchange(ref disposed, 1) == 0)
-                {
-                    owner.Release(leaseId);
-                }
-            }
-        }
-    }
-
     private static async Task WaitUntilAsync(Func<bool> predicate)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -522,6 +517,11 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
         {
             await Task.Delay(10, timeout.Token);
         }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate, CancellationToken cancellationToken)
+    {
+        while (!predicate()) await Task.Delay(10, cancellationToken);
     }
 
     private sealed class ReplayTopologySampler(int logicalProcessorCount) : ICpuTopologySampler

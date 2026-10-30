@@ -8,17 +8,18 @@ internal static partial class Program
         long ImageUnload, long Isr, long Dpc, long ContextSwitchBindings, long ImageBindings,
         bool ContextSwitchSourceActive, bool ImageSourceActive);
 
-    // Adds callbacks to the existing holder's managed event source only. This
-    // decorator never acquires a holder or changes any subscription keyword.
+    // Reads native cumulative physical counters without per-event managed callbacks.
+    // This decorator never takes a hold or changes its keywords or outputs.
     private sealed class ActualUseEtwCounters(KernelEtwSessionBroker inner) : IKernelEtwSessionBroker
     {
-        private long contextSwitch, imageRundown, imageLoad, imageUnload, isr, dpc, contextSwitchBindings, imageBindings;
+        private long contextSwitchBindings, imageBindings;
+        private readonly Dictionary<long, Dictionary<string, long>> physicalByGeneration = [];
         private KernelEtwEventSource? contextSwitchSource, imageSource;
         private readonly object registrationsGate = new();
         private readonly Dictionary<long, KernelRegistrationEvidence> registrations = [];
         private long nextRegistration;
         public KernelEtwSessionSnapshot GetSnapshot() => inner.GetSnapshot();
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
             long registration;
             lock (registrationsGate)
@@ -31,7 +32,7 @@ internal static partial class Program
                 var forwarded = request.Id is "cpu-core-residency" or "system-interrupts"
                     ? request with { Bind = (source, context) => BindCounters(request, source, context) } : request;
                 // Tracking locks never span production subscription, binding or disposal.
-                return new TrackedSubscription(this, registration, inner.Subscribe(forwarded));
+                return new TrackedSubscription(this, registration, inner.Acquire(forwarded));
             }
             catch { Forget(registration); throw; }
         }
@@ -42,19 +43,11 @@ internal static partial class Program
             {
                 Interlocked.Increment(ref contextSwitchBindings);
                 Volatile.Write(ref contextSwitchSource, source);
-                source.ThreadCSwitch += _ => Interlocked.Increment(ref contextSwitch);
             }
             else
             {
                 Interlocked.Increment(ref imageBindings);
                 Volatile.Write(ref imageSource, source);
-                source.ImageDCStart += _ => Interlocked.Increment(ref imageRundown);
-                source.ImageLoad += _ => Interlocked.Increment(ref imageLoad);
-                source.ImageUnload += _ => Interlocked.Increment(ref imageUnload);
-                source.PerfInfoISR += _ => Interlocked.Increment(ref isr);
-                source.PerfInfoDPC += _ => Interlocked.Increment(ref dpc);
-                source.PerfInfoThreadedDPC += _ => Interlocked.Increment(ref dpc);
-                source.PerfInfoTimerDPC += _ => Interlocked.Increment(ref dpc);
             }
         }
         internal KernelRegistrationEvidence[] ReadRegistrations()
@@ -73,14 +66,29 @@ internal static partial class Program
             public void Dispose()
             {
                 if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+                owner.Read();
                 try { subscription.Dispose(); }
-                finally { owner.Forget(registration); }
+                finally { owner.Read(); owner.Forget(registration); }
             }
         }
-        internal ActualUseEventCounts Read() => new(Interlocked.Read(ref contextSwitch), Interlocked.Read(ref imageRundown),
-            Interlocked.Read(ref imageLoad), Interlocked.Read(ref imageUnload), Interlocked.Read(ref isr),
-            Interlocked.Read(ref dpc), Interlocked.Read(ref contextSwitchBindings), Interlocked.Read(ref imageBindings),
-            Volatile.Read(ref contextSwitchSource)?.IsActive == true, Volatile.Read(ref imageSource)?.IsActive == true);
+        internal ActualUseEventCounts Read()
+        {
+            var name = ResourceManagerEtwSessionNames.Create(ResourceManagerEtwSessionNames.KernelPrefix,
+                ResourceManagerEtwSessionNames.CurrentOwner);
+            var session = EtwEventDropDiagnostics.Read().Sessions.SingleOrDefault(value => value.Name == name);
+            lock (registrationsGate)
+            {
+                if (session is not null)
+                    physicalByGeneration[session.Generation] = session.Kinds
+                        .Where(value => !value.Kind.StartsWith("holder/", StringComparison.Ordinal))
+                        .ToDictionary(value => value.Kind, value => value.Received, StringComparer.Ordinal);
+                long Total(string kind) => physicalByGeneration.Values.Sum(value => value.GetValueOrDefault(kind));
+                return new(Total("ThreadCSwitch"), Total("ImageDCStart"), Total("ImageLoad"), Total("ImageUnload"),
+                    Total("PerfInfoISR"), Total("PerfInfoDPC") + Total("PerfInfoThreadedDPC") + Total("PerfInfoTimerDPC"),
+                    Interlocked.Read(ref contextSwitchBindings), Interlocked.Read(ref imageBindings),
+                    Volatile.Read(ref contextSwitchSource)?.IsActive == true, Volatile.Read(ref imageSource)?.IsActive == true);
+            }
+        }
     }
 
     private sealed record ActualUseEventRateInterval(string Phase, string WindowState, double Seconds,

@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.ReadWrite.Native;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -70,7 +71,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
     }
 
     [Fact]
-    public async Task LastBorrowedNetworkDemandStopsOnlyItsLeaseAndRestartWarmsAgain()
+    public async Task BorrowWithdrawalLeavesExplicitNetworkRunHeldAndRestartWarmsAgain()
     {
         var broker = new Broker(); using var owner = ProcessOwner(new(), broker);
         await owner.Backend.DiscoverAsync(default);
@@ -85,8 +86,13 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         owner.StartNetworkCapture();
         var warming = await first.CollectAsync(fields, new Permit(), timeout.Token);
         Assert.True(warming.Committed); Assert.Equal(1, broker.Acquires);
+        var required = KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.NetworkTCPIP;
+        Assert.Equal(required, broker.Keywords);
         first.SynchronizeDemand([]); Assert.Equal(0, broker.Releases);
-        second.SynchronizeDemand([]); Assert.Equal(1, broker.Releases);
+        second.SynchronizeDemand([]); Assert.Equal(0, broker.Releases);
+        Assert.Equal(required, broker.Keywords);
+        owner.StopNetworkCapture(); Assert.Equal(1, broker.Releases);
+        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.Keywords);
         second.SynchronizeDemand(fields);
         await second.CollectAsync(fields, new Permit(), timeout.Token);
         Assert.Equal(1, broker.Acquires);
@@ -95,7 +101,10 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         Assert.Equal(2, broker.Acquires);
         Assert.All(restarted.Readings, reading => Assert.Equal(FieldObservationStatus.Unavailable, reading.Status));
         Assert.Null(owner.Current.ReadPart(ProcessMetricDatasetIds.ObservedNetworkTraffic)!.CapturedAt);
-        second.Dispose(); Assert.Equal(2, broker.Releases);
+        second.Dispose(); Assert.Equal(1, broker.Releases);
+        Assert.Equal(required, broker.Keywords);
+        owner.StopNetworkCapture(); Assert.Equal(2, broker.Releases);
+        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.Keywords);
         Assert.False(broker.Disposed);
     }
 
@@ -116,6 +125,46 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         Assert.Equal(1, broker.Acquires);
         owner.StartNetworkCapture(); Assert.Equal(2, broker.Acquires);
         owner.Dispose(); Assert.Equal(2, broker.Releases); Assert.False(broker.Disposed);
+    }
+
+    [Fact]
+    public async Task BorrowWithdrawalCannotStopAnExplicitDiskRun()
+    {
+        var broker = new Broker(); using var owner = ProcessOwner(new(), broker);
+        await owner.Backend.DiscoverAsync(default);
+        var names = ProcessMetricFieldRegistry.Definitions.Where(field => field.DatasetId == ProcessMetricDatasetIds.ObservedPhysicalDiskIo)
+            .Select(field => field.Name).ToArray();
+        Assert.Equal(2, names.Length);
+        // Discovery has no disk scope until the explicit run publishes one.
+        Assert.Empty(ProcessFields(owner, names));
+        Assert.Equal(0, broker.Acquires);
+        owner.StartDiskCapture();
+        Assert.Equal(1, broker.Acquires);
+        var required = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.DiskIO;
+        Assert.Equal(required, broker.Keywords);
+        Assert.False(broker.Keywords.HasFlag(KernelTraceEventParser.Keywords.DiskIOInit));
+        var process = Assert.Single(owner.Current.ReadPart(ProcessMetricDatasetIds.BasicMetrics)!.Processes);
+        var pid = checked((uint)process.ProcessId);
+        var birth = ulong.Parse(process.CreationWindowsFileTime100Ns, System.Globalization.CultureInfo.InvariantCulture);
+        broker.NativeResource.Identities[pid] = new(birth);
+        broker.NativeResource.Disk(Environment.TickCount64 + 1, pid, 0, 4096, false, birth + 1);
+        broker.PublishAfterWindow();
+        var publication = await owner.CollectAsync(names);
+        Assert.NotNull(publication.CapturedAt);
+        var fields = ProcessFields(owner, names);
+        Assert.Equal(2, fields.Length);
+        using var borrow = owner.BorrowSubscriptionCapture();
+        borrow.SynchronizeDemand(fields);
+        Assert.Equal(1, broker.Acquires);
+        borrow.SynchronizeDemand([]); borrow.Dispose();
+        Assert.Equal(0, broker.Releases);
+        Assert.Equal(required, broker.Keywords);
+        owner.StopDiskCapture();
+        Assert.Equal(1, broker.Releases);
+        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.Keywords);
+        await owner.CollectAsync(names);
+        Assert.Equal(1, broker.Acquires);
+        owner.Dispose(); Assert.Equal(1, broker.Releases); Assert.False(broker.Disposed);
     }
 
     [Fact]
@@ -361,23 +410,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         public void Revoke() { lock (gate) active = false; }
         public bool TryPublish(Action commit) { lock (gate) { if (!active) return false; commit(); return true; } }
     }
-    private sealed class Broker : IKernelEtwSessionBroker, IDisposable
-    {
-        internal int Acquires, Releases; internal bool Disposed; private KernelEtwSessionContext context = new(0, DateTimeOffset.UnixEpoch);
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
-        {
-            context = new(++Acquires, DateTimeOffset.UtcNow); var source = new KernelEtwEventSource();
-            request.Bind(source, context); source.Activate(); return new Lease(this, source);
-        }
-        public KernelEtwSessionSnapshot GetSnapshot() => new(Acquires == Releases ? "Idle" : "Running", "recorded", context.Generation, context.StartedAt,
-            Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords.NetworkTCPIP, Acquires - Releases, 0);
-        public void Dispose() => Disposed = true;
-        private sealed class Lease(Broker owner, KernelEtwEventSource source) : IKernelEtwSubscription
-        {
-            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-            private int disposed; public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) { source.Cancel(); owner.Releases++; } }
-        }
-    }
+    private sealed class Broker : ProcessFieldEtwTestBroker { }
     private static WindowsHardwareMetricResources UnusedResources(Action<bool> notebook, Func<MemoryMetrics>? memory = null) => new()
     {
         ReadCpuCounters = () => throw new InvalidOperationException(), ReadMemory = memory ?? (() => throw new InvalidOperationException()),

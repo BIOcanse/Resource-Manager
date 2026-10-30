@@ -13,6 +13,7 @@ public sealed partial class HostManagerPlanCompiler
     [JsonSerializable(typeof(HostManagerConfigurationProfile))]
     [JsonSerializable(typeof(FreedomPointRegistry.CpuScoringInput))]
     [JsonSerializable(typeof(CompiledCpuCoreWeights))]
+    [JsonSerializable(typeof(CompiledKernelEtwLimits))]
     [JsonSerializable(typeof(CpuExecutionTimeSourceDeclaration))]
     [JsonSerializable(typeof(CpuSmtAccountingDeclaration))]
     [JsonSerializable(typeof(CompiledCpuAutomaticExclusivityPolicy))]

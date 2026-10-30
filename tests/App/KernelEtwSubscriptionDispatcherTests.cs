@@ -1,6 +1,7 @@
 using Microsoft.Diagnostics.Tracing.Parsers;
-using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
+using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -8,103 +9,81 @@ public sealed class KernelEtwSubscriptionDispatcherTests
 {
     private static readonly KernelEtwSessionContext Context = new(17, DateTimeOffset.UnixEpoch);
 
-    public static IEnumerable<object[]> EventKinds => Enum.GetNames<KernelEtwEventKind>().Select(kind => new object[] { kind });
-
-    [Theory]
-    [MemberData(nameof(EventKinds))]
-    public void EveryKindDistinguishesAnEmptyBindingFromARealHandler(string name)
-    {
-        var payload = typeof(KernelEtwEventSource).GetEvent(name)!.EventHandlerType!.GetGenericArguments()[0];
-        typeof(KernelEtwSubscriptionDispatcherTests).GetMethod(nameof(CheckKind),
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
-            .MakeGenericMethod(payload).Invoke(null, [name]);
-    }
-
-    private static void CheckKind<T>(string name)
-    {
-        var kind = Enum.Parse<KernelEtwEventKind>(name);
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
-        var delivered = 0;
-        var deliverMethod = typeof(KernelEtwEventSource).GetMethod("Deliver" + name,
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        bool Deliver(KernelEtwEventSource source, T data) => (bool)deliverMethod.Invoke(source, [data])!;
-        var empty = new KernelEtwSubscriptionRegistration(1, "empty", KernelTraceEventParser.Keywords.Process, (_, _) => { });
-        var used = new KernelEtwSubscriptionRegistration(2, "used", KernelTraceEventParser.Keywords.Process,
-            (source, _) => typeof(KernelEtwEventSource).GetEvent(name)!.AddEventHandler(source, (Action<T>)(_ => delivered++)));
-        dispatcher.InitializeSubscriptions([empty], Context);
-        dispatcher.Dispatch<T>(kind, default!, Deliver);
-        dispatcher.UpdateSubscriptions([empty, used], Context, _ => { });
-        dispatcher.Dispatch<T>(kind, default!, Deliver);
-        dispatcher.UpdateSubscriptions([empty], Context, _ => { });
-        dispatcher.Dispatch<T>(kind, default!, Deliver);
-        var count = dispatcher.Counters[(int)kind].Read();
-        Assert.Equal(name, count.Kind);
-        Assert.Equal((3L, 2L), (count.Received, count.Dropped));
-        Assert.Equal(1, delivered);
-    }
-
     [Fact]
-    public void CountsEachReceivedKindOnceAndDropsOnlyWhenEveryActiveBindingLacksAHandler()
+    public void RepeatedBindingsRetireNativeFramesAndKeepStableHolderTotalsBeyondTheDescriptorCap()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
-        var consumer = new Consumer(1, KernelTraceEventParser.Keywords.Process);
-        var empty = new KernelEtwSubscriptionRegistration(2, "empty", KernelTraceEventParser.Keywords.Process, (_, _) => { });
-        dispatcher.InitializeSubscriptions([consumer.Registration, empty], Context);
-        EmitProcessStart(dispatcher);
-        dispatcher.Dispatch<ProcessTraceData>(KernelEtwEventKind.ProcessEndGroup, null!,
-            static (source, data) => source.DeliverProcessEndGroup(data));
-        dispatcher.UpdateSubscriptions([empty], Context, _ => { });
-        EmitProcessStart(dispatcher);
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
+        EtwEventDropCounter? counter = null;
+        for (var index = 0; index < 130; index++) // Fixture declares 128 descriptors.
+        {
+            var registration = new KernelEtwSubscriptionRegistration(index + 1, "repeated-holder", KernelTraceEventParser.Keywords.Process,
+                (source, _) => counter = source.ConsumerCounter("ProcessStartGroup")) { NativeOutputs = KernelEtwNativeOutputs.Residency };
+            if (index == 0) dispatcher.InitializeSubscriptions([registration], fixture.Context);
+            else dispatcher.UpdateSubscriptions([registration], fixture.Context, _ => throw new InvalidOperationException("Flags remain enabled."));
+            fixture.ProcessStart(index + 1);
+            dispatcher.UpdateSubscriptions([], fixture.Context, _ => throw new InvalidOperationException("No keyword call on last return."));
+            Assert.NotNull(counter);
+            Assert.Equal(index + 1, counter.Read().Received);
+            Assert.Equal(0, counter.Read().Dropped);
+        }
         dispatcher.CancelAll();
-        EmitProcessStart(dispatcher);
-
-        var start = dispatcher.Counters[(int)KernelEtwEventKind.ProcessStartGroup].Read();
-        var end = dispatcher.Counters[(int)KernelEtwEventKind.ProcessEndGroup].Read();
-        Assert.Equal((3L, 2L), (start.Received, start.Dropped));
-        Assert.Equal((1L, 1L), (end.Received, end.Dropped));
-        Assert.Equal(1, consumer.Received);
-        Assert.Equal(28, dispatcher.Counters.Length);
-        var next = new KernelEtwSubscriptionDispatcher();
-        Assert.All(next.Counters, counter => Assert.Equal((0L, 0L), (counter.Read().Received, counter.Read().Dropped)));
     }
 
     [Fact]
-    public void CancellingLaterBindingsDuringDeliveryDoesNotDropAnAlreadyUsedEvent()
+    public void CancelledConsumerIsSkippedByAPublicationThatCapturedTheOldSet()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
-        var consumer = new Consumer(1, KernelTraceEventParser.Keywords.Process) { OnDelivery = dispatcher.CancelAll };
-        dispatcher.InitializeSubscriptions([consumer.Registration], Context);
-        EmitProcessStart(dispatcher);
-        EmitProcessStart(dispatcher);
-        var count = dispatcher.Counters[(int)KernelEtwEventKind.ProcessStartGroup].Read();
-        Assert.Equal((2L, 1L), (count.Received, count.Dropped));
-    }
-
-    [Fact]
-    public void SteadyStateDispatchDoesNotAllocateWithOrWithoutAHandler()
-    {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
-        var consumer = new Consumer(1, KernelTraceEventParser.Keywords.Process);
-        dispatcher.InitializeSubscriptions([consumer.Registration], Context);
-        EmitProcessStart(dispatcher); // Warm the cached delivery delegate.
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++) EmitProcessStart(dispatcher);
-        var usedAllocations = GC.GetAllocatedBytesForCurrentThread() - before;
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
+        var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
+        var second = new Consumer(2, KernelTraceEventParser.Keywords.Process);
+        first.OnDelivery = () => dispatcher.UpdateSubscriptions([first.Registration], Context,
+            _ => throw new InvalidOperationException("Unchanged union must not be written."));
+        dispatcher.InitializeSubscriptions([first.Registration, second.Registration], Context);
+        fixture.Publish(1000); fixture.Publish(2000);
+        Assert.Equal(2, first.Received); Assert.Equal(0, second.Received);
+        Assert.False(second.Source!.IsActive); Assert.Equal(1, first.BindCount);
+        Assert.All(first.Payloads, payload => Assert.Equal(fixture.Frequency, payload.QpcFrequency));
+        Assert.Equal((2L, 0L), (dispatcher.PublicationCounter.Read().Received, dispatcher.PublicationCounter.Read().Dropped));
         dispatcher.CancelAll();
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++) EmitProcessStart(dispatcher);
-        var droppedAllocations = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0, usedAllocations);
-        Assert.Equal(0, droppedAllocations);
-        var count = dispatcher.Counters[(int)KernelEtwEventKind.ProcessStartGroup].Read();
-        Assert.Equal((2001L, 1000L), (count.Received, count.Dropped));
     }
 
     [Fact]
-    public void DeniedRetriesLeaveUncoveredConsumersUnboundUntilKeywordsAreEnabled()
+    public void CancelAllPreventsLaterPayloadDeliveryWithoutWaitingForTheCurrentCallback()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
-        var first = new Consumer(1, KernelTraceEventParser.Keywords.ContextSwitch);
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
+        var first = new Consumer(1, KernelTraceEventParser.Keywords.Process) { OnDelivery = dispatcher.CancelAll };
+        var second = new Consumer(2, KernelTraceEventParser.Keywords.Process);
+        dispatcher.InitializeSubscriptions([first.Registration, second.Registration], Context);
+        fixture.Publish(1000); fixture.Publish(2000);
+        Assert.Equal(1, first.Received); Assert.Equal(0, second.Received);
+        Assert.Single(first.Payloads); Assert.False(first.Source!.IsActive); Assert.False(second.Source!.IsActive);
+        Assert.Equal((1L, 0L), (dispatcher.PublicationCounter.Read().Received, dispatcher.PublicationCounter.Read().Dropped));
+    }
+
+    [Fact]
+    public void ABindingWithoutAPublicationObserverDoesNotConsumeThePublishedPayload()
+    {
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
+        var empty = new KernelEtwSubscriptionRegistration(1, "empty", KernelTraceEventParser.Keywords.Process, (_, _) => { })
+            { NativeOutputs = KernelEtwNativeOutputs.Residency };
+        dispatcher.InitializeSubscriptions([empty], Context); fixture.Publish(1000);
+        var used = new Consumer(2, KernelTraceEventParser.Keywords.Process);
+        dispatcher.UpdateSubscriptions([empty, used.Registration], Context, _ => { }); fixture.Publish(2000);
+        dispatcher.UpdateSubscriptions([empty], Context, _ => { }); fixture.Publish(3000);
+        Assert.Equal(1, used.Received); Assert.Single(used.Payloads);
+        Assert.Equal((3L, 2L), (dispatcher.PublicationCounter.Read().Received, dispatcher.PublicationCounter.Read().Dropped));
+        Assert.Equal(28, dispatcher.Counters.Length); dispatcher.CancelAll();
+    }
+
+    [Fact]
+    public void DeniedRetriesKeepCoveredNativeBindingsAndLeavePendingKeywordsUnbound()
+    {
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
+        var first = new Consumer(1, KernelTraceEventParser.Keywords.ContextSwitch | KernelTraceEventParser.Keywords.Process);
         var pending = new Consumer(2, KernelTraceEventParser.Keywords.DiskIO);
         var covered = new Consumer(3, KernelTraceEventParser.Keywords.Process);
         dispatcher.InitializeSubscriptions([first.Registration], Context);
@@ -114,226 +93,199 @@ public sealed class KernelEtwSubscriptionDispatcherTests
             Assert.Throws<UnauthorizedAccessException>(() => dispatcher.UpdateSubscriptions(
                 [first.Registration, pending.Registration, covered.Registration], Context,
                 _ => throw new UnauthorizedAccessException("fixture denied")));
-            EmitProcessStart(dispatcher);
-            Assert.Equal(0, pending.BindCount);
-            Assert.Null(pending.Source);
-            Assert.Equal(1, first.BindCount);
-            Assert.Equal(1, covered.BindCount);
+            fixture.Publish((retry + 1) * 1000);
+            Assert.Equal(retry + 1, first.Received); Assert.Equal(retry + 1, covered.Received);
+            Assert.Equal(0, pending.Received);
+            Assert.Equal(0, pending.BindCount); Assert.Null(pending.Source);
+            Assert.Equal(1, first.BindCount); Assert.Equal(1, covered.BindCount);
             Assert.Same(before, first.Source);
-            Assert.Equal(retry + 1, first.Received);
-            Assert.Equal(retry + 1, covered.Received);
+            Assert.True(first.Source!.IsActive); Assert.True(covered.Source!.IsActive);
+            Assert.Same(fixture.Session, first.Source.NativeSession);
         }
-
         dispatcher.UpdateSubscriptions([first.Registration, pending.Registration, covered.Registration], Context, _ => { });
-        EmitProcessStart(dispatcher);
-        Assert.Equal(1, pending.BindCount);
-        Assert.Equal(1, pending.Received);
-        Assert.Equal(1, first.BindCount);
-        Assert.Equal(1, covered.BindCount);
+        fixture.Publish(4000);
+        Assert.Equal(4, first.Received); Assert.Equal(4, covered.Received); Assert.Equal(1, pending.Received);
+        Assert.Equal(1, pending.BindCount); Assert.True(pending.Source!.IsActive);
+        Assert.Equal(1, first.BindCount); Assert.Equal(1, covered.BindCount);
+        dispatcher.CancelAll();
     }
 
     [Fact]
-    public void DeniedReductionRemovesWithdrawnCallbacksAndPreservesTheSurvivor()
+    public void DeniedReductionCancelsRemovedBindingAndPreservesItsSurvivor()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
         var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
         var removed = new Consumer(2, KernelTraceEventParser.Keywords.NetworkTCPIP);
         dispatcher.InitializeSubscriptions([first.Registration, removed.Registration], Context);
-        Assert.Throws<UnauthorizedAccessException>(() => dispatcher.UpdateSubscriptions(
-            [first.Registration], Context, _ => throw new UnauthorizedAccessException("fixture denied")));
-        EmitProcessStart(dispatcher);
-        Assert.Equal(1, first.Received);
-        Assert.Equal(0, removed.Received);
-        Assert.Equal(1, first.BindCount);
-
-        // Restoring a subscription covered by the still-enabled union needs no control call.
+        var original = first.Source;
+        Assert.Throws<UnauthorizedAccessException>(() => dispatcher.UpdateSubscriptions([first.Registration], Context,
+            _ => throw new UnauthorizedAccessException("fixture denied")));
+        fixture.Publish(1000);
+        Assert.Equal(1, first.Received); Assert.Equal(0, removed.Received);
+        Assert.True(first.Source!.IsActive); Assert.False(removed.Source!.IsActive);
+        Assert.Same(original, first.Source); Assert.Equal(1, first.BindCount);
+        var priorRemoved = removed.Source;
         dispatcher.UpdateSubscriptions([first.Registration, removed.Registration], Context,
-            _ => throw new InvalidOperationException("Denied reduction must retain the native flags."));
-        EmitProcessStart(dispatcher);
-        Assert.Equal(2, first.Received);
-        Assert.Equal(1, removed.Received);
+            _ => throw new InvalidOperationException("Still-enabled flags cover this restoration."));
+        fixture.Publish(2000);
+        Assert.Equal(2, first.Received); Assert.Equal(1, removed.Received);
+        Assert.NotSame(priorRemoved, removed.Source); Assert.Equal(2, removed.BindCount);
+        Assert.True(removed.Source!.IsActive); Assert.False(priorRemoved!.IsActive);
+        dispatcher.CancelAll();
     }
 
     [Fact]
-    public void WithdrawingAllCallbacksDoesNotWriteKeywordsAndAllowsRebindingOnTheSameSession()
+    public void WithdrawingAllBindingsDoesNotWriteKeywordsAndDoesNotReviveCancelledSources()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
         var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
         dispatcher.InitializeSubscriptions([first.Registration], Context);
+        var cancelled = first.Source;
         dispatcher.UpdateSubscriptions([], Context, _ => throw new InvalidOperationException("No control call expected."));
-        EmitProcessStart(dispatcher);
-        Assert.Equal(0, first.Received);
-        Assert.False(first.Source!.IsActive);
+        fixture.Publish(1000); Assert.Equal(0, first.Received);
+        Assert.False(cancelled!.IsActive);
         dispatcher.UpdateSubscriptions([first.Registration], Context, _ => throw new InvalidOperationException("Flags remain enabled."));
-        EmitProcessStart(dispatcher);
-        Assert.Equal(1, first.Received);
+        fixture.Publish(2000); Assert.Equal(1, first.Received);
+        Assert.NotSame(cancelled, first.Source); Assert.True(first.Source!.IsActive);
+        Assert.False(cancelled.IsActive); Assert.Equal(2, first.BindCount);
+        dispatcher.CancelAll();
     }
 
     [Fact]
-    public void SameKeywordSubscriptionActivatesWithoutEventsOrRebindingExistingConsumers()
+    public void SameKeywordAdditionBindsImmediatelyWithoutRebindingTheExistingNativeReference()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
         var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
         var second = new Consumer(2, KernelTraceEventParser.Keywords.Process);
         dispatcher.InitializeSubscriptions([first.Registration], Context);
-        var updates = new List<KernelTraceEventParser.Keywords>();
         var activation = Context with { StartedAt = Context.StartedAt.AddMinutes(1) };
-
-        dispatcher.UpdateSubscriptions([first.Registration, second.Registration], activation, updates.Add);
-        EmitProcessStart(dispatcher);
-
-        Assert.Equal(1, first.BindCount);
-        Assert.Equal(1, second.BindCount);
-        Assert.Equal(Context, first.Context);
-        Assert.Equal(activation, second.Context);
-        Assert.Equal(1, first.Received);
-        Assert.Equal(1, second.Received);
-        Assert.Empty(updates);
+        dispatcher.UpdateSubscriptions([first.Registration, second.Registration], activation,
+            _ => throw new InvalidOperationException("Unchanged union must not be written."));
+        Assert.Equal(1, first.BindCount); Assert.Equal(1, second.BindCount);
+        fixture.Publish(1000); Assert.Equal(1, first.Received); Assert.Equal(1, second.Received);
+        Assert.Equal(Context, first.Context); Assert.Equal(activation, second.Context);
+        Assert.True(first.Source!.IsActive); Assert.True(second.Source!.IsActive);
+        Assert.Same(first.Source.NativeSession, second.Source.NativeSession);
+        dispatcher.CancelAll();
     }
 
     [Fact]
-    public void NewConsumerIsUnpublishedUntilTheKeywordUpdateSucceeds()
+    public void NewNativeBindingIsNotPublishedBeforeKeywordUpdateSucceeds()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
         var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
         var second = new Consumer(2, KernelTraceEventParser.Keywords.NetworkTCPIP);
         dispatcher.InitializeSubscriptions([first.Registration], Context);
         var updates = new List<KernelTraceEventParser.Keywords>();
-
-        dispatcher.UpdateSubscriptions([first.Registration, second.Registration], Context, keywords =>
-        {
-            updates.Add(keywords);
-            EmitProcessStart(dispatcher);
-            Assert.Equal(0, second.Received);
-            Assert.Null(second.Source);
-            Assert.Equal(0, second.BindCount);
-        });
-        EmitProcessStart(dispatcher);
-
+        dispatcher.UpdateSubscriptions([first.Registration, second.Registration], Context, flags =>
+        { updates.Add(flags); fixture.Publish(1000); Assert.Equal(1, first.Received); Assert.Equal(0, second.Received);
+            Assert.Null(second.Source); Assert.Equal(0, second.BindCount); Assert.True(first.Source!.IsActive); });
+        fixture.Publish(2000);
+        Assert.Equal(2, first.Received); Assert.Equal(1, second.Received); Assert.Single(second.Payloads);
         Assert.Equal(new[] { KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.NetworkTCPIP }, updates);
-        Assert.Equal(2, first.Received);
-        Assert.Equal(1, second.Received);
-        Assert.True(second.Source!.IsActive);
+        Assert.True(second.Source!.IsActive); Assert.Equal(1, first.BindCount);
+        dispatcher.CancelAll();
     }
 
     [Fact]
-    public void CancelledConsumerIsSkippedEvenByADispatchThatAlreadyCapturedTheOldSet()
+    public void BindingFailureAfterUpdateKeepsThePreviousNativeSetPublished()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
-        var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
-        var second = new Consumer(2, KernelTraceEventParser.Keywords.Process);
-        first.OnDelivery = () => dispatcher.UpdateSubscriptions([first.Registration], Context,
-            _ => throw new InvalidOperationException("Unchanged keywords must not be written."));
-        dispatcher.InitializeSubscriptions([first.Registration, second.Registration], Context);
-
-        EmitProcessStart(dispatcher);
-        EmitProcessStart(dispatcher);
-
-        Assert.Equal(2, first.Received);
-        Assert.Equal(0, second.Received);
-        Assert.False(second.Source!.IsActive);
-        Assert.Equal(1, first.BindCount);
-    }
-
-    [Fact]
-    public void RemovingAUniqueKeywordReducesTheNativeUnionWithoutRebindingTheSurvivor()
-    {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
-        var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
-        var second = new Consumer(2, KernelTraceEventParser.Keywords.NetworkTCPIP);
-        dispatcher.InitializeSubscriptions([first.Registration, second.Registration], Context);
-        var updates = new List<KernelTraceEventParser.Keywords>();
-
-        dispatcher.UpdateSubscriptions([first.Registration], Context, updates.Add);
-        EmitProcessStart(dispatcher);
-
-        Assert.Equal(new[] { KernelTraceEventParser.Keywords.Process }, updates);
-        Assert.Equal(1, first.BindCount);
-        Assert.Equal(1, first.Received);
-        Assert.Equal(0, second.Received);
-    }
-
-    [Fact]
-    public void FailedBindingAfterKeywordUpdateDoesNotChangeThePublishedSet()
-    {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
         var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
         dispatcher.InitializeSubscriptions([first.Registration], Context);
+        var original = first.Source;
         var failure = new InvalidOperationException("fixture binding failure");
-        var invalid = new KernelEtwSubscriptionRegistration(2, "invalid",
-            KernelTraceEventParser.Keywords.NetworkTCPIP, (_, _) => throw failure);
-
+        var invalid = new KernelEtwSubscriptionRegistration(2, "invalid", KernelTraceEventParser.Keywords.NetworkTCPIP, (_, _) => throw failure);
         var updates = new List<KernelTraceEventParser.Keywords>();
-        Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => dispatcher.UpdateSubscriptions(
-            [first.Registration, invalid], Context, updates.Add)));
-        EmitProcessStart(dispatcher);
-
-        Assert.Equal(1, first.Received);
-        Assert.True(first.Source!.IsActive);
+        Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => dispatcher.UpdateSubscriptions([first.Registration, invalid], Context, updates.Add)));
+        fixture.Publish(1000); Assert.Equal(1, first.Received);
+        Assert.Same(original, first.Source); Assert.True(original!.IsActive); Assert.Equal(1, first.BindCount);
         Assert.Equal(new[] { KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.NetworkTCPIP }, updates);
+        dispatcher.CancelAll();
     }
 
     [Fact]
-    public void FailedNativeUpdateDoesNotActivateNewCallbacksAndPreservesTheFailure()
+    public void NativeUpdateFailurePreservesItsErrorAndDoesNotActivateANewBinding()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        using var fixture = new NativeColdFixture();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, _ => { });
         var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
-        var second = new Consumer(2, KernelTraceEventParser.Keywords.NetworkTCPIP);
+        var pending = new Consumer(2, KernelTraceEventParser.Keywords.NetworkTCPIP);
         dispatcher.InitializeSubscriptions([first.Registration], Context);
         var failure = new InvalidOperationException("fixture keyword failure");
-
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => dispatcher.UpdateSubscriptions(
-            [first.Registration, second.Registration], Context, _ => throw failure)));
-        EmitProcessStart(dispatcher);
-
-        Assert.Equal(1, first.Received);
-        Assert.Equal(0, second.Received);
-        Assert.Null(second.Source);
-        Assert.Equal(0, second.BindCount);
+            [first.Registration, pending.Registration], Context, _ => throw failure)));
+        fixture.Publish(1000); Assert.Equal(1, first.Received); Assert.Equal(0, pending.Received);
+        Assert.True(first.Source!.IsActive); Assert.Null(pending.Source); Assert.Equal(0, pending.BindCount);
+        dispatcher.CancelAll();
+        Assert.False(first.Source.IsActive);
     }
 
     [Fact]
-    public void CancelAllPreventsFurtherDeliveryWithoutWaitingForTheCurrentCallback()
+    public void RequestedOutputsArePreparedBeforeTheKeywordChangeThatEmitsTheirRundown()
     {
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        using var fixture = new NativeColdFixture();
+        var applied = new List<KernelEtwNativeOutputs>();
+        var dispatcher = new KernelEtwSubscriptionDispatcher(fixture.Session, applied.Add);
         var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
-        var second = new Consumer(2, KernelTraceEventParser.Keywords.Process);
-        first.OnDelivery = dispatcher.CancelAll;
-        dispatcher.InitializeSubscriptions([first.Registration, second.Registration], Context);
-
-        EmitProcessStart(dispatcher);
-        EmitProcessStart(dispatcher);
-
-        Assert.Equal(1, first.Received);
-        Assert.Equal(0, second.Received);
-        Assert.False(first.Source!.IsActive);
-        Assert.False(second.Source!.IsActive);
+        var binds = 0;
+        // Enabling ImageLoad emits a one-time rundown, kernel modules first. The
+        // interrupt output must exist before that change; its binding still waits.
+        var interrupts = new KernelEtwSubscriptionRegistration(2, "interrupts", KernelTraceEventParser.Keywords.ImageLoad,
+            (_, _) => binds++) { NativeOutputs = KernelEtwNativeOutputs.Interrupts };
+        dispatcher.InitializeSubscriptions([first.Registration], Context);
+        var atUpdate = new List<(KernelEtwNativeOutputs Outputs, int Binds)>();
+        Assert.Throws<UnauthorizedAccessException>(() => dispatcher.UpdateSubscriptions([first.Registration, interrupts], Context, _ =>
+        { atUpdate.Add((applied[^1], binds)); throw new UnauthorizedAccessException("fixture denied"); }));
+        // A denied change returns the prepared output with the covered set.
+        Assert.Equal(new[] { KernelEtwNativeOutputs.Residency, KernelEtwNativeOutputs.Residency | KernelEtwNativeOutputs.Interrupts,
+            KernelEtwNativeOutputs.Residency }, applied);
+        dispatcher.UpdateSubscriptions([first.Registration, interrupts], Context, _ => atUpdate.Add((applied[^1], binds)));
+        var prepared = (KernelEtwNativeOutputs.Residency | KernelEtwNativeOutputs.Interrupts, 0);
+        Assert.Equal(new[] { prepared, prepared }, atUpdate);
+        Assert.Equal(1, binds); Assert.Equal(KernelEtwNativeOutputs.Residency | KernelEtwNativeOutputs.Interrupts, applied[^1]);
+        dispatcher.CancelAll();
     }
 
-    // These fixtures test synchronous dispatch admission, not ETL payload decoding.
-    // The existing ETL replay tests cover parser-to-production-reader delivery.
-    private static void EmitProcessStart(KernelEtwSubscriptionDispatcher dispatcher)
-        => dispatcher.Dispatch<ProcessTraceData>(KernelEtwEventKind.ProcessStartGroup, null!, static (source, data) => source.DeliverProcessStartGroup(data));
-
-    private sealed class Consumer(long leaseId, KernelTraceEventParser.Keywords keywords)
+    private sealed class Consumer(long id, KernelTraceEventParser.Keywords keywords)
     {
-        public int BindCount { get; private set; }
-        public int Received { get; private set; }
-        public KernelEtwSessionContext? Context { get; private set; }
-        public KernelEtwEventSource? Source { get; private set; }
-        public Action? OnDelivery { get; set; }
-        public KernelEtwSubscriptionRegistration Registration => new(leaseId, $"consumer-{leaseId}", keywords, Bind);
-
-        private void Bind(KernelEtwEventSource source, KernelEtwSessionContext context)
-        {
-            BindCount++;
-            Source = source;
-            Context = context;
-            source.ProcessStartGroup += _ =>
+        internal int BindCount, Received;
+        internal Action? OnDelivery;
+        internal readonly List<CpuResidencyAggregationSnapshot> Payloads = [];
+        private ulong sequence;
+        internal KernelEtwEventSource? Source;
+        internal KernelEtwSessionContext? Context;
+        internal KernelEtwSubscriptionRegistration Registration => new(id, $"consumer-{id}", keywords,
+            (source, context) =>
             {
-                OnDelivery?.Invoke();
-                Received++;
-            };
-        }
+                BindCount++; Source = source; Context = context;
+                source.ObservePublications(() =>
+                {
+                    var payload = KernelEtwNativeReaders.ReadResidency(source.NativeSession, ref sequence, 0, 0, null,
+                        view => new(view.Frequency, view.StartQpc, view.ThroughQpc, null, (view.Flags & 1) != 0,
+                            new KernelEtwNativeReaders.BorrowedResidencyRecords(view.Rows, view.Count).ToArray()));
+                    Assert.NotNull(payload); Payloads.Add(payload); Received++; OnDelivery?.Invoke();
+                });
+            }) { NativeOutputs = KernelEtwNativeOutputs.Residency };
+    }
+    private sealed class NativeColdFixture : IDisposable
+    {
+        private readonly NativeKernelEtwTestResource resource = new(NativeKernelEtwTestResource.SmallConfiguration());
+        private readonly IKernelEtwSubscription hold;
+        internal NativeKernelEtwSession Session => resource.Session;
+        internal long Frequency => resource.QpcFrequency;
+        internal KernelEtwSessionContext Context => new(resource.Generation, resource.StartedAt);
+        // Counters describe real parser intake. The normalized CPU-state helper
+        // intentionally bypasses that decoder/admission path.
+        internal void ProcessStart(long qpc) => resource.RawProcess(qpc, 42, 0, "fixture-process", 1);
+        internal void Publish(long tick) => resource.Publish(tick);
+        internal NativeColdFixture() => hold = resource.Acquire(new("fixture-resource", KernelTraceEventParser.Keywords.Process,
+            static (_, _) => { }) { NativeOutputs = KernelEtwNativeOutputs.Residency });
+        public void Dispose() { hold.Dispose(); resource.Dispose(); }
     }
 }

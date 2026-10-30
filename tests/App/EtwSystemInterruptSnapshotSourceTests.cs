@@ -12,8 +12,9 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
     public void ReadReturnsThePublishedSnapshotWithoutCreatingNewObservations()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        using var idle = new NoAcquisitionBroker();
         using var source = new EtwSystemInterruptSnapshotSource(
-            new IdleKernelEtwSessionBroker(),
+            idle,
             fixture.Owner,
             NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
 
@@ -21,24 +22,39 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
         var repeated = source.Read();
 
         Assert.Same(first, repeated);
+        Assert.Equal(0, idle.Acquisitions);
+
     }
 
     [Fact]
     public void LateLeaseReleaseAfterSourceDisposalIsHarmless()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        using var idle = new NoAcquisitionBroker();
         var source = new EtwSystemInterruptSnapshotSource(
-            new IdleKernelEtwSessionBroker(),
+            idle,
             fixture.Owner,
             NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
         var lease = source.AcquireSubscription(
             "report-owner",
             TimeSpan.FromSeconds(10));
+        Assert.Equal(0, idle.Acquisitions);
 
         source.Dispose();
 
         var exception = Record.Exception(lease.Dispose);
         Assert.Null(exception);
+        Assert.Equal(0, idle.Acquisitions);
+    }
+
+    private sealed class NoAcquisitionBroker : RecordingNativeKernelEtwBroker
+    {
+        internal int Acquisitions;
+        public override IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
+        {
+            Interlocked.Increment(ref Acquisitions);
+            throw new InvalidOperationException("A cache read or data registration must not acquire kernel ETW.");
+        }
     }
 
     [Theory]
@@ -47,34 +63,34 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
     public async Task ExplicitWorkerRunsReleaseKernelLeaseRetainValueAndCanSubscribeAgain(bool running)
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new DemandBroker(running);
+        using var broker = new DemandBroker(running);
         using var source = new EtwSystemInterruptSnapshotSource(broker, fixture.Owner,
             NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
         IDisposable? lease = null;
         try
         {
-            Assert.Equal(0, broker.SubscribeCount);
+            Assert.Equal(0, broker.MetadataSubscribeCount);
             lease = source.AcquireSubscription("report", TimeSpan.FromMilliseconds(250));
-            Assert.Equal(0, broker.SubscribeCount);
+            Assert.Equal(0, broker.MetadataSubscribeCount);
             await source.StartAsync(CancellationToken.None);
-            await WaitUntilAsync(() => broker.SubscribeCount == 2);
+            await WaitUntilAsync(() => broker.MetadataSubscribeCount == 1);
             lease.Dispose();
             // Subscription withdrawal changes activity; the owner stops the run.
-            Assert.Equal(0, broker.DisposeCount);
+            Assert.Equal(0, broker.MetadataDisposeCount);
             await source.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(2, broker.DisposeCount);
+            Assert.Equal(1, broker.MetadataDisposeCount);
             var saved = source.Read();
             await Task.Delay(500);
             Assert.Same(saved, source.Read());
-            Assert.Equal(2, broker.SubscribeCount);
+            Assert.Equal(1, broker.MetadataSubscribeCount);
 
             lease = source.AcquireSubscription("report-again", TimeSpan.FromMilliseconds(250));
-            Assert.Equal(2, broker.SubscribeCount);
+            Assert.Equal(1, broker.MetadataSubscribeCount);
             Assert.Same(saved, source.Read());
             await source.StartAsync(CancellationToken.None);
-            await WaitUntilAsync(() => broker.SubscribeCount == 4);
+            await WaitUntilAsync(() => broker.MetadataSubscribeCount == 2);
             await source.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(4, broker.DisposeCount);
+            Assert.Equal(2, broker.MetadataDisposeCount);
         }
         finally
         {
@@ -89,53 +105,38 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
         while (!condition()) await Task.Delay(10, cancellation.Token);
     }
 
-    private sealed class DemandBroker(bool running) : IKernelEtwSessionBroker
+
+    private sealed class DemandBroker(bool running) : RecordingNativeKernelEtwBroker
     {
-        private int subscribed;
-        private int released;
-        internal int SubscribeCount => Volatile.Read(ref subscribed);
-        internal int DisposeCount => Volatile.Read(ref released);
-
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        private int metadataAcquires, metadataReleases, durationAcquires, durationReleases;
+        internal int MetadataSubscribeCount => Volatile.Read(ref metadataAcquires);
+        internal int MetadataDisposeCount => Volatile.Read(ref metadataReleases);
+        internal int DurationAcquires => Volatile.Read(ref durationAcquires);
+        internal int DurationReleases => Volatile.Read(ref durationReleases);
+        public override IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
-            if (running)
+            var metadata = request.Keywords == KernelTraceEventParser.Keywords.ImageLoad;
+            var lease = base.Acquire(request);
+            if (metadata)
             {
-                var events = new KernelEtwEventSource();
-                request.Bind(events, new KernelEtwSessionContext(1, DateTimeOffset.UtcNow));
-                events.Activate();
+                Interlocked.Increment(ref metadataAcquires);
+                if (!running) Resource.Fail(3); // Actual native terminal failure; no null-native event fake.
             }
-            Interlocked.Increment(ref subscribed);
-            return new Lease(this);
+            else Interlocked.Increment(ref durationAcquires);
+            return new Held(this, lease, metadata);
         }
-        public KernelEtwSessionSnapshot GetSnapshot() => new(running ? "Running" : "Unavailable", "recorded broker",
-            running ? 1 : 0, DateTimeOffset.UnixEpoch, KernelTraceEventParser.Keywords.None, 1, 0);
-
-        private sealed class Lease(DemandBroker owner) : IKernelEtwSubscription
+        private sealed class Held(DemandBroker owner, IKernelEtwSubscription lease, bool metadata) : IKernelEtwSubscription
         {
-            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-
             private int disposed;
+            public KernelEtwSessionSnapshot GetSnapshot() => lease.GetSnapshot();
             public void Dispose()
             {
-                if (Interlocked.Exchange(ref disposed, 1) == 0) Interlocked.Increment(ref owner.released);
+                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+                lease.Dispose();
+                if (metadata) Interlocked.Increment(ref owner.metadataReleases);
+                else Interlocked.Increment(ref owner.durationReleases);
             }
         }
     }
-
-    private sealed class IdleKernelEtwSessionBroker : IKernelEtwSessionBroker
-    {
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
-            => throw new InvalidOperationException(
-                "The cache-only read test must not start ETW.");
-
-        public KernelEtwSessionSnapshot GetSnapshot()
-            => new(
-                "Idle",
-                "No subscription.",
-                0,
-                DateTimeOffset.UnixEpoch,
-                KernelTraceEventParser.Keywords.None,
-                0,
-                0);
-    }
 }
+

@@ -1,30 +1,44 @@
-using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System.Collections.Concurrent;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
-/// <summary>
-/// A subscription's managed callbacks. Binding never modifies the live TraceEvent parser.
-/// </summary>
+/// <summary>A holder's native output reference. Binding is cold; event payloads never enter this type.</summary>
 public sealed class KernelEtwEventSource
 {
-    private readonly string holder = "unbound";
-    private readonly Func<string, EtwEventDropCounter> createCounter = static name => new(name);
+    private readonly string holder;
+    private readonly Func<string, Func<EtwEventKindDrops?>?, bool, EtwEventDropCounter> createCounter;
+    private readonly long generation;
+    private ulong counterToken;
+    private bool windowActive = true;
+    private long windowStart, incompleteThrough;
     private readonly ConcurrentDictionary<(string Kind, string? Reason), EtwEventDropCounter> consumerCounters = new();
+    private readonly object observationGate = new();
+    private PublicationObservation[] observations = [];
+    private int state;
+    public NativeKernelEtwSession NativeSession { get; }
+    public bool IsActive => Volatile.Read(ref state) == 1;
+    public bool IsCancelled => Volatile.Read(ref state) < 0;
+    internal ulong CounterToken => counterToken;
 
-    public KernelEtwEventSource() { }
+    public KernelEtwEventSource(NativeKernelEtwSession nativeSession)
+        : this(nativeSession, "unbound", KernelEtwNativeOutputs.None, 0, static (name, read, supplement) => new(name, read, supplement)) { }
 
-    internal KernelEtwEventSource(string holder, Func<string, EtwEventDropCounter> createCounter)
+    internal KernelEtwEventSource(NativeKernelEtwSession nativeSession, string holder, KernelEtwNativeOutputs outputs,
+        long generation, Func<string, Func<EtwEventKindDrops?>?, bool, EtwEventDropCounter> createCounter)
     {
+        NativeSession = nativeSession ?? throw new ArgumentNullException(nameof(nativeSession));
         this.holder = holder;
+        this.generation = generation;
+        NativeOutputs = outputs;
         this.createCounter = createCounter;
     }
 
-    /// <summary>Callback-level use, separate from the dispatcher's physical delivery totals.</summary>
-    public EtwEventDropCounter ConsumerCounter(string kind)
-        => Counter(kind, null);
+    internal KernelEtwNativeOutputs NativeOutputs { get; }
 
-    /// <summary>Records why a holder rejected an admitted callback, without changing physical totals.</summary>
+    /// <summary>Consumer use is separate from the native physical delivery totals.</summary>
+    public EtwEventDropCounter ConsumerCounter(string kind) => Counter(kind, null);
+    public EtwEventDropCounter ConsumerRejectionCounter(string kind, string reason) => Counter(kind, reason);
+
     public void RecordConsumerRejection(string kind, string reason)
     {
         var counter = Counter(kind, reason);
@@ -33,89 +47,104 @@ public sealed class KernelEtwEventSource
     }
 
     private EtwEventDropCounter Counter(string kind, string? reason)
-        => consumerCounters.GetOrAdd((kind, reason), static (key, source) => source.createCounter(
-            $"holder/{source.holder}/{key.Kind}" + (key.Reason is null ? "" : $"/rejected:{key.Reason}")), this);
+        => consumerCounters.GetOrAdd((kind, reason), static (key, source) =>
+        {
+            lock (source.observationGate)
+            {
+                if (source.IsCancelled && source.counterToken == 0)
+                    return source.createCounter($"holder/{source.holder}/{key.Kind}" + (key.Reason is null ? "" : $"/rejected:{key.Reason}"), null, key.Reason is not null);
+                source.counterToken = source.counterToken == 0 ? source.NativeSession.GetConsumerCounterToken(source.holder) : source.counterToken;
+                var reader = source.NativeSession.CreateConsumerCounterReader(source.counterToken, source.holder, source.NativeOutputs,
+                    source.generation, key.Kind, key.Reason);
+                source.UpdateAdmission();
+                return source.createCounter($"holder/{source.holder}/{key.Kind}" + (key.Reason is null ? "" : $"/rejected:{key.Reason}"),
+                    reader, key.Reason is not null);
+            }
+        }, this);
 
-    // Building callbacks are unpublished; a cancelled source is never activated again.
-    private int state;
-    public bool IsActive => Volatile.Read(ref state) == 1;
+    /// <summary>Cold admission facts follow this consumer's capture window; no hold is acquired.</summary>
+    public void ConfigureAdmission(bool windowActive, long windowStart = 0, long incompleteThrough = 0)
+    {
+        lock (observationGate)
+        {
+            if (IsCancelled) return;
+            this.windowActive = windowActive;
+            this.windowStart = windowStart; this.incompleteThrough = incompleteThrough;
+            UpdateAdmission();
+        }
+    }
+    private void UpdateAdmission()
+    {
+        if (counterToken != 0) NativeSession.ConfigureConsumerAdmission(counterToken, generation, NativeOutputs,
+            IsActive, windowActive, windowStart, incompleteThrough);
+    }
 
-    public event Action<ProcessTraceData>? ProcessStartGroup;
-    public event Action<ProcessTraceData>? ProcessEndGroup;
-    public event Action<ThreadTraceData>? ThreadStartGroup;
-    public event Action<ThreadTraceData>? ThreadEndGroup;
-    public event Action<CSwitchTraceData>? ThreadCSwitch;
-    public event Action<DiskIOTraceData>? DiskIORead;
-    public event Action<DiskIOTraceData>? DiskIOWrite;
-    public event Action<FileIOCreateTraceData>? FileIOCreate;
-    public event Action<FileIONameTraceData>? FileIOFileCreate;
-    public event Action<FileIONameTraceData>? FileIOFileDelete;
-    public event Action<FileIOReadWriteTraceData>? FileIOWrite;
-    public event Action<FileIOInfoTraceData>? FileIORename;
-    public event Action<FileIOInfoTraceData>? FileIODelete;
-    public event Action<TcpIpSendTraceData>? TcpIpSend;
-    public event Action<TcpIpTraceData>? TcpIpRecv;
-    public event Action<TcpIpV6SendTraceData>? TcpIpSendIPV6;
-    public event Action<TcpIpV6TraceData>? TcpIpRecvIPV6;
-    public event Action<UdpIpTraceData>? UdpIpSend;
-    public event Action<UdpIpTraceData>? UdpIpRecv;
-    public event Action<UpdIpV6TraceData>? UdpIpSendIPV6;
-    public event Action<UpdIpV6TraceData>? UdpIpRecvIPV6;
-    public event Action<ImageLoadTraceData>? ImageDCStart;
-    public event Action<ImageLoadTraceData>? ImageLoad;
-    public event Action<ImageLoadTraceData>? ImageUnload;
-    public event Action<ISRTraceData>? PerfInfoISR;
-    public event Action<DPCTraceData>? PerfInfoDPC;
-    public event Action<DPCTraceData>? PerfInfoThreadedDPC;
-    public event Action<DPCTraceData>? PerfInfoTimerDPC;
+    /// <summary>Signals this binding's existing worker; reads neither payloads nor starts work.</summary>
+    public IDisposable ObservePublications(Action signal)
+    {
+        ArgumentNullException.ThrowIfNull(signal);
+        lock (observationGate)
+        {
+            if (Volatile.Read(ref state) < 0) throw new ObjectDisposedException(nameof(KernelEtwEventSource));
+            var observation = new PublicationObservation(this, signal);
+            Volatile.Write(ref observations, [.. observations, observation]);
+            return observation;
+        }
+    }
 
     internal void Activate()
     {
         if (Interlocked.CompareExchange(ref state, 1, 0) != 0)
-            throw new InvalidOperationException("The kernel event source cannot be activated twice.");
+            throw new InvalidOperationException("The kernel output binding cannot be activated twice.");
+        lock (observationGate) UpdateAdmission();
     }
 
-    internal void Cancel() => Interlocked.Exchange(ref state, -1);
-
-    internal bool Dispatch<T>(T data, Func<KernelEtwEventSource, T, bool> deliver)
+    internal void Cancel()
     {
-        // This read admits the synchronous delivery. Cancellation prevents later
-        // admissions; a delivery already admitted may finish without a blocking wait.
-        return IsActive && deliver(this, data);
+        lock (observationGate)
+        {
+            if (Interlocked.Exchange(ref state, -1) < 0) return;
+            UpdateAdmission();
+            if (counterToken != 0) NativeSession.RetireConsumerCounter(counterToken);
+            Volatile.Write(ref observations, []);
+        }
     }
 
-    internal bool DeliverProcessStartGroup(ProcessTraceData data) => Deliver(ProcessStartGroup, data);
-    internal bool DeliverProcessEndGroup(ProcessTraceData data) => Deliver(ProcessEndGroup, data);
-    internal bool DeliverThreadStartGroup(ThreadTraceData data) => Deliver(ThreadStartGroup, data);
-    internal bool DeliverThreadEndGroup(ThreadTraceData data) => Deliver(ThreadEndGroup, data);
-    internal bool DeliverThreadCSwitch(CSwitchTraceData data) => Deliver(ThreadCSwitch, data);
-    internal bool DeliverDiskIORead(DiskIOTraceData data) => Deliver(DiskIORead, data);
-    internal bool DeliverDiskIOWrite(DiskIOTraceData data) => Deliver(DiskIOWrite, data);
-    internal bool DeliverFileIOCreate(FileIOCreateTraceData data) => Deliver(FileIOCreate, data);
-    internal bool DeliverFileIOFileCreate(FileIONameTraceData data) => Deliver(FileIOFileCreate, data);
-    internal bool DeliverFileIOFileDelete(FileIONameTraceData data) => Deliver(FileIOFileDelete, data);
-    internal bool DeliverFileIOWrite(FileIOReadWriteTraceData data) => Deliver(FileIOWrite, data);
-    internal bool DeliverFileIORename(FileIOInfoTraceData data) => Deliver(FileIORename, data);
-    internal bool DeliverFileIODelete(FileIOInfoTraceData data) => Deliver(FileIODelete, data);
-    internal bool DeliverTcpIpSend(TcpIpSendTraceData data) => Deliver(TcpIpSend, data);
-    internal bool DeliverTcpIpRecv(TcpIpTraceData data) => Deliver(TcpIpRecv, data);
-    internal bool DeliverTcpIpSendIPV6(TcpIpV6SendTraceData data) => Deliver(TcpIpSendIPV6, data);
-    internal bool DeliverTcpIpRecvIPV6(TcpIpV6TraceData data) => Deliver(TcpIpRecvIPV6, data);
-    internal bool DeliverUdpIpSend(UdpIpTraceData data) => Deliver(UdpIpSend, data);
-    internal bool DeliverUdpIpRecv(UdpIpTraceData data) => Deliver(UdpIpRecv, data);
-    internal bool DeliverUdpIpSendIPV6(UpdIpV6TraceData data) => Deliver(UdpIpSendIPV6, data);
-    internal bool DeliverUdpIpRecvIPV6(UpdIpV6TraceData data) => Deliver(UdpIpRecvIPV6, data);
-    internal bool DeliverImageDCStart(ImageLoadTraceData data) => Deliver(ImageDCStart, data);
-    internal bool DeliverImageLoad(ImageLoadTraceData data) => Deliver(ImageLoad, data);
-    internal bool DeliverImageUnload(ImageLoadTraceData data) => Deliver(ImageUnload, data);
-    internal bool DeliverPerfInfoISR(ISRTraceData data) => Deliver(PerfInfoISR, data);
-    internal bool DeliverPerfInfoDPC(DPCTraceData data) => Deliver(PerfInfoDPC, data);
-    internal bool DeliverPerfInfoThreadedDPC(DPCTraceData data) => Deliver(PerfInfoThreadedDPC, data);
-    internal bool DeliverPerfInfoTimerDPC(DPCTraceData data) => Deliver(PerfInfoTimerDPC, data);
-    private static bool Deliver<T>(Action<T>? handler, T data)
+    internal bool DispatchPublication()
     {
-        if (handler is null) return false;
-        handler(data);
-        return true;
+        // Admit once per binding. A callback already admitted can finish; a
+        // later binding in a captured dispatcher set must recheck its own state.
+        var current = Volatile.Read(ref observations);
+        if (!IsActive) return false;
+        var used = false;
+        foreach (var observation in current)
+            used |= observation.Deliver();
+        return used;
+    }
+
+    private void Remove(PublicationObservation observation)
+    {
+        lock (observationGate)
+        {
+            var current = observations;
+            var index = Array.IndexOf(current, observation);
+            if (index < 0) return;
+            var next = new PublicationObservation[current.Length - 1];
+            Array.Copy(current, 0, next, 0, index);
+            Array.Copy(current, index + 1, next, index, current.Length - index - 1);
+            Volatile.Write(ref observations, next);
+        }
+    }
+
+    private sealed class PublicationObservation(KernelEtwEventSource source, Action signal) : IDisposable
+    {
+        private KernelEtwEventSource? owner = source;
+        internal bool Deliver()
+        {
+            if (Volatile.Read(ref owner) is null) return false;
+            signal();
+            return true;
+        }
+        public void Dispose() => Interlocked.Exchange(ref owner, null)?.Remove(this);
     }
 }

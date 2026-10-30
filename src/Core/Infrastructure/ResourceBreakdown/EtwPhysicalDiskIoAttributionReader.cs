@@ -1,4 +1,3 @@
-using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Domain.ResourceTable;
@@ -12,27 +11,14 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
     IResourceTableProviderStateSource
 {
     private readonly EtwPhysicalDiskIoCaptureOwner capture;
-    private readonly Func<Func<Func<int, CaptureBucketMemory>, Task>, Task> runBucketScope =
-        static body => body(CaptureBucketMemory.AllocateManaged);
     private readonly object captureLifetimeGate = new();
     private bool disposed;
-    internal const int MaximumActivePairs = EtwPhysicalDiskIoCaptureOwner.MaximumActivePairs;
-    internal EtwPhysicalDiskIoCaptureOwner CaptureResource => capture;
     public EtwPhysicalDiskIoAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwPhysicalDiskIoAttributionReader> logger)
     {
         capture = new(broker, new KernelEtwDiagnostics(item =>
             logger.Log(item.Level switch { KernelEtwDiagnosticLevel.Debug => LogLevel.Debug, KernelEtwDiagnosticLevel.Information => LogLevel.Information, KernelEtwDiagnosticLevel.Warning => LogLevel.Warning, _ => LogLevel.Error }, item.Exception, item.MessageTemplate, item.Arguments.ToArray())));
     }
-    internal EtwPhysicalDiskIoAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwPhysicalDiskIoAttributionReader> logger,
-        ResourceManagerLedgerOwner ledgerOwner) : this(broker, logger)
-    {
-        capture = new(broker, new KernelEtwDiagnostics(item => logger.LogWarning(item.Exception, "{Message}", item.MessageTemplate)),
-            static () => Environment.TickCount64, WindowsNetworkEndpointProcessLease.Open);
-        runBucketScope = body => LedgerCaptureBucketStorage.RunAsync(ledgerOwner, body);
-    }
     internal EtwPhysicalDiskIoAttributionReader(EtwPhysicalDiskIoCaptureOwner capture) => this.capture = capture;
-    internal EtwPhysicalDiskIoAttributionReader(EtwPhysicalDiskIoCaptureOwner capture, ResourceManagerLedgerOwner ledgerOwner)
-        : this(capture) => runBucketScope = body => LedgerCaptureBucketStorage.RunAsync(ledgerOwner, body);
     public PhysicalDiskIoAttributionSnapshot Read() => Read(false);
     public PhysicalDiskIoAttributionSnapshot Read(bool includeObservedTraffic)
     {
@@ -56,15 +42,13 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
     }
     // Closed DiskIO history is needed by later reads while this run captures.
     // Stop returns every chunk immediately.
-    internal Task RunCaptureHoldAsync(Func<Task> hold) => runBucketScope(async allocate =>
+    internal async Task RunCaptureHoldAsync(Func<Task> hold)
     {
-        using var storage = new CaptureBucketStorage(allocate);
         try
         {
             lock (captureLifetimeGate)
             {
                 if (disposed) return;
-                capture.SetBucketStorage(storage);
                 capture.Start();
             }
             await hold();
@@ -73,11 +57,10 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
         {
             lock (captureLifetimeGate)
             {
-                try { capture.Stop("ETW DiskIO 物理磁盘归因正在随程序停止。"); }
-                finally { capture.SetBucketStorage(new()); }
+                capture.Stop("ETW DiskIO 物理磁盘归因正在随程序停止。");
             }
         }
-    });
+    }
     public override void Dispose()
     {
         try
@@ -90,9 +73,4 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
         }
         finally { base.Dispose(); }
     }
-    internal void ObserveDiskTransfer(int pid, long bytes, bool write, long tick) => capture.ObserveDiskTransfer(pid, bytes, write, tick);
-    internal void ObserveBoundDiskTransfer(KernelEtwEventSource source, KernelEtwSessionContext context, int pid, long bytes, bool write, long tick)
-        => capture.ObserveBoundDiskTransfer(source, context, pid, bytes, write, tick);
-    internal int RetainedPairCount => capture.RetainedPairCount;
-    internal (IReadOnlyDictionary<int, PhysicalDiskProcessAttribution> Processes, bool Complete) ReadWindow(long now) => capture.ReadWindow(now);
 }

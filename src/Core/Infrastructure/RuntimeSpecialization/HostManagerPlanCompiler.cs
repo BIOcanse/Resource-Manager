@@ -57,6 +57,7 @@ public sealed partial class HostManagerPlanCompiler
         var kernelLeak = CompileKernelLeak(freedom);
         var notifications = CompileNotifications(freedom);
         var memoryProtectionRecords = CompileHostMemoryProtectionRecords(freedom);
+        var kernelEtwLimits = global::ResourceManager.App.Infrastructure.Telemetry.Etw.KernelEtwNativeSettings.Compile(freedom);
         var schedulerSamplingInterval = CompileSchedulerSamplingInterval(freedom);
         var serviceRecoveryReset = CompileServiceRecovery(freedom);
         var trustedAccessRequestLifetime = CompileTrustedAccessRequestLifetime(freedom);
@@ -542,6 +543,7 @@ public sealed partial class HostManagerPlanCompiler
             KernelLeak = kernelLeak,
             Notifications = notifications,
             HostMemoryProtectionRecords = memoryProtectionRecords,
+            KernelEtwLimits = kernelEtwLimits,
             CpuScoring = compiledCpuScoring,
             SchedulerSamplingInterval = schedulerSamplingInterval,
             HardwareBridgeAvailabilityCheckInterval = hardwareBridgeAvailabilityCheckInterval,

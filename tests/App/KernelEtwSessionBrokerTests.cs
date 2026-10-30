@@ -1,3 +1,5 @@
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -13,7 +15,7 @@ public sealed class KernelEtwSessionBrokerTests
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
 
-        Assert.Throws<InvalidOperationException>(() => broker.Subscribe(
+        Assert.Throws<InvalidOperationException>(() => broker.Acquire(
             new("failed", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { })));
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
         Assert.Equal(1, factory.AvailabilityChecks);
@@ -21,7 +23,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(1, factory.AvailabilityChecks);
 
         factory.AvailabilityFailure = null;
-        using var successful = broker.Subscribe(new("successful", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        using var successful = broker.Acquire(new("successful", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
         Assert.Equal(new[] { "successful" }, Assert.Single(factory.Calls).SubscriptionIds);
         successful.Dispose();
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
@@ -33,12 +35,12 @@ public sealed class KernelEtwSessionBrokerTests
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var held = broker.Subscribe(new("held", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        using var held = broker.Acquire(new("held", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
         runtime.UpdateFailure = new InvalidOperationException("fixture update requires replacement");
         runtime.DisposalFailure = new InvalidOperationException("fixture partial disposal failure");
 
-        Assert.Throws<InvalidOperationException>(() => broker.Subscribe(
+        Assert.Throws<InvalidOperationException>(() => broker.Acquire(
             new("failed", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { })));
         Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
         Assert.Equal(1, runtime.DisposalAttempts);
@@ -65,7 +67,7 @@ public sealed class KernelEtwSessionBrokerTests
             FirstRuntimeDisposalFailure = new InvalidOperationException("fixture failed-start disposal failure")
         };
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        Assert.Throws<InvalidOperationException>(() => broker.Subscribe(
+        Assert.Throws<InvalidOperationException>(() => broker.Acquire(
             new("failed", KernelTraceEventParser.Keywords.Process, static (_, _) => { })));
         var runtime = Assert.Single(factory.Calls).Runtime;
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
@@ -86,7 +88,7 @@ public sealed class KernelEtwSessionBrokerTests
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var held = broker.Subscribe(new("held", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        using var held = broker.Acquire(new("held", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
         runtime.DisposalFailure = new InvalidOperationException("fixture partial disposal failure");
 
@@ -99,7 +101,7 @@ public sealed class KernelEtwSessionBrokerTests
         IKernelEtwSubscription? next = null;
         if (!shutdown)
         {
-            next = broker.Subscribe(new("next", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+            next = broker.Acquire(new("next", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
             Assert.Equal("StopFailed", next.GetSnapshot().State);
             Assert.Single(factory.Calls);
             Assert.Equal(1, runtime.DisposalAttempts);
@@ -262,8 +264,8 @@ public sealed class KernelEtwSessionBrokerTests
         using var session = new Microsoft.Diagnostics.Tracing.Session.TraceEventSession(native.Identity.Name)
         { StopOnDispose = false };
         // No source or native session is started; the injected controller owns all
-        // native calls, while this exercises the actual runtime cleanup path.
-        var runtime = new TraceEventSessionProcessingRuntime(session,
+        // native calls, while this exercises the explicit managed-oracle cleanup path. Native runtime cleanup has its own product tests.
+        var runtime = new OracleTraceEventSessionProcessingRuntime(session,
             new KernelEtwSessionKeywordControl(native.Identity.Name, native));
         var result = runtime.Stop(TimeSpan.Zero);
         Assert.False(result.IsReleased);
@@ -283,7 +285,7 @@ public sealed class KernelEtwSessionBrokerTests
         var native = new CleanupNativeControl { Failure = new InvalidOperationException("fixture native stop failed") };
         using var session = new Microsoft.Diagnostics.Tracing.Session.TraceEventSession(native.Identity.Name)
         { StopOnDispose = false };
-        var runtime = new TraceEventSessionProcessingRuntime(session,
+        var runtime = new OracleTraceEventSessionProcessingRuntime(session,
             new KernelEtwSessionKeywordControl(native.Identity.Name, native));
         Assert.False(runtime.Stop(TimeSpan.Zero).IsReleased);
         native.Failure = null;
@@ -307,7 +309,7 @@ public sealed class KernelEtwSessionBrokerTests
                 : new(true, true, false, ["ConsumerThread: fixture drain timeout"])
         };
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var subscription = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
         var release = Task.Run(subscription.Dispose);
         try
@@ -326,7 +328,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal("StopFailed", broker.GetSnapshot().State);
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
         Assert.Contains(controlDenied ? "fixture denied" : "fixture drain timeout", broker.GetSnapshot().Message);
-        using var next = broker.Subscribe(new("next", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        using var next = broker.Acquire(new("next", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
         broker.Owner.Reconcile();
         Assert.Single(factory.Calls);
         Assert.Equal("StopFailed", next.GetSnapshot().State);
@@ -339,14 +341,14 @@ public sealed class KernelEtwSessionBrokerTests
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         Assert.Empty(factory.Calls);
         var received = 0;
-        var oldLease = broker.Subscribe(new("first", KernelTraceEventParser.Keywords.ContextSwitch,
-            (source, _) => source.ThreadCSwitch += _ => received++));
+        var oldLease = broker.Acquire(new("first", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ObservePublications(() => received++)));
         var firstGeneration = oldLease.GetSnapshot().Generation;
         oldLease.Dispose();
         var oldRuntime = Assert.Single(factory.Calls).Runtime;
         Assert.True(oldRuntime.DisposalCompleted);
         Assert.Equal("Idle", broker.GetSnapshot().State);
-        using var nextLease = broker.Subscribe(new("second", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
+        using var nextLease = broker.Acquire(new("second", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
         Assert.Equal(2, factory.Calls.Count);
         var nextRuntime = factory.Calls[1].Runtime;
         Assert.NotSame(oldRuntime, nextRuntime);
@@ -356,7 +358,7 @@ public sealed class KernelEtwSessionBrokerTests
         oldLease.Dispose();
         Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
         Assert.Equal(0, nextRuntime.StopCount);
-        nextRuntime.EmitContextSwitch();
+        nextRuntime.EmitPublicationBoundary();
         Assert.Equal(0, received);
     }
 
@@ -365,7 +367,7 @@ public sealed class KernelEtwSessionBrokerTests
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var subscription = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         broker.Dispose();
         subscription.Dispose();
         broker.Dispose();
@@ -374,7 +376,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(1, factory.Calls[0].Runtime.StopCount);
         Assert.Equal("Stopped", broker.GetSnapshot().State);
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
-        Assert.Throws<ObjectDisposedException>(() => broker.Subscribe(
+        Assert.Throws<ObjectDisposedException>(() => broker.Acquire(
             new("late", KernelTraceEventParser.Keywords.Process, static (_, _) => { })));
     }
 
@@ -392,7 +394,7 @@ public sealed class KernelEtwSessionBrokerTests
                 : KernelEtwSessionStopResult.Released
         };
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var subscription = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
         var disposal = Task.Run(broker.Dispose);
         try
@@ -418,10 +420,10 @@ public sealed class KernelEtwSessionBrokerTests
         var diagnostics = new List<KernelEtwDiagnostic>();
         var factory = new FakeRuntimeFactory();
         using var owner = new KernelEtwSessionOwner(factory, new(diagnostics.Add));
-        using var cpu = owner.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var cpu = owner.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
         runtime.UpdateFailure = new UnauthorizedAccessException("first denial");
-        using var disk = owner.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
+        using var disk = owner.Acquire(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
         owner.Reconcile();
         owner.Reconcile();
         Assert.Single(diagnostics, item => item.Level == KernelEtwDiagnosticLevel.Warning);
@@ -435,7 +437,7 @@ public sealed class KernelEtwSessionBrokerTests
         runtime.UpdateFailure = null;
         owner.Reconcile();
         runtime.UpdateFailure = new UnauthorizedAccessException("different denial");
-        using var network = owner.Subscribe(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
+        using var network = owner.Acquire(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
         Assert.Equal(3, diagnostics.Count(item => item.Level == KernelEtwDiagnosticLevel.Warning));
         Assert.Equal("Unavailable", network.GetSnapshot().State);
         Assert.True(disk.GetSnapshot().IsRunning);
@@ -448,11 +450,11 @@ public sealed class KernelEtwSessionBrokerTests
         var diagnostics = new List<KernelEtwDiagnostic>();
         var factory = new FakeRuntimeFactory();
         using var owner = new KernelEtwSessionOwner(factory, new(diagnostics.Add));
-        using var cpu = owner.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var cpu = owner.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
         runtime.StopResult = new(false, false, false, ["SessionStop: fixture denied"]) { ControlDenied = true };
         runtime.UpdateFailure = new InvalidOperationException("fixture update requires release");
-        using var disk = owner.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
+        using var disk = owner.Acquire(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
         owner.Reconcile();
         owner.Reconcile();
 
@@ -479,9 +481,9 @@ public sealed class KernelEtwSessionBrokerTests
     {
         var factory = new FakeRuntimeFactory();
         using var owner = new KernelEtwSessionOwner(factory);
-        using var network = owner.Subscribe(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
+        using var network = owner.Acquire(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
-        using var metadata = owner.Subscribe(new("metadata", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread,
+        using var metadata = owner.Acquire(new("metadata", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread,
             static (_, _) => { }));
         Assert.True(metadata.GetSnapshot().IsRunning);
         runtime.StopResult = new(false, false, false, ["SessionStop: fixture denied"]) { ControlDenied = true };
@@ -500,23 +502,23 @@ public sealed class KernelEtwSessionBrokerTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void DeniedUpdateKeepsExistingDeliveryAndRetriesOnlyPendingKeywords(bool win32)
+    public void DeniedUpdateKeepsExistingPublicationBindingsAndRetriesOnlyPendingKeywords(bool win32)
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         var received = 0;
-        using var first = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
-            (source, _) => source.ThreadCSwitch += _ => received++));
+        using var first = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ObservePublications(() => received++)));
         var original = Assert.Single(factory.Calls).Runtime;
         var before = broker.GetSnapshot();
         original.UpdateFailure = win32 ? new System.ComponentModel.Win32Exception(5, "fixture access denied")
             : new UnauthorizedAccessException("fixture access denied");
-        using var pending = broker.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
+        using var pending = broker.Acquire(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
         var sameKeywordReceived = 0;
-        using var covered = broker.Subscribe(new("cpu-2", KernelTraceEventParser.Keywords.ContextSwitch,
-            (source, _) => source.ThreadCSwitch += _ => sameKeywordReceived++));
+        using var covered = broker.Acquire(new("cpu-2", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ObservePublications(() => sameKeywordReceived++)));
         broker.Owner.Reconcile();
-        original.EmitContextSwitch();
+        original.EmitPublicationBoundary();
 
         Assert.Equal(1, received);
         Assert.Equal(1, sameKeywordReceived);
@@ -545,7 +547,7 @@ public sealed class KernelEtwSessionBrokerTests
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var subscription = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var original = Assert.Single(factory.Calls).Runtime;
         original.UpdateFailure = accessDenied
             ? new UnauthorizedAccessException("fixture unregister denied")
@@ -556,7 +558,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.False(original.IsProcessing);
         Assert.Equal("Idle", broker.GetSnapshot().State);
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
-        using var replacement = broker.Subscribe(new("next", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        using var replacement = broker.Acquire(new("next", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
         Assert.Equal(2, factory.Calls.Count);
         Assert.True(replacement.GetSnapshot().IsRunning);
     }
@@ -566,7 +568,7 @@ public sealed class KernelEtwSessionBrokerTests
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        var first = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        var first = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
         runtime.StopResult = new(false, false, false, ["SessionStop: fixture denied"]) { ControlDenied = true };
         first.Dispose();
@@ -577,20 +579,20 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(KernelTraceEventParser.Keywords.None, broker.GetSnapshot().EnabledKeywords);
         Assert.Contains("fixture denied", broker.GetSnapshot().Message);
         Assert.Equal(1, runtime.StopCount);
-        using var second = broker.Subscribe(new("cpu-2", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var second = broker.Acquire(new("cpu-2", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         broker.Owner.Reconcile();
         Assert.Single(factory.Calls);
         Assert.False(second.GetSnapshot().IsRunning);
     }
 
     [Fact]
-    public void DiskConsumerReportsTheKeywordDenialWhileCpuContinues()
+    public void DiskConsumerReportsTheKeywordDenialWhileExistingNativeBindingContinues()
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         var received = 0;
-        using var cpu = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
-            (source, _) => source.ThreadCSwitch += _ => received++));
+        using var cpu = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ObservePublications(() => received++)));
         var runtime = Assert.Single(factory.Calls).Runtime;
         runtime.UpdateFailure = new System.ComponentModel.Win32Exception(5, "fixture disk control denied");
         using var disk = new ResourceManager.ReadWrite.Windows.Processes.EtwPhysicalDiskIoCaptureOwner(broker);
@@ -600,7 +602,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(ResourceManager.App.Application.ResourceBreakdown.PhysicalDiskIoProviderStates.Unavailable, denied.ProviderState.State);
         Assert.Contains("fixture disk control denied", denied.ProviderState.Message);
         Assert.False(disk.IsRunning);
-        runtime.EmitContextSwitch();
+        runtime.EmitPublicationBoundary();
         Assert.Equal(1, received);
         Assert.Equal(0, runtime.StopCount);
 
@@ -617,14 +619,14 @@ public sealed class KernelEtwSessionBrokerTests
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         var received = 0;
-        using var cpu = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
-            (source, _) => source.ThreadCSwitch += _ => received++));
+        using var cpu = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ObservePublications(() => received++)));
         var runtime = Assert.Single(factory.Calls).Runtime;
         runtime.UpdateFailure = new InvalidOperationException("fixture update failure requires release");
         runtime.StopResult = new(false, false, false, ["SessionStop: fixture access denied"])
         { ControlDenied = true };
-        using var disk = broker.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
-        runtime.EmitContextSwitch();
+        using var disk = broker.Acquire(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
+        runtime.EmitPublicationBoundary();
         Assert.Equal(1, received);
         Assert.True(broker.GetSnapshot().IsRunning);
         Assert.Equal(1, runtime.StopCount);
@@ -643,11 +645,11 @@ public sealed class KernelEtwSessionBrokerTests
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var first = broker.Subscribe(new("process", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        using var first = broker.Acquire(new("process", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
         var original = Assert.Single(factory.Calls).Runtime;
         original.UpdateFailure = new InvalidOperationException("fixture subscription update failure");
 
-        using var second = broker.Subscribe(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
+        using var second = broker.Acquire(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
 
         Assert.Equal(1, original.StopCount);
         Assert.Equal(2, factory.Calls.Count);
@@ -665,12 +667,12 @@ public sealed class KernelEtwSessionBrokerTests
             RuntimeStopResult = new(false, true, true, ["fixture update cleanup failure"])
         };
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var first = broker.Subscribe(new("process", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        using var first = broker.Acquire(new("process", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
         var original = Assert.Single(factory.Calls).Runtime;
         original.UpdateFailure = new InvalidOperationException("fixture subscription update failure");
 
-        using var second = broker.Subscribe(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
-        using var third = broker.Subscribe(new("files", KernelTraceEventParser.Keywords.FileIO, static (_, _) => { }));
+        using var second = broker.Acquire(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
+        using var third = broker.Acquire(new("files", KernelTraceEventParser.Keywords.FileIO, static (_, _) => { }));
 
         Assert.Single(factory.Calls);
         Assert.Equal(1, original.StopCount);
@@ -686,7 +688,7 @@ public sealed class KernelEtwSessionBrokerTests
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance);
 
-        var cpu = broker.Subscribe(new KernelEtwSubscriptionRequest(
+        var cpu = broker.Acquire(new KernelEtwSubscriptionRequest(
             "cpu",
             KernelTraceEventParser.Keywords.ContextSwitch,
             static (_, _) => { }));
@@ -696,7 +698,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
         Assert.Equal(1, broker.GetSnapshot().Generation);
 
-        var network = broker.Subscribe(new KernelEtwSubscriptionRequest(
+        var network = broker.Acquire(new KernelEtwSubscriptionRequest(
             "network",
             KernelTraceEventParser.Keywords.NetworkTCPIP,
             static (_, _) => { }));
@@ -733,7 +735,7 @@ public sealed class KernelEtwSessionBrokerTests
         using var broker = new KernelEtwSessionBroker(
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance);
-        var subscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
+        var subscription = broker.Acquire(new KernelEtwSubscriptionRequest(
             "file",
             KernelTraceEventParser.Keywords.FileIO,
             static (_, _) => { }));
@@ -752,7 +754,7 @@ public sealed class KernelEtwSessionBrokerTests
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var subscription = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var first = Assert.Single(factory.Calls);
         first.Runtime.StopProcessingUnexpectedly();
         await WaitUntilAsync(() => factory.Calls.Count == 2 && broker.GetSnapshot().IsRunning);
@@ -782,7 +784,7 @@ public sealed class KernelEtwSessionBrokerTests
         };
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var subscription = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         Assert.Single(factory.Calls).Runtime.StopProcessingUnexpectedly();
         Task? release = null;
         try
@@ -819,7 +821,7 @@ public sealed class KernelEtwSessionBrokerTests
             TimeSpan.FromMilliseconds(10));
         try
         {
-            using var subscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
+            using var subscription = broker.Acquire(new KernelEtwSubscriptionRequest(
                 "cpu",
                 KernelTraceEventParser.Keywords.ContextSwitch,
                 static (_, _) => { }));
@@ -834,7 +836,7 @@ public sealed class KernelEtwSessionBrokerTests
             Assert.Equal(1, broker.GetSnapshot().EventsLost);
             Assert.True(broker.GetSnapshot().IsRunning);
 
-            using var network = broker.Subscribe(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP,
+            using var network = broker.Acquire(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP,
                 static (_, _) => { }));
             Assert.Single(factory.Calls);
             Assert.Single(first.Runtime.Updates);
@@ -857,7 +859,7 @@ public sealed class KernelEtwSessionBrokerTests
             TimeSpan.FromMilliseconds(10));
         try
         {
-            using var subscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
+            using var subscription = broker.Acquire(new KernelEtwSubscriptionRequest(
                 "cpu",
                 KernelTraceEventParser.Keywords.ContextSwitch,
                 static (_, _) => { }));
@@ -884,7 +886,7 @@ public sealed class KernelEtwSessionBrokerTests
             RuntimeStopResult = new(false, true, true, ["SessionStop: fixture failure."])
         };
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var subscription = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         subscription.Dispose();
         Assert.Equal("StopFailed", broker.GetSnapshot().State);
         Assert.Contains("fixture failure", broker.GetSnapshot().Message);
@@ -906,7 +908,7 @@ public sealed class KernelEtwSessionBrokerTests
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        var firstSubscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
+        var firstSubscription = broker.Acquire(new KernelEtwSubscriptionRequest(
             "cpu",
             KernelTraceEventParser.Keywords.ContextSwitch,
             static (_, _) => { }));
@@ -920,7 +922,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(1, first.Runtime.StopCount);
         Assert.Contains("restart failure", broker.GetSnapshot().Message, StringComparison.Ordinal);
 
-        var secondSubscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
+        var secondSubscription = broker.Acquire(new KernelEtwSubscriptionRequest(
             "process",
             KernelTraceEventParser.Keywords.Process,
             static (_, _) => { }));
@@ -951,7 +953,7 @@ public sealed class KernelEtwSessionBrokerTests
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        var firstSubscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
+        var firstSubscription = broker.Acquire(new KernelEtwSubscriptionRequest(
             "cpu",
             KernelTraceEventParser.Keywords.ContextSwitch,
             static (_, _) => { }));
@@ -962,7 +964,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(1, first.Runtime.StopCount);
         Assert.Contains("failed-start cleanup failure", broker.GetSnapshot().Message, StringComparison.Ordinal);
 
-        var secondSubscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
+        var secondSubscription = broker.Acquire(new KernelEtwSubscriptionRequest(
             "thread",
             KernelTraceEventParser.Keywords.Thread,
             static (_, _) => { }));
@@ -990,7 +992,7 @@ public sealed class KernelEtwSessionBrokerTests
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        var firstSubscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
+        var firstSubscription = broker.Acquire(new KernelEtwSubscriptionRequest(
             "cpu",
             KernelTraceEventParser.Keywords.ContextSwitch,
             static (_, _) => { }));
@@ -1000,7 +1002,7 @@ public sealed class KernelEtwSessionBrokerTests
         await Task.Delay(75);
         Assert.Equal(1, factory.CreateAttempts);
 
-        var secondSubscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
+        var secondSubscription = broker.Acquire(new KernelEtwSubscriptionRequest(
             "thread",
             KernelTraceEventParser.Keywords.Thread,
             static (_, _) => { }));
@@ -1092,7 +1094,7 @@ public sealed class KernelEtwSessionBrokerTests
                     StartEntered = attempt == 2 ? SecondRuntimeStartEntered : null,
                     StartRelease = attempt == 2 ? SecondRuntimeStartRelease : null,
                 };
-                runtime.Dispatcher.InitializeSubscriptions(subscriptions, context);
+                runtime.Initialize(subscriptions, context, keywords);
                 calls.Add(new CreateCall(
                     sessionName,
                     keywords,
@@ -1110,9 +1112,19 @@ public sealed class KernelEtwSessionBrokerTests
         private int eventsLost;
         private int stopCount;
         public List<KernelTraceEventParser.Keywords> Updates { get; } = [];
-        public KernelEtwSubscriptionDispatcher Dispatcher { get; } = new();
-        public void EmitContextSwitch() => Dispatcher.Dispatch<Microsoft.Diagnostics.Tracing.Parsers.Kernel.CSwitchTraceData>(
-            KernelEtwEventKind.ThreadCSwitch, null!, static (source, data) => source.DeliverThreadCSwitch(data));
+        private readonly NativeKernelEtwTestResource resource = new(NativeKernelEtwTestResource.SmallConfiguration(1000, 1));
+        private IKernelEtwSessionRuntime? nativeRuntime;
+        private readonly List<KernelEtwEventSource> sources = [];
+        private long tick;
+        internal void Initialize(IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions,
+            KernelEtwSessionContext context, KernelTraceEventParser.Keywords keywords)
+            => nativeRuntime = resource.RuntimeFactory.Create("broker-control-seam", keywords, context, Wrap(subscriptions));
+        private KernelEtwSubscriptionRegistration[] Wrap(IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions)
+            => subscriptions.Select(request => request with { NativeOutputs = request.NativeOutputs == KernelEtwNativeOutputs.None
+                ? KernelEtwNativeOutputs.Residency : request.NativeOutputs,
+                Bind = (source, context) => { sources.Add(source); request.Bind(source, context); } }).ToArray();
+        public void EmitPublicationBoundary() => resource.Publish(++tick);
+        private void CancelBindings() { foreach (var source in sources) source.Cancel(); }
         public Exception? UpdateFailure { get; set; }
         public bool IsProcessing => Volatile.Read(ref isProcessing) != 0;
         public int EventsLost
@@ -1137,10 +1149,8 @@ public sealed class KernelEtwSessionBrokerTests
             KernelEtwSessionContext context)
         {
             Assert.True(IsProcessing);
-            Dispatcher.UpdateSubscriptions(subscriptions, context, _ =>
-            {
-                if (UpdateFailure is not null) throw UpdateFailure;
-            });
+            resource.KeywordUpdateFailure = UpdateFailure;
+            nativeRuntime!.UpdateSubscriptions(Wrap(subscriptions), context);
             Updates.Add(subscriptions.Aggregate(KernelTraceEventParser.Keywords.None,
                 static (all, subscription) => all | subscription.Keywords));
         }
@@ -1152,6 +1162,7 @@ public sealed class KernelEtwSessionBrokerTests
                 throw StartFailure;
             }
 
+            nativeRuntime!.StartProcessing(static _ => { });
             Volatile.Write(ref isProcessing, 1);
             StartEntered?.TrySetResult();
             StartRelease?.Wait();
@@ -1168,7 +1179,7 @@ public sealed class KernelEtwSessionBrokerTests
 
             Interlocked.Increment(ref stopCount);
             if (!StopResult.SessionStopSucceeded && !StopResult.ProcessingCompleted) return StopResult;
-            Dispatcher.CancelAll();
+            CancelBindings();
             Volatile.Write(ref isProcessing, 0);
             return StopResult;
         }
@@ -1181,9 +1192,11 @@ public sealed class KernelEtwSessionBrokerTests
             {
                 DisposalRelease.Wait();
             }
-            Dispatcher.CancelAll();
+            CancelBindings();
             Volatile.Write(ref isProcessing, 0);
             if (DisposalFailure is not null) throw DisposalFailure;
+            nativeRuntime!.Dispose();
+            resource.Dispose();
             DisposalCompleted = true;
         }
     }

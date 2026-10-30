@@ -3,50 +3,22 @@ using System.Collections.Concurrent;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
-internal sealed class KernelEtwSubscriptionDispatcher
+internal sealed class KernelEtwSubscriptionDispatcher(
+    NativeKernelEtwSession nativeSession,
+    Action<KernelEtwNativeOutputs>? updateOutputs = null)
 {
     private BoundSubscription[] bindings = [];
-    internal readonly EtwEventDropCounter[] Counters = Enum.GetNames<KernelEtwEventKind>().Select(name => new EtwEventDropCounter(name)).ToArray();
+    internal readonly EtwEventDropCounter[] Counters = Enum.GetNames<KernelEtwEventKind>()
+        .Select((name, index) => new EtwEventDropCounter(name, () => nativeSession.ReadPhysicalCounter((uint)index, name))).ToArray();
     private KernelEtwSessionContext? runContext;
     private EtwEventDropSession? eventDrops;
     private readonly ConcurrentDictionary<string, EtwEventDropCounter> consumerCounters = new(StringComparer.Ordinal);
     private bool initialized;
     private KernelTraceEventParser.Keywords keywords;
-
-    // Called exactly once, before Source.Process. The parser's template table
-    // remains fixed for the lifetime of the processing runtime.
-    internal void AttachParser(KernelTraceEventParser parser)
-    {
-        ArgumentNullException.ThrowIfNull(parser);
-        parser.ProcessStartGroup += data => Dispatch(KernelEtwEventKind.ProcessStartGroup, data, static (source, value) => source.DeliverProcessStartGroup(value));
-        parser.ProcessEndGroup += data => Dispatch(KernelEtwEventKind.ProcessEndGroup, data, static (source, value) => source.DeliverProcessEndGroup(value));
-        parser.ThreadStartGroup += data => Dispatch(KernelEtwEventKind.ThreadStartGroup, data, static (source, value) => source.DeliverThreadStartGroup(value));
-        parser.ThreadEndGroup += data => Dispatch(KernelEtwEventKind.ThreadEndGroup, data, static (source, value) => source.DeliverThreadEndGroup(value));
-        parser.ThreadCSwitch += data => Dispatch(KernelEtwEventKind.ThreadCSwitch, data, static (source, value) => source.DeliverThreadCSwitch(value));
-        parser.DiskIORead += data => Dispatch(KernelEtwEventKind.DiskIORead, data, static (source, value) => source.DeliverDiskIORead(value));
-        parser.DiskIOWrite += data => Dispatch(KernelEtwEventKind.DiskIOWrite, data, static (source, value) => source.DeliverDiskIOWrite(value));
-        parser.FileIOCreate += data => Dispatch(KernelEtwEventKind.FileIOCreate, data, static (source, value) => source.DeliverFileIOCreate(value));
-        parser.FileIOFileCreate += data => Dispatch(KernelEtwEventKind.FileIOFileCreate, data, static (source, value) => source.DeliverFileIOFileCreate(value));
-        parser.FileIOFileDelete += data => Dispatch(KernelEtwEventKind.FileIOFileDelete, data, static (source, value) => source.DeliverFileIOFileDelete(value));
-        parser.FileIOWrite += data => Dispatch(KernelEtwEventKind.FileIOWrite, data, static (source, value) => source.DeliverFileIOWrite(value));
-        parser.FileIORename += data => Dispatch(KernelEtwEventKind.FileIORename, data, static (source, value) => source.DeliverFileIORename(value));
-        parser.FileIODelete += data => Dispatch(KernelEtwEventKind.FileIODelete, data, static (source, value) => source.DeliverFileIODelete(value));
-        parser.TcpIpSend += data => Dispatch(KernelEtwEventKind.TcpIpSend, data, static (source, value) => source.DeliverTcpIpSend(value));
-        parser.TcpIpRecv += data => Dispatch(KernelEtwEventKind.TcpIpRecv, data, static (source, value) => source.DeliverTcpIpRecv(value));
-        parser.TcpIpSendIPV6 += data => Dispatch(KernelEtwEventKind.TcpIpSendIPV6, data, static (source, value) => source.DeliverTcpIpSendIPV6(value));
-        parser.TcpIpRecvIPV6 += data => Dispatch(KernelEtwEventKind.TcpIpRecvIPV6, data, static (source, value) => source.DeliverTcpIpRecvIPV6(value));
-        parser.UdpIpSend += data => Dispatch(KernelEtwEventKind.UdpIpSend, data, static (source, value) => source.DeliverUdpIpSend(value));
-        parser.UdpIpRecv += data => Dispatch(KernelEtwEventKind.UdpIpRecv, data, static (source, value) => source.DeliverUdpIpRecv(value));
-        parser.UdpIpSendIPV6 += data => Dispatch(KernelEtwEventKind.UdpIpSendIPV6, data, static (source, value) => source.DeliverUdpIpSendIPV6(value));
-        parser.UdpIpRecvIPV6 += data => Dispatch(KernelEtwEventKind.UdpIpRecvIPV6, data, static (source, value) => source.DeliverUdpIpRecvIPV6(value));
-        parser.ImageDCStart += data => Dispatch(KernelEtwEventKind.ImageDCStart, data, static (source, value) => source.DeliverImageDCStart(value));
-        parser.ImageLoad += data => Dispatch(KernelEtwEventKind.ImageLoad, data, static (source, value) => source.DeliverImageLoad(value));
-        parser.ImageUnload += data => Dispatch(KernelEtwEventKind.ImageUnload, data, static (source, value) => source.DeliverImageUnload(value));
-        parser.PerfInfoISR += data => Dispatch(KernelEtwEventKind.PerfInfoISR, data, static (source, value) => source.DeliverPerfInfoISR(value));
-        parser.PerfInfoDPC += data => Dispatch(KernelEtwEventKind.PerfInfoDPC, data, static (source, value) => source.DeliverPerfInfoDPC(value));
-        parser.PerfInfoThreadedDPC += data => Dispatch(KernelEtwEventKind.PerfInfoThreadedDPC, data, static (source, value) => source.DeliverPerfInfoThreadedDPC(value));
-        parser.PerfInfoTimerDPC += data => Dispatch(KernelEtwEventKind.PerfInfoTimerDPC, data, static (source, value) => source.DeliverPerfInfoTimerDPC(value));
-    }
+    private KernelEtwNativeOutputs outputs;
+    private IDisposable? publicationObservation;
+    private readonly Action<KernelEtwNativeOutputs> applyOutputs = updateOutputs ?? nativeSession.UpdateOutputs;
+    internal readonly EtwEventDropCounter PublicationCounter = new("PublishedWindow");
 
     internal void InitializeSubscriptions(
         IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions,
@@ -75,26 +47,44 @@ internal sealed class KernelEtwSubscriptionDispatcher
     {
         if (subscriptions.Count == 0)
         {
-            // Withdrawing the last callbacks does not change the native flags.
-            // The owner attempts stop and retains this session if control is denied.
+            // A denied provider stop can leave physical flags enabled, but no
+            // child output remains in use after the last holder returns it.
+            ApplyOutputs(KernelEtwNativeOutputs.None);
             CancelAll();
             return;
         }
         var desiredKeywords = subscriptions.Aggregate(KernelTraceEventParser.Keywords.None,
             static (all, subscription) => all | subscription.Keywords);
         var desiredFlags = KernelEtwSessionKeywordControl.CompileSystemTraceFlags(desiredKeywords);
+        var previousOutputs = outputs;
         try
         {
             if (updateKeywords is not null
                 && desiredFlags != KernelEtwSessionKeywordControl.CompileSystemTraceFlags(keywords))
+            {
+                // A newly enabled ImageLoad flag emits its one-time rundown, kernel
+                // modules first, during this update. Queue the requested child
+                // outputs before it so the consumer records that rundown; holder
+                // bindings still wait until the new flags are enabled.
+                ApplyOutputs(previousOutputs | subscriptions.Aggregate(KernelEtwNativeOutputs.None,
+                    static (mask, subscription) => mask | subscription.NativeOutputs));
                 updateKeywords(desiredKeywords);
+            }
         }
         catch (Exception failure) when (KernelEtwSessionKeywordControl.IsAccessDenied(failure))
         {
             // Control denial leaves the old flags enabled. Bind only covered leases;
-            // pending leases must not initialize consumer state on each retry.
+            // pending leases must not initialize consumer state on each retry, and
+            // their prepared outputs are returned with the covered set.
             PublishSubscriptions(subscriptions, context,
                 KernelEtwSessionKeywordControl.CompileSystemTraceFlags(keywords));
+            throw;
+        }
+        catch
+        {
+            // Any other control failure stops this runtime. Return the prepared
+            // outputs first; no binding uses them.
+            ApplyOutputs(previousOutputs);
             throw;
         }
 
@@ -112,23 +102,41 @@ internal sealed class KernelEtwSubscriptionDispatcher
         var retained = previous.ToDictionary(static binding => binding.LeaseId);
         var next = new List<BoundSubscription>();
         var added = new List<KernelEtwEventSource>();
-        foreach (var subscription in subscriptions)
+        var covered = subscriptions.Where(subscription =>
+            (KernelEtwSessionKeywordControl.CompileSystemTraceFlags(subscription.Keywords) & ~enabledFlags) == 0).ToArray();
+        var desiredOutputs = covered.Aggregate(KernelEtwNativeOutputs.None, static (mask, subscription) => mask | subscription.NativeOutputs);
+        var previousOutputs = outputs;
+        try
         {
-            if ((KernelEtwSessionKeywordControl.CompileSystemTraceFlags(subscription.Keywords) & ~enabledFlags) != 0)
-                continue;
-            if (retained.Remove(subscription.LeaseId, out var existing))
+            // New child state is prepared before Bind queues its reset commands.
+            // Old outputs remain until every new binding has been built.
+            ApplyOutputs(previousOutputs | desiredOutputs);
+            foreach (var subscription in covered)
             {
-                next.Add(existing);
-                continue;
+                if (retained.Remove(subscription.LeaseId, out var existing))
+                {
+                    next.Add(existing);
+                    continue;
+                }
+                var source = new KernelEtwEventSource(nativeSession, subscription.Id, subscription.NativeOutputs, context.Generation, ConsumerCounter);
+                added.Add(source);
+                subscription.Bind(source, context);
+                next.Add(new(subscription.LeaseId, source));
             }
-            var source = new KernelEtwEventSource(subscription.Id, ConsumerCounter);
-            subscription.Bind(source, context);
-            next.Add(new(subscription.LeaseId, source));
-            added.Add(source);
+            ApplyOutputs(desiredOutputs);
+            publicationObservation ??= nativeSession.ObservePublications(DispatchPublication);
+            foreach (var source in added) source.Activate();
+        }
+        catch
+        {
+            // Binding is unpublished until it succeeds. Never leave observers
+            // installed on a partially built source after a failed callback.
+            foreach (var source in added) source.Cancel();
+            ApplyOutputs(previousOutputs);
+            throw;
         }
 
         foreach (var removed in retained.Values) removed.Source.Cancel();
-        foreach (var source in added) source.Activate();
         Volatile.Write(ref bindings, next.ToArray());
     }
 
@@ -136,30 +144,42 @@ internal sealed class KernelEtwSubscriptionDispatcher
     {
         foreach (var binding in Interlocked.Exchange(ref bindings, []))
             binding.Source.Cancel();
+        Interlocked.Exchange(ref publicationObservation, null)?.Dispose();
     }
 
-    internal void Dispatch<T>(KernelEtwEventKind kind, T data, Func<KernelEtwEventSource, T, bool> deliver)
+    private void ApplyOutputs(KernelEtwNativeOutputs desired)
     {
-        var counter = Counters[(int)kind];
-        counter.Receive();
+        if (outputs == desired) return;
+        applyOutputs(desired);
+        outputs = desired;
+    }
+
+    // This is the production native publication signal. Payloads stay leased
+    // in NativeCore and are read by each holder's existing business worker.
+    private void DispatchPublication()
+    {
+        PublicationCounter.Receive();
         var used = false;
         foreach (var binding in Volatile.Read(ref bindings))
-            used |= binding.Source.Dispatch(data, deliver);
-        if (!used) counter.Drop();
+            used |= binding.Source.DispatchPublication();
+        if (!used) PublicationCounter.Drop();
     }
 
     internal EtwEventDropSession RegisterDiagnostics(string name, Func<int> eventsLost)
     {
         eventDrops = EtwEventDropDiagnostics.Start(name, eventsLost, Counters, runContext?.Generation, runContext?.StartedAt);
         foreach (var counter in consumerCounters) eventDrops.RegisterCounter(counter.Key, counter.Value);
+        eventDrops.RegisterCounter("PublishedWindow", PublicationCounter);
         eventDrops.EnableProvider("Windows Kernel Trace", keywords == KernelTraceEventParser.Keywords.None
             ? 0 : KernelEtwSessionKeywordControl.CompileSystemTraceFlags(keywords));
         return eventDrops;
     }
 
-    private EtwEventDropCounter ConsumerCounter(string name)
+    internal void ConfirmNativeRelease() => eventDrops?.ConfirmNativeRelease();
+
+    private EtwEventDropCounter ConsumerCounter(string name, Func<EtwEventKindDrops?>? readNative, bool supplementReceived)
     {
-        var counter = consumerCounters.GetOrAdd(name, static kind => new(kind));
+        var counter = consumerCounters.GetOrAdd(name, kind => new(kind, readNative, supplementReceived));
         eventDrops?.RegisterCounter(name, counter);
         return counter;
     }

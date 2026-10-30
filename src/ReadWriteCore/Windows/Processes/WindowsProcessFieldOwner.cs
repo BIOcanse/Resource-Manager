@@ -46,10 +46,14 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
     /// Pass the same borrowed broker to all readers. No orphan policy or retry worker is installed.</summary>
     public static WindowsProcessFieldOwner CreateDefault(IKernelEtwSessionBroker? borrowedBroker = null,
         ResourceManager.ReadWrite.Native.Pdh.INativePdhSnapshotSource? borrowedPdhSource = null,
-        Func<CpuResidencyCaptureConfiguration>? cpuConfiguration = null)
+        Func<CpuResidencyCaptureConfiguration>? cpuConfiguration = null,
+        IKernelEtwSessionRuntimeFactory? kernelEtwRuntimeFactory = null)
     {
+        if (borrowedBroker is not null && kernelEtwRuntimeFactory is not null)
+            throw new ArgumentException("Choose a borrowed kernel ETW broker or an owned runtime factory.", nameof(kernelEtwRuntimeFactory));
         if (borrowedBroker is not null) return new(borrowedBroker, null, cpuConfiguration) { borrowedGpuSource = borrowedPdhSource };
-        var broker = new KernelEtwSessionOwner(new TraceEventKernelEtwSessionRuntimeFactory());
+        var readCpu = cpuConfiguration ?? (() => CpuResidencyCaptureConfiguration.ReadWindowsTopology());
+        var broker = new KernelEtwSessionOwner(kernelEtwRuntimeFactory ?? ReadWriteKernelEtwSettings.CreateFactory(readCpu));
         return new(broker, broker, cpuConfiguration) { borrowedGpuSource = borrowedPdhSource };
     }
     /// <summary>Called by the SDK host's run entry to acquire this owner's network capture.
@@ -98,18 +102,16 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
         (residency ?? throw new InvalidOperationException("This owner uses the hosted shared CPU residency reader and has no standalone CPU residency capture.")).Stop();
     }
 
-    /// <summary>The single-method standalone run owns its bucket storage locally.
-    /// Continuous closed history is needed until this run returns, including cancellation.</summary>
+    /// <summary>The single-method standalone run owns its native capture until
+    /// it returns, including cancellation.</summary>
     public async Task RunCpuResidencyCaptureAsync(Func<CancellationToken, Task> run,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(run);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         var capture = residency ?? throw new InvalidOperationException("This owner uses the hosted shared CPU residency reader and has no standalone CPU residency capture.");
-        using var storage = new CaptureBucketStorage();
         try
         {
-            capture.SetBucketStorage(storage);
             StartCpuResidencyCapture();
             await run(cancellationToken).ConfigureAwait(false);
         }
@@ -177,13 +179,11 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
             if (definitions.Any(static field => field.DatasetId == ProcessMetricDatasetIds.ObservedNetworkTraffic))
             {
                 if (network is null) throw new InvalidOperationException("The hosted composition must collect through its original shared network reader.");
-                if (borrow is null) directNetworkDemand = true;
                 parts.Add(WindowsProcessFieldProjection.CreateProcessNetworkFields(names, rows, network.Read(includeObservedTraffic: true).ObservedTraffic));
             }
             if (definitions.Any(static field => field.DatasetId == ProcessMetricDatasetIds.ObservedPhysicalDiskIo))
             {
                 if (disk is null) throw new InvalidOperationException("The hosted composition must collect through its original shared DiskIO reader.");
-                if (borrow is null) directDiskDemand = true;
                 var inventory = new ProcessMetricFieldSnapshot(batch.CapturedAt, null, [], rows.Select(row =>
                     new ProcessMetricFieldValues(row.ProcessId, row.StartKey?.ToString(System.Globalization.CultureInfo.InvariantCulture), [])).ToArray());
                 parts.Add(WindowsPhysicalDiskProcessFields.Project(names, inventory, disk.Read(includeObservedTraffic: true).ObservedTraffic));

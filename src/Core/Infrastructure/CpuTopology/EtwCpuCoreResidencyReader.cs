@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using Microsoft.Diagnostics.Tracing.Parsers;
-using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Application.RuntimeSpecialization;
@@ -43,7 +42,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
     private readonly NativeItemSamplingSubscriptionTracker<CpuResidencySampleRequest> subscriptions =
         CreateSubscriptions(subscriptionOwner, null);
     private EtwCpuResidencyCaptureOwner? captureOwner;
-    private readonly Func<Func<Func<int, CaptureBucketMemory>, Task>, Task> runBucketStorage = RunManagedBucketStorageAsync;
+    private readonly Action<EtwCpuResidencyCaptureOwner.InventorySeed, Func<bool>>? seedProcessInventory;
     private CompiledCpuCoreResidencyPlan? sessionPlan;
     private long nextLeaseId;
     private bool stopped;
@@ -56,11 +55,17 @@ public sealed partial class EtwCpuCoreResidencyReader(
         {
             sessionPlan = runtimePlanProvider.Current.HostManager.RequirePublished().CpuCoreResidency.RequirePublished();
             return MapPlan(sessionPlan);
-        }, new KernelEtwDiagnostics(item => logger.LogWarning(item.Exception, "{Message}", item.MessageTemplate)), seedProcessInventory, () => publicationSignal.Publish());
+        }, new KernelEtwDiagnostics(item => logger.LogWarning(item.Exception, "{Message}", item.MessageTemplate)),
+            () => publicationSignal.Publish(), seedProcessInventory);
 
-    private static Task RunManagedBucketStorageAsync(Func<Func<int, CaptureBucketMemory>, Task> run)
-        => run(CaptureBucketMemory.AllocateManaged);
-    private readonly Action<CpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seedProcessInventory = EtwCpuResidencyCaptureOwner.SeedInventory;
+    internal EtwCpuCoreResidencyReader(IKernelEtwSessionBroker broker, IRuntimePlanProvider plans,
+        HostManagerSamplingSubscriptionOwner owner, ILogger<EtwCpuCoreResidencyReader> logger,
+        Action<EtwCpuResidencyCaptureOwner.InventorySeed, Func<bool>> seedInventory)
+        : this(broker, plans, owner, logger)
+    {
+        ArgumentNullException.ThrowIfNull(seedInventory);
+        seedProcessInventory = seedInventory;
+    }
 
     private static NativeItemSamplingSubscriptionTracker<CpuResidencySampleRequest> CreateSubscriptions(
         HostManagerSamplingSubscriptionOwner owner,
@@ -79,26 +84,9 @@ public sealed partial class EtwCpuCoreResidencyReader(
         : this(kernelEtwBroker, runtimePlanProvider, subscriptionOwner, logger)
     {
         ArgumentNullException.ThrowIfNull(ledgerOwner);
-        runBucketStorage = run => LedgerCaptureBucketStorage.RunAsync(ledgerOwner, run);
         subscriptions = CreateSubscriptions(subscriptionOwner,
             (length, alignment) => SamplingOutputScratch.Create(ledgerOwner.CreateScratch, length, alignment));
     }
-    internal EtwCpuCoreResidencyReader(
-        IKernelEtwSessionBroker kernelEtwBroker,
-        IRuntimePlanProvider runtimePlanProvider,
-        HostManagerSamplingSubscriptionOwner subscriptionOwner,
-        ILogger<EtwCpuCoreResidencyReader> logger,
-        Action<CpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seedProcessInventory)
-        : this(
-            kernelEtwBroker,
-            runtimePlanProvider,
-            subscriptionOwner,
-            logger)
-    {
-        this.seedProcessInventory = seedProcessInventory
-            ?? throw new ArgumentNullException(nameof(seedProcessInventory));
-    }
-
 
     public CpuCoreResidencySnapshot? Read() => Capture.Read();
     public CpuCoreResidencyObservation ReadObservation() => Capture.ReadObservation();
@@ -216,73 +204,49 @@ public sealed partial class EtwCpuCoreResidencyReader(
         {
             await Task.Yield();
             stoppingToken.ThrowIfCancellationRequested();
-            // Continuous history is used across collections until this run stops
-            // or changes to finite windows. Pause returns it immediately.
-            await runBucketStorage(async allocate =>
+            Capture.EnsureStarted();
+            await worker.RunAsync(async (plan, token) =>
             {
-                using var runStorage = new CaptureBucketStorage(allocate);
-                try
-                {
-                    Capture.SetBucketStorage(runStorage);
-                    Capture.EnsureStarted();
-                    await worker.RunAsync(async (plan, token) =>
-                    {
-                        if (!subscriptions.HasPersistentDemand(static request => !request.CancellationToken.IsCancellationRequested))
-                            return SubscriptionSampleCompletion.Skipped;
-                        var windowed = WindowedCapture;
-                        if (!windowed)
-                        {
-                            Capture.BeginWindow();
-                            return await SampleCurrentWindowAsync();
-                        }
-                        var completion = SubscriptionSampleCompletion.Skipped;
-                        await runBucketStorage(async windowAllocate =>
-                        {
-                            using var windowStorage = new CaptureBucketStorage(windowAllocate);
-                            try
-                            {
-                                completion = await Capture.RunWindowAsync(windowStorage, SampleCurrentWindowAsync);
-                            }
-                            finally { Capture.SetBucketStorage(runStorage); }
-                        });
-                        return completion;
+                if (!subscriptions.HasPersistentDemand(static request => !request.CancellationToken.IsCancellationRequested))
+                    return SubscriptionSampleCompletion.Skipped;
+                var windowed = WindowedCapture;
+                if (windowed) return await Capture.RunWindowAsync(SampleCurrentWindowAsync);
+                Capture.BeginWindow();
+                return await SampleCurrentWindowAsync();
 
-                        async Task<SubscriptionSampleCompletion> SampleCurrentWindowAsync()
-                        {
-                            if (windowed && await WaitForWindowOrDemandAsync(token))
-                                return SubscriptionSampleCompletion.Skipped;
-                            var committed = false;
-                            Capture.Collect(plan.OwnerToken, (_, sourceQuerySucceeded) =>
-                            {
-                                committed = true;
-                                IReadOnlySet<string> queried = sourceQuerySucceeded
-                                    ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "process.cpu.residency" }
-                                    : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                                pendingFieldCollection = fieldDeliveries.CaptureCompleted<CpuResidencySampleRequest>(
-                                    plan.Triggers, queried, committed: true);
-                            });
-                            return token.IsCancellationRequested || Volatile.Read(ref stopped)
-                                || !plan.OwnerToken.IsActive ? SubscriptionSampleCompletion.Skipped
-                                : committed ? SubscriptionSampleCompletion.Sampled : SubscriptionSampleCompletion.Skipped;
-                        }
-                    }, stoppingToken, planCreated: plan =>
+                async Task<SubscriptionSampleCompletion> SampleCurrentWindowAsync()
+                {
+                    if (windowed && await WaitForWindowOrDemandAsync(token))
+                        return SubscriptionSampleCompletion.Skipped;
+                    var committed = false;
+                    await Capture.CollectAsync(plan.OwnerToken, (_, sourceQuerySucceeded) =>
                     {
-                        lock (subscriptionGate)
-                            if (stopped) throw new OperationCanceledException(stoppingToken);
-                        UpdateCaptureFrequency(plan);
-                        pendingFieldCollection = null;
-                        if (plan.Request is null)
-                            fieldDeliveries.Deliver<CpuResidencySampleRequest>(plan.Triggers, null, freshOnly: false);
-                    }, collectionCompleted: (plan, completion) =>
-                    {
-                        var result = pendingFieldCollection;
-                        pendingFieldCollection = null;
-                        if (completion == SubscriptionSampleCompletion.Canceled) return;
-                        fieldDeliveries.Deliver<CpuResidencySampleRequest>(plan.Triggers, result,
-                            freshOnly: plan.Request is null ? true : null);
-                    });
+                        committed = true;
+                        IReadOnlySet<string> queried = sourceQuerySucceeded
+                            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "process.cpu.residency" }
+                            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        pendingFieldCollection = fieldDeliveries.CaptureCompleted<CpuResidencySampleRequest>(
+                            plan.Triggers, queried, committed: true);
+                    }, token);
+                    return token.IsCancellationRequested || Volatile.Read(ref stopped)
+                        || !plan.OwnerToken.IsActive ? SubscriptionSampleCompletion.Skipped
+                        : committed ? SubscriptionSampleCompletion.Sampled : SubscriptionSampleCompletion.Skipped;
                 }
-                finally { StopSession("ETW CPU 执行时长归因正在随程序停止。"); }
+            }, stoppingToken, planCreated: plan =>
+            {
+                lock (subscriptionGate)
+                    if (stopped) throw new OperationCanceledException(stoppingToken);
+                UpdateCaptureFrequency(plan);
+                pendingFieldCollection = null;
+                if (plan.Request is null)
+                    fieldDeliveries.Deliver<CpuResidencySampleRequest>(plan.Triggers, null, freshOnly: false);
+            }, collectionCompleted: (plan, completion) =>
+            {
+                var result = pendingFieldCollection;
+                pendingFieldCollection = null;
+                if (completion == SubscriptionSampleCompletion.Canceled) return;
+                fieldDeliveries.Deliver<CpuResidencySampleRequest>(plan.Triggers, result,
+                    freshOnly: plan.Request is null ? true : null);
             });
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested || Volatile.Read(ref stopped)) { }
@@ -290,6 +254,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
         {
             pendingFieldCollection = null;
             fieldDeliveries.DiscardRunRounds();
+            StopSession("ETW CPU 执行时长归因正在随程序停止。");
         }
     }
 
@@ -360,13 +325,6 @@ public sealed partial class EtwCpuCoreResidencyReader(
             plan.PhysicalCoreByLogicalProcessor.ToFrozenDictionary(pair => pair.Key, pair => new CpuResidencyCoreAccounting(
                 pair.Value.PhysicalCoreId, pair.Value.CcdId, pair.Value.LogicalProcessorCount, pair.Value.LogicalProcessorShare)),
             "Host published typed core/CCD accounting plan", plan.ExecutionTimeSource.BucketWidthMilliseconds);
-    internal static CpuResidencyAggregationBuffer CreateAggregationBuffer(CompiledCpuCoreResidencyPlan plan, long qpcFrequency)
-        => EtwCpuResidencyCaptureOwner.CreateAggregationBuffer(MapPlan(plan.RequirePublished()), qpcFrequency);
-    internal static void BindKernelEventCallbacks(KernelEtwEventSource source, CpuResidencyAggregationBuffer buffer,
-        Func<bool> observe, Func<int, long?> birth, Func<int, int?>? map = null)
-        => EtwCpuResidencyCaptureOwner.BindKernelEventCallbacks(source, buffer, observe, birth, map);
-    internal static int? ResolveEventLogicalProcessorId(int index, IReadOnlyList<int> ids)
-        => EtwCpuResidencyCaptureOwner.ResolveEventLogicalProcessorId(index, ids);
     internal static IReadOnlyList<CpuProcessCoreResidency> BuildProcessSnapshot(CompiledCpuCoreResidencyPlan plan,
         long generation, CpuResidencyAggregationSnapshot aggregate)
         => EtwCpuResidencyCaptureOwner.BuildProcessSnapshot(MapPlan(plan), generation, aggregate);

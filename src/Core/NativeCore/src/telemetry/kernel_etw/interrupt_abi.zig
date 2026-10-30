@@ -221,6 +221,7 @@ pub export fn rm_kernel_etw_interrupt_image(handle: ?*anyopaque, base: u64, size
     self.lock();
     defer self.mutex.unlock();
     if (self.owner.invalidated) return self.fail(error.Invalidated);
+    if (!interrupts.isKernelAddress(base)) return code(.ok);
     if (unload == 1) self.owner.removeImage(base, observed_tick_ms) else {
         const value = if (path) |p| p[0..path_len] else null;
         self.owner.upsertImage(base, size, value, observed_tick_ms) catch |err| return self.fail(err);
@@ -301,8 +302,15 @@ test "interrupt ABI publication lease survives loss and releases all bytes" {
     const self = try Session.create(std.testing.allocator, &cfg);
     defer self.destroy();
     const name = std.unicode.utf8ToUtf16LeStringLiteral("driver.sys");
-    try std.testing.expectEqual(@as(i32, 0), rm_kernel_etw_interrupt_image(self, 100, 10, name, name.len, 0, 0));
-    try std.testing.expectEqual(@as(i32, 0), rm_kernel_etw_interrupt_observe(self, 1, 1, 100, 0));
+    const before_images = self.budget.current;
+    // Intake ignores user loads and unloads before creating any module strings.
+    for ([_]u32{ 0, 1 }) |unload| {
+        try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_image(self, 0xFFFF7FFFFFFFFFFF, 10, name, name.len, 0, unload));
+        try std.testing.expectEqual(@as(usize, 0), self.owner.modules.len);
+        try std.testing.expectEqual(before_images, self.budget.current);
+    }
+    try std.testing.expectEqual(@as(i32, 0), rm_kernel_etw_interrupt_image(self, 0xFFFF800000000100, 10, name, name.len, 0, 0));
+    try std.testing.expectEqual(@as(i32, 0), rm_kernel_etw_interrupt_observe(self, 1, 1, 0xFFFF800000000100, 0));
     var view: View = .{};
     try std.testing.expectEqual(@as(i32, 0), rm_kernel_etw_interrupt_acquire_view(self, 10000, 1, &view));
     try std.testing.expectEqual(@as(u32, 1), view.driver_count);
@@ -327,9 +335,11 @@ test "interrupt external region contains state and immutable view until explicit
     var alive = true;
     defer if (alive) self.destroy();
     const name = std.unicode.utf8ToUtf16LeStringLiteral("driver.sys");
-    try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_image(handle, 100, 10, name, name.len, 0, 0));
-    try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_observe(handle, 1, 1, 100, 0));
+    try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_image(handle, 0xFFFF800000000100, 10, name, name.len, 0, 0));
+    try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_observe(handle, 1, 1, 0xFFFF800000000100, 0));
     const baseline = self.budget.current;
+    var baseline_region: RegionUsage = .{};
+    try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_query_region_usage(handle, &baseline_region, @sizeOf(RegionUsage)));
     var view: View = .{};
     try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_acquire_view(handle, 10000, 1, &view));
     try std.testing.expectEqual(@as(u32, 1), view.driver_count);
@@ -346,6 +356,31 @@ test "interrupt external region contains state and immutable view until explicit
     try std.testing.expect(usage.peak_occupied_bytes >= usage.occupied_bytes and usage.peak_occupied_bytes <= usage.reserved_bytes);
     try std.testing.expect(usage.live_allocations != 0);
     rm_kernel_etw_interrupt_release_view(handle);
+    const held_bytes = self.budget.current;
+    const scratch_capacity = self.owner.publication_round.queryCapacity();
+    // Publication now returns its scratch at the end of the owner round.
+    // Releasing the immutable view must restore the exact native baseline;
+    // retaining a bounded scratch difference is no longer sufficient.
+    try std.testing.expectEqual(@as(usize, 0), scratch_capacity);
+    try std.testing.expectEqual(baseline, held_bytes);
+    var released_region: RegionUsage = .{};
+    try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_query_region_usage(handle, &released_region, @sizeOf(RegionUsage)));
+    try std.testing.expectEqual(baseline_region.requested_bytes, released_region.requested_bytes);
+    try std.testing.expectEqual(baseline_region.occupied_bytes, released_region.occupied_bytes);
+    try std.testing.expectEqual(baseline_region.live_allocations, released_region.live_allocations);
+    for (0..4) |index| {
+        var next: View = .{};
+        try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_acquire_view(handle, 10001 + @as(i64, @intCast(index)), 1, &next));
+        try std.testing.expectEqual(@as(u64, 1), next.event_count);
+        try std.testing.expectEqualSlices(u16, name, next.maximum_module.name.?[0..next.maximum_module.name_len]);
+        rm_kernel_etw_interrupt_release_view(handle);
+        try std.testing.expectEqual(held_bytes, self.budget.current);
+        try std.testing.expectEqual(scratch_capacity, self.owner.publication_round.queryCapacity());
+        try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_query_region_usage(handle, &released_region, @sizeOf(RegionUsage)));
+        try std.testing.expectEqual(baseline_region.requested_bytes, released_region.requested_bytes);
+        try std.testing.expectEqual(baseline_region.occupied_bytes, released_region.occupied_bytes);
+        try std.testing.expectEqual(baseline_region.live_allocations, released_region.live_allocations);
+    }
     try std.testing.expectEqual(baseline, self.budget.current);
     self.active_traces = 1;
     const refused = rm_kernel_etw_interrupt_destroy(handle);

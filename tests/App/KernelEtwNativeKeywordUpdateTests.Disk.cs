@@ -13,7 +13,7 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
     public async Task DisposingDiskConsumerRetainsTheOtherLiveConsumerOnTheSameSession()
     {
         Assert.True(TraceEventSession.IsElevated());
-        var factory = new OwnedRuntimeFactory();
+        var factory = CreateNativeConsumerFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         using var reader = new EtwPhysicalDiskIoAttributionReader(broker, NullLogger<EtwPhysicalDiskIoAttributionReader>.Instance);
         await reader.StartAsync(CancellationToken.None);
@@ -21,11 +21,9 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         reader.Read();
         var initial = broker.GetSnapshot();
         var children = new ConcurrentDictionary<int, ulong>();
-        using var processLease = broker.Subscribe(new("native-test.retained-process", KernelTraceEventParser.Keywords.Process,
-            (events, _) => events.ProcessStartGroup += data =>
-            {
-                if (data.ParentID == Environment.ProcessId) children[data.ProcessID] = unchecked((ulong)data.UniqueProcessKey);
-            }));
+        NativeKernelEtwSession? retainedSession = null;
+        using var processLease = broker.Acquire(new("native-test.retained-process", KernelTraceEventParser.Keywords.Process,
+            (outputs, _) => retainedSession = outputs.NativeSession) { NativeOutputs = KernelEtwNativeOutputs.File });
         Assert.Equal(2, broker.GetSnapshot().SubscriptionCount);
         reader.Dispose();
         var current = broker.GetSnapshot();
@@ -35,7 +33,18 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         Assert.Equal(initial.StartedAt, current.StartedAt);
         Assert.Equal(KernelTraceEventParser.Keywords.Process, current.EnabledKeywords);
         var child = RunOwnedProcessProbe();
-        await UntilAsync(() => children.ContainsKey(child), "retained process consumer stopped after disk consumer disposal");
+        ulong notificationSequence = 0;
+        await UntilAsync(() =>
+        {
+            KernelEtwNativeNotifications.Read(retainedSession!, ref notificationSequence, (view, gap) =>
+            {
+                Assert.False(gap, "The retained native notification consumer skipped a publication.");
+                foreach (var record in KernelEtwNativeNotifications.Records(view))
+                    if (record.Kind == 7 && record.ParentProcessId == Environment.ProcessId)
+                        children[checked((int)record.ProcessId)] = record.Key;
+            });
+            return children.ContainsKey(child);
+        }, "retained native process publication stopped after disk consumer disposal");
         Assert.NotEqual(0ul, children[child]);
         Assert.Equal(1, factory.Created);
         processLease.Dispose();
@@ -48,7 +57,7 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
     {
         Assert.True(OperatingSystem.IsWindows());
         Assert.True(TraceEventSession.IsElevated());
-        var factory = new OwnedRuntimeFactory();
+        var factory = CreateNativeConsumerFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         using var reader = new EtwPhysicalDiskIoAttributionReader(broker, NullLogger<EtwPhysicalDiskIoAttributionReader>.Instance);
         await reader.StartAsync(CancellationToken.None);

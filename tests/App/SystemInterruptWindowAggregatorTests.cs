@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using ResourceManager.App.Domain.SystemHealth;
 using ResourceManager.App.Infrastructure.SystemHealth.Interrupts;
 
@@ -8,11 +9,11 @@ public sealed class SystemInterruptWindowAggregatorTests
     [Fact]
     public void MappedInterruptHotPathReusesIdentityAndDoesNotAllocatePerEvent()
     {
-        var modules = new KernelModuleAddressMap();
+        var modules = new OracleKernelModuleAddressMap();
         modules.Upsert(0x1000, 0x1000, "driver.sys");
         var identity = modules.Resolve(0x1010);
         Assert.Same(identity, modules.Resolve(0x1020));
-        var aggregator = new SystemInterruptWindowAggregator();
+        var aggregator = new OracleSystemInterruptWindowAggregator();
         aggregator.Observe(new(1000, SystemInterruptEventKinds.Dpc, 2, 0x1010, identity.Name, identity.Path));
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var index = 0; index < 20_000; index++)
@@ -27,7 +28,7 @@ public sealed class SystemInterruptWindowAggregatorTests
     public void CreateSnapshot_UsesCpuCapacityAndGroupsDrivers()
     {
         var now = AlignedNow();
-        var aggregator = new SystemInterruptWindowAggregator();
+        var aggregator = new OracleSystemInterruptWindowAggregator();
         foreach (var sample in new[]
         {
             Event(now.AddSeconds(-55), SystemInterruptEventKinds.Dpc, 1.5, "driver-a.sys"),
@@ -72,7 +73,7 @@ public sealed class SystemInterruptWindowAggregatorTests
     public void CreateSnapshot_StaysUnavailableUntilFirstCompleteBucket()
     {
         var now = AlignedNow();
-        var aggregator = new SystemInterruptWindowAggregator();
+        var aggregator = new OracleSystemInterruptWindowAggregator();
         aggregator.Observe(Event(now.AddSeconds(-1), SystemInterruptEventKinds.Dpc, 20, "driver.sys"));
         var snapshot = aggregator.CreateSnapshot(
             now,
@@ -90,7 +91,7 @@ public sealed class SystemInterruptWindowAggregatorTests
     [Fact]
     public void KernelModuleMap_ResolvesMostSpecificContainingImage()
     {
-        var modules = new KernelModuleAddressMap();
+        var modules = new OracleKernelModuleAddressMap();
         modules.Upsert(0x1000, 0x1000, @"C:\Windows\System32\drivers\outer.sys");
         modules.Upsert(0x1800, 0x100, @"C:\Windows\System32\drivers\inner.sys");
 
@@ -100,14 +101,14 @@ public sealed class SystemInterruptWindowAggregatorTests
 
         Assert.Equal("inner.sys", inner.Name);
         Assert.Equal("outer.sys", outer.Name);
-        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, unknown.Name);
+        Assert.Equal(OracleKernelModuleAddressMap.UnknownModuleName, unknown.Name);
     }
 
     [Fact]
     public void KernelModuleMap_ResolvesUnorderedLoadsReplacementsAndRemovals()
     {
         const ulong kernelBase = 0xFFFF_F800_0000_0000UL;
-        var modules = new KernelModuleAddressMap();
+        var modules = new OracleKernelModuleAddressMap();
         var order = Enumerable.Range(0, 300).OrderBy(index => (index * 7919) % 300).ToArray();
         foreach (var index in order)
         {
@@ -119,57 +120,57 @@ public sealed class SystemInterruptWindowAggregatorTests
             var start = kernelBase + (ulong)index * 0x10000;
             Assert.Equal($"d{index:000}.sys", modules.Resolve(start).Name);
             Assert.Equal($"d{index:000}.sys", modules.Resolve(start + 0x7FFF).Name);
-            Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(start + 0x8000).Name);
+            Assert.Equal(OracleKernelModuleAddressMap.UnknownModuleName, modules.Resolve(start + 0x8000).Name);
         }
 
         modules.Upsert(kernelBase + 50 * 0x10000, 0x8000, @"C:\Windows\System32\drivers\replaced.sys");
         modules.Remove(kernelBase + 100 * 0x10000);
         modules.Remove(kernelBase + 0x1234);
         Assert.Equal("replaced.sys", modules.Resolve(kernelBase + 50 * 0x10000 + 0x10).Name);
-        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(kernelBase + 100 * 0x10000 + 0x10).Name);
+        Assert.Equal(OracleKernelModuleAddressMap.UnknownModuleName, modules.Resolve(kernelBase + 100 * 0x10000 + 0x10).Name);
         Assert.Equal("d101.sys", modules.Resolve(kernelBase + 101 * 0x10000 + 0x10).Name);
-        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(kernelBase - 1).Name);
-        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(0).Name);
+        Assert.Equal(OracleKernelModuleAddressMap.UnknownModuleName, modules.Resolve(kernelBase - 1).Name);
+        Assert.Equal(OracleKernelModuleAddressMap.UnknownModuleName, modules.Resolve(0).Name);
 
         modules.Clear();
-        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(kernelBase + 0x10).Name);
+        Assert.Equal(OracleKernelModuleAddressMap.UnknownModuleName, modules.Resolve(kernelBase + 0x10).Name);
     }
 
     [Fact]
     public void KernelModuleMap_WalksPastNestedImagesOnlyWhileAnEarlierImageReaches()
     {
-        var modules = new KernelModuleAddressMap();
+        var modules = new OracleKernelModuleAddressMap();
         modules.Upsert(0x1000, 0x2000, @"C:\Windows\System32\drivers\outer.sys");
         modules.Upsert(0x1800, 0x100, @"C:\Windows\System32\drivers\inner.sys");
         modules.Upsert(0x4000, 0x1000, @"C:\Windows\System32\drivers\next.sys");
 
         Assert.Equal("outer.sys", modules.Resolve(0x2000).Name);
-        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(0x3500).Name);
+        Assert.Equal(OracleKernelModuleAddressMap.UnknownModuleName, modules.Resolve(0x3500).Name);
         Assert.Equal("next.sys", modules.Resolve(0x4FFF).Name);
-        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(0x5000).Name);
-        Assert.True(KernelModuleAddressMap.IsKernelAddress(0xFFFF_8000_0000_0000UL));
-        Assert.False(KernelModuleAddressMap.IsKernelAddress(0x7FFF_FFFF_FFFFUL));
+        Assert.Equal(OracleKernelModuleAddressMap.UnknownModuleName, modules.Resolve(0x5000).Name);
+        Assert.True(OracleKernelModuleAddressMap.IsKernelAddress(0xFFFF_8000_0000_0000UL));
+        Assert.False(OracleKernelModuleAddressMap.IsKernelAddress(0x7FFF_FFFF_FFFFUL));
     }
 
     [Fact]
     public void KernelModuleMap_ImageReachingTheTopOfTheAddressSpaceCoversItsLastAddress()
     {
-        var modules = new KernelModuleAddressMap();
+        var modules = new OracleKernelModuleAddressMap();
         modules.Upsert(ulong.MaxValue - 3, 10, @"C:\Windows\System32\drivers\last.sys");
         modules.Upsert(ulong.MaxValue - 1, 1, @"C:\Windows\System32\drivers\inner.sys");
 
         Assert.Equal("inner.sys", modules.Resolve(ulong.MaxValue - 1).Name);
         Assert.Equal("last.sys", modules.Resolve(ulong.MaxValue).Name);
-        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(ulong.MaxValue - 4).Name);
+        Assert.Equal(OracleKernelModuleAddressMap.UnknownModuleName, modules.Resolve(ulong.MaxValue - 4).Name);
     }
 
-    private static SystemInterruptEventSample Event(
+    private static OracleSystemInterruptEventSample Event(
         DateTimeOffset observedAt,
         string kind,
         double durationMilliseconds,
         string moduleName)
     {
-        return new SystemInterruptEventSample(
+        return new OracleSystemInterruptEventSample(
             observedAt.ToUnixTimeMilliseconds(),
             kind,
             durationMilliseconds,
@@ -181,7 +182,7 @@ public sealed class SystemInterruptWindowAggregatorTests
     private static DateTimeOffset AlignedNow()
     {
         var now = DateTimeOffset.UtcNow;
-        var bucketSeconds = (long)SystemInterruptWindowAggregator.BucketDuration.TotalSeconds;
+        var bucketSeconds = (long)OracleSystemInterruptWindowAggregator.BucketDuration.TotalSeconds;
         return DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds() / bucketSeconds * bucketSeconds);
     }
 }

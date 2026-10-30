@@ -4,11 +4,19 @@ using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.ReadWrite.Windows.Devices;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class EtwResourceOwnerLibraryIntegrationTests
 {
+    private static NativeKernelEtwTestResource NewResource()
+    {
+        var configuration = NativeKernelEtwTestResource.SmallConfiguration();
+        configuration.StartedTickMilliseconds = 0;
+        return new(configuration);
+    }
+
     [Fact]
     public void IndependentOwnersAndContractsBelongToSdkAndReadsDoNotAcquireEtw()
     {
@@ -17,156 +25,103 @@ public sealed class EtwResourceOwnerLibraryIntegrationTests
         Assert.Equal(sdk, typeof(EtwNetworkTcpIpCaptureOwner).Assembly);
         Assert.Equal(sdk, typeof(NetworkAttributionSnapshot).Assembly);
         Assert.Equal(sdk, typeof(KernelEtwEventSource).Assembly);
-        var factory = new Factory();
-        using var broker = new KernelEtwSessionOwner(factory);
+        using var broker = NewResource();
         using var network = new EtwNetworkTcpIpCaptureOwner(broker);
         using var disk = new ResourceManager.ReadWrite.Windows.Processes.EtwPhysicalDiskIoCaptureOwner(broker);
-        Assert.Empty(network.Read(true).RawProcessValues);
-        Assert.Empty(disk.Read(true).Processes);
-        Assert.Equal(0, factory.Created);
-        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
+        Assert.Empty(network.Read(true).RawProcessValues); Assert.Empty(disk.Read(true).Processes);
+        Assert.Equal(0, broker.Creations); Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
     }
 
     [Fact]
     public void NetworkBorrowerSharesTheOriginalUnionAndDisposesOnlyItsLease()
     {
-        var factory = new Factory();
-        using var broker = new KernelEtwSessionOwner(factory);
-        using var cpu = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var broker = NewResource();
+        using var cpu = broker.Acquire(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
+            static (source, _) => Assert.NotNull(source.NativeSession)) { NativeOutputs = KernelEtwNativeOutputs.Residency });
         var network = new EtwNetworkTcpIpCaptureOwner(broker);
-        network.Start();
-        network.Read();
-        Assert.Equal(1, factory.Created);
-        Assert.Equal(2, broker.GetSnapshot().SubscriptionCount);
-        Assert.Equal(KernelTraceEventParser.Keywords.ContextSwitch | KernelTraceEventParser.Keywords.NetworkTCPIP,
-            broker.GetSnapshot().EnabledKeywords);
+        network.Start(); network.Read();
+        Assert.Equal(1, broker.Creations); Assert.Equal(2, broker.GetSnapshot().SubscriptionCount);
+        Assert.Equal(KernelTraceEventParser.Keywords.ContextSwitch
+            | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.NetworkTCPIP, broker.GetSnapshot().EnabledKeywords);
         network.Dispose();
-        Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
-        Assert.Equal(0, factory.Current!.Stops);
+        Assert.Equal(1, broker.GetSnapshot().SubscriptionCount); Assert.Equal(0, broker.Stops);
         Assert.Equal(KernelTraceEventParser.Keywords.ContextSwitch, broker.GetSnapshot().EnabledKeywords);
         Assert.Throws<ObjectDisposedException>(() => network.Read());
-        cpu.Dispose();
-        Assert.Equal(1, factory.Current.Stops);
+        cpu.Dispose(); Assert.Equal(1, broker.Stops);
     }
 
     [Fact]
     public void RecordedWindowUsesOriginalBirthVerificationAndReleasesEveryIdentityLease()
     {
-        var factory = new Factory();
-        using var broker = new KernelEtwSessionOwner(factory);
+        using var broker = NewResource(); broker.Identities[41] = new(100);
         long tick = 0;
-        var handles = new List<ProcessLease>();
-        using var network = new EtwNetworkTcpIpCaptureOwner(broker, new(), () => tick,
-            pid => { var lease = new ProcessLease(pid, 100); handles.Add(lease); return lease; });
-        network.Start();
-        Assert.Null(network.Read(true).ObservedTraffic);
-        var runtime = factory.Current!;
-        network.ObserveBoundNetworkTransfer(runtime.NetworkSource!, runtime.Context!, 41, 4000, true, false,
-            IPAddress.Loopback, 1500, 99); // PID reused after this event.
-        network.ObserveBoundNetworkTransfer(runtime.NetworkSource!, runtime.Context!, 41, 2000, true, false,
-            IPAddress.Loopback, 1600, 100);
-        tick = 2001;
+        using var network = new EtwNetworkTcpIpCaptureOwner(broker, new(), () => tick);
+        network.Start(); Assert.Null(network.Read(true).ObservedTraffic);
+        broker.Network(1500, 41, 4000, true, false, IPAddress.Loopback, 99);
+        broker.Network(1600, 41, 2000, true, false, IPAddress.Loopback, 100);
+        tick = 2001; broker.Publish(tick);
         var window = network.Read(true).ObservedTraffic!;
         Assert.Equal(2000, window.WindowMilliseconds);
         var row = Assert.Single(window.Processes);
-        Assert.Equal("100", row.CreationWindowsFileTime100Ns);
-        Assert.Equal("2000", row.SendBytes);
+        Assert.Equal("100", row.CreationWindowsFileTime100Ns); Assert.Equal("2000", row.SendBytes);
         Assert.Equal(1000d, row.SendBytesPerSecond);
-        var handle = Assert.Single(handles);
-        Assert.Equal(2, handle.Reads);
-        Assert.Equal(1, handle.Disposals);
+        var identity = broker.Identities[41];
+        Assert.Equal(1, identity.Opens); Assert.Equal(2, identity.Reads); Assert.Equal(1, identity.Closes);
+        Assert.Equal(0, broker.ActiveIdentityHandles);
     }
 
     [Fact]
     public void RecordedLossDiscardsIncompleteWindowsAndStableLossCanRecover()
     {
-        var factory = new Factory();
-        using var broker = new KernelEtwSessionOwner(factory);
-        long tick = 0;
+        using var broker = NewResource(); long tick = 0;
         using var network = new EtwNetworkTcpIpCaptureOwner(broker, new(), () => tick);
-        network.Start();
-        network.Read(true);
-        tick = 2001;
-        Assert.NotNull(network.Read(true).ObservedTraffic); // Complete empty is a valid window.
-        factory.Current!.Lost = 1;
-        tick = 2100;
-        Assert.Null(network.Read(true).ObservedTraffic);
-        tick = 4101;
-        Assert.NotNull(network.Read(true).ObservedTraffic);
-        tick = 6102;
-        Assert.NotNull(network.Read(true).ObservedTraffic);
+        network.Start(); network.Read(true);
+        tick = 2001; broker.Publish(tick); Assert.NotNull(network.Read(true).ObservedTraffic);
+        tick = 2100; broker.Loss(tick, 1); broker.Publish(tick); Assert.Null(network.Read(true).ObservedTraffic);
+        tick = 4101; broker.Publish(tick); Assert.NotNull(network.Read(true).ObservedTraffic);
+        Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
+        Assert.Equal(KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.NetworkTCPIP, broker.GetSnapshot().EnabledKeywords);
+        tick = 6102; broker.Publish(tick); Assert.NotNull(network.Read(true).ObservedTraffic);
     }
 
     [Fact]
     public void UnconfirmedOriginalRuntimeReleaseBlocksEveryLaterRestart()
     {
-        var factory = new Factory();
+        using var native = NewResource();
+        var factory = new RetainedFactory(native.RuntimeFactory);
         using var broker = new KernelEtwSessionOwner(factory);
-        var lease = broker.Subscribe(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
-        factory.Current!.UnconfirmedStop = true;
-        lease.Dispose();
-        Assert.Equal("StopFailed", broker.GetSnapshot().State);
-        using var next = broker.Subscribe(new("process", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
-        broker.Reconcile();
-        Assert.Equal(1, factory.Created);
-        Assert.Equal("StopFailed", broker.GetSnapshot().State);
+        try
+        {
+            var lease = broker.Acquire(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP,
+                static (source, _) => Assert.NotNull(source.NativeSession)) { NativeOutputs = KernelEtwNativeOutputs.Network });
+            factory.RetainStop = true; lease.Dispose();
+            Assert.Equal("StopFailed", broker.GetSnapshot().State);
+            using var next = broker.Acquire(new("process", KernelTraceEventParser.Keywords.Process,
+                static (source, _) => Assert.NotNull(source.NativeSession)) { NativeOutputs = KernelEtwNativeOutputs.Network });
+            broker.Reconcile();
+            Assert.Equal(1, native.Creations); Assert.Equal("StopFailed", broker.GetSnapshot().State);
+        }
+        finally { factory.RetainStop = false; }
     }
 
-    private sealed class ProcessLease(uint pid, ulong creation) : IWindowsNetworkEndpointProcessLease
+    // Test-only release fault over an actual native runtime; no event/source emulator.
+    private sealed class RetainedFactory(IKernelEtwSessionRuntimeFactory inner) : IKernelEtwSessionRuntimeFactory
     {
-        public uint ProcessId => pid;
-        internal int Reads;
-        internal int Disposals;
-        public bool TryReadCreationFileTime(out ulong result) { Reads++; result = creation; return true; }
-        public void Dispose() => Disposals++;
-    }
-    private sealed class Factory : IKernelEtwSessionRuntimeFactory
-    {
-        internal int Created;
-        internal Runtime? Current;
-        public bool TryGetAvailability(out string state, out string message) { state = "Available"; message = "recorded"; return true; }
-        public IKernelEtwSessionRuntime Create(string name, KernelTraceEventParser.Keywords keywords,
-            KernelEtwSessionContext context, IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions)
+        internal bool RetainStop;
+        public void ValidateRequest(KernelEtwSubscriptionRequest request) => inner.ValidateRequest(request);
+        public bool TryGetAvailability(out string state, out string message) => inner.TryGetAvailability(out state, out message);
+        public IKernelEtwSessionRuntime Create(string name, KernelTraceEventParser.Keywords keywords, KernelEtwSessionContext context,
+            IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions) => new Runtime(this, inner.Create(name, keywords, context, subscriptions));
+        private sealed class Runtime(RetainedFactory owner, IKernelEtwSessionRuntime original) : IKernelEtwSessionRuntime
         {
-            Created++;
-            Current = new Runtime();
-            Current.UpdateSubscriptions(subscriptions, context);
-            return Current;
+            public bool IsProcessing => original.IsProcessing;
+            public int EventsLost => original.EventsLost;
+            public void StartProcessing(Action<Exception?> completed) => original.StartProcessing(completed);
+            public void UpdateSubscriptions(IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions, KernelEtwSessionContext context)
+                => original.UpdateSubscriptions(subscriptions, context);
+            public KernelEtwSessionStopResult Stop(TimeSpan timeout) => owner.RetainStop
+                ? new(false, false, false, ["controlled unconfirmed release"]) : original.Stop(timeout);
+            public void Dispose() => original.Dispose();
         }
-    }
-    private sealed class Runtime : IKernelEtwSessionRuntime
-    {
-        private readonly Dictionary<long, KernelEtwEventSource> sources = [];
-        internal KernelEtwEventSource? NetworkSource;
-        internal KernelEtwSessionContext? Context;
-        internal int Stops;
-        internal int Lost;
-        internal bool UnconfirmedStop;
-        public bool IsProcessing { get; private set; }
-        public int EventsLost => Lost;
-        public void StartProcessing(Action<Exception?> completed) => IsProcessing = true;
-        public void UpdateSubscriptions(IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions, KernelEtwSessionContext context)
-        {
-            Context = context;
-            var retained = subscriptions.Select(static item => item.LeaseId).ToHashSet();
-            foreach (var id in sources.Keys.Where(id => !retained.Contains(id)).ToArray()) { sources[id].Cancel(); sources.Remove(id); }
-            foreach (var item in subscriptions)
-            {
-                if (sources.ContainsKey(item.LeaseId)) continue;
-                var source = new KernelEtwEventSource();
-                item.Bind(source, context);
-                source.Activate();
-                sources.Add(item.LeaseId, source);
-                if (item.Keywords.HasFlag(KernelTraceEventParser.Keywords.NetworkTCPIP)) NetworkSource = source;
-            }
-        }
-        public KernelEtwSessionStopResult Stop(TimeSpan timeout)
-        {
-            Stops++;
-            foreach (var source in sources.Values) source.Cancel();
-            IsProcessing = false;
-            return UnconfirmedStop ? new(false, true, true, ["recorded unconfirmed release"]) : KernelEtwSessionStopResult.Released;
-        }
-        public void Dispose() { }
     }
 }

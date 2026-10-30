@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Diagnostics.Tracing.Parsers;
-using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -16,45 +15,40 @@ internal sealed record CpuResidencyOwnerDiagnostics(string State, string Message
 /// No worker or global broker. EnsureStarted/Collect/Stop are explicit; borrowed broker is never disposed.</summary>
 public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 {
-    // Lifecycle callbacks maintain process/thread identities between windows, so the
-    // next context-switch boundary can be attributed without reseeding stale PIDs/TIDs.
-    private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread;
+    private const KernelTraceEventParser.Keywords MetadataKeywords = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread;
 
     private readonly IKernelEtwSessionBroker kernelEtwBroker;
     private readonly Func<CpuResidencyCaptureConfiguration> readConfiguration;
     private readonly KernelEtwDiagnostics logger;
-    private readonly Action<CpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seedProcessInventory;
     private readonly Action? published;
-    private readonly Func<int, CaptureBucketMemory>? allocateBuckets;
-    // Borrowed from the enclosing window/run. Contains positions, never leases.
-    private CaptureBucketStorage? bucketStorage;
+    private readonly Action<InventorySeed, Func<bool>> seedProcessInventory;
+    private readonly bool hasExplicitInventorySource;
     private readonly object subscriptionGate = new(), snapshotGate = new();
     public SamplingPublicationSignal Publications { get; } = new();
     private IKernelEtwSubscription? kernelSubscription;
-    private IKernelEtwSubscription? contextSwitchSubscription;
-    private long contextSwitchEpoch;
-    private bool acquiringContextSwitch;
     private ResidencySessionState? activeSession;
-    private readonly HashSet<CpuResidencyAggregationBuffer> retiredBuffers = [];
     private long bindingEpoch;
     private long revision;
     public long Revision => Interlocked.Read(ref revision);
     private CpuCoreResidencyObservation currentObservation = new CpuCoreResidencyUnavailable(CpuCoreResidencyUnavailableReasons.NotRequested);
     private CpuCoreResidencySnapshot? cachedSnapshot => currentObservation as CpuCoreResidencySnapshot;
-    private bool stopped;
+    private bool stopped, acquiringMetadata;
     private volatile string state = "Idle", message = "ETW CPU execution-time attribution starts on explicit demand.";
     public string State => state;
     public string Message => message;
     public EtwCpuResidencyCaptureOwner(IKernelEtwSessionBroker broker,
         Func<CpuResidencyCaptureConfiguration> configuration, KernelEtwDiagnostics? diagnostics = null)
-        : this(broker, configuration, diagnostics ?? new(), SeedExistingProcesses) { }
-    internal EtwCpuResidencyCaptureOwner(IKernelEtwSessionBroker broker, Func<CpuResidencyCaptureConfiguration> configuration,
-        KernelEtwDiagnostics diagnostics, Action<CpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seed, Action? published = null, Func<int, CaptureBucketMemory>? allocateBuckets = null)
+        : this(broker, configuration, diagnostics ?? new(), published: null) { }
+    internal EtwCpuResidencyCaptureOwner(IKernelEtwSessionBroker broker,
+        Func<CpuResidencyCaptureConfiguration> configuration, KernelEtwDiagnostics diagnostics, Action? published,
+        Action<InventorySeed, Func<bool>>? seedInventory = null)
     {
         ArgumentNullException.ThrowIfNull(broker); ArgumentNullException.ThrowIfNull(configuration);
-        ArgumentNullException.ThrowIfNull(diagnostics); ArgumentNullException.ThrowIfNull(seed);
+        ArgumentNullException.ThrowIfNull(diagnostics);
         kernelEtwBroker = broker; readConfiguration = configuration; logger = diagnostics;
-        seedProcessInventory = seed; this.published = published; this.allocateBuckets = allocateBuckets;
+        this.published = published;
+        seedProcessInventory = seedInventory ?? SeedNativeInventory;
+        hasExplicitInventorySource = seedInventory is not null;
     }
     public CpuCoreResidencySnapshot? Read()
     {
@@ -80,7 +74,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 bindingEpoch,
                 session?.Generation,
                 session?.Plan,
-                session?.Buffer.GetDiagnostics());
+                session?.Native.GetDiagnostics());
         }
     }
 
@@ -106,7 +100,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 return false;
             }
 
-            var broker = CaptureBrokerSnapshot();
+            var broker = ReadBrokerSnapshot();
             return broker.IsRunning
                 && broker.Generation == session.Generation
                 && broker.EventsLost == Volatile.Read(ref session.EventsLost);
@@ -115,128 +109,67 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 
     public bool IsWindowActive
     {
-        get { lock (subscriptionGate) return activeSession is { WindowActive: true }; }
+        get { lock (subscriptionGate) return activeSession is { WindowActive: true } && durationSubscription is not null; }
     }
 
-    /// <summary>Starts fresh boundary coverage and holds context switches while the window needs them.</summary>
+    /// <summary>Opens observation coverage and its duration-keyword hold on the run's metadata session.</summary>
     public void BeginWindow()
     {
+        lock (durationResourceGate)
         lock (subscriptionGate) BeginWindowCore();
-        EnsureContextSwitchHeld();
+        SynchronizeDurationHold();
     }
 
-    internal void SetBucketStorage(CaptureBucketStorage storage)
-    {
-        lock (subscriptionGate)
-        {
-            activeSession?.Buffer.SetBucketStorage(storage);
-            bucketStorage = storage;
-        }
-    }
-
-    // This is the finite window method: skipped waits, cancellation, publication
-    // and exceptions all return its storage and window-only event hold.
-    internal async Task<T> RunWindowAsync<T>(CaptureBucketStorage storage, Func<Task<T>> sample)
+    // Every finite exit releases the native window's pairs/buckets and duration
+    // keywords, while the enclosing run continues to own process/thread identity.
+    internal async Task<T> RunWindowAsync<T>(Func<Task<T>> sample)
     {
         try
         {
-            SetBucketStorage(storage);
             BeginWindow();
             return await sample().ConfigureAwait(false);
         }
         finally { PauseWindow("CPU residency window has returned; aggregation is paused until the next window."); }
     }
 
-    private void EnsureContextSwitchHeld()
-    {
-        long epoch;
-        lock (subscriptionGate)
-        {
-            if (stopped || kernelSubscription is null
-                || activeSession is not { WindowActive: true }
-                || contextSwitchSubscription is not null || acquiringContextSwitch) return;
-            acquiringContextSwitch = true;
-            epoch = ++contextSwitchEpoch;
-        }
-        IKernelEtwSubscription? created = null;
-        try
-        {
-            // Reconciliation may bind the metadata holder on another thread.
-            created = kernelEtwBroker.Subscribe(new("cpu-core-residency-window",
-                KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
-            lock (subscriptionGate)
-            {
-                if (contextSwitchEpoch == epoch && !stopped
-                    && activeSession is { WindowActive: true })
-                {
-                    contextSwitchSubscription = created;
-                    created = null;
-                }
-            }
-        }
-        catch (Exception error)
-        {
-            logger.LogWarning(error, "Failed to hold ETW CPU context-switch keywords.");
-        }
-        finally
-        {
-            lock (subscriptionGate)
-                if (contextSwitchEpoch == epoch) acquiringContextSwitch = false;
-            created?.Dispose();
-        }
-    }
-
-    private IKernelEtwSubscription? DetachContextSwitchCore()
-    {
-        ++contextSwitchEpoch;
-        acquiringContextSwitch = false;
-        var held = contextSwitchSubscription;
-        contextSwitchSubscription = null;
-        return held;
-    }
-
-    private KernelEtwSessionSnapshot CaptureBrokerSnapshot()
-    {
-        var switches = Volatile.Read(ref contextSwitchSubscription)?.GetSnapshot();
-        var metadata = Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot();
-        if (!metadata.IsRunning || Volatile.Read(ref activeSession) is not { WindowActive: true }) return metadata;
-        return switches
-            ?? metadata with { State = "Unavailable", Message = "CPU residency context-switch keywords are unavailable." };
-    }
-
     private void BeginWindowCore()
     {
-        if (stopped || activeSession is not { } session || session.WindowActive) return;
-        session.Window.Invalidate();
-        session.Buffer.ResetContinuity();
-        session.Window = session.CreateWindow();
-        session.WindowStartQpc = Stopwatch.GetTimestamp();
+        if (stopped) return;
+        windowRequested = true;
+        if (activeSession is not { } session || session.WindowActive) return;
+        session.Window = new object();
+        session.ResetContinuity();
+
         session.UnavailableReason = CpuCoreResidencyUnavailableReasons.WindowWarming;
         state = "Warming";
         message = WarmingMessage(session);
         session.WindowActive = true;
+        ConfigureAdmission(session);
     }
 
     /// <summary>Stops finite CSwitch aggregation; process/thread metadata and the resource holder remain live.</summary>
     public void PauseWindow(string idleMessage = "CPU residency is waiting for its next finite observation window.")
     {
-        IKernelEtwSubscription? held;
+        IKernelEtwSubscription? release;
+        lock (durationResourceGate)
         lock (subscriptionGate)
         {
             PauseWindowCore(idleMessage);
-            held = DetachContextSwitchCore();
+            release = DetachDurationHoldCore();
         }
-        held?.Dispose();
+        release?.Dispose();
     }
 
     private void PauseWindowCore(string idleMessage)
     {
         if (stopped) return;
+        windowRequested = false;
         if (activeSession is { } session)
         {
             session.WindowActive = false;
-            session.Window.Invalidate();
-            session.Buffer.ReleaseWindowBuckets();
+            session.Native.SetEnabled(false);
+            session.Window = new object();
+            ConfigureAdmission(session);
         }
         state = "Idle";
         message = idleMessage;
@@ -248,12 +181,18 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             lock (subscriptionGate)
             {
                 return kernelSubscription is not null
-                    || activeSession is not null || retiredBuffers.Count != 0;
+                    || activeSession is not null;
             }
         }
     }
 
     public void EnsureStarted()
+    {
+        EnsureMetadataStarted();
+        SynchronizeDurationHold();
+    }
+
+    private void EnsureMetadataStarted()
     {
         long expectedBindingEpoch;
         lock (subscriptionGate)
@@ -271,6 +210,8 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 return;
             }
 
+            if (acquiringMetadata) return;
+            acquiringMetadata = true;
             expectedBindingEpoch = checked(++bindingEpoch);
         }
 
@@ -278,10 +219,11 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         // this reader on another thread, so do not hold its subscription lock here.
         try
         {
-            var created = kernelEtwBroker.Subscribe(new KernelEtwSubscriptionRequest(
+            var created = kernelEtwBroker.Acquire(new KernelEtwSubscriptionRequest(
                 "cpu-core-residency",
-                RequiredKeywords,
-                (kernel, context) => BindKernelEvents(kernel, context, expectedBindingEpoch)));
+                MetadataKeywords,
+                (kernel, context) => BindKernelEvents(kernel, context, expectedBindingEpoch))
+                { NativeOutputs = KernelEtwNativeOutputs.Residency });
             var accepted = false;
             lock (subscriptionGate)
             {
@@ -300,13 +242,16 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             lock (subscriptionGate)
             {
                 if (stopped || bindingEpoch != expectedBindingEpoch) return;
-                var failed = Volatile.Read(ref activeSession);
-                if (failed is not null) retiredBuffers.Add(failed.Buffer);
                 Volatile.Write(ref activeSession, null);
                 state = "Unavailable";
                 message = $"ETW CPU 执行时长归因启动失败：{ex.Message}";
                 logger.LogWarning(ex, "Failed to start ETW CPU execution-time reader.");
             }
+        }
+        finally
+        {
+            lock (subscriptionGate)
+                if (bindingEpoch == expectedBindingEpoch) acquiringMetadata = false;
         }
     }
 
@@ -324,25 +269,13 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         }
 
         var plan = readConfiguration().RequirePublished();
-        var session = new ResidencySessionState(
-            context.Generation,
-            context.StartedAt,
-            expectedBindingEpoch,
-            plan,
-            CreateAggregationBuffer(plan, Stopwatch.Frequency, allocateBuckets));
-        session.EventSource = kernel;
-        session.ContextSwitchCounter = kernel.ConsumerCounter("ThreadCSwitch");
+        var native = kernel.NativeSession
+            ?? throw new InvalidOperationException("CPU residency requires a native kernel ETW session.");
+        var session = new ResidencySessionState(context.Generation,
+            expectedBindingEpoch, plan, native, kernel);
         var processorIds = plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray();
-        BindKernelEventCallbacks(
-            kernel,
-            session.Buffer,
-            () => IsCurrentSession(session, expectedBindingEpoch),
-            ReadEventCreation,
-            index => ResolveEventLogicalProcessorId(index, processorIds),
-            observeContextSwitch: (qpc, time, processor, oldPid, oldTid, newPid, name, newTid) =>
-                ObserveContextSwitch(session, qpc, time, processor, oldPid, oldTid, newPid, name, newTid));
-        BindDiagnosticSource(kernel, () => IsCurrentSession(session, expectedBindingEpoch));
-
+        BindDiagnosticSource(session);
+        ResidencySessionState? previous;
         lock (subscriptionGate)
         {
             if (bindingEpoch != expectedBindingEpoch)
@@ -350,80 +283,28 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 return;
             }
 
-            var previous = Volatile.Read(ref activeSession);
+            previous = Volatile.Read(ref activeSession);
             if (previous is not null) session.UnavailableReason = CpuCoreResidencyUnavailableReasons.SessionRestarted;
-            if (previous is not null) retiredBuffers.Add(previous.Buffer);
             Volatile.Write(ref activeSession, null);
-            ClearRetiredBuffersCore();
-            if (bucketStorage is { } storage) session.Buffer.SetBucketStorage(storage);
-            session.WindowActive = previous?.WindowActive ?? true;
+            session.WindowActive = windowRequested;
+            session.Native.Configure(processorIds, session.WindowActive && durationSubscription is not null);
+            ConfigureAdmission(session);
+            _ = kernel.ConsumerCounter("ProcessStartGroup");
+            _ = kernel.ConsumerCounter("ProcessEndGroup");
+            _ = kernel.ConsumerCounter("ThreadStartGroup");
+            _ = kernel.ConsumerCounter("ThreadEndGroup");
+            _ = kernel.ConsumerCounter("ThreadCSwitch");
+            foreach (var kind in new[] { "ProcessStartGroup", "ProcessEndGroup", "ThreadStartGroup", "ThreadEndGroup" })
+                _ = kernel.ConsumerRejectionCounter(kind, "generation-mismatch");
+            foreach (var reason in new[] { "generation-mismatch", "unmapped-processor", "outside-window", "before-window" })
+                _ = kernel.ConsumerRejectionCounter("ThreadCSwitch", reason);
             Volatile.Write(ref activeSession, session);
             state = "Warming";
             message = $"ETW CPU 执行时长归因正在形成最近 {plan.ObservationWindow.TotalSeconds:0.###} 秒完整窗口。";
         }
 
-        StartProcessInventorySeed(session);
-    }
-
-    private void ObserveContextSwitch(ResidencySessionState session, long qpc, DateTimeOffset time,
-        int processor, int oldPid, int oldTid, int newPid, string? name, int newTid)
-    {
-        lock (subscriptionGate)
-        {
-            string? rejection = !IsCurrentSessionCore(session) ? "generation-mismatch"
-                : !session.WindowActive ? "outside-window"
-                : qpc < session.WindowStartQpc ? "before-window" : null;
-            if (rejection is not null)
-            {
-                session.ContextSwitchCounter?.Drop();
-                session.EventSource?.RecordConsumerRejection("ThreadCSwitch", rejection);
-                return;
-            }
-            session.Buffer.ObserveContextSwitch(qpc, time, processor, oldPid, oldTid, newPid, name, newTid);
-            session.Window.Observe(processor, qpc);
-        }
-    }
-
-    private void StartProcessInventorySeed(ResidencySessionState session)
-    {
-        lock (subscriptionGate)
-        {
-            if (!IsCurrentSessionCore(session) || session.InventorySeedTask is not null) return;
-            session.InventorySeedTask = Task.Run(() =>
-            {
-                while (true)
-                {
-                    CpuResidencyAggregationBuffer.InventorySeed inventory;
-                    int expectedEventsLost;
-                    lock (subscriptionGate)
-                    {
-                        if (!IsCurrentSessionCore(session))
-                        {
-                            session.InventorySeedTask = null;
-                            return;
-                        }
-                        inventory = session.Buffer.CaptureInventorySeed();
-                        expectedEventsLost = session.EventsLost;
-                    }
-                    try
-                    {
-                        seedProcessInventory(inventory,
-                            () => IsCurrentSession(session, session.BindingEpoch)
-                                && Volatile.Read(ref session.EventsLost) == expectedEventsLost);
-                    }
-                    catch (Exception error)
-                    {
-                        logger.LogWarning(error, "Failed to seed ETW CPU process inventory.");
-                    }
-                    lock (subscriptionGate)
-                    {
-                        if (IsCurrentSessionCore(session) && session.EventsLost != expectedEventsLost) continue;
-                        session.InventorySeedTask = null;
-                        return;
-                    }
-                }
-            }, CancellationToken.None);
-        }
+        DrainInventorySeed(previous);
+        StartNativeProcessInventorySeed(session);
     }
 
     private void RefreshEventLoss(ResidencySessionState session, KernelEtwSessionSnapshot broker)
@@ -432,174 +313,28 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         lock (subscriptionGate)
         {
             if (!IsCurrentSessionCore(session) || session.EventsLost == broker.EventsLost) return;
-            session.Buffer.ResetAfterEventLoss();
+            session.Native.RefreshEventLoss(broker.EventsLost);
             session.UnavailableReason = CpuCoreResidencyUnavailableReasons.EventsLost;
-            session.Window.Invalidate();
             Volatile.Write(ref session.EventsLost, broker.EventsLost);
             state = "Warming";
             message = WarmingMessage(session);
         }
-        StartProcessInventorySeed(session);
+        StartNativeProcessInventorySeed(session);
     }
-
-    internal static CpuResidencyAggregationBuffer CreateAggregationBuffer(
-        CpuResidencyCaptureConfiguration plan,
-        long qpcFrequency, Func<int, CaptureBucketMemory>? allocateBuckets = null)
-    {
-        ArgumentNullException.ThrowIfNull(plan);
-        var published = plan.RequirePublished();
-        return new CpuResidencyAggregationBuffer(
-            qpcFrequency,
-            published.ObservationWindowMilliseconds,
-            published.MaximumActivePairs, published.BucketWidthMilliseconds, allocateBuckets);
-    }
-
-    internal static void BindKernelEventCallbacks(
-        KernelEtwEventSource kernel,
-        CpuResidencyAggregationBuffer buffer,
-        Func<bool> shouldObserve,
-        Func<int, long?> readProcessStartKey,
-        Func<int, int?>? resolveProcessorId = null)
-    {
-        ArgumentNullException.ThrowIfNull(readProcessStartKey);
-        BindKernelEventCallbacks(kernel, buffer, shouldObserve, (pid, _) => readProcessStartKey(pid), resolveProcessorId);
-    }
-
-    internal static void BindKernelEventCallbacks(
-        KernelEtwEventSource kernel,
-        CpuResidencyAggregationBuffer buffer,
-        Func<bool> shouldObserve,
-        Func<int, DateTimeOffset, long?> readProcessStartKey,
-        Func<int, int?>? resolveProcessorId = null,
-        Action<int, long>? boundaryObserved = null,
-        Action<long, DateTimeOffset, int, int, int, int, string?, int>? observeContextSwitch = null)
-    {
-        ArgumentNullException.ThrowIfNull(kernel);
-        ArgumentNullException.ThrowIfNull(buffer);
-        ArgumentNullException.ThrowIfNull(shouldObserve);
-        ArgumentNullException.ThrowIfNull(readProcessStartKey);
-        var processStart = kernel.ConsumerCounter("ProcessStartGroup");
-        var processEnd = kernel.ConsumerCounter("ProcessEndGroup");
-        var threadStart = kernel.ConsumerCounter("ThreadStartGroup");
-        var threadEnd = kernel.ConsumerCounter("ThreadEndGroup");
-        var contextSwitch = kernel.ConsumerCounter("ThreadCSwitch");
-        kernel.ProcessStartGroup += data =>
-        {
-            processStart.Receive();
-            if (!shouldObserve())
-            {
-                processStart.Drop();
-                kernel.RecordConsumerRejection("ProcessStartGroup", "generation-mismatch");
-                return;
-            }
-
-            buffer.ObserveProcessStart(
-                data.TimeStampQPC,
-                ToTimestamp(data.TimeStamp),
-                data.ProcessID,
-                unchecked((ulong)data.UniqueProcessKey),
-                readProcessStartKey(data.ProcessID, ToTimestamp(data.TimeStamp)),
-                FirstNonEmpty(data.ProcessName, data.ImageFileName));
-        };
-        kernel.ProcessEndGroup += data =>
-        {
-            processEnd.Receive();
-            if (!shouldObserve())
-            {
-                processEnd.Drop();
-                kernel.RecordConsumerRejection("ProcessEndGroup", "generation-mismatch");
-                return;
-            }
-
-            buffer.ObserveProcessEnd(
-                data.TimeStampQPC,
-                ToTimestamp(data.TimeStamp),
-                data.ProcessID,
-                unchecked((ulong)data.UniqueProcessKey));
-        };
-        kernel.ThreadStartGroup += data =>
-        {
-            threadStart.Receive();
-            if (shouldObserve())
-            {
-                buffer.ObserveThreadStart(
-                    data.TimeStampQPC,
-                    ToTimestamp(data.TimeStamp),
-                    data.ProcessID,
-                    data.ThreadID);
-            }
-            else
-            {
-                threadStart.Drop();
-                kernel.RecordConsumerRejection("ThreadStartGroup", "generation-mismatch");
-            }
-        };
-        kernel.ThreadEndGroup += data =>
-        {
-            threadEnd.Receive();
-            if (shouldObserve())
-            {
-                buffer.ObserveThreadEnd(
-                    data.TimeStampQPC,
-                    ToTimestamp(data.TimeStamp),
-                    data.ProcessID,
-                    data.ThreadID);
-            }
-            else
-            {
-                threadEnd.Drop();
-                kernel.RecordConsumerRejection("ThreadEndGroup", "generation-mismatch");
-            }
-        };
-        kernel.ThreadCSwitch += data =>
-        {
-            contextSwitch.Receive();
-            if (!shouldObserve())
-            {
-                contextSwitch.Drop();
-                kernel.RecordConsumerRejection("ThreadCSwitch", "generation-mismatch");
-                return;
-            }
-            var processorId = resolveProcessorId is null ? data.ProcessorNumber : resolveProcessorId(data.ProcessorNumber);
-            if (processorId is { } logicalProcessorId)
-            {
-                // A composition may serialize and gate finite CSwitch intake while keeping metadata live.
-                if (observeContextSwitch is not null)
-                {
-                    observeContextSwitch(data.TimeStampQPC, ToTimestamp(data.TimeStamp), logicalProcessorId,
-                        data.OldProcessID, data.OldThreadID, data.NewProcessID, data.NewProcessName, data.NewThreadID);
-                    return;
-                }
-                buffer.ObserveContextSwitch(
-                    data.TimeStampQPC,
-                    ToTimestamp(data.TimeStamp),
-                    logicalProcessorId,
-                    data.OldProcessID,
-                    data.OldThreadID,
-                    data.NewProcessID,
-                    data.NewProcessName,
-                    data.NewThreadID);
-                boundaryObserved?.Invoke(logicalProcessorId, data.TimeStampQPC);
-            }
-            else
-            {
-                contextSwitch.Drop();
-                kernel.RecordConsumerRejection("ThreadCSwitch", "unmapped-processor");
-            }
-        };
-
-    }
-
-    internal static int? ResolveEventLogicalProcessorId(int eventProcessorIndex, IReadOnlyList<int> processorIds)
-        => eventProcessorIndex >= 0 && eventProcessorIndex < processorIds.Count ? processorIds[eventProcessorIndex] : null;
 
     private bool IsCurrentSession(ResidencySessionState session, long expectedBindingEpoch)
         => Volatile.Read(ref bindingEpoch) == expectedBindingEpoch
-            && ReferenceEquals(Volatile.Read(ref activeSession), session);
+            && ReferenceEquals(Volatile.Read(ref activeSession), session) && !session.EventSource.IsCancelled;
+
+    private void ConfigureAdmission(ResidencySessionState session)
+    {
+        if (!session.EventSource.IsCancelled)
+            session.EventSource.ConfigureAdmission(session.WindowActive, session.Native.WindowStartQpc);
+    }
 
     private void RefreshBrokerState(ResidencySessionState? expectedSession = null)
     {
-        var broker = CaptureBrokerSnapshot();
+        var broker = ReadBrokerSnapshot();
         var session = Volatile.Read(ref activeSession);
         if (session is not null) RefreshEventLoss(session, broker);
         if (session is not null
@@ -629,9 +364,20 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     /// <summary>Collects from the original session and invokes the callback only inside an accepted current commit.</summary>
     public bool Collect(IMetricPublicationPermit? ownerToken,
         Action<CpuCoreResidencySnapshot?, bool>? captureCommitted)
+        => CollectAsync(ownerToken, captureCommitted, CancellationToken.None).GetAwaiter().GetResult();
+
+    public Task<bool> CollectAsync(IMetricPublicationPermit? ownerToken = null,
+        CancellationToken cancellationToken = default)
+        => CollectAsync(ownerToken, null, cancellationToken);
+
+    /// <summary>Samples the current native CPU component on the existing resource, then attempts the original permitted commit.</summary>
+    public async Task<bool> CollectAsync(IMetricPublicationPermit? ownerToken,
+        Action<CpuCoreResidencySnapshot?, bool>? captureCommitted, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (ownerToken is { IsActive: false }) return false;
         ResidencySessionState? observedSession;
-        CpuResidencyWindowCompletion? observedWindow;
+        object? observedWindow;
         long observedBindingEpoch;
         lock (subscriptionGate)
         {
@@ -647,8 +393,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 
         try
         {
-            var now = DateTimeOffset.UtcNow;
-            var brokerBefore = CaptureBrokerSnapshot();
+            var brokerBefore = ReadBrokerSnapshot();
             if (observedSession is not null) RefreshEventLoss(observedSession, brokerBefore);
             CpuCoreResidencySnapshot? snapshot;
             string nextState;
@@ -668,9 +413,19 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             {
                 var currentSession = observedSession
                     ?? throw new InvalidOperationException("The running ETW session state is missing.");
-                var aggregate = currentSession.Buffer.Snapshot(
-                    currentSession.Plan.PhysicalCoreByLogicalProcessor.Keys);
-                var brokerAfter = CaptureBrokerSnapshot();
+                await currentSession.Native.SampleCurrentAsync(currentSession.Plan.ObservationWindow, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                lock (subscriptionGate)
+                {
+                    if (stopped || !currentSession.WindowActive
+                        || !ReferenceEquals(activeSession, observedSession)
+                        || !ReferenceEquals(currentSession.Window, observedWindow)
+                        || bindingEpoch != observedBindingEpoch || ownerToken is { IsActive: false })
+                        return false;
+                }
+                var nativeRead = currentSession.Native.ReadCurrent();
+                var aggregate = nativeRead.Aggregate;
+                var brokerAfter = ReadBrokerSnapshot();
                 if (!brokerAfter.IsRunning
                     || brokerAfter.Generation != currentSession.Generation
                     || brokerAfter.EventsLost != brokerBefore.EventsLost
@@ -692,25 +447,14 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 }
                 else
                 {
-                    var measuredThrough = aggregate.MeasuredThrough
-                        ?? throw new InvalidDataException(
-                            "A complete CPU execution-time window must include its measured-through timestamp.");
-                    var measuredWindow = ToDuration(
-                        aggregate.MeasuredThroughQpc - aggregate.WindowStartQpc,
-                        aggregate.QpcFrequency);
-                    snapshot = new CpuCoreResidencySnapshot(
-                        now,
-                        measuredWindow,
-                        currentSession.Generation,
-                        measuredThrough - measuredWindow,
-                        measuredThrough,
-                        BuildProcessSnapshot(currentSession.Plan, currentSession.Generation, aggregate))
-                    { LogicalProcessorScopes = CreateScopes(currentSession.Plan) };
+                    snapshot = nativeRead.Projected
+                        ?? throw new InvalidDataException("A complete native CPU window has no matching immutable projection.");
                     nextState = "Running";
                     nextMessage = "ETW CPU 执行时长归因正在提供真实闭合执行区间。";
                 }
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             return Publish(
                 ownerToken,
                 snapshot,
@@ -724,6 +468,8 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 unavailableReason,
                 captureCommitted);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        { cancellationToken.ThrowIfCancellationRequested(); throw; }
         catch (Exception ex)
         {
             _ = TryPublish(ownerToken, () =>
@@ -750,13 +496,14 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         }
     }
 
-    private bool ResetWindowContinuity(ResidencySessionState? session, CpuResidencyWindowCompletion? window)
+    private bool ResetWindowContinuity(ResidencySessionState? session, object? window)
     {
         lock (subscriptionGate)
         {
             if (stopped || activeSession is { WindowActive: false }
                 || !ReferenceEquals(activeSession, session) || !ReferenceEquals(activeSession?.Window, window)) return false;
-            session?.Buffer.ResetContinuity();
+            session?.ResetContinuity();
+            if (session is not null) ConfigureAdmission(session);
             return true;
         }
     }
@@ -766,7 +513,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         CpuCoreResidencySnapshot? snapshot,
         bool sampled,
         ResidencySessionState? expectedSession,
-        CpuResidencyWindowCompletion? expectedWindow,
+        object? expectedWindow,
         long expectedBindingEpoch,
         int expectedEventsLost,
         string nextState,
@@ -790,14 +537,15 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 
                 if (expectedSession is not null)
                 {
-                    var broker = CaptureBrokerSnapshot();
+                    var broker = ReadBrokerSnapshot();
                     if (!broker.IsRunning
                         || broker.Generation != expectedSession.Generation
                         || broker.EventsLost != expectedEventsLost
                         || broker.EventsLost != Volatile.Read(ref expectedSession.EventsLost))
                     {
                         RefreshEventLoss(expectedSession, broker);
-                        expectedSession.Buffer.ResetContinuity();
+                        expectedSession.ResetContinuity();
+                        ConfigureAdmission(expectedSession);
                         snapshot = null;
                         committedAsSampled = false;
                         (nextState, nextMessage) = BrokerDiagnostic(broker, expectedSession);
@@ -834,6 +582,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 
     private bool IsCurrentSessionCore(ResidencySessionState session)
         => bindingEpoch == session.BindingEpoch
+            && !session.EventSource.IsCancelled
             && ReferenceEquals(Volatile.Read(ref activeSession), session);
 
     private void SetCachedSnapshot(CpuCoreResidencySnapshot? snapshot, string unavailableReason)
@@ -1231,94 +980,37 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 
     public void Stop(string idleMessage = "ETW CPU attribution stopped after its demand was withdrawn.")
     {
-        IKernelEtwSubscription? subscriptionToRelease = null;
-        IKernelEtwSubscription? windowToRelease;
-        ResidencySessionState? sessionToClear = null;
+        IKernelEtwSubscription? subscriptionToRelease, durationToRelease;
+        ResidencySessionState? sessionToClear;
+        lock (durationResourceGate)
         lock (subscriptionGate)
         {
-            if (stopped) { ClearRetiredBuffersCore(); return; }
-
-            windowToRelease = DetachContextSwitchCore();
+            if (stopped) return;
+            windowRequested = false;
+            durationToRelease = DetachDurationHoldCore();
             (subscriptionToRelease, sessionToClear) = DetachSessionCore();
             state = "Idle";
             message = idleMessage;
         }
-
-        try { try { windowToRelease?.Dispose(); } finally { subscriptionToRelease?.Dispose(); } }
-        finally { ClearRetiredBuffers(); }
+        try { DrainInventorySeed(sessionToClear); }
+        finally { try { durationToRelease?.Dispose(); } finally { subscriptionToRelease?.Dispose(); } }
     }
 
     private (IKernelEtwSubscription? Subscription, ResidencySessionState? Session) DetachSessionCore()
     {
+        acquiringMetadata = false;
         ClearDiagnosticSource();
         bindingEpoch = checked(bindingEpoch + 1);
         var subscription = kernelSubscription;
         kernelSubscription = null;
         var session = Volatile.Read(ref activeSession);
-        if (session is not null) { session.Window.Invalidate(); retiredBuffers.Add(session.Buffer); }
+        if (session is not null) session.Window = new object();
         Volatile.Write(ref activeSession, null);
-        bucketStorage = null;
         return (subscription, session);
     }
 
-    private void ClearRetiredBuffers()
-    {
-        lock (subscriptionGate) ClearRetiredBuffersCore();
-    }
-    private void ClearRetiredBuffersCore()
-    {
-        while (retiredBuffers.Count != 0)
-        {
-            var buffer = retiredBuffers.First();
-            buffer.Clear(); // Keep ownership on failure; a later Stop/Dispose/rebind retries the same close.
-            retiredBuffers.Remove(buffer);
-        }
-        retiredBuffers.TrimExcess();
-    }
-
-    private static long? ReadEventCreation(int pid, DateTimeOffset eventTime)
-    {
-        using var identity = WindowsNetworkEndpointProcessLease.Open(unchecked((uint)pid));
-        return ResolveEventCreation(pid, eventTime, identity);
-    }
-    internal static long? ResolveEventCreation(int pid, DateTimeOffset eventTime, IWindowsNetworkEndpointProcessLease? identity)
-    {
-        if (pid <= 0 || identity is null || identity.ProcessId != (uint)pid
-            || !identity.TryReadCreationFileTime(out var birth) || birth == 0 || birth > long.MaxValue
-            || birth > (ulong)eventTime.UtcDateTime.ToFileTimeUtc()
-            || !identity.TryReadCreationFileTime(out var after) || birth != after) return null;
-        // A reused PID born after this start event is rejected. Same live handle supplies raw FILETIME.
-        return (long)birth;
-    }
-    internal static void SeedInventory(CpuResidencyAggregationBuffer.InventorySeed inventory, Func<bool> shouldSeed) => SeedExistingProcesses(inventory, shouldSeed);
-    private static void SeedExistingProcesses(CpuResidencyAggregationBuffer.InventorySeed inventory, Func<bool> shouldSeed)
-    {
-        VisitOwnedArray(Process.GetProcesses(), process =>
-        {
-            if (!shouldSeed()) return false;
-            try
-            {
-                using var identity = WindowsNetworkEndpointProcessLease.Open(unchecked((uint)process.Id));
-                if (identity is null || !identity.TryReadCreationFileTime(out var birth) || birth == 0 || birth > long.MaxValue) return true;
-                var name = process.ProcessName;
-                if (!shouldSeed()) return false;
-                var threadLeases = process.Threads.Cast<ProcessThread>().ToArray();
-                var threads = new List<int>(threadLeases.Length);
-                if (!VisitOwnedArray(threadLeases, thread =>
-                {
-                    if (!shouldSeed()) return false;
-                    threads.Add(thread.Id);
-                    return true;
-                })) return false;
-                if (!shouldSeed() || !identity.TryReadCreationFileTime(out var after) || after != birth) return true;
-                var seeded = inventory.SeedProcess(process.Id, (long)birth, name);
-                if (seeded is null) return true;
-                foreach (var thread in threads) seeded.SeedThread(thread);
-            }
-            catch { /* Permission/retirement means no proven inventory entry; never PID-only fallback. */ }
-            return true;
-        });
-    }
+    private static void DrainInventorySeed(ResidencySessionState? session)
+        => session?.InventorySeedTask?.GetAwaiter().GetResult();
 
     internal static bool VisitOwnedArray<T>(T[] items, Func<T, bool> visit) where T : IDisposable
     {
@@ -1356,16 +1048,6 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         }
     }
 
-    private static DateTimeOffset ToTimestamp(DateTime timestamp)
-        => new(timestamp.Kind == DateTimeKind.Utc ? timestamp : timestamp.ToUniversalTime());
-
-    private static string? FirstNonEmpty(string? first, string? second)
-        => !string.IsNullOrWhiteSpace(first)
-            ? first
-            : !string.IsNullOrWhiteSpace(second)
-                ? second
-                : null;
-
     private static string FormatInstanceId(long generation, long instanceId)
         => string.Create(CultureInfo.InvariantCulture, $"{generation}:{instanceId}");
 
@@ -1380,26 +1062,20 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             ? 0
             : Math.Round(durationQpc * 100d / totalDurationQpc, 2);
 
-    private sealed class ResidencySessionState(
-        long generation,
-        DateTimeOffset startedAt,
-        long bindingEpoch,
-        CpuResidencyCaptureConfiguration plan,
-        CpuResidencyAggregationBuffer buffer)
+    private sealed class ResidencySessionState(long generation,
+        long bindingEpoch, CpuResidencyCaptureConfiguration plan, NativeKernelEtwSession nativeSession,
+        KernelEtwEventSource source)
     {
         public long Generation { get; } = generation;
-        public DateTimeOffset StartedAt { get; } = startedAt;
         public long BindingEpoch { get; } = bindingEpoch;
         public CpuResidencyCaptureConfiguration Plan { get; } = plan;
-        public CpuResidencyAggregationBuffer Buffer { get; } = buffer;
-        public KernelEtwEventSource? EventSource;
-        public EtwEventDropCounter? ContextSwitchCounter;
-        public CpuResidencyWindowCompletion Window { get; set; } = new(plan.PhysicalCoreByLogicalProcessor.Keys,
-            checked(Stopwatch.Frequency * (long)plan.ObservationWindowMilliseconds / 1000));
-        public CpuResidencyWindowCompletion CreateWindow() => new(Plan.PhysicalCoreByLogicalProcessor.Keys,
-            checked(Stopwatch.Frequency * (long)Plan.ObservationWindowMilliseconds / 1000));
+        public NativeResidencyReader Native { get; } = new(nativeSession, plan, generation, source);
+        public KernelEtwEventSource EventSource { get; } = source;
+        public void ResetContinuity() => Native.ResetContinuity();
+        // Identity only: prevents an old waiter or collect from committing after
+        // an explicit BeginWindow/PauseWindow. Native owns all coverage state.
+        public object Window { get; set; } = new();
         public bool WindowActive = true;
-        public long WindowStartQpc = Stopwatch.GetTimestamp();
         public int EventsLost;
         public string UnavailableReason = CpuCoreResidencyUnavailableReasons.WindowWarming;
         public Task? InventorySeedTask;
@@ -1409,7 +1085,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         CancellationToken cancellationToken)
     {
         ResidencySessionState? session;
-        CpuResidencyWindowCompletion window;
+        object window;
         lock (subscriptionGate)
         {
             session = activeSession;
@@ -1417,35 +1093,27 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             window = session.Window;
         }
         if (!IsRunning) return false;
-        try
-        {
-            if (!await window.Boundaries.WaitAsync(boundaryBudget, cancellationToken)) return false;
-            if (!await window.Complete.WaitAsync(session.Plan.ObservationWindow + deliveryGrace, cancellationToken)) return false;
-            lock (subscriptionGate)
-                return !stopped && IsCurrentSessionCore(session)
-                    && session.WindowActive && ReferenceEquals(session.Window, window);
-        }
-        catch (TimeoutException)
-        {
-            window.Invalidate();
-            logger.LogWarning(new TimeoutException("CPU residency capture did not observe a complete boundary window."),
-                "CPU residency capture produced no complete window within its observation and delivery budget.");
-            return false;
-        }
+        bool complete;
+        try { complete = await session.Native.WaitForCompleteWindowAsync(boundaryBudget, session.Plan.ObservationWindow + deliveryGrace, cancellationToken); }
+        catch (KernelEtwNativeReaders.CaptureFailure) { return false; }
+        lock (subscriptionGate)
+            return complete && !stopped && IsCurrentSessionCore(session)
+                && session.WindowActive && ReferenceEquals(session.Window, window);
     }
-
     private static bool TryPublish(IMetricPublicationPermit? permit, Action commit)
     { if (permit is not null) return permit.TryPublish(commit); commit(); return true; }
     public void Dispose()
     {
-        IKernelEtwSubscription? lease; ResidencySessionState? session;
-        IKernelEtwSubscription? window;
+        IKernelEtwSubscription? lease, duration; ResidencySessionState? session;
+        lock (durationResourceGate)
         lock (subscriptionGate)
         {
-            if (stopped) { ClearRetiredBuffersCore(); return; }
-            stopped = true; DisposeDiagnosticRequests(); window = DetachContextSwitchCore(); (lease, session) = DetachSessionCore(); state = "Stopped";
+            if (stopped) return;
+            stopped = true; windowRequested = false;
+            DisposeDiagnosticRequests(); duration = DetachDurationHoldCore(); (lease, session) = DetachSessionCore(); state = "Stopped";
         }
-        try { try { window?.Dispose(); } finally { lease?.Dispose(); } } finally { ClearRetiredBuffers(); }
+        try { DrainInventorySeed(session); }
+        finally { try { duration?.Dispose(); } finally { lease?.Dispose(); } }
     }
 }
 #pragma warning restore CS0618

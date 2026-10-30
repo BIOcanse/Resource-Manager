@@ -199,7 +199,7 @@ internal static class ProcessFieldOwnerConsumer
     private sealed class NoIoEtwBroker : IKernelEtwSessionBroker
     {
         internal int Subscriptions;
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
             Subscriptions++;
             throw new InvalidOperationException("General IO must not request live ETW.");

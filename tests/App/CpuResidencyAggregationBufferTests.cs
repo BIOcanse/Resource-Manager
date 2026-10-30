@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using ResourceManager.App.Infrastructure.CpuTopology;
 
 namespace Resource_Manager_APP.Tests;
@@ -422,7 +423,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
         var old = Assert.Single(buffer.Snapshot([0]).Records);
         var inventory = buffer.CaptureInventorySeed();
-        var process = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
+        var process = Assert.IsType<OracleCpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
 
         buffer.ResetAfterEventLoss();
 
@@ -432,7 +433,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Assert.Equal(0, buffer.GetDiagnostics().CurrentProcessCount);
         Assert.Equal(0, buffer.GetDiagnostics().CurrentThreadCount);
 
-        var replacement = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(
+        var replacement = Assert.IsType<OracleCpuResidencyAggregationBuffer.SeededProcess>(
             buffer.CaptureInventorySeed().SeedProcess(100, 2000, "New"));
         replacement.SeedThread(10);
         Switch(buffer, 1000, 0, 0, 0, 100, 10);
@@ -451,7 +452,7 @@ public sealed class CpuResidencyAggregationBufferTests
     {
         var buffer = CreateBuffer(windowMilliseconds: 1000);
         var inventory = buffer.CaptureInventorySeed();
-        var old = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
+        var old = Assert.IsType<OracleCpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
         old.SeedThread(10);
         StartProcess(buffer, 0, 100, 2000, "New", 20, uniqueProcessKey: 22);
 
@@ -474,7 +475,7 @@ public sealed class CpuResidencyAggregationBufferTests
     public void ContinuityResetPreservesAValidInventorySeed()
     {
         var buffer = CreateBuffer(windowMilliseconds: 1000);
-        var process = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(
+        var process = Assert.IsType<OracleCpuResidencyAggregationBuffer.SeededProcess>(
             buffer.CaptureInventorySeed().SeedProcess(100, 1000, "Current"));
         buffer.ResetContinuity();
         process.SeedThread(10);
@@ -489,7 +490,7 @@ public sealed class CpuResidencyAggregationBufferTests
     {
         var buffer = CreateBuffer(windowMilliseconds: 1000);
         var inventory = buffer.CaptureInventorySeed();
-        var process = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
+        var process = Assert.IsType<OracleCpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
         buffer.Clear();
         Assert.Null(inventory.SeedProcess(100, 2000, "Stale"));
         process.SeedThread(10);
@@ -829,7 +830,7 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void MaximumQpcBoundaryIsNotConfusedWithAnUnsetBoundary()
     {
-        var buffer = new CpuResidencyAggregationBuffer(1000, 1, 4, 1);
+        var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1, 4, 1);
         buffer.ObserveProcessStart(
             long.MaxValue - 1,
             DateTimeOffset.UnixEpoch,
@@ -992,12 +993,12 @@ public sealed class CpuResidencyAggregationBufferTests
         Assert.Equal(0, buffer.GetDiagnostics().CapacityResetCount);
     }
 
-    private static CpuResidencyAggregationBuffer ReplayRecordedThreadMigration(
+    private static OracleCpuResidencyAggregationBuffer ReplayRecordedThreadMigration(
         int maximumPairs, int windowMilliseconds, int bucketWidthMilliseconds)
     {
         const int threadCount = 13165;
         const long frequency = 10000;
-        var buffer = new CpuResidencyAggregationBuffer(frequency, windowMilliseconds, maximumPairs, bucketWidthMilliseconds);
+        var buffer = new OracleCpuResidencyAggregationBuffer(frequency, windowMilliseconds, maximumPairs, bucketWidthMilliseconds);
         buffer.ObserveProcessStart(0, DateTimeOffset.UnixEpoch, 100, 11, 1000, "recorded-two-cpu-migration");
         for (var thread = 1; thread <= threadCount; thread++)
             buffer.ObserveThreadStart(0, DateTimeOffset.UnixEpoch, 100, thread);
@@ -1020,13 +1021,13 @@ public sealed class CpuResidencyAggregationBufferTests
         return buffer;
     }
 
-    private static CpuResidencyAggregationBuffer CreateBuffer(
+    private static OracleCpuResidencyAggregationBuffer CreateBuffer(
         int windowMilliseconds,
         int maximumActivePairs = 1024)
         => new(1000, windowMilliseconds, maximumActivePairs, Math.Max(1, (windowMilliseconds + 99) / 100));
 
     private static void StartProcess(
-        CpuResidencyAggregationBuffer buffer,
+        OracleCpuResidencyAggregationBuffer buffer,
         long qpc,
         int processId,
         long processStartKey,
@@ -1045,7 +1046,7 @@ public sealed class CpuResidencyAggregationBufferTests
     }
 
     private static void Switch(
-        CpuResidencyAggregationBuffer buffer,
+        OracleCpuResidencyAggregationBuffer buffer,
         long qpc,
         int logicalProcessorId,
         int oldProcessId,

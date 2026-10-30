@@ -58,9 +58,9 @@ public sealed class HostCpuPeriodicSubscriptionTests
     public async Task CpuResidencyFieldStreamSurvivesAProducerFaultAndControllerRestart()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new WarmingBroker();
+        using var broker = new WarmingBroker();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+            NullLogger<EtwCpuCoreResidencyReader>.Instance);
         var current = new RecordedResidencyBackend();
         var backend = new ProducerSubscriptionCurrentBackend(current);
         using var timeout = new CancellationTokenSource(Deadline);
@@ -77,6 +77,7 @@ public sealed class HostCpuPeriodicSubscriptionTests
             () => firstRun.WaitAsync(Deadline));
         Assert.Equal(ProducerSubscriptionCurrentBackend.FailureMessage, failure.Message);
         await controller.AssertControllerRestartedAsync();
+        await NativeCpuReaderTestFeed.DrainRequestedCommandsUntilAsync(reader, pending, timeout.Token);
         Assert.True(await pending.WaitAsync(Deadline));
         Assert.Equal(37.5, Assert.Single(stream.Current).Value?.Number);
         // Retained current may be delivered before the restarted worker opens its next capture window.
@@ -259,9 +260,9 @@ public sealed class HostCpuPeriodicSubscriptionTests
     public async Task FreshCpuResidencySubscriptionDoesNotRelabelCachedValueWhileOriginalEtwWindowIsWarming()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new WarmingBroker();
+        using var broker = new WarmingBroker();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+            NullLogger<EtwCpuCoreResidencyReader>.Instance);
         var backend = new RecordedResidencyBackend();
         var field = backend.Field;
         Assert.Throws<ArgumentOutOfRangeException>(() => reader.AcquireFieldSubscription(
@@ -426,57 +427,5 @@ public sealed class HostCpuPeriodicSubscriptionTests
         }
     }
 
-    private sealed class WarmingBroker : IKernelEtwSessionBroker
-    {
-        private readonly object gate = new();
-        private readonly List<RecordedLease> leases = [];
-        private KernelEtwEventSource? metadataSource;
-        private int subscribeCount;
-        private int disposeCount;
-        internal int SubscribeCount => Volatile.Read(ref subscribeCount);
-        internal int DisposeCount => Volatile.Read(ref disposeCount);
-
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
-        {
-            var metadata = request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process);
-            var source = metadata ? new KernelEtwEventSource() : metadataSource!;
-            var lease = new RecordedLease(this, metadata ? source : null, request.Keywords);
-            lock (gate)
-            {
-                leases.Add(lease);
-                if (metadata) metadataSource = source;
-            }
-            Interlocked.Increment(ref subscribeCount);
-            Task.Run(() => request.Bind(source, new(37, DateTimeOffset.UnixEpoch)))
-                .GetAwaiter().GetResult();
-            if (metadata) source.Activate();
-            return lease;
-        }
-
-        public KernelEtwSessionSnapshot GetSnapshot()
-        {
-            lock (gate)
-                return new(leases.Count > 0 ? "Running" : "Unavailable",
-                    "Recorded fixture: no context-switch events were supplied.", 37, DateTimeOffset.UnixEpoch,
-                    leases.Aggregate(KernelTraceEventParser.Keywords.None, (keywords, lease) => keywords | lease.Keywords),
-                    leases.Count, 0);
-        }
-
-        private sealed class RecordedLease(WarmingBroker owner, KernelEtwEventSource? source,
-            KernelTraceEventParser.Keywords keywords) : IKernelEtwSubscription
-        {
-            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
-            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-
-            private int disposed;
-
-            public void Dispose()
-            {
-                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-                lock (owner.gate) owner.leases.Remove(this);
-                source?.Cancel();
-                Interlocked.Increment(ref owner.disposeCount);
-            }
-        }
-    }
+    private sealed class WarmingBroker : CpuResidencyHeldTestBroker { internal WarmingBroker() : base(37, DateTimeOffset.UnixEpoch, true) { } }
 }

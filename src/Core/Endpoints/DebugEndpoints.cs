@@ -11,6 +11,7 @@ using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -26,13 +27,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             response.Headers.CacheControl = "no-store";
             return Results.Ok(new Domain.KernelLeak.KernelLeakDebugSnapshot(reports.Read(), reports.ReadDiagnostics()));
         });
-        app.MapGet("/api/debug/business-blocks", (HttpResponse response, IBusinessBlockQuery blocks, BusinessBlockDiagnosticsRegistry diagnostics) =>
+        app.MapGet("/api/debug/business-blocks", (HttpResponse response, IBusinessBlockQuery blocks,
+            BusinessBlockDiagnosticsRegistry diagnostics,
+            [Microsoft.AspNetCore.Mvc.FromServices] KernelEtwConsumerThreadDiagnostics kernelConsumer) =>
         {
             response.Headers.CacheControl = "no-store";
             var snapshot = blocks.Read();
+            var resourceMetrics = kernelConsumer.Read();
             return snapshot.NativeSnapshot is { } native
-                ? Results.Ok(new NativeBusinessBlockDebugSnapshot(native, diagnostics.ReadAll()))
-                : Results.Ok(new BusinessBlockDebugSnapshot(snapshot, diagnostics.ReadAll()));
+                ? Results.Ok(new NativeBusinessBlockDebugSnapshot(native, diagnostics.ReadAll()) { KernelEtwConsumer = resourceMetrics })
+                : Results.Ok(new BusinessBlockDebugSnapshot(snapshot, diagnostics.ReadAll()) { KernelEtwConsumer = resourceMetrics });
         });
 
         app.MapGet("/api/debug/gpu-renderers", async (HttpResponse response,

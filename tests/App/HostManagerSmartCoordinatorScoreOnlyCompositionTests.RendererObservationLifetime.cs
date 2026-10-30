@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
@@ -12,7 +13,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Fact]
     public async Task HostedSmartRunOwnsRendererObservationAndReleasesItBeforeReturning()
     {
-        var broker = new RendererObservationBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         var actions = new RecordingRunningGpuActions { AcquireObservation = cache.Acquire };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -58,7 +59,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Fact]
     public async Task RunningSmartOnlyHoldsRendererEventsWhileQualificationCanBeUsed()
     {
-        var broker = new RendererObservationBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         var actions = new RecordingRunningGpuActions { AcquireObservation = cache.Acquire };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -101,6 +102,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             await PublishAndSynchronize(true, true, false);
             Assert.Equal(1, broker.Acquires);
             Assert.Equal(0, broker.Releases);
+            Assert.Equal(KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.ImageLoad,
+                broker.Request!.Keywords);
+            Assert.Equal(KernelEtwNativeOutputs.Renderer, broker.Request.NativeOutputs);
             await PublishAndSynchronize(true, true, false);
             Assert.Equal(1, broker.Acquires);
             await PublishAndSynchronize(false, true, false);
@@ -116,34 +120,4 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(broker.Acquires, broker.Releases);
     }
 
-    private sealed class RendererObservationBroker : IKernelEtwSessionBroker
-    {
-        private int acquires, releases;
-        private KernelEtwSessionContext context = new(0, DateTimeOffset.UnixEpoch);
-        internal int Acquires => Volatile.Read(ref acquires);
-        internal int Releases => Volatile.Read(ref releases);
-        internal KernelEtwEventSource Source { get; private set; } = new();
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
-        {
-            context = new(Interlocked.Increment(ref acquires), DateTimeOffset.UtcNow);
-            Source = new();
-            request.Bind(Source, context);
-            Source.Activate();
-            return new Held(this, Source);
-        }
-        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "fixture", context.Generation,
-            context.StartedAt, KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.ImageLoad,
-            Acquires - Releases, 0);
-        private sealed class Held(RendererObservationBroker broker, KernelEtwEventSource source) : IKernelEtwSubscription
-        {
-            private int disposed;
-            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
-            public void Dispose()
-            {
-                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-                source.Cancel();
-                Interlocked.Increment(ref broker.releases);
-            }
-        }
-    }
 }

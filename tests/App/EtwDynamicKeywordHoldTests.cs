@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Infrastructure.SystemHealth.Interrupts;
@@ -13,12 +14,12 @@ public sealed class EtwDynamicKeywordHoldTests
     private const KernelTraceEventParser.Keywords Switch = KernelTraceEventParser.Keywords.ContextSwitch;
     private static EtwCpuResidencyCaptureOwner Capture(Broker broker) => new(broker,
         () => new(50, 64, new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("0", "", 1, 1) }.ToFrozenDictionary(), "fixture", 10),
-        new KernelEtwDiagnostics(), static (_, _) => { });
+        new KernelEtwDiagnostics(), null, static (_, _) => { });
 
     [Fact]
     public void ResidencyHoldsMetadataAtEntryAndSwitchesOnlyInWindows()
     {
-        var broker = new Broker();
+        using var broker = new Broker();
         using var capture = Capture(broker);
         Assert.Empty(broker.Holders);
         capture.EnsureStarted();
@@ -50,7 +51,7 @@ public sealed class EtwDynamicKeywordHoldTests
     [InlineData(true)]
     public async Task WindowAcquisitionCanBindOnAnotherThreadAndPauseOrDisposeBeforeReturn(bool dispose)
     {
-        var broker = new Broker();
+        using var broker = new Broker();
         using var capture = Capture(broker);
         capture.EnsureStarted();
         broker.RebindExisting = true;
@@ -78,7 +79,7 @@ public sealed class EtwDynamicKeywordHoldTests
     [Fact]
     public void DeniedOrLostContextSwitchCannotBeHiddenByRunningMetadata()
     {
-        var broker = new Broker { DeniedKeywords = Switch };
+        using var broker = new Broker { DeniedKeywords = Switch };
         using var capture = Capture(broker);
         capture.EnsureStarted();
         capture.BeginWindow();
@@ -99,7 +100,7 @@ public sealed class EtwDynamicKeywordHoldTests
     public async Task InterruptRunHoldsMetadataAndEventsAndStopReturnsBoth()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new Broker();
+        using var broker = new Broker();
         using var source = new EtwSystemInterruptSnapshotSource(broker, sampling.Owner, NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
         Assert.Empty(broker.Holders);
         await source.StartAsync(default);
@@ -121,7 +122,7 @@ public sealed class EtwDynamicKeywordHoldTests
             | System.Reflection.BindingFlags.NonPublic;
         var gate = typeof(EtwSystemInterruptSnapshotSource).GetField("subscriptionGate", flags)!.GetValue(source)!;
         lock (gate)
-            return typeof(EtwSystemInterruptSnapshotSource).GetField("interruptSubscription", flags)!.GetValue(source) is not null;
+            return typeof(EtwSystemInterruptSnapshotSource).GetField("durationSubscription", flags)!.GetValue(source) is not null;
     }
 
     private static async Task UntilAsync(Func<bool> condition)
@@ -130,43 +131,57 @@ public sealed class EtwDynamicKeywordHoldTests
         while (!condition()) await Task.Delay(5, timeout.Token);
     }
 
-    private sealed class Broker : IKernelEtwSessionBroker
+    private sealed class Broker : IKernelEtwSessionBroker, INativeKernelEtwTestResourceBroker, IDisposable
     {
         private readonly object gate = new();
         private readonly List<KernelEtwSubscriptionRequest> holders = [];
+        public NativeKernelEtwTestResource Resource { get; } = new(NativeKernelEtwTestResource.SmallConfiguration());
         public List<KernelEtwSubscriptionRequest[]> History { get; } = [];
         public Action<KernelEtwSubscriptionRequest>? BeforeReturn;
         public bool RebindExisting;
         public KernelTraceEventParser.Keywords DeniedKeywords;
         public KernelEtwSubscriptionRequest[] Holders { get { lock (gate) return holders.ToArray(); } }
         public KernelTraceEventParser.Keywords Keywords => Holders.Aggregate(KernelTraceEventParser.Keywords.None, (v, h) => v | h.Keywords);
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
             lock (gate) { holders.Add(request); History.Add(holders.ToArray()); }
-            var source = new KernelEtwEventSource();
-            var binding = Task.Factory.StartNew(() =>
+            IKernelEtwSubscription? native = null;
+            try
             {
-                if (RebindExisting)
-                    foreach (var held in Holders.Where(held => !ReferenceEquals(held, request)))
-                        held.Bind(source, new(1, DateTimeOffset.UtcNow));
-                request.Bind(source, new(1, DateTimeOffset.UtcNow));
-            },
-                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            Assert.True(binding.Wait(TimeSpan.FromSeconds(2)), "Broker binding deadlocked.");
-            source.Activate();
-            BeforeReturn?.Invoke(request);
-            return new Lease(this, request, source);
+                if (RebindExisting) Resource.Rebind();
+                native = Resource.Acquire(request with { Bind = (source, context) =>
+                {
+                    var binding = Task.Factory.StartNew(() => request.Bind(source, context),
+                        CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                    Assert.True(binding.Wait(TimeSpan.FromSeconds(2)), "Broker binding deadlocked.");
+                }});
+                BeforeReturn?.Invoke(request);
+                return new Lease(this, request, native);
+            }
+            catch
+            {
+                native?.Dispose();
+                lock (gate) holders.Remove(request);
+                throw;
+            }
         }
-        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "fixture", 1, DateTimeOffset.UtcNow, Keywords, Holders.Length, 0);
-        private sealed class Lease(Broker owner, KernelEtwSubscriptionRequest request, KernelEtwEventSource source) : IKernelEtwSubscription
+        public KernelEtwSessionSnapshot GetSnapshot() => Resource.GetSnapshot();
+        public void Dispose() => Resource.Dispose();
+        private sealed class Lease(Broker owner, KernelEtwSubscriptionRequest request, IKernelEtwSubscription native) : IKernelEtwSubscription
         {
+            private int disposed;
             public KernelEtwSessionSnapshot GetSnapshot()
             {
-                var snapshot = owner.GetSnapshot();
+                var snapshot = native.GetSnapshot();
                 return (owner.DeniedKeywords & request.Keywords) == 0 ? snapshot
                     : snapshot with { State = "Unavailable", Message = "fixture: holder keywords denied" };
             }
-            public void Dispose() { source.Cancel(); lock (owner.gate) owner.holders.Remove(request); }
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+                try { native.Dispose(); }
+                finally { lock (owner.gate) owner.holders.Remove(request); }
+            }
         }
     }
 }

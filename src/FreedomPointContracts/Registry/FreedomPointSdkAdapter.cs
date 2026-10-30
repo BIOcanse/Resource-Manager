@@ -141,6 +141,7 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.KernelLeakObservation => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "KernelLeak"),
             BackendFreedomPointPositions.Notifications => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "Notifications"),
             BackendFreedomPointPositions.MemoryProtection => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "HostMemoryProtectionRecords"),
+            BackendFreedomPointPositions.KernelEtwLimits => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "KernelEtwLimits"),
             BackendFreedomPointPositions.MachineBaselineRatio => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuScoringPlan", "BaselineRatio"),
             BackendFreedomPointPositions.CorePerformanceWeights => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuScoringPlan", "CoreWeights"),
             BackendFreedomPointPositions.ObservationWindowMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuCoreResidencyPlan", "ObservationWindowMilliseconds"),
@@ -179,12 +180,19 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.BaseScoreTiers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "BaseScoreTiers"),
             _ => throw new InvalidDataException($"Active freedom point '{point.Path}' has no compiled host member.")
         };
-        return [new GenerationTarget
+        var host = new GenerationTarget
         {
             Language = GenerationLanguage.HostArtifact,
             Form = point.Path.Family == PointFamily.Build ? GenerationForm.BuildConstant : GenerationForm.RuntimeImmutable,
             Scope = scope, Symbol = symbol
-        }];
+        };
+        return point.Path.Raw == BackendFreedomPointPositions.KernelEtwLimits
+            ? [host, new GenerationTarget
+            {
+                Language = GenerationLanguage.HostArtifact, Form = GenerationForm.BuildConstant,
+                Scope = "ResourceManager.App.Infrastructure.Telemetry.Etw.KernelEtwNativeDefaults", Symbol = "SelectedLimits"
+            }]
+            : [host];
     }
 
     private static PointDeclaration ToDeclaration(CompiledFreedomPoint point, ImmutableArray<GenerationTarget> targets) => new()

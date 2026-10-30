@@ -18,7 +18,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
     public async Task InterruptHolderHistoryEndsWhenItsLastRealConsumerLeaves(string withdrawal)
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new TimedInterruptBroker();
+        using var broker = new TimedInterruptBroker();
         using var source = new EtwSystemInterruptSnapshotSource(broker, sampling.Owner,
             NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
         var registration = new BusinessBlockRegistration(BackendUids.EtwSystemInterruptSnapshotSource,
@@ -68,7 +68,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             Assert.True(ReadActivity().Value);
             Assert.Collection(broker.Holders.OrderBy(value => value.Id),
                 metadata => Assert.Equal(("system-interrupts", KernelTraceEventParser.Keywords.ImageLoad), (metadata.Id, metadata.Keywords)),
-                events => Assert.Equal(("system-interrupts-events", KernelTraceEventParser.Keywords.Interrupt
+                events => Assert.Equal(("system-interrupts-duration", KernelTraceEventParser.Keywords.Interrupt
                     | KernelTraceEventParser.Keywords.DeferedProcedureCalls), (events.Id, events.Keywords)));
             if (withdrawal == "no-interrupt-rule")
             {
@@ -102,30 +102,26 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         }
     }
 
-    private sealed class TimedInterruptBroker : IKernelEtwSessionBroker
+    private sealed class TimedInterruptBroker : RecordingNativeKernelEtwBroker
     {
         private readonly object gate = new();
         private readonly List<KernelEtwSubscriptionRequest> held = [];
         internal ConcurrentQueue<(long Tick, KernelEtwSubscriptionRequest[] Holders)> History { get; } = new();
         internal KernelEtwSubscriptionRequest[] Holders { get { lock (gate) return held.ToArray(); } }
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public override IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
-            var source = new KernelEtwEventSource();
+            var nativeHold = base.Acquire(request);
             lock (gate) { held.Add(request); History.Enqueue((Stopwatch.GetTimestamp(), held.ToArray())); }
-            request.Bind(source, new(1, DateTimeOffset.UtcNow));
-            source.Activate();
-            return new TimedLease(this, request, source);
+            return new TimedLease(this, request, nativeHold);
         }
-        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "timed-fixture", 1, DateTimeOffset.UtcNow,
-            Holders.Aggregate(KernelTraceEventParser.Keywords.None, (all, value) => all | value.Keywords), Holders.Length, 0);
-        private sealed class TimedLease(TimedInterruptBroker owner, KernelEtwSubscriptionRequest request, KernelEtwEventSource source) : IKernelEtwSubscription
+        private sealed class TimedLease(TimedInterruptBroker owner, KernelEtwSubscriptionRequest request, IKernelEtwSubscription nativeHold) : IKernelEtwSubscription
         {
             private int disposed;
-            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+            public KernelEtwSessionSnapshot GetSnapshot() => nativeHold.GetSnapshot();
             public void Dispose()
             {
                 if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-                source.Cancel();
+                nativeHold.Dispose();
                 lock (owner.gate) { owner.held.Remove(request); owner.History.Enqueue((Stopwatch.GetTimestamp(), owner.held.ToArray())); }
             }
         }

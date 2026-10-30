@@ -388,7 +388,7 @@ public sealed class SamplingOutputLedgerProvidersTests
         {
             get { lock (gate) return requests.ToArray(); }
         }
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
             var lease = new Lease(this, request.Keywords);
             lock (gate)

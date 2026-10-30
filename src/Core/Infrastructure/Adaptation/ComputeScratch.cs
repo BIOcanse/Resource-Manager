@@ -16,6 +16,13 @@ internal abstract class ComputeScratchLease : IDisposable
     internal abstract bool IsLoading { get; }
     internal abstract Memory<byte> GetMemoryChunk(ulong offset, int count);
     internal abstract void Complete();
+    // Publish a completed loading region and keep a counted access lease. Used
+    // when native state retains the address across calls, rather than a round.
+    internal virtual void PublishAndRetain() => throw new NotSupportedException(
+        "This scratch provider cannot retain a published region.");
+    // Caller must end its own pins before a move; other leases/pins still block.
+    internal virtual void Grow(ulong length) => throw new NotSupportedException(
+        "This scratch provider cannot grow a retained region.");
     public abstract void Dispose();
 }
 

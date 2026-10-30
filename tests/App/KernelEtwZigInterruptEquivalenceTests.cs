@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
@@ -8,6 +9,7 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class KernelEtwZigInterruptEquivalenceTests
 {
+    private const ulong KernelBase = 0xFFFF_F800_0000_0000UL;
     private readonly Xunit.Abstractions.ITestOutputHelper output;
     public KernelEtwZigInterruptEquivalenceTests(Xunit.Abstractions.ITestOutputHelper output) => this.output = output;
 
@@ -122,10 +124,13 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
                 Assert.Equal(0, OpenTrace(residency, text, (uint)path!.Length, 0, out trace));
             Assert.Equal(0, BindInterrupts(trace, replay.Handle, headerQpc, 1000, 1));
             Assert.Equal(0, QueryPathMapping(trace, out var mapping, (uint)Marshal.SizeOf<PathMappingStatus>()));
-            output.WriteLine($"Owned ETL path mapping: entries={mapping.Entries}; flags={mapping.Flags}; failedDriveMask={mapping.FailedDriveMask:x}.");
-            Assert.Equal(1u, mapping.Flags & 1); // Explicit legacy local-machine mapping source.
-            Assert.InRange(mapping.Entries, 6u, 32u);
+            Assert.Equal(0u, mapping.Entries); // No path conversion has requested lazy local defaults yet.
+            Assert.Equal(0u, mapping.Flags);
             var result = ProcessTrace(trace, 0);
+            Assert.Equal(0, QueryPathMapping(trace, out mapping, (uint)Marshal.SizeOf<PathMappingStatus>()));
+            output.WriteLine($"Owned ETL path mapping: entries={mapping.Entries}; flags={mapping.Flags}; failedDriveMask={mapping.FailedDriveMask:x}.");
+            Assert.Equal(1u, mapping.Flags & 1); // This file reaches image conversion before recorded namespace additions.
+            Assert.InRange(mapping.Entries, 6u, 32u);
             Assert.Equal(0, QueryTraceStatus(trace, out var status, (uint)Marshal.SizeOf<NativeTraceStatus>()));
             output.WriteLine($"Owned ETL native: result={result}; windows={status.WindowsStatus}; owner={status.OwnerStatus}; "
                 + $"records={status.Records}; decoded={status.Decoded}; rejected={status.Rejected}; "
@@ -255,65 +260,74 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
     [InlineData("top-sixteen")]
     [InlineData("overflow-range")]
     [InlineData("invalid-duration")]
+    [InlineData("user-mode-images")]
     public void NormalizedInterruptReplayMatchesCSharpOracle(string scenario)
     {
         using var replay = new Replay();
         replay.Compare(1000);
         switch (scenario)
         {
+            case "user-mode-images":
+                replay.Image(0x7FF6_0000_0000UL, 0x100, "user.dll", 1000);
+                replay.Event(1, 1, 0x7FF6_0000_0010UL, 1001);
+                replay.Unload(0x7FF6_0000_0000UL, 1002);
+                replay.Image(KernelBase + 100, 10, "kernel.sys", 1002);
+                replay.Event(2, 2, KernelBase + 100, 1003);
+                replay.Compare(11000);
+                break;
             case "overlap-unload-reuse":
-                replay.Image(100, 1000, "C:\\wide.sys", 1000);
-                replay.Image(200, 10, "C:\\nested.sys", 1000);
-                replay.Image(300, 10, "C:\\later.sys", 1000);
-                replay.Event(1, 2, 205, 1000);
-                replay.Event(2, 3, 210, 1001);
-                replay.Event(3, 1, 305, 1002);
-                replay.Unload(200, 1003);
-                replay.Event(4, .5, 205, 1003);
-                replay.Image(100, 5, "C:\\replacement.sys", 2000);
-                replay.Event(1, 4, 100, 2000);
-                replay.Event(2, 4, 205, 2000);
+                replay.Image(KernelBase + 100, 1000, "C:\\wide.sys", 1000);
+                replay.Image(KernelBase + 200, 10, "C:\\nested.sys", 1000);
+                replay.Image(KernelBase + 300, 10, "C:\\later.sys", 1000);
+                replay.Event(1, 2, KernelBase + 205, 1000);
+                replay.Event(2, 3, KernelBase + 210, 1001);
+                replay.Event(3, 1, KernelBase + 305, 1002);
+                replay.Unload(KernelBase + 200, 1003);
+                replay.Event(4, .5, KernelBase + 205, 1003);
+                replay.Image(KernelBase + 100, 5, "C:\\replacement.sys", 2000);
+                replay.Event(1, 4, KernelBase + 100, 2000);
+                replay.Event(2, 4, KernelBase + 205, 2000);
                 replay.Compare(11000);
                 replay.Compare(62000);
                 break;
             case "partial-slices":
-                replay.Image(100, 10, "slice.sys", 1000);
-                replay.Event(1, 8, 100, 1001);
-                replay.Event(2, 4, 100, 2001);
-                replay.Event(3, 2, 100, 61000);
+                replay.Image(KernelBase + 100, 10, "slice.sys", 1000);
+                replay.Event(1, 8, KernelBase + 100, 1001);
+                replay.Event(2, 4, KernelBase + 100, 2001);
+                replay.Event(3, 2, KernelBase + 100, 61000);
                 replay.Compare(10999);
                 replay.Compare(11000);
                 replay.Compare(61500);
                 replay.Compare(121500);
                 break;
             case "loss-and-stale-events":
-                replay.Image(100, 10, "old.sys", 1000);
-                replay.Event(1, 3, 100, 1001);
+                replay.Image(KernelBase + 100, 10, "old.sys", 1000);
+                replay.Event(1, 3, KernelBase + 100, 1001);
                 replay.Compare(11000);
                 replay.Loss(20000, 3);
-                replay.Image(100, 10, "stale.sys", 19999);
-                replay.Event(1, 100, 100, 19999);
-                replay.Event(2, 1, 100, 20000);
+                replay.Image(KernelBase + 100, 10, "stale.sys", 19999);
+                replay.Event(1, 100, KernelBase + 100, 19999);
+                replay.Event(2, 1, KernelBase + 100, 20000);
                 replay.Compare(29999);
                 replay.Compare(30000);
                 replay.Loss(40000, 3); // unchanged loss count must not reset
                 replay.Compare(40000);
                 break;
             case "unicode-spelling":
-                replay.Image(100, 10, "  C:\\Ä.sys  ", 1000);
-                replay.Event(1, 1, 100, 1000);
-                replay.Image(100, 10, "c:\\ä.SYS", 1001);
-                replay.Event(2, 2, 100, 1001);
-                replay.Unload(100, 1002);
-                replay.Image(200, 10, "c:\\ä.SYS", 2000);
-                replay.Event(3, 3, 200, 2000);
+                replay.Image(KernelBase + 100, 10, "  C:\\Ä.sys  ", 1000);
+                replay.Event(1, 1, KernelBase + 100, 1000);
+                replay.Image(KernelBase + 100, 10, "c:\\ä.SYS", 1001);
+                replay.Event(2, 2, KernelBase + 100, 1001);
+                replay.Unload(KernelBase + 100, 1002);
+                replay.Image(KernelBase + 200, 10, "c:\\ä.SYS", 2000);
+                replay.Event(3, 3, KernelBase + 200, 2000);
                 replay.Compare(11000);
                 replay.Compare(61500);
                 break;
             case "top-sixteen":
                 for (var i = 19; i >= 0; --i)
                 {
-                    var address = (ulong)(100 + i * 10);
+                    var address = KernelBase + (ulong)(100 + i * 10);
                     replay.Image(address, 5, $"C:\\a{i:00}.sys", 1000);
                     replay.Event(1, i == 19 ? 10 : 1, address, 1000);
                 }
@@ -328,8 +342,8 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
                 replay.Compare(11000);
                 break;
             case "invalid-duration":
-                replay.Image(100, -1, "invalid.sys", 1000);
-                replay.Image(100, 0, "zero.sys", 1000);
+                replay.Image(KernelBase + 100, -1, "invalid.sys", 1000);
+                replay.Image(KernelBase + 100, 0, "zero.sys", 1000);
                 replay.Event(1, double.NaN, 0, 1000);
                 replay.Event(1, double.PositiveInfinity, 0, 1000);
                 replay.Event(1, 0, 0, 1000);
@@ -345,8 +359,8 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
     public void NativePublicationRetainsStringsAcrossLossAndReportsCappedUsage()
     {
         using var replay = new Replay();
-        replay.Image(100, 10, "lease.sys", 1000);
-        replay.Event(1, 1, 100, 1000);
+        replay.Image(KernelBase + 100, 10, "lease.sys", 1000);
+        replay.Event(1, 1, KernelBase + 100, 1000);
         Assert.Equal(0, Acquire(replay.Handle, 11000, 2, out var view));
         try
         {
@@ -378,7 +392,7 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
 
     private static string? Text(nint pointer, uint length)
         => pointer == 0 ? null : Marshal.PtrToStringUni(pointer, checked((int)length));
-    private static string Name(Identity value) => Text(value.Name, value.NameLength) ?? KernelModuleAddressMap.UnknownModuleName;
+    private static string Name(Identity value) => Text(value.Name, value.NameLength) ?? OracleKernelModuleAddressMap.UnknownModuleName;
     private static string? Kind(uint value) => value switch
     {
         0 => null, 1 => SystemInterruptEventKinds.Isr, 2 => SystemInterruptEventKinds.Dpc,
@@ -388,8 +402,8 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
 
     private sealed class Replay : IDisposable
     {
-        private readonly KernelModuleAddressMap modules = new();
-        private readonly SystemInterruptWindowAggregator aggregator = new();
+        private readonly OracleKernelModuleAddressMap modules = new();
+        private readonly OracleSystemInterruptWindowAggregator aggregator = new();
         private long started = 1000;
         private ulong lost;
         private readonly bool nativeInputs;
@@ -413,12 +427,12 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
             if (nativeInputs)
                 fixed (char* text = path)
                     Assert.Equal(0, ImageNative(Handle, address, size > 0 ? (ulong)size : 0, text, (uint)(path?.Length ?? 0), tick, 0));
-            if (tick >= started) modules.Upsert(address, size, path);
+            if (tick >= started && OracleKernelModuleAddressMap.IsKernelAddress(address)) modules.Upsert(address, size, path);
         }
         public unsafe void Unload(ulong address, long tick)
         {
             if (nativeInputs) Assert.Equal(0, ImageNative(Handle, address, 0, null, 0, tick, 1));
-            if (tick >= started) modules.Remove(address);
+            if (tick >= started && OracleKernelModuleAddressMap.IsKernelAddress(address)) modules.Remove(address);
         }
         public void Event(uint kind, double duration, ulong routine, long tick)
         {
@@ -493,13 +507,13 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
     // Independent test-only Windows SDK reader. It never calls the Zig decoder
     // or TraceEvent and retains only counters and the first EventTrace/Header.
     // x64 EVENT_TRACE_LOGFILEW / EVENT_RECORD offsets from evntrace.h/evntcons.h.
-    private sealed class RawClock
+    internal sealed class RawClock
     {
         public ulong Records, HeaderRecord, FirstImageRecord, FirstInterruptRecord, FirstSwitchRecord,
             ImagesBeforeHeader, InterruptsBeforeHeader, SwitchesBeforeHeader, LostMarkers, Isr50, Isr67;
         public long HeaderQpc, Frequency;
     }
-    private static unsafe RawClock ReadRawClock(string path)
+    internal static unsafe RawClock ReadRawClock(string path)
     {
         Assert.Equal(8, IntPtr.Size);
         var result = new RawClock();

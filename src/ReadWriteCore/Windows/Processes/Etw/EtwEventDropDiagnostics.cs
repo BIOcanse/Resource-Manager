@@ -15,7 +15,8 @@ public sealed record EtwEventDropsSnapshot(IReadOnlyList<EtwSessionEventDrops> S
 }
 
 // Exactly one processing thread writes a counter. Reading never resets it.
-public sealed class EtwEventDropCounter(string kind)
+public sealed class EtwEventDropCounter(string kind, Func<EtwEventKindDrops?>? readNative = null,
+    bool supplementReceived = false)
 {
     private readonly long[] counts = new long[2];
     public void Receive() => counts[0]++;
@@ -23,6 +24,9 @@ public sealed class EtwEventDropCounter(string kind)
     internal EtwEventKindDrops Read()
     {
         var dropped = Volatile.Read(ref counts[1]);
+        if (readNative?.Invoke() is { } native)
+            return new(kind, native.Received + (supplementReceived ? Volatile.Read(ref counts[0]) : 0),
+                native.Dropped + dropped);
         return new(kind, Volatile.Read(ref counts[0]), dropped);
     }
 }

@@ -139,7 +139,7 @@ public sealed class WindowsProcessFieldOwnerLibraryIntegrationTests
         owner.StartNetworkCapture();
         var warming = await owner.CollectAsync(names, timeout.Token);
         Assert.Null(warming.CapturedAt); Assert.Equal(1, broker.Acquires);
-        await Task.Delay(2100, timeout.Token);
+        broker.PublishAfterWindow();
         var complete = await owner.CollectAsync(names, timeout.Token);
         Assert.Equal(2000, complete.WindowMilliseconds);
         Assert.All(complete.Processes.Single().Values, value => Assert.True(value.IntegerValue == new MetricInteger(0) || value.NumericValue == 0));
@@ -176,7 +176,7 @@ public sealed class WindowsProcessFieldOwnerLibraryIntegrationTests
         owner.StartDiskCapture();
         var warming = await owner.CollectAsync(names, timeout.Token);
         Assert.Null(warming.CapturedAt); Assert.Equal(1, broker.Acquires);
-        await Task.Delay(2100, timeout.Token);
+        broker.PublishAfterWindow();
         var complete = await owner.CollectAsync(names, timeout.Token);
         Assert.NotNull(complete.CapturedAt); Assert.Equal(2000, complete.WindowMilliseconds);
         Assert.Equal(names, complete.Fields.Select(field => field.Name).ToArray());
@@ -239,22 +239,5 @@ public sealed class WindowsProcessFieldOwnerLibraryIntegrationTests
         public ulong WorkspaceIncarnation => 1; public ulong ConfigurationGeneration => 1; public bool IsActive => false;
         public bool TryPublish(Action commit) => false;
     }
-    private sealed class Broker : IKernelEtwSessionBroker
-    {
-        internal int Acquires, Releases;
-        private readonly KernelEtwSessionContext context = new(17, DateTimeOffset.UnixEpoch);
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
-        {
-            Acquires++; var source = new KernelEtwEventSource(); request.Bind(source, context); source.Activate(); return new Lease(this, source);
-        }
-        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded broker", 17, context.StartedAt,
-            Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords.NetworkTCPIP, Acquires - Releases, 0);
-        private sealed class Lease(Broker broker, KernelEtwEventSource source) : IKernelEtwSubscription
-        {
-            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
-
-            private int disposed;
-            public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) { source.Cancel(); broker.Releases++; } }
-        }
-    }
+    private sealed class Broker : ProcessFieldEtwTestBroker { internal Broker() : base(17) { } }
 }

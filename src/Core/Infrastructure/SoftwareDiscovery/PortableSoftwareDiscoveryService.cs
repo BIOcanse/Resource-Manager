@@ -37,6 +37,11 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             FullMode = BoundedChannelFullMode.DropOldest
         });
     private IKernelEtwSubscription? processSubscription;
+    private readonly object nativeBindingGate = new();
+    private NativeBinding? nativeBinding;
+    private Channel<bool> publications = CreatePublications();
+    private static Channel<bool> CreatePublications() => Channel.CreateBounded<bool>(
+        new BoundedChannelOptions(1) { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.DropWrite });
     private CancellationTokenSource? workerCts;
     private Task? workerTask;
     internal Task? ExecutionTask => workerTask;
@@ -91,46 +96,24 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         Volatile.Write(ref handledCatalogFailure, null);
         Volatile.Write(ref workerCleanupFailure, null);
         var runStarts = processStarts = CreateProcessStarts();
-        workerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var workerToken = workerCts.Token;
+        var runPublications = publications = CreatePublications();
+        var runCts = workerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var workerToken = runCts.Token;
         try
         {
-            processSubscription = kernelEtwSessionBroker.Subscribe(new KernelEtwSubscriptionRequest(
+            processSubscription = kernelEtwSessionBroker.Acquire(new KernelEtwSubscriptionRequest(
                 "portable-software-discovery",
                 KernelTraceEventParser.Keywords.Process,
-                (kernel, _) =>
-                {
-                    var counter = kernel.ConsumerCounter("process-start");
-                    kernel.ProcessStartGroup += data =>
-                    {
-                        counter.Receive();
-                        var rejection = !kernel.IsActive || workerToken.IsCancellationRequested ? "stopped"
-                            : data.ProcessID <= 4 ? "system-process" : null;
-                        if (rejection is not null)
-                        {
-                            counter.Drop();
-                            kernel.RecordConsumerRejection("process-start", rejection);
-                            return;
-                        }
-                        if (!runStarts.Writer.TryWrite(new PortableProcessCandidate(
-                            data.ProcessID,
-                            data.ParentID > 0 ? data.ParentID : null,
-                            data.ProcessName,
-                            SelectEventPath(data.ImageFileName, data.KernelImageFileName),
-                            StartedNoLaterThan: data.TimeStamp.ToFileTimeUtc())))
-                        {
-                            counter.Drop();
-                            kernel.RecordConsumerRejection("process-start", "closed-queue");
-                        }
-                    };
-                }));
+                (kernel, _) => BindNativeSource(kernel, runPublications, workerToken))
+                { NativeOutputs = KernelEtwNativeOutputs.Notifications });
             inventorySnapshot = kernelEtwSessionBroker.GetSnapshot();
             EnqueueCurrentProcesses(runStarts);
-            workerTask = Task.Run(() => RunWorkerAsync(runStarts, workerToken), CancellationToken.None);
+            workerTask = Task.Run(() => RunWorkerAsync(runStarts, runPublications, runCts), CancellationToken.None);
         }
         catch
         {
             workerCts.Cancel();
+            ReleaseNativeBinding();
             try { Interlocked.Exchange(ref processSubscription, null)?.Dispose(); }
             finally { workerCts.Dispose(); workerCts = null; }
             throw;
@@ -141,8 +124,10 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         processStarts.Writer.TryComplete();
+        publications.Writer.TryComplete();
         var cts = workerCts;
         cts?.Cancel();
+        ReleaseNativeBinding();
         try
         {
             Interlocked.Exchange(ref processSubscription, null)?.Dispose();
@@ -197,17 +182,36 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         StopAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
-    private async Task RunWorkerAsync(Channel<PortableProcessCandidate> runStarts, CancellationToken cancellationToken)
+    private async Task RunWorkerAsync(Channel<PortableProcessCandidate> runStarts, Channel<bool> runPublications,
+        CancellationTokenSource runCts)
     {
         Exception? runFailure = null;
+        var cancellationToken = runCts.Token;
         try
         {
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
             var nextCheck = timer.WaitForNextTickAsync(cancellationToken).AsTask();
             var nextCandidate = runStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
+            var nextPublication = runPublications.Reader.WaitToReadAsync(cancellationToken).AsTask();
             while (!cancellationToken.IsCancellationRequested)
             {
-                await Task.WhenAny(nextCheck, nextCandidate);
+                await Task.WhenAny(nextCheck, nextCandidate, nextPublication);
+                if (nextPublication.IsCompleted)
+                {
+                    if (!await nextPublication) break;
+                    while (runPublications.Reader.TryRead(out _)) { }
+                    var binding = Volatile.Read(ref nativeBinding);
+                    if (binding is { Source.IsActive: true, Source.NativeSession: { } session })
+                    {
+                        try
+                        {
+                            KernelEtwNativeNotifications.Read(session, ref binding.Sequence,
+                                (view, skipped) => ObserveNativePublication(binding.Source, view, skipped));
+                        }
+                        catch (ObjectDisposedException) when (!binding.Source.IsActive) { }
+                    }
+                    nextPublication = runPublications.Reader.WaitToReadAsync(cancellationToken).AsTask();
+                }
                 if (nextCheck.IsCompleted)
                 {
                     if (!await nextCheck) break;
@@ -240,7 +244,15 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         {
             // Process events are used only while this worker can consume them.
             // A failed or cancelled run releases its own hold even before StopAsync.
-            try { Interlocked.Exchange(ref processSubscription, null)?.Dispose(); }
+            try
+            {
+                try { runCts.Cancel(); }
+                finally
+                {
+                    try { ReleaseNativeBinding(); }
+                    finally { Interlocked.Exchange(ref processSubscription, null)?.Dispose(); }
+                }
+            }
             catch (Exception error)
             {
                 Volatile.Write(ref workerCleanupFailure, error);
@@ -355,11 +367,11 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         => RefreshInventoryAfterLoss(snapshot, processStarts, workerCts?.Token ?? CancellationToken.None);
 
     private void RefreshInventoryAfterLoss(KernelEtwSessionSnapshot snapshot,
-        Channel<PortableProcessCandidate> runStarts, CancellationToken cancellationToken)
+        Channel<PortableProcessCandidate> runStarts, CancellationToken cancellationToken, bool force = false)
     {
         if (!snapshot.IsRunning || Volatile.Read(ref disposed) != 0 || cancellationToken.IsCancellationRequested
             || runStarts.Reader.Completion.IsCompleted) return;
-        if (inventorySnapshot is { IsRunning: true } previous
+        if (!force && inventorySnapshot is { IsRunning: true } previous
             && previous.Generation == snapshot.Generation && previous.EventsLost == snapshot.EventsLost) return;
         EnqueueCurrentProcesses(runStarts);
         inventorySnapshot = snapshot;
@@ -377,11 +389,90 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 .ToArray());
     }
 
-    private static string? SelectEventPath(params string?[] candidates)
+    private void BindNativeSource(KernelEtwEventSource source, Channel<bool> runPublications,
+        CancellationToken cancellationToken)
     {
-        return candidates
-            .Where(static item => !string.IsNullOrWhiteSpace(item))
-            .Select(static item => item!.Trim())
-            .FirstOrDefault(Path.IsPathFullyQualified);
+        NativeBinding? previous;
+        lock (nativeBindingGate)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            source.ConsumerRejectionCounter("process-start", "stopped");
+            source.ConsumerRejectionCounter("process-start", "system-process");
+            source.ConsumerRejectionCounter("process-start", "closed-queue");
+            var binding = new NativeBinding(source, source.ObservePublications(
+                () => runPublications.Writer.TryWrite(true)), cancellationToken);
+            previous = Interlocked.Exchange(ref nativeBinding, binding);
+        }
+        previous?.Dispose();
+        runPublications.Writer.TryWrite(true);
+    }
+
+    private void ReleaseNativeBinding()
+    {
+        NativeBinding? binding;
+        lock (nativeBindingGate) binding = Interlocked.Exchange(ref nativeBinding, null);
+        binding?.Dispose();
+    }
+
+    // Called on the existing worker with one leased immutable native batch.
+    internal void ObserveNativePublication(KernelEtwEventSource source, KernelEtwNativeNotifications.View view, bool skipped)
+    {
+        var binding = Volatile.Read(ref nativeBinding);
+        if (binding is null || !ReferenceEquals(binding.Source, source)) return;
+        var stopped = !source.IsActive || binding.CancellationToken.IsCancellationRequested;
+        if (stopped)
+        {
+            foreach (ref readonly var row in KernelEtwNativeNotifications.Records(view))
+                if (row.Kind == 7) RejectProcessStart(binding, "stopped");
+            return;
+        }
+        if (skipped || binding.EventsLost is { } lost && lost != view.EventsLost)
+            RefreshInventoryAfterLoss(kernelEtwSessionBroker.GetSnapshot(), processStarts,
+                binding.CancellationToken, force: skipped);
+        binding.EventsLost = view.EventsLost;
+        foreach (ref readonly var row in KernelEtwNativeNotifications.Records(view))
+        {
+            if (row.Kind != 7) continue;
+            if (!source.IsActive || binding.CancellationToken.IsCancellationRequested)
+            {
+                RejectProcessStart(binding, "stopped");
+                continue;
+            }
+            binding.Counter.Receive();
+            if (row.ProcessId <= 4 || row.ProcessId > int.MaxValue)
+            {
+                binding.Counter.Drop();
+                source.RecordConsumerRejection("process-start", "system-process");
+                continue;
+            }
+            var path = KernelEtwNativeReaders.Utf16(row.Path, row.PathLength);
+            if (!processStarts.Writer.TryWrite(new PortableProcessCandidate((int)row.ProcessId,
+                row.ParentProcessId is > 0 and <= int.MaxValue ? (int)row.ParentProcessId : null,
+                path is null ? null : Path.GetFileNameWithoutExtension(path),
+                path is not null && Path.IsPathFullyQualified(path) ? path : null,
+                StartedNoLaterThan: row.TimeFileTime)))
+            {
+                binding.Counter.Drop();
+                source.RecordConsumerRejection("process-start", "closed-queue");
+            }
+        }
+    }
+
+    private static void RejectProcessStart(NativeBinding binding, string reason)
+    {
+        binding.Counter.Receive();
+        binding.Counter.Drop();
+        binding.Source.RecordConsumerRejection("process-start", reason);
+    }
+
+    private sealed class NativeBinding(KernelEtwEventSource source, IDisposable observer,
+        CancellationToken cancellationToken) : IDisposable
+    {
+        internal KernelEtwEventSource Source { get; } = source;
+        internal EtwEventDropCounter Counter { get; } = source.ConsumerCounter("process-start");
+        internal CancellationToken CancellationToken { get; } = cancellationToken;
+        internal ulong Sequence;
+        internal ulong? EventsLost;
+        public void Dispose() => observer.Dispose();
     }
 }

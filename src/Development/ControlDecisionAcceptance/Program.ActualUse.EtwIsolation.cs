@@ -1,4 +1,7 @@
 using Microsoft.Diagnostics.Tracing.Session;
+using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Adaptation;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -14,8 +17,19 @@ internal static partial class Program
     {
         // Existing production constructor overrides retain real native factories
         // and cleanup, but do not call the product's optional orphan reconciler.
-        services.Replace(ServiceDescriptor.Singleton<KernelEtwSessionBroker>(provider => new(
-            new TraceEventKernelEtwSessionRuntimeFactory(), provider.GetRequiredService<ILogger<KernelEtwSessionBroker>>())));
+        services.Replace(ServiceDescriptor.Singleton<KernelEtwSessionBroker>(provider =>
+        {
+            var allocations = new NativeKernelEtwLedgerRegionProvider(provider.GetRequiredService<ResourceManagerLedgerOwner>());
+            var factory = new NativeKernelEtwSessionRuntimeFactory(allocations, () =>
+            {
+                var plan = provider.GetRequiredService<IRuntimePlanProvider>().Current.HostManager.RequirePublished();
+                return KernelEtwNativeSettings.CreateConfiguration(
+                    plan.KernelEtwLimits ?? throw new InvalidOperationException("Kernel ETW limits are unpublished."),
+                    plan.CpuCoreResidency, checked((uint)plan.CpuCoreResidency.PhysicalCoreByLogicalProcessor.Count));
+            }, name => RequireOwnSessionName(ResourceManagerEtwSessionNames.KernelPrefix, name),
+                provider.GetRequiredService<KernelEtwConsumerThreadDiagnostics>());
+            return new KernelEtwSessionBroker(factory, provider.GetRequiredService<ILogger<KernelEtwSessionBroker>>());
+        }));
         services.AddSingleton<ActualUseEtwCounters>();
         services.Replace(ServiceDescriptor.Singleton<IKernelEtwSessionBroker>(provider => provider.GetRequiredService<ActualUseEtwCounters>()));
         services.AddSingleton<ActualUseSmartResidencyObserver>();

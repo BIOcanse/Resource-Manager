@@ -1,4 +1,4 @@
-﻿using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Diagnostics.Tracing.Parsers;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -35,7 +35,7 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         logger = diagnostics ?? new();
     }
 
-    /// <summary>Explicit retry; caller owns scheduling. Subscribe/release still reconcile synchronously.</summary>
+    /// <summary>Explicit retry; caller owns scheduling. Acquire/release still reconcile synchronously.</summary>
     public void Reconcile()
     {
         lock (reconciliationGate)
@@ -46,7 +46,7 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
     }
 
     /// <summary>Acquires a reader and reconciles the held resource synchronously.</summary>
-    public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+    public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Id);
@@ -59,6 +59,7 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         lock (reconciliationGate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
+            runtimeFactory.ValidateRequest(request);
 
             var leaseId = Interlocked.Increment(ref nextLeaseId);
             lock (stateGate)
@@ -67,7 +68,7 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
                     leaseId,
                     request.Id.Trim(),
                     request.Keywords,
-                    request.Bind));
+                    request.Bind) { NativeOutputs = request.NativeOutputs });
                 configurationVersion++;
             }
 
@@ -101,7 +102,10 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
                 startedAt,
                 enabledKeywords,
                 subscriptions.Count,
-                eventsLost);
+                eventsLost)
+            {
+                AllocationUsage = (runtime as IKernelEtwAllocationDiagnostics)?.GetAllocationUsage()
+            };
         }
     }
 
@@ -122,8 +126,7 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
             if (!subscriptions.TryGetValue(leaseId, out var subscription))
                 return snapshot with { State = "Idle", Message = "共享 kernel ETW 订阅已释放。" };
             return snapshot.IsRunning
-                && (subscription.Keywords & ~(enabledKeywords | KernelTraceEventParser.Keywords.Process
-                    | KernelTraceEventParser.Keywords.Thread)) != 0
+                && (subscription.Keywords & ~enabledKeywords) != 0
                 ? snapshot with { State = "Unavailable" }
                 : snapshot;
         }
@@ -556,6 +559,9 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
             }
             throw;
         }
+        // The native runtime's Dispose returns only after provider stop, thread
+        // join and destruction all succeeded, including a later cleanup retry.
+        if (remainingRuntime is NativeKernelEtwSessionRuntime) nativeReleaseConfirmed = true;
         lock (stateGate)
         {
             runtime = null;
@@ -614,7 +620,9 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
     {
         lock (stateGate)
         {
-            runtime = null;
+            runtime = exception.Runtime;
+            runtimeDisposalPending = exception.Runtime is not null;
+            pendingNativeReleaseConfirmed = exception.Runtime is not null;
             restartBlockedByUnreleasedRuntime = true;
             appliedConfigurationVersion = -1;
             enabledKeywords = KernelTraceEventParser.Keywords.None;

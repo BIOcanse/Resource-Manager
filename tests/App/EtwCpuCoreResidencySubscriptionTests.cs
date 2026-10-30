@@ -1,3 +1,8 @@
+using System.Collections.Frozen;
+using ResourceManager.ReadWrite.Windows.Processes;
+using ResourceManager.ReadWrite.Publications;
+using ResourceManager.App.Domain.CpuTopology;
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using System.Diagnostics;
 using System.Reflection;
 using Microsoft.Diagnostics.Tracing.Parsers;
@@ -16,45 +21,67 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     public async Task SameReaderCanRestartAndBindFreshSubscriptionAfterStop()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new CrossThreadBindingBroker();
+        using var broker = new CrossThreadBindingBroker();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+            NullLogger<EtwCpuCoreResidencyReader>.Instance);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         long previousWindowEnd = 0;
-        // Finish this fixture's initial boundaries during each run-entry bind,
-        // before the fast worker can legitimately publish a warming value.
-        broker.BeforeLeaseReturn = () => previousWindowEnd = FeedCpuWindow(
-            reader, sampling, broker.MetadataSubscribeCount * 100, previousWindowEnd);
         ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot firstValue;
-        await using (var firstRun = reader.SubscribeAsync("first-run", TimeSpan.FromMilliseconds(100), timeout.Token)
-            .GetAsyncEnumerator(timeout.Token))
+        using var firstCancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+        await using (var firstRun = reader.SubscribeAsync("first-run", TimeSpan.FromMilliseconds(100), firstCancellation.Token)
+            .GetAsyncEnumerator(firstCancellation.Token))
         {
-            var next = firstRun.MoveNextAsync().AsTask();
-            await reader.StartAsync(default);
-            await broker.BindingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(37, reader.GetDiagnostics().SessionGeneration);
-            await WaitUntilAsync(() => IsWindowActive(reader));
-            Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(5)));
-            firstValue = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(firstRun.Current);
-            Assert.Contains(firstValue.Processes, process => process.ProcessId == 100);
-            await reader.StopAsync(default);
+            Task<bool>? pending = null;
+            try
+            {
+                var next = pending = firstRun.MoveNextAsync().AsTask();
+                await reader.StartAsync(default);
+                await broker.BindingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.Equal(broker.Resource.Generation, reader.GetDiagnostics().SessionGeneration);
+                await WaitUntilAsync(() => IsWindowActive(reader));
+                previousWindowEnd = FeedCpuWindow(reader, sampling, 100, previousWindowEnd);
+                Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(5)));
+                firstValue = Assert.IsType<CpuCoreResidencySnapshot>(firstRun.Current);
+                Assert.Contains(firstValue.Processes, process => process.ProcessId == 100);
+                await reader.StopAsync(default);
+            }
+            finally
+            {
+                firstCancellation.Cancel();
+                if (pending is not null)
+                    try { await pending; }
+                    catch (OperationCanceledException) when (firstCancellation.IsCancellationRequested) { }
+            }
         }
         Assert.Equal(2, broker.DisposeCount);
         await reader.StartAsync(default);
         try
         {
-            await using var secondRun = reader.SubscribeAsync("second-run", TimeSpan.FromMilliseconds(100), timeout.Token)
-                .GetAsyncEnumerator(timeout.Token);
-            var next = secondRun.MoveNextAsync().AsTask();
-            await WaitUntilAsync(() => broker.SubscribeCount == 4 && reader.GetDiagnostics().SessionGeneration == 37);
-            Assert.Equal(37, reader.GetDiagnostics().SessionGeneration);
-            await WaitUntilAsync(() => IsWindowActive(reader));
-            Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(5)));
-            var secondValue = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(secondRun.Current);
-            Assert.NotSame(firstValue, secondValue);
-            Assert.Contains(secondValue.Processes, process => process.ProcessId == 200);
-            Assert.DoesNotContain(secondValue.Processes, process => process.ProcessId == 100);
-            Assert.Same(secondValue, reader.Read());
+            using var secondCancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+            await using var secondRun = reader.SubscribeAsync("second-run", TimeSpan.FromMilliseconds(100), secondCancellation.Token)
+                .GetAsyncEnumerator(secondCancellation.Token);
+            Task<bool>? pending = null;
+            try
+            {
+                var next = pending = secondRun.MoveNextAsync().AsTask();
+                await WaitUntilAsync(() => broker.SubscribeCount == 4 && reader.GetDiagnostics().SessionGeneration == broker.Resource.Generation);
+                Assert.Equal(broker.Resource.Generation, reader.GetDiagnostics().SessionGeneration);
+                await WaitUntilAsync(() => IsWindowActive(reader));
+                previousWindowEnd = FeedCpuWindow(reader, sampling, 200, previousWindowEnd);
+                Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(5)));
+                var secondValue = Assert.IsType<CpuCoreResidencySnapshot>(secondRun.Current);
+                Assert.NotSame(firstValue, secondValue);
+                Assert.Contains(secondValue.Processes, process => process.ProcessId == 200);
+                Assert.DoesNotContain(secondValue.Processes, process => process.ProcessId == 100);
+                Assert.Same(secondValue, reader.Read());
+            }
+            finally
+            {
+                secondCancellation.Cancel();
+                if (pending is not null)
+                    try { await pending; }
+                    catch (OperationCanceledException) when (secondCancellation.IsCancellationRequested) { }
+            }
         }
         finally { await reader.StopAsync(default); }
         Assert.Equal(4, broker.DisposeCount);
@@ -71,148 +98,104 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     private static long FeedCpuWindow(EtwCpuCoreResidencyReader reader,
         HostManagerSamplingSubscriptionTestFixture sampling, int processId, long previousWindowEnd)
     {
-        // Use the actual reader's session buffer, as in EtwCpuResidencyWindowDemandTests.
-        var owner = (EtwCpuResidencyCaptureOwner)typeof(EtwCpuCoreResidencyReader)
-            .GetField("captureOwner", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(reader)!;
-        var session = typeof(EtwCpuResidencyCaptureOwner)
-            .GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
-        var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
-        var completion = (CpuResidencyWindowCompletion)session.GetType().GetProperty("Window")!.GetValue(session)!;
-        var plan = sampling.Provider.Current.HostManager.CpuCoreResidency;
-        var processors = plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray();
-        var start = Math.Max(Stopwatch.GetTimestamp(), previousWindowEnd + 1);
-        var now = DateTimeOffset.UtcNow;
-        buffer.ObserveProcessStart(start, now, processId, checked((ulong)processId), processId * 10L, "recorded");
-        foreach (var processor in processors)
-        {
-            var threadId = processId + processor;
-            buffer.ObserveThreadStart(start, now, processId, threadId);
-            buffer.ObserveContextSwitch(start, now, processor, 0, 0, processId, "recorded", threadId);
-            completion.Observe(processor, start);
-        }
-        var end = start + Stopwatch.Frequency * plan.ObservationWindowMilliseconds / 1000;
-        foreach (var processor in processors)
-        {
-            buffer.ObserveContextSwitch(end, now + plan.ObservationWindow, processor,
-                processId, processId + processor, 0, null, 0);
-            completion.Observe(processor, end);
-        }
-        return end;
+        return NativeCpuReaderTestFeed.ClosedWindow(reader, sampling, processId, processId * 10L,
+            processId, previousWindowEnd, publishPrelude: false);
     }
 
     [Fact]
-    public async Task LossDuringInventoryScanCancelsOldWritesAndCoalescesTheNextScan()
+    public async Task NativeLossDuringInventoryScanCancelsOldWritesAndCoalescesTheNextScan()
     {
-        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new CrossThreadBindingBroker();
+        using var broker = new CpuResidencyHeldTestBroker();
         using var releaseFirst = new ManualResetEventSlim();
         var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var recovered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var count = 0;
-        var active = 0;
-        var overlap = 0;
-        using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, (inventory, shouldSeed) =>
+        var count = 0; var active = 0; var overlap = 0;
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, InventoryConfiguration, new(), null, (inventory, shouldSeed) =>
+        {
+            if (Interlocked.Increment(ref active) != 1) Interlocked.Increment(ref overlap);
+            try
             {
-                if (Interlocked.Increment(ref active) != 1) Interlocked.Increment(ref overlap);
-                try
+                if (Interlocked.Increment(ref count) == 1)
                 {
-                    var attempt = Interlocked.Increment(ref count);
-                    if (attempt == 1)
-                    {
-                        started.TrySetResult(true);
-                        if (!releaseFirst.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Fixture inventory was not released.");
-                        Assert.False(shouldSeed());
-                        Assert.Null(inventory.SeedProcess(999, 9999, "Stale"));
-                    }
-                    else
-                    {
-                        Assert.True(shouldSeed());
-                        inventory.SeedProcess(100, 2000, "Current")!.SeedThread(10);
-                        recovered.TrySetResult(true);
-                    }
+                    started.TrySetResult(true);
+                    if (!releaseFirst.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Native inventory was not released.");
+                    Assert.False(shouldSeed()); Assert.Null(inventory.SeedProcess(999, 9999, "Stale"));
                 }
-                catch (Exception error) { recovered.TrySetException(error); throw; }
-                finally { Interlocked.Decrement(ref active); }
-            });
-        using var demand = reader.AcquireSubscription("test.loss-during-inventory", TimeSpan.FromMilliseconds(100));
-        await reader.StartAsync(CancellationToken.None);
+                else
+                {
+                    Assert.True(shouldSeed()); inventory.SeedProcess(100, 2000, "Current")!.SeedThread(10);
+                    recovered.TrySetResult(true);
+                }
+            }
+            catch (Exception error) { recovered.TrySetException(error); throw; }
+            finally { Interlocked.Decrement(ref active); }
+        });
+        owner.EnsureStarted();
+        owner.BeginWindow();
+        broker.Resource.Publish(broker.Resource.Tick);
         try
         {
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var initial = reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
-            Volatile.Write(ref broker.EventsLost, 1);
-            await WaitUntilAsync(() => reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > initial);
-            var firstReset = reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
-            Volatile.Write(ref broker.EventsLost, 2);
-            await WaitUntilAsync(() => reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > firstReset);
-            Assert.Equal(1, Volatile.Read(ref count));
-            releaseFirst.Set();
+            var initial = owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
+            broker.Resource.Loss(broker.Resource.Tick + 1, 1); broker.Resource.Publish(broker.Resource.Tick); owner.Collect();
+            Assert.True(owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > initial);
+            var next = owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
+            broker.Resource.Loss(broker.Resource.Tick + 1, 2); broker.Resource.Publish(broker.Resource.Tick); owner.Collect();
+            Assert.True(owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > next);
+            Assert.Equal(1, count); releaseFirst.Set();
             await recovered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(2, Volatile.Read(ref count));
-            Assert.Equal(0, Volatile.Read(ref overlap));
-            Assert.Equal(2, broker.SubscribeCount);
-            Assert.Equal(1, reader.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
+            broker.Resource.Publish(broker.Resource.Tick);
+            Assert.Equal(2, count); Assert.Equal(0, overlap); Assert.Equal(1, broker.Resource.Creations);
+            Assert.Equal(1, owner.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
         }
-        finally
-        {
-            releaseFirst.Set();
-            await reader.StopAsync(CancellationToken.None);
-        }
+        finally { releaseFirst.Set(); owner.Stop(); }
     }
-
     [Fact]
-    public async Task CumulativeEventLossRefreshesInventoryOnceWithoutRebindingTheSession()
+    public async Task NativeCumulativeEventLossRefreshesInventoryOnceWithoutRebindingTheSession()
     {
-        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new CrossThreadBindingBroker();
-        var firstInventory = new TaskCompletionSource<CpuResidencyAggregationBuffer.InventorySeed>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var secondInventory = new TaskCompletionSource<CpuResidencyAggregationBuffer.InventorySeed>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var seedCount = 0;
-        using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, (inventory, shouldSeed) =>
-            {
-                if (!shouldSeed()) return;
-                var count = Interlocked.Increment(ref seedCount);
-                inventory.SeedProcess(100, count * 1000L, "Current")!.SeedThread(10);
-                if (count == 1) firstInventory.TrySetResult(inventory);
-                if (count == 2) secondInventory.TrySetResult(inventory);
-            });
-        using var demand = reader.AcquireSubscription("test.loss-inventory", TimeSpan.FromMilliseconds(100));
-        await reader.StartAsync(CancellationToken.None);
-        try
+        using var broker = new CpuResidencyHeldTestBroker();
+        var first = new TaskCompletionSource<EtwCpuResidencyCaptureOwner.InventorySeed>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<EtwCpuResidencyCaptureOwner.InventorySeed>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var count = 0;
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, InventoryConfiguration, new(), null, (inventory, shouldSeed) =>
         {
-            var old = await firstInventory.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await WaitUntilAsync(() => reader.GetDiagnostics().Aggregation?.CurrentThreadCount == 1);
-            var before = reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
-            Volatile.Write(ref broker.EventsLost, 1);
-            await secondInventory.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Null(old.SeedProcess(999, 9999, "Stale"));
-            Assert.Equal(37, reader.GetDiagnostics().SessionGeneration);
-            Assert.Equal(1, reader.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
-            Assert.True(reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > before);
-            await Task.Delay(250);
-            Assert.Equal(2, Volatile.Read(ref seedCount));
-            Assert.Equal(2, broker.SubscribeCount);
-            Assert.Null(reader.Read()); // No context switches were supplied by this fixture.
-        }
-        finally { await reader.StopAsync(CancellationToken.None); }
+            if (!shouldSeed()) return;
+            var attempt = Interlocked.Increment(ref count);
+            inventory.SeedProcess(100, attempt * 1000L, "Current")!.SeedThread(10);
+            if (attempt == 1) first.TrySetResult(inventory);
+            if (attempt == 2) second.TrySetResult(inventory);
+        });
+        owner.EnsureStarted();
+        owner.BeginWindow();
+        var old = await first.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        broker.Resource.Publish(broker.Resource.Tick);
+        var before = owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
+        broker.Resource.Loss(broker.Resource.Tick + 1, 1); broker.Resource.Publish(broker.Resource.Tick); owner.Collect();
+        await second.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        broker.Resource.Publish(broker.Resource.Tick);
+        Assert.Null(old.SeedProcess(999, 9999, "Stale"));
+        Assert.Equal(broker.GetSnapshot().Generation, owner.GetDiagnostics().SessionGeneration);
+        Assert.Equal(1, owner.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
+        Assert.True(owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > before);
+        await Task.Delay(250); Assert.Equal(2, count); Assert.Equal(1, broker.Resource.Creations); Assert.Null(owner.Read());
     }
 
+    private static CpuResidencyCaptureConfiguration InventoryConfiguration() => new(1000, 32,
+        new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(), "native inventory", 50);
     [Fact]
     public async Task StartingSubscriptionAllowsTheBrokerToBindOnAnotherThread()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new CrossThreadBindingBroker();
+        using var broker = new CrossThreadBindingBroker();
         using var reader = new EtwCpuCoreResidencyReader(
             broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+            NullLogger<EtwCpuCoreResidencyReader>.Instance);
         using var demand = reader.AcquireSubscription("test.cross-thread-binding", TimeSpan.FromSeconds(1));
         await reader.StartAsync(CancellationToken.None);
         try
         {
             Assert.True(await broker.BindingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5)));
-            Assert.Equal(37, reader.GetDiagnostics().SessionGeneration);
+            Assert.Equal(broker.Resource.Generation, reader.GetDiagnostics().SessionGeneration);
         }
         finally
         {
@@ -227,11 +210,11 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     public async Task StopDuringPendingSamplingSettlesThePlanBeforeReset(bool dispose)
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new CrossThreadBindingBroker();
+        using var broker = new CrossThreadBindingBroker();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+            NullLogger<EtwCpuCoreResidencyReader>.Instance);
         broker.BeforeLeaseReturn = () =>
         {
             entered.TrySetResult();
@@ -392,14 +375,14 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     }
 
     [Fact]
-    public async Task IdleSubscriptionDoesNotPublishASyntheticCurrentValue()
+    public async Task SubscriptionBeforeRunDoesNotPublishASyntheticCurrentValue()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new UnavailableBroker();
         using var reader = CreateReader(sampling, broker);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         await using var subscription = reader.SubscribeAsync(
-                "test.idle",
+                "test.before-run",
                 TimeSpan.FromSeconds(1),
                 cancellation.Token)
             .GetAsyncEnumerator();
@@ -425,7 +408,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         private int subscribeCount;
         public int SubscribeCount => Volatile.Read(ref subscribeCount);
 
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
             Interlocked.Increment(ref subscribeCount);
             throw new InvalidOperationException("Fixture: ETW unavailable.");
@@ -436,75 +419,21 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
                 DateTimeOffset.UnixEpoch, KernelTraceEventParser.Keywords.None, 0, 0);
     }
 
-    private sealed class CrossThreadBindingBroker : IKernelEtwSessionBroker
-    {
-        private int disposed;
-        private int subscribeCount;
-        public int EventsLost;
-        public int SubscribeCount => Volatile.Read(ref subscribeCount);
-        public int DisposeCount => Volatile.Read(ref disposed);
-        public TaskCompletionSource<bool> BindingCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Task? LastBinding { get; private set; }
-        public Action? BeforeLeaseReturn { get; set; }
-        private readonly object holdsGate = new();
-        private readonly Dictionary<KernelEtwEventSource, KernelTraceEventParser.Keywords> holds = [];
-        public int MetadataSubscribeCount { get; private set; }
-        public KernelTraceEventParser.Keywords Keywords { get { lock (holdsGate) return holds.Values.Aggregate(KernelTraceEventParser.Keywords.None, (all, value) => all | value); } }
-
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
-        {
-            Interlocked.Increment(ref subscribeCount);
-            var source = new KernelEtwEventSource();
-            lock (holdsGate) holds.Add(source, request.Keywords);
-            if (request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process)) MetadataSubscribeCount++;
-            var subscriberThread = Environment.CurrentManagedThreadId;
-            var binding = LastBinding = Task.Factory.StartNew(() =>
-            {
-                Assert.NotEqual(subscriberThread, Environment.CurrentManagedThreadId);
-                request.Bind(source, new(37, DateTimeOffset.UnixEpoch));
-            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            var completed = binding.Wait(TimeSpan.FromSeconds(1));
-            if (!completed)
-            {
-                BindingCompleted.TrySetResult(false);
-                throw new TimeoutException("The reader held its lock across broker subscription.");
-            }
-            source.Activate();
-            if (request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process)) BeforeLeaseReturn?.Invoke();
-            BindingCompleted.TrySetResult(true);
-            return new Lease(this, source);
-        }
-
-        public KernelEtwSessionSnapshot GetSnapshot()
-            => new("Running", "fixture", 37, DateTimeOffset.UnixEpoch,
-                Keywords, SubscribeCount - DisposeCount, Volatile.Read(ref EventsLost));
-
-        private sealed class Lease(CrossThreadBindingBroker owner, KernelEtwEventSource source) : IKernelEtwSubscription
-        {
-            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-
-            private int released;
-            public void Dispose()
-            {
-                if (Interlocked.Exchange(ref released, 1) != 0) return;
-                source.Cancel();
-                lock (owner.holdsGate) owner.holds.Remove(source);
-                Interlocked.Increment(ref owner.disposed);
-            }
-        }
-    }
+    private sealed class CrossThreadBindingBroker : CpuResidencyHeldTestBroker { internal CrossThreadBindingBroker() : base(37, DateTimeOffset.UnixEpoch, true) { } }
 
     private sealed class PassiveUnavailableBroker : IKernelEtwSessionBroker
     {
         private int subscribeCount;
         private int disposeCount;
+        private int durationCount;
         public int SubscribeCount => Volatile.Read(ref subscribeCount);
         public int DisposeCount => Volatile.Read(ref disposeCount);
 
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
-            Interlocked.Increment(ref subscribeCount);
-            return new Lease(this);
+            var duration = request.Keywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch);
+            if (duration) Interlocked.Increment(ref durationCount); else Interlocked.Increment(ref subscribeCount);
+            return new Lease(this, duration);
         }
 
         public KernelEtwSessionSnapshot GetSnapshot()
@@ -514,10 +443,10 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
                 0,
                 DateTimeOffset.UnixEpoch,
                 KernelTraceEventParser.Keywords.None,
-                SubscribeCount - DisposeCount,
+                SubscribeCount - DisposeCount + Volatile.Read(ref durationCount),
                 0);
 
-        private sealed class Lease(PassiveUnavailableBroker owner) : IKernelEtwSubscription
+        private sealed class Lease(PassiveUnavailableBroker owner, bool duration) : IKernelEtwSubscription
         {
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
 
@@ -527,7 +456,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             {
                 if (Interlocked.Exchange(ref disposed, 1) == 0)
                 {
-                    Interlocked.Increment(ref owner.disposeCount);
+                    if (duration) Interlocked.Decrement(ref owner.durationCount); else Interlocked.Increment(ref owner.disposeCount);
                 }
             }
         }

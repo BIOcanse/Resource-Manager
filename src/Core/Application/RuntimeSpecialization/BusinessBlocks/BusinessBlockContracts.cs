@@ -30,5 +30,13 @@ public sealed record BusinessBlockDiagnostics(int Id, BusinessBlockResult? Resul
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; init; }
 }
-public sealed record BusinessBlockDebugSnapshot(BusinessBlocksSnapshot Scheduling, IReadOnlyList<BusinessBlockDiagnostics> Diagnostics);
-public sealed record NativeBusinessBlockDebugSnapshot(System.Text.Json.JsonElement Scheduling, IReadOnlyList<BusinessBlockDiagnostics> Diagnostics);
+public sealed record BusinessBlockDebugSnapshot(BusinessBlocksSnapshot Scheduling, IReadOnlyList<BusinessBlockDiagnostics> Diagnostics)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public BusinessBlockMetricFacts? KernelEtwConsumer { get; init; }
+}
+public sealed record NativeBusinessBlockDebugSnapshot(System.Text.Json.JsonElement Scheduling, IReadOnlyList<BusinessBlockDiagnostics> Diagnostics)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public BusinessBlockMetricFacts? KernelEtwConsumer { get; init; }
+}

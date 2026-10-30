@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.ResourceBreakdown;
-using ResourceManager.App.Infrastructure.Adaptation;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
+using ResourceManager.ReadWrite.Windows.Processes;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -12,26 +13,25 @@ public sealed class DiskBucketScopeExitTests
     [InlineData("cancel")]
     [InlineData("throw")]
     [InlineData("publish")]
-    public async Task CaptureHoldReturnsRealLedgerBucketsOnEveryExit(string exit)
+    public async Task CaptureHoldReturnsNativeResourcesOnEveryExit(string exit)
     {
-        using var ledger = new ResourceManagerLedgerOwner();
-        var broker = new Broker();
+        using var broker = new Broker();
         long tick = 1000;
         var capture = NewCapture(broker, () => tick);
-        using var reader = new EtwPhysicalDiskIoAttributionReader(capture, ledger);
+        using var reader = new EtwPhysicalDiskIoAttributionReader(capture);
         using var cancellation = new CancellationTokenSource();
         var failure = new InvalidOperationException("capture hold failed");
         PhysicalDiskIoAttributionSnapshot? published = null;
-        AssertReleased(ledger);
+        AssertReleased(broker);
 
         var run = reader.RunCaptureHoldAsync(async () =>
         {
             tick = 3100;
-            Feed(capture, tick);
-            AssertHeld(ledger, capture);
+            Feed(broker, tick);
+            AssertHeld(broker, capture);
             await Task.Yield();
             // The same scope remains live across an asynchronous hold.
-            AssertHeld(ledger, capture);
+            AssertHeld(broker, capture);
             if (exit == "cancel")
             {
                 cancellation.Cancel();
@@ -42,7 +42,7 @@ public sealed class DiskBucketScopeExitTests
             {
                 published = reader.Read(includeObservedTraffic: true);
                 AssertPublished(published);
-                AssertHeld(ledger, capture);
+                AssertHeld(broker, capture);
             }
             // The skip path returns without publishing a selected window.
         });
@@ -56,8 +56,8 @@ public sealed class DiskBucketScopeExitTests
             Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => run));
         else await run;
 
-        AssertReleased(ledger);
-        Assert.Equal(0, capture.RetainedPairCount);
+        AssertReleased(broker);
+        Assert.Null(capture.Read(true).ObservedTraffic);
         Assert.Equal(0, broker.ActiveSubscriptions);
         if (exit == "publish")
         {
@@ -69,107 +69,99 @@ public sealed class DiskBucketScopeExitTests
     [Fact]
     public async Task NormalCaptureKeepsBucketsUntilTheHoldReturns()
     {
-        using var ledger = new ResourceManagerLedgerOwner();
-        var broker = new Broker();
+        using var broker = new Broker();
         long tick = 1000;
         var capture = NewCapture(broker, () => tick);
-        using var reader = new EtwPhysicalDiskIoAttributionReader(capture, ledger);
+        using var reader = new EtwPhysicalDiskIoAttributionReader(capture);
 
         await reader.RunCaptureHoldAsync(async () =>
         {
             tick = 3100;
-            Feed(capture, tick);
-            AssertHeld(ledger, capture);
+            Feed(broker, tick);
+            AssertHeld(broker, capture);
             await Task.Yield();
-            AssertHeld(ledger, capture);
+            AssertHeld(broker, capture);
             AssertPublished(reader.Read(includeObservedTraffic: true));
         });
 
-        AssertReleased(ledger);
-        Assert.Equal(0, capture.RetainedPairCount);
+        AssertReleased(broker);
+        Assert.Null(capture.Read(true).ObservedTraffic);
         Assert.Equal(0, broker.ActiveSubscriptions);
     }
 
     [Fact]
-    public async Task SubscriptionStopFailureStillReturnsRealLedgerBuckets()
+    public async Task SubscriptionStopFailureStillReturnsNativeResources()
     {
-        using var ledger = new ResourceManagerLedgerOwner();
         var failure = new IOException("subscription stop failed");
-        var broker = new Broker { StopFailure = failure };
+        using var broker = new Broker { StopFailure = failure };
         long tick = 1000;
         var capture = NewCapture(broker, () => tick);
-        using var reader = new EtwPhysicalDiskIoAttributionReader(capture, ledger);
+        using var reader = new EtwPhysicalDiskIoAttributionReader(capture);
 
         var error = await Assert.ThrowsAsync<IOException>(() => reader.RunCaptureHoldAsync(() =>
         {
             tick = 3100;
-            Feed(capture, tick);
-            AssertHeld(ledger, capture);
+            Feed(broker, tick);
+            AssertHeld(broker, capture);
             return Task.CompletedTask;
         }));
 
         Assert.Same(failure, error);
-        AssertReleased(ledger);
-        Assert.Equal(0, capture.RetainedPairCount);
+        AssertReleased(broker);
+        Assert.Null(capture.Read(true).ObservedTraffic);
         Assert.Equal(0, broker.ActiveSubscriptions);
     }
 
     [Fact]
     public async Task ASecondHoldAcquiresFreshBucketsAfterThePreviousScopeReturns()
     {
-        using var ledger = new ResourceManagerLedgerOwner();
-        var broker = new Broker();
+        using var broker = new Broker();
         long tick = 1000;
         var capture = NewCapture(broker, () => tick);
-        using var reader = new EtwPhysicalDiskIoAttributionReader(capture, ledger);
+        using var reader = new EtwPhysicalDiskIoAttributionReader(capture);
 
         for (var run = 0; run < 2; run++)
         {
             await reader.RunCaptureHoldAsync(() =>
             {
-                AssertReleased(ledger);
+                AssertHeld(broker, capture);
+                Assert.Empty(reader.Read(true).Processes);
                 tick += 2100;
-                Feed(capture, tick);
-                AssertHeld(ledger, capture);
+                Feed(broker, tick);
+                AssertHeld(broker, capture);
                 AssertPublished(reader.Read(includeObservedTraffic: true));
                 return Task.CompletedTask;
             });
-            AssertReleased(ledger);
-            Assert.Equal(0, capture.RetainedPairCount);
+            AssertReleased(broker);
+            Assert.Null(capture.Read(true).ObservedTraffic);
             Assert.Equal(0, broker.ActiveSubscriptions);
         }
         Assert.Equal(2, broker.Bindings);
     }
 
     private static EtwPhysicalDiskIoCaptureOwner NewCapture(Broker broker, Func<long> clock)
-        => new(broker, new(), clock, pid => new ProcessLease(pid), bucketWidthMilliseconds: 1);
+        => new(broker, new(), clock);
 
-    private static void Feed(EtwPhysicalDiskIoCaptureOwner capture, long tick)
+    private static void Feed(Broker broker, long tick)
     {
-        capture.ObserveDiskTransfer(41, 4096UL, false, tick, 3, 100);
-        capture.ObserveDiskTransfer(41, 8192UL, true, tick, 3, 100);
-        capture.ObserveDiskTransfer(41, 2048UL, false, tick, 3, 100);
+        broker.Resource.Disk(tick, 41, 3, 4096, false, 100);
+        broker.Resource.Disk(tick, 41, 3, 8192, true, 100);
+        broker.Resource.Disk(tick, 41, 3, 2048, false, 100);
+        broker.Resource.Publish(tick);
     }
 
-    private static void AssertHeld(ResourceManagerLedgerOwner ledger, EtwPhysicalDiskIoCaptureOwner capture)
+    private static void AssertHeld(Broker broker, EtwPhysicalDiskIoCaptureOwner capture)
     {
-        var diagnostics = ledger.ReadCaptureBucketDiagnostics();
-        Assert.Equal(2, diagnostics.AcquiredLeaseCount);
-        Assert.True(diagnostics.CommittedBucketBytes > ledger.NativePageSize);
-        var bytesPerChunk = (ulong)capture.RetainedBucketBytes / 2;
-        var pageBytes = ((bytesPerChunk + ledger.NativePageSize - 1) / ledger.NativePageSize) * ledger.NativePageSize;
-        Assert.Equal(2 * pageBytes, diagnostics.CommittedBucketBytes);
-        Assert.Equal(ledger.ReadTable().SystemPageBytes, diagnostics.CommittedBucketBytes);
+        Assert.True(capture.IsRunning);
+        Assert.True(broker.Resource.RegionUsage.CurrentBytes > 0);
+        Assert.Equal(1, broker.ActiveSubscriptions);
     }
 
-    private static void AssertReleased(ResourceManagerLedgerOwner ledger)
+    private static void AssertReleased(Broker broker)
     {
-        var diagnostics = ledger.ReadCaptureBucketDiagnostics();
-        Assert.Equal(0, diagnostics.AcquiredLeaseCount);
-        Assert.Equal(0UL, diagnostics.CommittedBucketBytes);
-        Assert.Equal(0UL, ledger.ReadTable().SystemPageBytes);
+        Assert.Equal(0UL, broker.Resource.RegionUsage.CurrentBytes);
+        Assert.Equal(0, broker.ActiveSubscriptions);
     }
-
     private static void AssertPublished(PhysicalDiskIoAttributionSnapshot snapshot)
     {
         Assert.Equal(PhysicalDiskIoProviderStates.Running, snapshot.ProviderState.State);
@@ -186,42 +178,34 @@ public sealed class DiskBucketScopeExitTests
         Assert.Equal("8192", row.WriteBytes);
     }
 
-    private sealed class ProcessLease(uint pid) : IWindowsNetworkEndpointProcessLease
+    // Uses the real shared native owner and its bounded region allocation.
+    // The stop fault occurs only after the native hold has actually returned.
+    private sealed class Broker : IKernelEtwSessionBroker, IDisposable
     {
-        public uint ProcessId => pid;
-        public bool TryReadCreationFileTime(out ulong birth) { birth = 100; return true; }
-        public void Dispose() { }
-    }
-
-    private sealed class Broker : IKernelEtwSessionBroker
-    {
+        internal NativeKernelEtwTestResource Resource { get; } = new(NativeKernelEtwTestResource.SmallConfiguration());
         internal int ActiveSubscriptions;
         internal int Bindings;
         internal Exception? StopFailure;
-        private Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords keywords;
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        internal Broker() => Resource.Identities[41] = new(100);
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
-            var source = new KernelEtwEventSource();
-            request.Bind(source, new(17, DateTimeOffset.UnixEpoch));
-            source.Activate();
-            keywords = request.Keywords;
+            var held = Resource.Acquire(request);
             Bindings++;
             ActiveSubscriptions++;
-            return new Subscription(this, source);
+            return new Subscription(this, held);
         }
-        public KernelEtwSessionSnapshot GetSnapshot() => new(
-            ActiveSubscriptions == 0 ? "Idle" : "Running", "synthetic disk scope session", 17,
-            DateTimeOffset.UnixEpoch, keywords, ActiveSubscriptions, 0);
+        public KernelEtwSessionSnapshot GetSnapshot() => Resource.GetSnapshot();
+        public void Dispose() => Resource.Dispose();
 
-        private sealed class Subscription(Broker broker, KernelEtwEventSource source) : IKernelEtwSubscription
+        private sealed class Subscription(Broker broker, IKernelEtwSubscription held) : IKernelEtwSubscription
         {
             private bool disposed;
-            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
+            public KernelEtwSessionSnapshot GetSnapshot() => held.GetSnapshot();
             public void Dispose()
             {
                 if (disposed) return;
                 disposed = true;
-                source.Cancel();
+                held.Dispose();
                 broker.ActiveSubscriptions--;
                 if (broker.StopFailure is { } failure) throw failure;
             }

@@ -70,7 +70,7 @@ internal static class CpuResidencyOwnerConsumer
     private sealed class PassiveBroker : IKernelEtwSessionBroker
     {
         public int Acquires;
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         { Acquires++; throw new InvalidOperationException("Recorded consumer must not start ETW."); }
         public KernelEtwSessionSnapshot GetSnapshot() => new("NotRequested", "recorded", 0, DateTimeOffset.UnixEpoch, 0, 0, 0);
     }

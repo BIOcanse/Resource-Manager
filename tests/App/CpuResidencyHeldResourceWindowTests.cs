@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Reflection;
@@ -19,15 +20,14 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
     public async Task FiniteWindowOpensStorageOnlyInsideTheWindowMethod()
     {
         var broker = new Broker();
-        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), static (_, _) => { });
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), null, static (_, _) => { });
         owner.EnsureStarted();
         owner.BeginWindow();
         owner.PauseWindow();
         Assert.False(owner.IsWindowActive);
         Assert.Equal(2, broker.Acquires);
         Assert.Equal(1, broker.Releases);
-        using var storage = new CaptureBucketStorage();
-        await owner.RunWindowAsync(storage, () =>
+        await owner.RunWindowAsync(() =>
         {
             Assert.True(owner.IsWindowActive);
             Assert.Equal(3, broker.Acquires);
@@ -42,55 +42,125 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
     [InlineData("cancellation")]
     [InlineData("exception")]
     [InlineData("publication")]
-    public async Task WindowMethodReturnsRealLedgerRegionsOnEveryExit(string exit)
+    public async Task NativeWindowMethodReturnsStorageAndDurationKeywordsOnEveryExit(string exit)
+    {
+        using var broker = new Broker();
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), null, static (_, _) => { });
+        owner.EnsureStarted();
+        using var cancellation = new CancellationTokenSource();
+        var failure = new IOException("window collection failed");
+        var run = owner.RunWindowAsync(() =>
+        {
+            // Exact totals require whole precision buckets: a partial first
+            // bucket is prorated by the owner's closed-window projection.
+            var bucketQpc = checked((broker.Resource.QpcFrequency * Configuration().BucketWidthMilliseconds + 999) / 1000);
+            var floor = Math.Max(Stopwatch.GetTimestamp(), Floor(Session(owner)));
+            var start = checked((floor / bucketQpc + 1) * bucketQpc);
+            NativeCpuReaderTestFeed.ClosedWindow(owner, [0, 1], 1000, firstTid: 10, startQpc: start);
+            var held = owner.GetDiagnostics().Aggregation!.Value;
+            Assert.True(held.RetainedBucketBytes > 0);
+            Assert.Equal(2, held.ActivePairCount);
+            Assert.Equal(1, broker.DurationCount);
+            if (exit == "cancellation")
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled<bool>(cancellation.Token);
+            }
+            if (exit == "exception") return Task.FromException<bool>(failure);
+            if (exit == "skip") return Task.FromResult(false);
+            Assert.True(owner.Collect());
+            Assert.Equal(2000, Assert.Single(owner.Read()!.Processes).ExecutionTimeMilliseconds);
+            return Task.FromResult(true);
+        });
+        if (exit == "cancellation")
+        {
+            var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+            Assert.Equal(cancellation.Token, error.CancellationToken);
+        }
+        else if (exit == "exception") Assert.Same(failure, await Assert.ThrowsAsync<IOException>(() => run));
+        else Assert.Equal(exit == "publication", await run);
+        // Acknowledge the queued pause at the existing consumer boundary.
+        broker.Resource.Publish(broker.Resource.Tick);
+        Assert.False(owner.IsWindowActive);
+        Assert.Equal(0, broker.DurationCount);
+        Assert.Equal(1, broker.ActiveCount);
+        var idle = owner.GetDiagnostics().Aggregation!.Value;
+        Assert.Equal(0, idle.ActivePairCount);
+        Assert.Equal(0, idle.RetainedBucketBytes);
+        Assert.Equal(1, idle.CurrentProcessCount);
+        Assert.Equal(2, idle.CurrentThreadCount);
+        if (exit == "publication")
+        {
+            Assert.Equal(2000, Assert.Single(owner.Read()!.Processes).ExecutionTimeMilliseconds);
+            Assert.Equal(1, owner.Revision);
+        }
+        else Assert.Null(owner.Read());
+        owner.Stop();
+        Assert.Equal(0, broker.ActiveCount);
+        Assert.Equal(0UL, broker.Resource.RegionUsage.CurrentBytes);
+    }
+
+    [Theory]
+    [InlineData("skip")]
+    [InlineData("cancellation")]
+    [InlineData("exception")]
+    [InlineData("publication")]
+    public async Task ManagedOracleWindowMethodReturnsRealLedgerRegionsOnEveryExit(string exit)
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        using var owner = new EtwCpuResidencyCaptureOwner(new Broker(),
-            () => Configuration() with { BucketWidthMilliseconds = 1 }, new(), static (_, _) => { });
-        owner.EnsureStarted();
-        async Task Run()
+        using var broker = new OracleKernelEtwSessionBroker();
+        OracleCpuResidencyCaptureOwner? owner = null;
+        try
         {
-            await LedgerCaptureBucketStorage.RunAsync(ledger, async allocate =>
+            async Task Run()
             {
-                using var storage = new CaptureBucketStorage(allocate);
-                await owner.RunWindowAsync(storage, () =>
+                await OracleLedgerCaptureBucketStorage.RunAsync(ledger, async allocate =>
                 {
-                    var session = Session(owner);
-                    var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
-                    var at = DateTimeOffset.UtcNow;
-                    var quantum = Stopwatch.Frequency / 20;
-                    var start = (Floor(session) / quantum + 1) * quantum;
-                    buffer.ObserveProcessStart(start, at, 100, 11, 1000, "recorded");
-                    buffer.ObserveThreadStart(start, at, 100, 10);
-                    Feed(owner, session, start, at, opening: true);
-                    Feed(owner, session, start + Stopwatch.Frequency / 2, at.AddMilliseconds(500), opening: false);
-                    var held = ledger.ReadCaptureBucketDiagnostics();
-                    Assert.True(held.AcquiredLeaseCount > 0);
-                    Assert.True(held.CommittedBucketBytes > 0);
-                    Assert.True(ledger.ReadTable().SystemPageBytes > 0);
-                    if (exit == "cancellation") return Task.FromCanceled<bool>(new CancellationToken(true));
-                    if (exit == "exception") return Task.FromException<bool>(new IOException("window collection failed"));
-                    if (exit == "skip") return Task.FromResult(false); // interrupted wait
-                    Feed(owner, session, start + Stopwatch.Frequency / 2, at.AddMilliseconds(500), opening: true);
-                    Feed(owner, session, start + Stopwatch.Frequency, at.AddSeconds(1), opening: false);
-                    Assert.True(owner.Collect());
-                    Assert.NotNull(owner.Read());
-                    return Task.FromResult(true);
+                    owner = new OracleCpuResidencyCaptureOwner(broker,
+                        () => Configuration() with { BucketWidthMilliseconds = 1 }, new(), static (_, _) => { },
+                        allocateBuckets: allocate);
+                    owner.EnsureStarted();
+                    await owner.RunWindowAsync(() =>
+                    {
+                        var session = OracleSession(owner);
+                        var buffer = (OracleCpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
+                        var at = DateTimeOffset.UtcNow;
+                        var quantum = Stopwatch.Frequency / 20;
+                        var start = (OracleFloor(session) / quantum + 1) * quantum;
+                        buffer.ObserveProcessStart(start, at, 100, 11, 1000, "recorded");
+                        buffer.ObserveThreadStart(start, at, 100, 10);
+                        OracleFeed(owner, session, start, at, opening: true);
+                        OracleFeed(owner, session, start + Stopwatch.Frequency / 2, at.AddMilliseconds(500), opening: false);
+                        var held = ledger.ReadCaptureBucketDiagnostics();
+                        Assert.True(held.AcquiredLeaseCount > 0);
+                        Assert.True(held.CommittedBucketBytes > 0);
+                        Assert.True(ledger.ReadTable().SystemPageBytes > 0);
+                        if (exit == "cancellation") return Task.FromCanceled<bool>(new CancellationToken(true));
+                        if (exit == "exception") return Task.FromException<bool>(new IOException("window collection failed"));
+                        if (exit == "skip") return Task.FromResult(false); // interrupted wait
+                        OracleFeed(owner, session, start + Stopwatch.Frequency / 2, at.AddMilliseconds(500), opening: true);
+                        OracleFeed(owner, session, start + Stopwatch.Frequency, at.AddSeconds(1), opening: false);
+                        Assert.True(owner.Collect());
+                        Assert.NotNull(owner.Read());
+                        return Task.FromResult(true);
+                    });
                 });
-            });
+            }
+            if (exit == "cancellation") await Assert.ThrowsAnyAsync<OperationCanceledException>(Run);
+            else if (exit == "exception") await Assert.ThrowsAsync<IOException>(Run);
+            else await Run();
+            var returned = ledger.ReadCaptureBucketDiagnostics();
+            Assert.Equal(0, returned.AcquiredLeaseCount);
+            Assert.Equal(0UL, returned.CommittedBucketBytes);
+            Assert.Equal(0UL, ledger.ReadTable().SystemPageBytes);
+            Assert.NotNull(owner);
+            Assert.False(owner.IsWindowActive);
+            Assert.Equal(0, owner.GetDiagnostics().Aggregation!.Value.ActivePairCount);
+            Assert.Equal(0, owner.GetDiagnostics().Aggregation!.Value.RetainedBucketBytes);
+            Assert.Equal(1, owner.GetDiagnostics().Aggregation!.Value.CurrentThreadCount);
+            if (exit == "publication") Assert.NotNull(owner.Read());
         }
-        if (exit == "cancellation") await Assert.ThrowsAnyAsync<OperationCanceledException>(Run);
-        else if (exit == "exception") await Assert.ThrowsAsync<IOException>(Run);
-        else await Run();
-        var returned = ledger.ReadCaptureBucketDiagnostics();
-        Assert.Equal(0, returned.AcquiredLeaseCount);
-        Assert.Equal(0UL, returned.CommittedBucketBytes);
-        Assert.Equal(0UL, ledger.ReadTable().SystemPageBytes);
-        Assert.False(owner.IsWindowActive);
-        Assert.Equal(0, owner.GetDiagnostics().Aggregation!.Value.ActivePairCount);
-        Assert.Equal(0, owner.GetDiagnostics().Aggregation!.Value.RetainedBucketBytes);
-        Assert.Equal(1, owner.GetDiagnostics().Aggregation!.Value.CurrentThreadCount);
-        if (exit == "publication") Assert.NotNull(owner.Read());
+        finally { owner?.Dispose(); }
     }
 
     [Theory]
@@ -98,20 +168,20 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
     [InlineData("publication", true)]
     [InlineData("stop", false)]
     [InlineData("stop", true)]
-    public async Task WindowExitsReturnEveryBucketAndKeepPublishedValues(string exit, bool ledgerBacked)
+    public async Task ManagedOracleWindowExitsReturnEveryBucketAndKeepPublishedValues(string exit, bool ledgerBacked)
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        await OracleLedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
         {
             var allocations = new List<CountedBucket>();
-            var broker = new Broker();
-            using var owner = new EtwCpuResidencyCaptureOwner(broker,
+            using var broker = new OracleKernelEtwSessionBroker();
+            using var owner = new OracleCpuResidencyCaptureOwner(broker,
                 () => Configuration() with { BucketWidthMilliseconds = ledgerBacked ? 1 : 50 },
                 new(), static (_, _) => { }, allocateBuckets: length =>
                 {
                     var acquiredBefore = ledger.ReadCaptureBucketDiagnostics().AcquiredLeaseCount;
                     var memory = ledgerBacked ? allocate(length)
-                        : CaptureBucketMemory.AllocateManaged(length);
+                        : OracleCaptureBucketMemory.AllocateManaged(length);
                     if (ledgerBacked) Assert.Equal(acquiredBefore + 1, ledger.ReadCaptureBucketDiagnostics().AcquiredLeaseCount);
                     var counted = new CountedBucket(memory);
                     allocations.Add(counted);
@@ -119,18 +189,18 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
                 });
             owner.EnsureStarted();
             owner.BeginWindow();
-            var session = Session(owner);
-            var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
+            var session = OracleSession(owner);
+            var buffer = (OracleCpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
             var at = DateTimeOffset.UtcNow;
             // Align the exact-duration fixture to both bucket widths; partial-edge
             // weighting belongs to the existing equivalence scenarios.
             var quantum = Stopwatch.Frequency / 20;
-            var start = (Floor(session) / quantum + 1) * quantum;
+            var start = (OracleFloor(session) / quantum + 1) * quantum;
             buffer.ObserveProcessStart(start, at, 100, 11, 1000, "recorded");
             buffer.ObserveThreadStart(start, at, 100, 10);
-            Feed(owner, session, start, at, opening: true);
+            OracleFeed(owner, session, start, at, opening: true);
             var end = start + Stopwatch.Frequency;
-            Feed(owner, session, end, at.AddSeconds(1), opening: false);
+            OracleFeed(owner, session, end, at.AddSeconds(1), opening: false);
             var trace = new List<object>();
             void Record(string phase) => trace.Add(new { phase, at = DateTimeOffset.UtcNow,
                 qpc = Stopwatch.GetTimestamp(), diagnostics = buffer.GetDiagnostics(),
@@ -141,7 +211,7 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
             if (ledgerBacked) Assert.True(ledger.ReadTable().RegisteredBytes > 0);
 
             // The same synthetic input is projected before releasing any storage.
-            var expected = EtwCpuResidencyCaptureOwner.BuildProcessSnapshot(Configuration(), 7, buffer.Snapshot([0, 1]));
+            var expected = EtwCpuResidencyCaptureOwner.BuildProcessSnapshot(Configuration(), owner.GetDiagnostics().SessionGeneration!.Value, buffer.Snapshot([0, 1]));
             Assert.True(owner.Collect());
             var published = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(owner.Read());
             Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(published.Processes));
@@ -171,9 +241,9 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
                 buffer.ObserveProcessStart(end + 1, at.AddSeconds(2), 100, 11, 1000, "renamed");
                 owner.BeginWindow();
                 Assert.Equal(firstAllocations, allocations.Count); // Opening itself stays lazy.
-                var nextStart = Math.Max(Floor(session) + 1, end + 2);
-                Feed(owner, session, nextStart, at.AddSeconds(2), opening: true);
-                Feed(owner, session, nextStart + Stopwatch.Frequency, at.AddSeconds(3), opening: false);
+                var nextStart = Math.Max(OracleFloor(session) + 1, end + 2);
+                OracleFeed(owner, session, nextStart, at.AddSeconds(2), opening: true);
+                OracleFeed(owner, session, nextStart + Stopwatch.Frequency, at.AddSeconds(3), opening: false);
                 Record("next-window");
                 Assert.True(buffer.GetDiagnostics().RetainedBucketBytes > 0);
                 Assert.Equal(2, buffer.GetDiagnostics().ActivePairCount);
@@ -191,7 +261,7 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
         });
     }
 
-    private sealed class CountedBucket(CaptureBucketMemory inner) : CaptureBucketMemory
+    private sealed class CountedBucket(OracleCaptureBucketMemory inner) : OracleCaptureBucketMemory
     {
         internal int Disposals;
         internal bool FailNextClose;
@@ -204,13 +274,13 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
     }
 
     [Fact]
-    public async Task PausedWindowAlsoReturnsPendingLedgerResizeStorage()
+    public async Task ManagedOraclePausedWindowAlsoReturnsPendingLedgerResizeStorage()
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        await OracleLedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
         {
             var allocations = new List<CountedBucket>();
-            var buffer = new CpuResidencyAggregationBuffer(1000, 1000, 8, 1, length =>
+            var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1000, 8, 1, length =>
             {
                 var acquiredBefore = ledger.ReadCaptureBucketDiagnostics().AcquiredLeaseCount;
                 var memory = allocate(length);
@@ -242,12 +312,13 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
     [Fact]
     public async Task CompletedOldWindowWaitCannotReportTheReplacementWindowReady()
     {
-        var broker = new Broker();
-        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), static (_, _) => { });
+        using var broker = new Broker();
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new());
         owner.EnsureStarted();
         owner.BeginWindow();
         var session = Session(owner);
-        var start = Floor(session) + 1;
+        broker.Resource.Publish(broker.Resource.Tick);
+        var start = Math.Max(System.Diagnostics.Stopwatch.GetTimestamp() + 1, Floor(session) + 1);
         var at = DateTimeOffset.UtcNow;
         var waiting = owner.WaitForCompleteWindowAsync(TimeSpan.FromSeconds(2), TimeSpan.Zero, CancellationToken.None);
         Feed(owner, session, start, at, opening: true);
@@ -258,30 +329,74 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
             // A ready continuation cannot pass the final window check until
             // this pause/replacement is visible under the same gate.
             Feed(owner, session, start + Stopwatch.Frequency, at.AddSeconds(1), opening: false);
+            // The native wait must consume the old complete bank before its
+            // final epoch check blocks on this gate. A reset before that read
+            // would test a missing replacement window instead.
+            Assert.True(SpinWait.SpinUntil(() => NativeWindowComplete(session), TimeSpan.FromSeconds(2)));
+            Assert.False(waiting.IsCompleted);
             owner.PauseWindow();
             owner.BeginWindow();
         }
         Assert.False(await waiting.WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.False(Window(session).Complete.IsCompleted);
+        Assert.False(await owner.WaitForCompleteWindowAsync(TimeSpan.FromMilliseconds(1), TimeSpan.Zero, CancellationToken.None));
         Assert.Equal(3, broker.Acquires);
         Assert.Equal(1, broker.Releases);
+        Assert.Equal(1, broker.DurationCount);
+        Assert.Equal(CpuResidencyHeldTestBroker.MetadataKeywords | KernelTraceEventParser.Keywords.ContextSwitch, broker.Keywords);
+    }
+
+    [Fact]
+    public async Task RealtimeWindowWaitSeesBoundariesBeforeItsFirstWindowHasPassed()
+    {
+        // Production ordering: a realtime session floors the window at the reset
+        // timestamp, so every readiness view in the first observation window starts
+        // before that floor. Its boundary bit must still reach the waiter; otherwise
+        // the wait ends at the boundary budget (one window) and never sees Current.
+        using var broker = new Broker();
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), null, static (_, _) => { });
+        owner.EnsureStarted();
+        typeof(NativeKernelEtwSession).GetField("realtime", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(broker.Resource.Session, true);
+        owner.BeginWindow();
+        var session = Session(owner);
+        Assert.True(Floor(session) > 0);
+        // Same budgets as the windowed reader: boundary budget = window (1 s), grace 2 s.
+        var waiting = owner.WaitForCompleteWindowAsync(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), CancellationToken.None);
+        var start = Math.Max(Stopwatch.GetTimestamp() + 1, Floor(session) + 1);
+        var at = DateTimeOffset.UtcNow;
+        Feed(owner, session, start, at, opening: true);
+        var opening = NativeAggregate(session);
+        Assert.False(opening.IsComplete);
+        Assert.True(opening.WindowStartQpc < Floor(session));
+        Assert.True(opening.HasBoundaries);
+        await Task.Delay(TimeSpan.FromMilliseconds(1500));
+        Assert.False(waiting.IsCompleted);
+        Feed(owner, session, start + Stopwatch.Frequency, at.AddSeconds(1), opening: false);
+        Assert.True(await waiting.WaitAsync(TimeSpan.FromSeconds(2)));
+        var closed = NativeAggregate(session);
+        Assert.True(closed.IsComplete);
+        Assert.True(closed.WindowStartQpc >= Floor(session));
     }
 
     [Fact]
     public void ResourceRebindPreservesThePausedWindowUntilItsCompositionOpensIt()
     {
-        var broker = new Broker();
-        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), static (_, _) => { });
+        using var broker = new Broker();
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new());
         owner.EnsureStarted();
         owner.BeginWindow();
         owner.PauseWindow();
         broker.Rebind();
         Assert.True(owner.HasSessionLease);
         Assert.False(owner.IsWindowActive);
+        Assert.Equal(0, broker.DurationCount);
+        Assert.Equal(CpuResidencyHeldTestBroker.MetadataKeywords, broker.Keywords);
         Assert.Equal(2, broker.Acquires);
         Assert.Equal(1, broker.Releases);
         owner.BeginWindow();
         Assert.True(owner.IsWindowActive);
+        Assert.Equal(1, broker.DurationCount);
+        Assert.Equal(CpuResidencyHeldTestBroker.MetadataKeywords | KernelTraceEventParser.Keywords.ContextSwitch, broker.Keywords);
         Assert.Equal(3, broker.Acquires);
     }
 
@@ -290,16 +405,17 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
     [InlineData(true)]
     public void FreshWindowRejectsOldCollectionAndDelayedBoundariesWithoutReplacingTheRunHolder(bool reopenBeforeCommit)
     {
-        var broker = new Broker();
-        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), static (_, _) => { });
+        using var broker = new Broker();
+        using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new());
         owner.EnsureStarted();
         owner.BeginWindow();
         var session = Session(owner);
-        var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
-        var start = Floor(session) + 1;
+        var native = broker.Resource;
+        broker.Resource.Publish(broker.Resource.Tick);
+        var start = Math.Max(System.Diagnostics.Stopwatch.GetTimestamp() + 1, Floor(session) + 1);
         var at = DateTimeOffset.UtcNow;
-        buffer.ObserveProcessStart(start, at, 100, 11, 1000, "recorded");
-        buffer.ObserveThreadStart(start, at, 100, 10);
+        native.SeedProcess(100, 1000, "recorded");
+        native.SeedThread(100, 1000, 10);
         Feed(owner, session, start, at, opening: true);
         var end = start + Stopwatch.Frequency;
         Feed(owner, session, end, at.AddSeconds(1), opening: false);
@@ -323,23 +439,31 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
         var nextWindow = Window(session);
         Assert.NotSame(oldWindow, nextWindow);
         Assert.True(owner.IsWindowActive);
-        Assert.Equal(1, buffer.GetDiagnostics().CurrentProcessCount);
-        var continuity = buffer.GetDiagnostics().ContinuityEpoch;
+        native.Publish(native.Tick);
+        Assert.Equal(1, owner.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
+        var continuity = owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
         // A delayed delivery from the paused/old window cannot reset the new
         // buffer, establish one of its boundaries, or complete its coverage.
-        Observe(owner, session, Floor(session) - 1, at, 0, 0, 0, 100, 10);
-        Assert.Equal(continuity, buffer.GetDiagnostics().ContinuityEpoch);
-        Assert.False(nextWindow.Boundaries.IsCompleted);
-        Assert.False(nextWindow.Complete.IsCompleted);
+        var staleQpc = end - 1;
+        Assert.True(staleQpc > 0);
+        Observe(owner, session, staleQpc, at, 0, 0, 0, 100, 10);
+        Assert.Equal(continuity, owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch);
+        Assert.Equal(1, owner.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
+        Assert.False(NativeAggregate(session).HasBoundaries);
+        Assert.False(NativeAggregate(session).IsComplete);
         Assert.True(owner.Collect());
         Assert.Null(owner.Read());
 
+        native.Publish(native.Tick);
         var nextStart = Math.Max(Floor(session) + 1, end + 1);
         Feed(owner, session, nextStart, at.AddSeconds(2), opening: true);
-        Assert.True(nextWindow.Boundaries.IsCompletedSuccessfully);
-        Assert.False(nextWindow.Complete.IsCompleted);
+        Assert.True(NativeAggregate(session).HasBoundaries);
+        Assert.False(NativeAggregate(session).IsComplete);
+        Assert.True(owner.Collect()); Assert.Null(owner.Read());
+
         Feed(owner, session, nextStart + Stopwatch.Frequency, at.AddSeconds(3), opening: false);
-        Assert.True(nextWindow.Complete.IsCompletedSuccessfully);
+        Assert.True(NativeAggregate(session).IsComplete);
+
         Assert.True(owner.Collect());
         var next = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(owner.Read());
         Assert.NotSame(first, next);
@@ -347,9 +471,11 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
         Assert.Equal(3, broker.Acquires);
         Assert.Equal(1, broker.Releases);
         owner.Stop();
-        Observe(owner, session, nextStart + Stopwatch.Frequency + 1, at.AddSeconds(3), 0, 0, 0, 100, 10);
-        Assert.Equal(0, buffer.GetDiagnostics().ActivePairCount);
+
+        Assert.Equal(0UL, broker.Resource.RegionUsage.CurrentBytes);
         Assert.Equal(3, broker.Releases);
+        Assert.Equal(0, broker.DurationCount);
+        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.Keywords);
     }
 
     private static CpuResidencyCaptureConfiguration Configuration() => new(1000, 1024,
@@ -360,9 +486,38 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
 
     private static object Session(EtwCpuResidencyCaptureOwner owner)
         => typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
-    private static long Floor(object session) => (long)session.GetType().GetField("WindowStartQpc")!.GetValue(session)!;
-    private static CpuResidencyWindowCompletion Window(object session)
-        => (CpuResidencyWindowCompletion)session.GetType().GetProperty("Window")!.GetValue(session)!;
+    private static object OracleSession(OracleCpuResidencyCaptureOwner owner)
+        => typeof(OracleCpuResidencyCaptureOwner).GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
+    private static long OracleFloor(object session)
+        => (long)session.GetType().GetField("WindowStartQpc")!.GetValue(session)!;
+    private static void OracleFeed(OracleCpuResidencyCaptureOwner owner, object session, long qpc, DateTimeOffset at, bool opening)
+    {
+        for (var processor = 0; processor < 2; processor++)
+            typeof(OracleCpuResidencyCaptureOwner).GetMethod("ObserveContextSwitch", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(owner, [session, qpc, at, processor, opening ? 0 : 100, opening ? 0 : 10,
+                    opening ? 100 : 0, null, opening ? 10 : 0]);
+    }
+    private static long Floor(object session)
+    {
+        var native = session.GetType().GetProperty("Native")!.GetValue(session)!;
+        return (long)native.GetType().GetField("minimumWindowQpc", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(native)!;
+    }
+    private static object Window(object session)
+        => session.GetType().GetProperty("Window")!.GetValue(session)!;
+    private static bool NativeWindowComplete(object session)
+    {
+        var native = session.GetType().GetProperty("Native")!.GetValue(session)!;
+        var gate = native.GetType().GetField("gate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(native)!;
+        lock (gate)
+            return ((CpuResidencyAggregationSnapshot)native.GetType().GetField("aggregate",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(native)!).IsComplete;
+    }
+    private static CpuResidencyAggregationSnapshot NativeAggregate(object session)
+    {
+        var native = session.GetType().GetProperty("Native")!.GetValue(session)!;
+        return (CpuResidencyAggregationSnapshot)native.GetType().GetMethod("ReadAggregate",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(native, null)!;
+    }
     private static void Feed(EtwCpuResidencyCaptureOwner owner, object session, long qpc, DateTimeOffset at, bool opening)
     {
         for (var processor = 0; processor < 2; processor++)
@@ -371,8 +526,11 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
     }
     private static void Observe(EtwCpuResidencyCaptureOwner owner, object session, long qpc, DateTimeOffset at,
         int processor, int oldPid, int oldTid, int newPid, int newTid)
-        => typeof(EtwCpuResidencyCaptureOwner).GetMethod("ObserveContextSwitch", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(owner, [session, qpc, at, processor, oldPid, oldTid, newPid, "recorded", newTid]);
+    {
+        var native = NativeCpuReaderTestFeed.Resource(owner);
+        native.CSwitch(qpc, at, processor, oldPid, oldTid, newPid, newTid, "recorded");
+        native.Publish(native.Tick);
+    }
 
     private sealed class BeforeCommit(Action before) : IMetricPublicationPermit
     {
@@ -382,46 +540,5 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
         public bool TryPublish(Action commit) { before(); commit(); return true; }
     }
 
-    private sealed class Broker : IKernelEtwSessionBroker
-    {
-        internal int Acquires, Releases;
-        private int generation = 7;
-        private KernelEtwSubscriptionRequest? request;
-        private KernelEtwEventSource? source;
-        private readonly List<Lease> leases = [];
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
-        {
-            Acquires++;
-            var metadata = request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process);
-            var lease = new Lease(this, request.Keywords, metadata);
-            leases.Add(lease);
-            if (metadata) { this.request = request; Bind(); }
-            else request.Bind(source!, new(generation, DateTimeOffset.UtcNow));
-            return lease;
-        }
-        internal void Rebind() { source!.Cancel(); generation++; Bind(); }
-        private void Bind()
-        {
-            source = new KernelEtwEventSource();
-            request!.Bind(source, new(generation, DateTimeOffset.UtcNow));
-            source.Activate();
-        }
-        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", generation, DateTimeOffset.UnixEpoch,
-            leases.Aggregate(KernelTraceEventParser.Keywords.None, (keywords, lease) => keywords | lease.Keywords),
-            Acquires - Releases, 0);
-        private sealed class Lease(Broker owner, KernelTraceEventParser.Keywords keywords, bool metadata) : IKernelEtwSubscription
-        {
-            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
-            private bool released;
-            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-            public void Dispose()
-            {
-                if (released) return;
-                released = true;
-                owner.leases.Remove(this);
-                if (metadata) owner.source!.Cancel();
-                owner.Releases++;
-            }
-        }
-    }
+    private sealed class Broker : CpuResidencyHeldTestBroker { }
 }

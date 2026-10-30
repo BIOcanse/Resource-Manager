@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -6,7 +7,7 @@ using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class PhysicalDiskIoWindowTests
+public sealed class OraclePhysicalDiskIoWindowTests
 {
     [Fact]
     public void FailedLeaseCannotReadAnUnrelatedRunningBrokerAsAZeroWindow()
@@ -22,10 +23,10 @@ public sealed class PhysicalDiskIoWindowTests
     {
         var broker = new Broker();
         long tick = 1000;
-        using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick, pid => new ProcessLease(pid));
+        using var owner = new OraclePhysicalDiskIoCaptureOwner(broker, new(), () => tick, pid => new ProcessLease(pid));
         owner.Start();
         owner.Read();
-        var source = new KernelEtwEventSource();
+        var source = new OracleKernelEtwEventSource();
         broker.Request!.Bind(source, new(0, DateTimeOffset.UnixEpoch));
         source.Activate();
         tick = 3100;
@@ -34,7 +35,7 @@ public sealed class PhysicalDiskIoWindowTests
         broker.OnSnapshot = () =>
         {
             if (++reads != 2) return;
-            var replacement = new KernelEtwEventSource();
+            var replacement = new OracleKernelEtwEventSource();
             broker.Request.Bind(replacement, new(0, DateTimeOffset.UnixEpoch));
             replacement.Activate();
         };
@@ -48,10 +49,10 @@ public sealed class PhysicalDiskIoWindowTests
     {
         var broker = new Broker();
         long tick = 1000;
-        using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick, pid => new ProcessLease(pid));
+        using var owner = new OraclePhysicalDiskIoCaptureOwner(broker, new(), () => tick, pid => new ProcessLease(pid));
         owner.Start();
         owner.Read();
-        var source = new KernelEtwEventSource();
+        var source = new OracleKernelEtwEventSource();
         broker.Request!.Bind(source, new(0, DateTimeOffset.UnixEpoch));
         source.Activate();
         tick = 3100;
@@ -115,13 +116,13 @@ public sealed class PhysicalDiskIoWindowTests
         using var reader = NewReader(broker);
         reader.Read();
         var context = new KernelEtwSessionContext(0, DateTimeOffset.UnixEpoch);
-        var previous = new KernelEtwEventSource();
+        var previous = new OracleKernelEtwEventSource();
         broker.Request!.Bind(previous, context);
         previous.Activate();
         var now = Environment.TickCount64;
         reader.CaptureResource.ObserveBoundDiskTransfer(previous, context, 41, (ulong)(2048), false, now + 1000, null, 100);
         previous.Cancel();
-        var current = new KernelEtwEventSource();
+        var current = new OracleKernelEtwEventSource();
         broker.Request.Bind(current, context);
         current.Activate();
 
@@ -181,9 +182,9 @@ public sealed class PhysicalDiskIoWindowTests
     public void CapacityLimitSuppressesAnIncompleteWindowAndRecoversWithoutInventedShares()
     {
         using var reader = NewReader(new Broker());
-        for (var index = 0; index <= EtwPhysicalDiskIoAttributionReader.MaximumActivePairs; index++)
+        for (var index = 0; index <= OraclePhysicalDiskIoAttributionReader.MaximumActivePairs; index++)
             reader.CaptureResource.ObserveDiskTransfer(100 + index, (ulong)(4096), false, 2000, null, 100);
-        Assert.Equal(EtwPhysicalDiskIoAttributionReader.MaximumActivePairs, reader.RetainedPairCount);
+        Assert.Equal(OraclePhysicalDiskIoAttributionReader.MaximumActivePairs, reader.RetainedPairCount);
         var incomplete = reader.ReadWindow(3000);
         Assert.False(incomplete.Complete); Assert.Empty(incomplete.Processes);
         reader.CaptureResource.ObserveDiskTransfer(42, (ulong)(16384), true, 4000, null, 100);
@@ -206,9 +207,9 @@ public sealed class PhysicalDiskIoWindowTests
         Assert.True(recovered.Complete); Assert.Equal(2048, recovered.Processes[41].ReadBytesPerSecond);
     }
 
-    private static EtwPhysicalDiskIoAttributionReader NewReader(Broker broker)
+    private static OraclePhysicalDiskIoAttributionReader NewReader(Broker broker)
     {
-        var capture = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => Environment.TickCount64, pid => new ProcessLease(pid));
+        var capture = new OraclePhysicalDiskIoCaptureOwner(broker, new(), () => Environment.TickCount64, pid => new ProcessLease(pid));
         capture.Start();
         return new(capture);
     }
@@ -218,15 +219,15 @@ public sealed class PhysicalDiskIoWindowTests
         public bool TryReadCreationFileTime(out ulong birth) { birth = 100; return true; }
         public void Dispose() { }
     }
-    private sealed class Broker : IKernelEtwSessionBroker
+    private sealed class Broker : IOracleKernelEtwSessionBroker
     {
-        internal KernelEtwSubscriptionRequest? Request;
+        internal OracleKernelEtwSubscriptionRequest? Request;
         internal int EventsLost;
         internal string State = "Running";
         internal Action? OnSnapshot;
         internal Action? OnRelease;
         internal bool FailSubscribe;
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        public IOracleKernelEtwSubscription Acquire(OracleKernelEtwSubscriptionRequest request)
         {
             if (FailSubscribe) throw new InvalidOperationException("fixture subscribe failure");
             Request = request; return new Lease(this);
@@ -237,7 +238,7 @@ public sealed class PhysicalDiskIoWindowTests
             return new(State, "owned fake session", 0, DateTimeOffset.UtcNow,
                 Request?.Keywords ?? 0, Request is null ? 0 : 1, EventsLost);
         }
-        private sealed class Lease(Broker owner) : IKernelEtwSubscription
+        private sealed class Lease(Broker owner) : IOracleKernelEtwSubscription
         {
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
 

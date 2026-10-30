@@ -105,6 +105,7 @@ pub fn build(b: *std.Build) void {
     native_core_module.linkSystemLibrary("psapi", .{});
     native_core_module.linkSystemLibrary("bcrypt", .{});
     native_core_module.linkSystemLibrary("advapi32", .{});
+    native_core_module.linkSystemLibrary("ntdll", .{});
 
     const native_core = b.addLibrary(.{
         .name = "ResourceManager.NativeCore",
@@ -126,6 +127,7 @@ pub fn build(b: *std.Build) void {
     test_module.linkSystemLibrary("psapi", .{});
     test_module.linkSystemLibrary("bcrypt", .{});
     test_module.linkSystemLibrary("advapi32", .{});
+    test_module.linkSystemLibrary("ntdll", .{});
 
     const native_core_tests = b.addTest(.{
         .use_llvm = test_llvm,
@@ -197,6 +199,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     kernel_etw_module.linkSystemLibrary("advapi32", .{});
+    kernel_etw_module.linkSystemLibrary("ntdll", .{});
     const kernel_etw_tests = b.addTest(.{ .root_module = kernel_etw_module, .use_llvm = test_llvm });
     const run_kernel_etw_tests = b.addRunArtifact(kernel_etw_tests);
     const kernel_etw_step = b.step("test-kernel-etw", "Run kernel ETW migration equivalence and allocation tests");

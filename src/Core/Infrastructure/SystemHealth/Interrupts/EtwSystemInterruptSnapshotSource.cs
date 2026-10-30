@@ -1,23 +1,24 @@
 using Microsoft.Diagnostics.Tracing.Parsers;
-using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using ResourceManager.App.Application.SystemHealth;
 using ResourceManager.App.Domain.SystemHealth;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.App.Infrastructure.Adaptation;
+using System.Threading.Channels;
 
 namespace ResourceManager.App.Infrastructure.SystemHealth.Interrupts;
 
-public sealed class EtwSystemInterruptSnapshotSource(
+public sealed partial class EtwSystemInterruptSnapshotSource(
     IKernelEtwSessionBroker kernelEtwBroker,
     HostManagerSamplingSubscriptionOwner subscriptionOwner,
     ILogger<EtwSystemInterruptSnapshotSource> logger) : BackgroundService, ISystemInterruptSnapshotSource
 {
-    private const KernelTraceEventParser.Keywords EventKeywords = KernelTraceEventParser.Keywords.Interrupt
+    private const KernelTraceEventParser.Keywords DurationKeywords = KernelTraceEventParser.Keywords.Interrupt
         | KernelTraceEventParser.Keywords.DeferedProcedureCalls;
 
     private const string InterruptItemId = "system-interrupts";
+    private const string UnknownModuleName = "未知内核模块";
 
     private readonly object subscriptionGate = new();
     private readonly object resourceDisposeGate = new();
@@ -29,9 +30,6 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private readonly NativeItemSamplingSubscriptionTracker<InterruptSampleRequest> subscriptions =
         CreateSubscriptions(subscriptionOwner, null);
     private IKernelEtwSubscription? kernelSubscription;
-    private IKernelEtwSubscription? interruptSubscription;
-    private long interruptEpoch;
-    private bool acquiringInterrupts;
     private bool disposed;
     private bool ownedResourcesDisposed;
     private long nextLeaseId;
@@ -105,11 +103,11 @@ public sealed class EtwSystemInterruptSnapshotSource(
         try
         {
             EnsureStarted();
-            await worker.RunAsync((plan, _) =>
+            await worker.RunAsync(async (plan, token) =>
             {
-                var sampled = TryPublishCurrentSnapshot(readUtcNow(), plan.OwnerToken);
-                return Task.FromResult(!plan.OwnerToken.IsActive ? SubscriptionSampleCompletion.Skipped
-                    : sampled ? SubscriptionSampleCompletion.Sampled : SubscriptionSampleCompletion.Failed);
+                var sampled = await TryPublishCurrentSnapshotAsync(readUtcNow(), plan.OwnerToken, plan.Schedule.FreshnessGrace, token);
+                return !plan.OwnerToken.IsActive ? SubscriptionSampleCompletion.Skipped
+                    : sampled ? SubscriptionSampleCompletion.Sampled : SubscriptionSampleCompletion.Failed;
             }, stoppingToken);
         }
         finally { StopSession("ETW 系统中断监控正在随程序停止。", publishStoppedValue: false); }
@@ -182,146 +180,118 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
     private void EnsureStarted()
     {
-        lock (subscriptionGate)
+        lock (metadataResourceGate)
         {
-            if (disposed) return;
-            if (kernelSubscription is not null)
+            bool needed;
+            long epoch;
+            lock (subscriptionGate)
             {
-                RefreshBrokerState();
-                return;
+                if (disposed) return;
+                needed = kernelSubscription is null;
+                epoch = needed ? ++metadataEpoch : metadataEpoch;
             }
-
+            if (needed)
             try
             {
-                kernelSubscription = kernelEtwBroker.Subscribe(new KernelEtwSubscriptionRequest(
+                var created = kernelEtwBroker.Acquire(new KernelEtwSubscriptionRequest(
                     "system-interrupts",
-                    // Load/unload callbacks keep routine ownership current throughout this run.
                     KernelTraceEventParser.Keywords.ImageLoad,
-                    BindKernelEvents));
+                    (source, context) =>
+                    {
+                        lock (subscriptionGate)
+                            if (!disposed && epoch == metadataEpoch)
+                                BindKernelEvents(source, context);
+                    }) { NativeOutputs = KernelEtwNativeOutputs.Interrupts });
+                var accepted = false;
+                lock (subscriptionGate)
+                    if (!disposed && epoch == metadataEpoch) { kernelSubscription = created; accepted = true; }
+                if (!accepted) { created.Dispose(); return; }
             }
             catch (Exception ex)
             {
+                lock (subscriptionGate)
+                    if (disposed || epoch != metadataEpoch) return;
                 state = SystemInterruptProviderStates.Unavailable;
                 message = $"ETW 系统中断监控启动失败：{ex.Message}";
                 PublishUnavailable(state, message);
                 logger.LogWarning(ex, "Failed to start ETW system interrupt source.");
             }
-
+            SynchronizeDurationHold();
+            RefreshBrokerState();
         }
-        EnsureInterruptsHeld();
-        lock (subscriptionGate) RefreshBrokerState();
-    }
-
-    private void EnsureInterruptsHeld()
-    {
-        long epoch;
-        lock (subscriptionGate)
-        {
-            if (disposed || kernelSubscription is null
-                || interruptSubscription is not null || acquiringInterrupts) return;
-            acquiringInterrupts = true;
-            epoch = ++interruptEpoch;
-        }
-        IKernelEtwSubscription? created = null;
-        try
-        {
-            created = kernelEtwBroker.Subscribe(new("system-interrupts-events", EventKeywords, static (_, _) => { }));
-            lock (subscriptionGate)
-            {
-                if (interruptEpoch == epoch && !disposed && kernelSubscription is not null)
-                {
-                    interruptSubscription = created;
-                    created = null;
-                }
-            }
-        }
-        catch (Exception error) { logger.LogWarning(error, "Failed to hold ETW interrupt keywords."); }
-        finally
-        {
-            lock (subscriptionGate)
-                if (interruptEpoch == epoch) acquiringInterrupts = false;
-            created?.Dispose();
-        }
-    }
-
-    private IKernelEtwSubscription? DetachInterruptsCore()
-    {
-        ++interruptEpoch;
-        acquiringInterrupts = false;
-        var held = interruptSubscription;
-        interruptSubscription = null;
-        return held;
-    }
-
-    private KernelEtwSessionSnapshot CaptureBrokerSnapshot()
-    {
-        var events = Volatile.Read(ref interruptSubscription)?.GetSnapshot();
-        var metadata = Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot();
-        if (!metadata.IsRunning) return metadata;
-        return events
-            ?? metadata with { State = "Unavailable", Message = "ETW interrupt keywords are unavailable." };
     }
 
     private void BindKernelEvents(
         KernelEtwEventSource kernel,
         KernelEtwSessionContext context)
     {
-        var session = new InterruptSessionState(context.Generation, readTickMilliseconds(), 0);
+        var nativeSession = kernel.NativeSession ?? throw new InvalidOperationException("Interrupt capture requires a native kernel ETW session.");
+        var previous = Volatile.Read(ref currentSession);
+        var session = new InterruptSessionState(context.Generation, kernel, nativeSession, readTickMilliseconds());
+        if (previous is not null && previous.Generation == context.Generation && ReferenceEquals(previous.Native, nativeSession))
+            session.DurationSource = Volatile.Read(ref previous.DurationSource);
+        KernelEtwNativeReaders.ConfigureInterruptProcessors(session.Native, Environment.ProcessorCount);
+        session.NativeRequiredTicket = KernelEtwNativeReaders.ResetInterruptBinding(session.Native, session.StartedTick);
+        DeclareInterruptCounters(kernel);
+        kernel.ConfigureAdmission(true, session.StartedTick);
         lock (eventGate)
         {
             Volatile.Write(ref currentSession, session);
             state = SystemInterruptProviderStates.Running;
             message = "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。";
-            PublishCurrentWindow(readUtcNow(), session);
         }
-        kernel.PerfInfoISR += data => ObserveBoundInterrupt(
-            kernel, context, session,
-            SystemInterruptEventKinds.Isr,
-            data.ElapsedTimeMSec,
-            data.Routine, readTickMilliseconds());
-        kernel.PerfInfoDPC += data => ObserveBoundInterrupt(
-            kernel, context, session,
-            SystemInterruptEventKinds.Dpc,
-            data.ElapsedTimeMSec,
-            data.Routine, readTickMilliseconds());
-        kernel.PerfInfoThreadedDPC += data => ObserveBoundInterrupt(
-            kernel, context, session,
-            SystemInterruptEventKinds.ThreadedDpc,
-            data.ElapsedTimeMSec,
-            data.Routine, readTickMilliseconds());
-        kernel.PerfInfoTimerDPC += data => ObserveBoundInterrupt(
-            kernel, context, session,
-            SystemInterruptEventKinds.TimerDpc,
-            data.ElapsedTimeMSec,
-            data.Routine, readTickMilliseconds());
-        kernel.ImageDCStart += data => ObserveBoundImage(kernel, context, session,
-            data.ImageBase, data.ImageSize, data.FileName, false, readTickMilliseconds());
-        kernel.ImageLoad += data => ObserveBoundImage(kernel, context, session,
-            data.ImageBase, data.ImageSize, data.FileName, false, readTickMilliseconds());
-        kernel.ImageUnload += data => ObserveBoundImage(kernel, context, session,
-            data.ImageBase, data.ImageSize, data.FileName, true, readTickMilliseconds());
     }
 
-    private void RefreshBrokerState(KernelEtwSessionSnapshot? observedSnapshot = null)
+    private void BindDurationEvents(KernelEtwEventSource kernel, KernelEtwSessionContext context)
     {
-        var snapshot = observedSnapshot ?? CaptureBrokerSnapshot();
         var session = Volatile.Read(ref currentSession);
+        if (session is null || session.Generation != context.Generation) return;
+        if (kernel.NativeSession is null)
+            throw new InvalidOperationException("Interrupt duration requires a native kernel ETW session.");
+        if (!ReferenceEquals(kernel.NativeSession, session.Native))
+            throw new InvalidOperationException("Interrupt duration binding does not belong to its metadata session.");
+        Volatile.Write(ref session.DurationSource, kernel);
+    }
+
+    private static void DeclareInterruptCounters(KernelEtwEventSource source)
+    {
+        foreach (var kind in new[] { SystemInterruptEventKinds.Isr, SystemInterruptEventKinds.Dpc,
+            SystemInterruptEventKinds.ThreadedDpc, SystemInterruptEventKinds.TimerDpc })
+        {
+            _ = source.ConsumerCounter(kind);
+            foreach (var reason in new[] { "invalid-duration", "inactive-binding", "generation-mismatch", "before-window" })
+                _ = source.ConsumerRejectionCounter(kind, reason);
+        }
+        foreach (var kind in new[] { "ImageLoadOrRundown", "ImageUnload" })
+        {
+            _ = source.ConsumerCounter(kind);
+            foreach (var reason in new[] { "user-mode-image", "inactive-binding", "generation-mismatch", "before-window" })
+                _ = source.ConsumerRejectionCounter(kind, reason);
+        }
+    }
+
+    private bool RefreshBrokerState(KernelEtwSessionSnapshot? observedSnapshot = null, bool publishUnavailable = true)
+    {
+        var snapshot = (observedSnapshot ?? ReadBrokerSnapshot());
+        var session = Volatile.Read(ref currentSession);
+        if (snapshot.IsRunning && session is not null && !IsBindingActive(session))
+        {
+            state = SystemInterruptProviderStates.Unavailable;
+            message = "ETW 系统中断绑定已取消，当前没有可发布窗口。";
+            if (publishUnavailable) PublishUnavailable(state, message, snapshot.EventsLost);
+            return true;
+        }
         if (snapshot.IsRunning
             && session is not null
             && snapshot.Generation == session.Generation)
         {
             lock (eventGate)
             {
-                if (!ReferenceEquals(session, Volatile.Read(ref currentSession))) return;
+                if (!ReferenceEquals(session, Volatile.Read(ref currentSession))) return false;
                 state = SystemInterruptProviderStates.Running;
                 message = "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。";
-                if (snapshot.EventsLost == session.Window.EventsLost) return;
-                // A missed unload invalidates both address ownership and totals. Replacing the
-                // immutable window reference lets callbacks finish against an unreachable old window.
-                session.ResetWindow(readTickMilliseconds(), snapshot.EventsLost);
-                PublishCurrentWindow(readUtcNow(), session);
             }
-            return;
+            return false;
         }
 
         state = snapshot.State switch
@@ -336,7 +306,8 @@ public sealed class EtwSystemInterruptSnapshotSource(
             _ => throw new InvalidDataException($"Unknown kernel ETW state '{snapshot.State}'.")
         };
         message = snapshot.Message;
-        PublishUnavailable(state, message);
+        if (publishUnavailable) PublishUnavailable(state, message);
+        return true;
     }
 
     private bool TryPublishCurrentSnapshot(
@@ -345,12 +316,13 @@ public sealed class EtwSystemInterruptSnapshotSource(
     {
         lock (subscriptionGate)
         {
-            var brokerSnapshot = CaptureBrokerSnapshot();
-            RefreshBrokerState(brokerSnapshot);
+            var brokerSnapshot = ReadBrokerSnapshot();
+            RefreshBrokerState(brokerSnapshot, publishUnavailable: false);
             var session = Volatile.Read(ref currentSession);
             if (kernelSubscription is null
                 || session is null
                 || session.Generation <= 0
+                || !IsBindingActive(session)
                 || !brokerSnapshot.IsRunning
                 || brokerSnapshot.Generation != session.Generation)
             {
@@ -358,124 +330,161 @@ public sealed class EtwSystemInterruptSnapshotSource(
                 return false;
             }
 
-            var sampledWindow = session.Window;
-            SystemInterruptSnapshot candidate;
-            if (sampledWindow.EventsLost != brokerSnapshot.EventsLost) return false;
-            candidate = sampledWindow.Aggregator.CreateSnapshot(
-                now,
-                readTickMilliseconds() - sampledWindow.StartedTick,
-                session.Generation,
-                0,
-                Environment.ProcessorCount,
-                new SystemInterruptProviderState(
-                    "etw-system-interrupts",
-                    state,
-                    message,
-                    brokerSnapshot.EventsLost));
-            // Never call the broker from inside eventGate: binding may need that lock.
-            var after = CaptureBrokerSnapshot();
-            if (!after.IsRunning || after.Generation != session.Generation
-                || after.EventsLost != brokerSnapshot.EventsLost)
+            return TryPublishNativeSnapshot(now, session, brokerSnapshot, ownerToken);
+        }
+    }
+
+    private async Task<bool> TryPublishCurrentSnapshotAsync(DateTimeOffset now, SamplingOwnerToken ownerToken,
+        TimeSpan deliveryGrace, CancellationToken cancellationToken)
+    {
+        var session = Volatile.Read(ref currentSession);
+        if (session is null) return TryPublishCurrentSnapshot(now, ownerToken);
+        var native = session.Native;
+        var notices = Channel.CreateBounded<byte>(new BoundedChannelOptions(1)
+        { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, AllowSynchronousContinuations = false });
+        using var observation = session.Source.ObservePublications(() => notices.Writer.TryWrite(0));
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var tick = readTickMilliseconds();
+        var began = System.Diagnostics.Stopwatch.GetTimestamp();
+        ulong observedSequence = 0;
+        try
+        {
+            KernelEtwNativeReaders.RequestRefresh(native, tick);
+            while (true)
             {
-                RefreshBrokerState(after);
-                return false;
+                if (!ReferenceEquals(session, Volatile.Read(ref currentSession))) return false;
+                if (!IsBindingActive(session)) return TryPublishCurrentSnapshot(now, ownerToken);
+                if (KernelEtwNativeReaders.ReadInterrupts(native, Volatile.Read(ref session.NativeRequiredTicket), ref observedSequence,
+                        static view => view.EndedTick, out long through, out _)
+                    && through >= tick) return TryPublishCurrentSnapshot(now, ownerToken);
+                var remaining = deliveryGrace - System.Diagnostics.Stopwatch.GetElapsedTime(began);
+                if (remaining <= TimeSpan.Zero) throw new TimeoutException("The native interrupt publication exceeded its configured delivery grace.");
+                var signal = notices.Reader.ReadAsync(wait.Token).AsTask();
+                if (await Task.WhenAny(signal, native.ProcessingCompletion).WaitAsync(remaining, cancellationToken) == native.ProcessingCompletion)
+                {
+                    _ = ownerToken.TryPublish(() => PublishUnavailable(SystemInterruptProviderStates.Unavailable,
+                        native.ProcessingFailure?.Message ?? "Native ETW processing completed before this interrupt window was published."));
+                    return false;
+                }
+                await signal;
             }
-            lock (eventGate)
+        }
+        catch (TimeoutException error)
+        {
+            logger.LogWarning(error, "Native ETW interrupt window publication was not delivered before the sampling deadline.");
+            _ = ownerToken.TryPublish(() => PublishUnavailable(SystemInterruptProviderStates.Unavailable, error.Message));
+            return false;
+        }
+        catch (KernelEtwNativeReaders.CaptureFailure error)
+        {
+            logger.LogWarning(error, "Native ETW interrupt capture failed.");
+            state = SystemInterruptProviderStates.Unavailable; message = error.Message;
+            session.NativeSnapshot = null;
+            _ = ownerToken.TryPublish(() => PublishUnavailable(state, message));
+            return false;
+        }
+        finally { wait.Cancel(); notices.Writer.TryComplete(); }
+    }
+
+    private bool TryPublishNativeSnapshot(DateTimeOffset now, InterruptSessionState session,
+        KernelEtwSessionSnapshot before, SamplingOwnerToken ownerToken)
+    {
+        var native = session.Native;
+        if (KernelEtwNativeReaders.ReadInterrupts(native, Volatile.Read(ref session.NativeRequiredTicket), ref session.NativeSequence,
+                view => CopyNativeSnapshot(native.GetPublicationTimestamp(view.EndedTick), view), out SystemInterruptSnapshot? candidate, out var hasPublication))
+            session.NativeSnapshot = candidate;
+        else if (!hasPublication) session.NativeSnapshot = null;
+        var snapshot = session.NativeSnapshot;
+        if (snapshot is null || snapshot.ProviderState.EventsLost != before.EventsLost)
+        {
+            _ = ownerToken.TryPublish(() => PublishUnavailable(SystemInterruptProviderStates.Warming,
+                "ETW 系统中断监控正在形成完整原生窗口。",
+                Math.Max(before.EventsLost, snapshot?.ProviderState.EventsLost ?? before.EventsLost)));
+            return false;
+        }
+        var after = ReadBrokerSnapshot();
+        if (!after.IsRunning || after.Generation != session.Generation || after.EventsLost != before.EventsLost)
+        {
+            if (RefreshBrokerState(after, publishUnavailable: false))
+                _ = ownerToken.TryPublish(() => PublishUnavailable(state, message));
+            if (after.IsRunning && after.Generation == session.Generation && after.EventsLost != before.EventsLost)
             {
-                if (!ReferenceEquals(session, Volatile.Read(ref currentSession))
-                    || !ReferenceEquals(sampledWindow, session.Window)
-                    || sampledWindow.EventsLost != after.EventsLost) return false;
-                return ownerToken.TryPublish(() => Volatile.Write(ref latestSnapshot, candidate));
+                session.NativeSnapshot = null;
+                _ = ownerToken.TryPublish(() => PublishUnavailable(SystemInterruptProviderStates.Warming,
+                    "ETW 系统中断监控正在形成完整原生窗口。", after.EventsLost));
             }
+            return false;
         }
+        lock (eventGate)
+            return ReferenceEquals(session, Volatile.Read(ref currentSession))
+                && IsBindingActive(session)
+                && ownerToken.TryPublish(() => Volatile.Write(ref latestSnapshot, snapshot));
     }
 
-    // Call only while holding eventGate.
-    private void PublishCurrentWindow(DateTimeOffset now, InterruptSessionState session)
+    private static bool IsBindingActive(InterruptSessionState session)
+        => session.Source.IsActive && Volatile.Read(ref session.DurationSource) is { IsActive: true };
+
+    internal static unsafe SystemInterruptSnapshot CopyNativeSnapshot(DateTimeOffset now, KernelEtwNativeReaders.InterruptView view)
     {
-        var window = session.Window;
-        Volatile.Write(ref latestSnapshot, window.Aggregator.CreateSnapshot(now,
-            readTickMilliseconds() - window.StartedTick, session.Generation,
-            0, Environment.ProcessorCount,
-            new SystemInterruptProviderState("etw-system-interrupts", state, message, window.EventsLost)));
+        if (view.DriverCount != 0 && view.Drivers == 0 || view.BucketCount != 0 && view.Buckets == 0)
+            throw new InvalidDataException("Native interrupt publication rows are absent.");
+        var drivers = new SystemInterruptDriverSnapshot[checked((int)view.DriverCount)];
+        for (var i = 0; i < drivers.Length; i++)
+        {
+            var row = ((KernelEtwNativeReaders.InterruptDriver*)view.Drivers)[i];
+            drivers[i] = new(KernelEtwNativeReaders.Utf16(row.Module.Name, row.Module.NameLength) ?? UnknownModuleName,
+                KernelEtwNativeReaders.Utf16(row.Module.Path, row.Module.PathLength), row.TotalDuration, row.MaximumDuration,
+                checked((int)row.EventCount), checked((int)row.LongCount), row.CapacityPercent);
+        }
+        var buckets = new SystemInterruptBucketSnapshot[checked((int)view.BucketCount)];
+        for (var i = 0; i < buckets.Length; i++)
+        {
+            var row = ((KernelEtwNativeReaders.InterruptBucket*)view.Buckets)[i];
+            buckets[i] = new(now.AddMilliseconds(row.StartedTick - view.EndedTick), now.AddMilliseconds(row.EndedTick - view.EndedTick),
+                row.TotalDuration, row.CapacityPercent, checked((int)row.EventCount));
+        }
+        return new(now, (view.Flags & 1) != 0, checked((long)view.Generation), TimeSpan.FromMilliseconds(view.WindowMilliseconds),
+            checked((int)view.ProcessorCount), view.TotalDuration, view.MaximumDuration, view.MaximumKind switch
+            {
+                0 => null, 1 => SystemInterruptEventKinds.Isr, 2 => SystemInterruptEventKinds.Dpc,
+                3 => SystemInterruptEventKinds.ThreadedDpc, 4 => SystemInterruptEventKinds.TimerDpc,
+                _ => throw new InvalidDataException($"Unknown native interrupt event kind '{view.MaximumKind}'.")
+            }, view.EventCount == 0 ? null : KernelEtwNativeReaders.Utf16(view.MaximumModule.Name, view.MaximumModule.NameLength) ?? UnknownModuleName,
+            checked((int)view.EventCount),
+            checked((int)view.LongCount), view.CapacityPercent, buckets, drivers,
+            new("etw-system-interrupts", (view.Flags & 1) != 0 ? SystemInterruptProviderStates.Running : SystemInterruptProviderStates.Warming,
+                (view.Flags & 1) != 0 ? "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。"
+                    : "ETW 系统中断监控正在收集第一个完整 10 秒桶。", checked((int)view.EventsLost)));
     }
 
-    private void PublishUnavailable(string snapshotState, string snapshotMessage)
-        => Volatile.Write(
-            ref latestSnapshot,
-            SystemInterruptSnapshot.Unavailable(
-                snapshotState,
-                snapshotMessage));
-
-    private void ObserveBoundInterrupt(KernelEtwEventSource source, KernelEtwSessionContext context,
-        InterruptSessionState session,
-        string kind, double durationMilliseconds, ulong routineAddress, long observedTick)
+    private void PublishUnavailable(string snapshotState, string snapshotMessage, int eventsLost = 0)
     {
-        var counter = source.ConsumerCounter(kind);
-        counter.Receive();
-        void Reject(string reason)
-        {
-            counter.Drop();
-            source.RecordConsumerRejection(kind, reason);
-        }
-        if (!double.IsFinite(durationMilliseconds) || durationMilliseconds <= 0)
-        {
-            Reject("invalid-duration");
-            return;
-        }
-
-        if (!source.IsActive) { Reject("inactive-binding"); return; }
-        if (context.Generation != session.Generation
-            || !ReferenceEquals(session, Volatile.Read(ref currentSession))) { Reject("generation-mismatch"); return; }
-        var window = session.Window;
-        if (observedTick < window.StartedTick) { Reject("before-window"); return; }
-        var module = window.Modules.Resolve(routineAddress);
-        window.Aggregator.Observe(new SystemInterruptEventSample(
-            observedTick - window.StartedTick, kind, durationMilliseconds, routineAddress, module.Name, module.Path));
-    }
-
-    private void ObserveBoundImage(KernelEtwEventSource source, KernelEtwSessionContext context,
-        InterruptSessionState session, ulong imageBase, int imageSize,
-        string? fileName, bool unload, long observedTick)
-    {
-        var kind = unload ? "ImageUnload" : "ImageLoadOrRundown";
-        var counter = source.ConsumerCounter(kind);
-        counter.Receive();
-        void Reject(string reason)
-        {
-            counter.Drop();
-            source.RecordConsumerRejection(kind, reason);
-        }
-        // ImageLoad also reports user-mode DLLs, which cannot own an ISR/DPC routine.
-        if (!KernelModuleAddressMap.IsKernelAddress(imageBase)) { Reject("user-mode-image"); return; }
-        // Keep image ownership current while ISR/DPC intake is paused, just as CPU
-        // residency retains process/thread metadata on its held kernel session.
-        if (!source.IsActive) { Reject("inactive-binding"); return; }
-        if (context.Generation != session.Generation
-            || !ReferenceEquals(session, Volatile.Read(ref currentSession))) { Reject("generation-mismatch"); return; }
-        var window = session.Window;
-        if (observedTick < window.StartedTick) { Reject("before-window"); return; }
-        if (unload) window.Modules.Remove(imageBase);
-        else window.Modules.Upsert(imageBase, imageSize, fileName);
+        var empty = SystemInterruptSnapshot.Unavailable(snapshotState, snapshotMessage);
+        if (eventsLost != 0)
+            empty = empty with { ProviderState = empty.ProviderState with { EventsLost = eventsLost } };
+        Volatile.Write(ref latestSnapshot, empty);
     }
 
     private void StopSession(string idleMessage, string idleState = SystemInterruptProviderStates.Idle, bool publishStoppedValue = true)
     {
         IKernelEtwSubscription? subscriptionToRelease;
-        IKernelEtwSubscription? eventsToRelease;
+        IKernelEtwSubscription? durationToRelease;
         lock (subscriptionGate)
         {
+            ++metadataEpoch;
+            ++durationEpoch;
+            acquiringDuration = false;
             subscriptionToRelease = kernelSubscription;
-            eventsToRelease = DetachInterruptsCore();
             kernelSubscription = null;
+            durationToRelease = durationSubscription;
+            durationSubscription = null;
             lock (eventGate)
             {
                 Volatile.Write(ref currentSession, null);
             }
         }
 
-        try { eventsToRelease?.Dispose(); }
-        finally { subscriptionToRelease?.Dispose(); }
+        try { durationToRelease?.Dispose(); } finally { subscriptionToRelease?.Dispose(); }
         lock (subscriptionGate)
         {
             if (kernelSubscription is not null) return;
@@ -488,22 +497,16 @@ public sealed class EtwSystemInterruptSnapshotSource(
         }
     }
 
-    private sealed record InterruptObservationWindow(
-        long StartedTick,
-        int EventsLost,
-        KernelModuleAddressMap Modules,
-        SystemInterruptWindowAggregator Aggregator);
-
-    private sealed class InterruptSessionState(long generation, long startedTick, int eventsLost)
+    private sealed class InterruptSessionState(long generation, KernelEtwEventSource source, NativeKernelEtwSession native, long startedTick)
     {
-        private InterruptObservationWindow window = new(startedTick, eventsLost,
-            new KernelModuleAddressMap(), new SystemInterruptWindowAggregator());
-
         public long Generation { get; } = generation;
-        public InterruptObservationWindow Window => Volatile.Read(ref window);
-        public void ResetWindow(long atTick, int lost, bool preserveModules = false)
-            => Volatile.Write(ref window, new InterruptObservationWindow(atTick, lost,
-                preserveModules ? Window.Modules : new KernelModuleAddressMap(), new SystemInterruptWindowAggregator()));
+        public KernelEtwEventSource Source { get; } = source;
+        public NativeKernelEtwSession Native { get; } = native;
+        public long StartedTick = startedTick;
+        public KernelEtwEventSource? DurationSource;
+        public ulong NativeSequence;
+        public ulong NativeRequiredTicket;
+        public SystemInterruptSnapshot? NativeSnapshot;
     }
 
     private sealed record InterruptSampleRequest(string SourceKey);

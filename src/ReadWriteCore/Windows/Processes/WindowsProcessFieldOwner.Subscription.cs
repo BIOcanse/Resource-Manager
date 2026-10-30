@@ -9,8 +9,6 @@ public sealed partial class WindowsProcessFieldOwner
 {
     // Resource intent only; frequency, logical demand and values remain with their original owners.
     private readonly HashSet<ProcessCollectionBorrow> collectionBorrows = [];
-    private bool directNetworkDemand;
-    private bool directDiskDemand;
     private bool directGpuDemand;
 
     public IReadWriteCollectionBorrow BorrowSubscriptionCapture()
@@ -27,7 +25,7 @@ public sealed partial class WindowsProcessFieldOwner
         finally { CaptureGate.Release(); }
     }
 
-    private void SetBorrowDemand(ProcessCollectionBorrow borrow, bool processDemand, bool networkDemand, bool diskDemand, bool gpuDemand, bool remove)
+    private void SetBorrowDemand(ProcessCollectionBorrow borrow, bool processDemand, bool gpuDemand, bool remove)
     {
         if (Volatile.Read(ref disposed) != 0) return;
         try { CaptureGate.Wait(); }
@@ -36,13 +34,9 @@ public sealed partial class WindowsProcessFieldOwner
         {
             if (Volatile.Read(ref disposed) != 0) return;
             if (remove) collectionBorrows.Remove(borrow);
-            else { borrow.RequireActive(); borrow.ProcessDemand = processDemand; borrow.NetworkDemand = networkDemand; borrow.DiskDemand = diskDemand; borrow.GpuDemand = gpuDemand; }
+            else { borrow.RequireActive(); borrow.ProcessDemand = processDemand; borrow.GpuDemand = gpuDemand; }
             if (!collectionBorrows.Any(static item => !item.IsDisposed && item.ProcessDemand))
                 inventoryBuffer.Release();
-            if (!directNetworkDemand && !collectionBorrows.Any(static item => !item.IsDisposed && item.NetworkDemand))
-                network?.Stop();
-            if (!directDiskDemand && !collectionBorrows.Any(static item => !item.IsDisposed && item.DiskDemand))
-                disk?.Stop();
             if (!directGpuDemand && !collectionBorrows.Any(static item => !item.IsDisposed && item.GpuDemand))
                 ReleaseOwnedGpuSource();
         }
@@ -55,9 +49,7 @@ public sealed partial class WindowsProcessFieldOwner
         private readonly Dictionary<FieldReference, ProcessFieldReadWriteBackend.Selection> bindings = [];
         private int disposed;
         internal bool IsDisposed => Volatile.Read(ref disposed) != 0;
-        internal bool NetworkDemand;
         internal bool ProcessDemand;
-        internal bool DiskDemand;
         internal bool GpuDemand;
         public IReadWriteBackend Backend => owner.Backend;
         public SamplingPublicationSignal Publications => owner.Publications;
@@ -83,8 +75,6 @@ public sealed partial class WindowsProcessFieldOwner
         {
             var selected = Select(activeFields);
             owner.SetBorrowDemand(this, !selected.IsEmpty, selected.Any(static item =>
-                item.Definition.DatasetId == ProcessMetricDatasetIds.ObservedNetworkTraffic), selected.Any(static item =>
-                item.Definition.DatasetId == ProcessMetricDatasetIds.ObservedPhysicalDiskIo), selected.Any(static item =>
                 item.Definition.DatasetId == ProcessMetricDatasetIds.GpuResidency), false);
         }
         public async ValueTask<FieldCollectionResult> CollectAsync(ImmutableArray<FieldReference> fields,
@@ -101,7 +91,7 @@ public sealed partial class WindowsProcessFieldOwner
         public void Dispose()
         {
             if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-            owner.SetBorrowDemand(this, false, false, false, false, true);
+            owner.SetBorrowDemand(this, false, false, true);
         }
     }
 }

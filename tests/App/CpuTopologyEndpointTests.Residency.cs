@@ -28,9 +28,9 @@ public sealed partial class CpuTopologyEndpointTests
     {
         await using var topology = new CpuTopologyProviderTestFixture();
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new PublicationBroker();
+        using var broker = new PublicationBroker();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+            NullLogger<EtwCpuCoreResidencyReader>.Instance);
         var observed = new DemandObservedResidency(reader);
         await using var app = await StartEndpointsAsync(topology.Reader, observed);
         using var client = CreateClient(app);
@@ -57,13 +57,13 @@ public sealed partial class CpuTopologyEndpointTests
 
         switch (reason)
         {
-            case CpuCoreResidencyUnavailableReasons.EventsLost: broker.EventsLost++; break;
+            case CpuCoreResidencyUnavailableReasons.EventsLost: broker.Resource.Loss(broker.Resource.Tick + 1, 1); broker.Resource.Publish(broker.Resource.Tick); break;
             case CpuCoreResidencyUnavailableReasons.SessionRestarted: broker.Rebind(); break;
-            case CpuCoreResidencyUnavailableReasons.SessionUnavailable: broker.Running = false; break;
+            case CpuCoreResidencyUnavailableReasons.SessionUnavailable: broker.ForceUnavailable = true; break;
             case CpuCoreResidencyUnavailableReasons.CaptureFailed: broker.ThrowSnapshot = true; break;
-            case "complete": FeedPublicationWindow(capture, sampling); break;
+            case "complete": FeedPublicationWindow(capture, sampling, broker); break;
         }
-        capture.Collect(); // Production publication, deterministically driven; no ETW, timer or worker race.
+        capture.Collect(); // Actual product commit from a controlled native bank; endpoint demand adds no second capture.
         using var get = await getTask;
         using var cores = await coresTask;
         using var push = await pushTask;
@@ -90,8 +90,8 @@ public sealed partial class CpuTopologyEndpointTests
         }
 
         // The same channel recovers with a real complete window after loss/restart/failure.
-        broker.Running = true; broker.ThrowSnapshot = false;
-        FeedPublicationWindow(capture, sampling);
+        broker.ForceUnavailable = false; broker.ThrowSnapshot = false;
+        FeedPublicationWindow(capture, sampling, broker);
         capture.Collect();
         using var recovered = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
         Assert.Equal("00:00:05", recovered.RootElement.GetProperty("value").GetProperty("window").GetString());
@@ -100,27 +100,14 @@ public sealed partial class CpuTopologyEndpointTests
         await app.StopAsync();
     }
 
-    private static void FeedPublicationWindow(EtwCpuResidencyCaptureOwner capture, HostManagerSamplingSubscriptionTestFixture sampling)
+    private static void FeedPublicationWindow(EtwCpuResidencyCaptureOwner capture,
+        HostManagerSamplingSubscriptionTestFixture sampling, PublicationBroker broker)
     {
-        var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(capture)!;
-        var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
         var plan = sampling.Provider.Current.HostManager.CpuCoreResidency;
-        var start = Stopwatch.GetTimestamp();
-        var at = DateTimeOffset.UtcNow;
-        // Keep QPC monotonic even when two recorded windows are fed without a wall-clock delay.
-        var previous = buffer.Snapshot(plan.PhysicalCoreByLogicalProcessor.Keys.ToArray());
-        start = Math.Max(start, previous.MeasuredThroughQpc + Stopwatch.Frequency);
-        buffer.ObserveProcessStart(start, at, 100, 100, 1000, "recorded");
-        foreach (var processor in plan.PhysicalCoreByLogicalProcessor.Keys)
-        {
-            buffer.ObserveThreadStart(start, at, 100, 1000 + processor);
-            buffer.ObserveContextSwitch(start, at, processor, 0, 0, 100, "recorded", 1000 + processor);
-        }
-        var end = start + Stopwatch.Frequency * plan.ObservationWindowMilliseconds / 1000;
-        foreach (var processor in plan.PhysicalCoreByLogicalProcessor.Keys)
-            buffer.ObserveContextSwitch(end, at + plan.ObservationWindow, processor, 100, 1000 + processor, 0, null, 0);
+        broker.PreviousEnd = NativeCpuReaderTestFeed.ClosedWindow(capture,
+            plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray(), plan.ObservationWindowMilliseconds,
+            firstTid: 1000, previousEnd: broker.PreviousEnd);
     }
-
     // Signals only demand registration; all values and publication signals come from the production reader.
     private sealed class DemandObservedResidency(EtwCpuCoreResidencyReader reader) : ICpuCoreResidencyReader
     {
@@ -142,48 +129,13 @@ public sealed partial class CpuTopologyEndpointTests
         }
     }
 
-    private sealed class PublicationBroker : IKernelEtwSessionBroker
+    private sealed class PublicationBroker : CpuResidencyHeldTestBroker
     {
-        private KernelEtwSubscriptionRequest? request;
-        private KernelEtwEventSource? source;
-        private readonly List<Lease> leases = [];
-        private long generation = 1;
-        internal int EventsLost;
-        internal bool Running = true, ThrowSnapshot;
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest value)
-        {
-            var metadata = value.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process);
-            var lease = new Lease(this, value.Keywords, metadata);
-            leases.Add(lease);
-            if (metadata) { request = value; Bind(); }
-            else value.Bind(source!, new(generation, DateTimeOffset.UtcNow));
-            return lease;
-        }
-        private void Bind()
-        {
-            source?.Cancel();
-            source = new KernelEtwEventSource();
-            request!.Bind(source, new(generation, DateTimeOffset.UtcNow));
-            source.Activate();
-        }
-        internal void Rebind() { generation++; Bind(); }
-        public KernelEtwSessionSnapshot GetSnapshot()
-            => ThrowSnapshot ? throw new InvalidOperationException("recorded failure")
-                : new(Running ? "Running" : "Unavailable", "recorded", generation, DateTimeOffset.UnixEpoch,
-                    leases.Aggregate(KernelTraceEventParser.Keywords.None, (keywords, lease) => keywords | lease.Keywords),
-                    leases.Count, EventsLost);
-        private sealed class Lease(PublicationBroker broker, KernelTraceEventParser.Keywords keywords, bool metadata) : IKernelEtwSubscription
-        {
-            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
-            private bool released;
-            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
-            public void Dispose()
-            {
-                if (released) return;
-                released = true;
-                broker.leases.Remove(this);
-                if (metadata) broker.source?.Cancel();
-            }
-        }
+        internal bool ThrowSnapshot, ForceUnavailable;
+        internal long PreviousEnd;
+        internal PublicationBroker() : base(1) { }
+        public override KernelEtwSessionSnapshot GetSnapshot() => ThrowSnapshot
+            ? throw new InvalidOperationException("recorded status-query failure")
+            : ForceUnavailable ? base.GetSnapshot() with { State = "Unavailable", Message = "explicit broker-status fault injection over a real native owner" } : base.GetSnapshot();
     }
 }

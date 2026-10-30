@@ -17,6 +17,7 @@
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
     <PackageReference Include="System.Management" Version="10.0.2" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.4" />
+    <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.45" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <EmbeddedResource Include="Windows/Metrics/Configuration/default.metric-snapshot.json"
@@ -48,7 +49,25 @@
           PackagePath="runtimes/win-x64/native/ResourceManager.DumpAnalysis.exe" Visible="false" />
     <InternalsVisibleTo Include="ResourceManager" />
     <InternalsVisibleTo Include="Resource Manager-APP.Tests" />
+    <InternalsVisibleTo Include="ResourceManager.ControlDecisionAcceptance" />
+    <ProjectReference Include="../Development/ReadWriteNativeDefaultsBuild/ResourceManager.ReadWriteNativeDefaultsBuild.csproj"
+                      ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" PrivateAssets="all" />
   </ItemGroup>
+  <Target Name="GenerateReadWriteKernelEtwDefaults" BeforeTargets="CoreCompile" DependsOnTargets="ResolveProjectReferences">
+    <PropertyGroup>
+      <_NativeDefaultsSource>$(IntermediateOutputPath)KernelEtwNativeDefaults.Values.g.cs</_NativeDefaultsSource>
+    </PropertyGroup>
+    <MSBuild Projects="../Development/ReadWriteNativeDefaultsBuild/ResourceManager.ReadWriteNativeDefaultsBuild.csproj"
+             Targets="GetTargetPath" BuildInParallel="false"
+             Properties="Configuration=$(Configuration);RestorePackagesPath=$(RestorePackagesPath);UseSharedCompilation=false;BuildInParallel=false">
+      <Output TaskParameter="TargetOutputs" ItemName="_NativeDefaultsGenerator" />
+    </MSBuild>
+    <Exec Command="dotnet &quot;@(_NativeDefaultsGenerator)&quot; &quot;$(MSBuildThisFileDirectory)../..&quot; &quot;$(_NativeDefaultsSource)&quot;" />
+    <ItemGroup>
+      <Compile Include="$(_NativeDefaultsSource)" />
+      <FileWrites Include="$(_NativeDefaultsSource)" />
+    </ItemGroup>
+  </Target>
   <Target Name="RequireReadWriteNativePackageAsset" BeforeTargets="GenerateNuspec">
     <Error Condition="'$(ReadWriteNativeLibraryPath)' == '' or !Exists('$(ReadWriteNativeLibraryPath)')"
            Text="Provide the verified Windows x64 NativeCore binary with ReadWriteNativeLibraryPath when packing." />

@@ -98,10 +98,18 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var outerLoopTrace = profile.IsFormal
                 ? null
                 : new LongSoakOuterLoopTrace(profile.MaximumCycleCount);
-            var completedRounds = new LongSoakRoundCompletionProbe(outerLoopTrace, source);
-            fixture.Coordinator.OuterLoopProbe = completedRounds;
-
             var startedClock = CaptureLongSoakClock();
+            using var completedRounds = new LongSoakRoundCompletionProbe(
+                outerLoopTrace,
+                source,
+                completed => source.CompletedCount == completed
+                    && completed >= profile.MinimumCycleCount
+                    && (CaptureLongSoakClock().ActiveTime100Nanoseconds
+                        - startedClock.ActiveTime100Nanoseconds) / 10_000D
+                        >= profile.ActiveDurationMilliseconds,
+                () => residencyOutput.SubscriptionCanceled,
+                () => fixture.Coordinator.LifecycleState == HostManagerSmartCoordinatorLifecycleState.Closing);
+            fixture.Coordinator.OuterLoopProbe = completedRounds;
             source.Arm(startedClock, runtimeIdentity.OpportunityLedgerId);
             using var observer = new LongSoakCompactSampleObserver(
                 plan,
@@ -152,16 +160,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     observer.ThrowIfFaulted();
                     outerLoopTrace?.ThrowIfOverflow();
                     var current = CaptureLongSoakClock();
-                    var activeMilliseconds =
-                        (current.ActiveTime100Nanoseconds
-                         - startedClock.ActiveTime100Nanoseconds) / 10_000D;
-                    if (activeMilliseconds >= profile.ActiveDurationMilliseconds
-                        && source.CompletedCount >= profile.MinimumCycleCount
-                        && HasLongSoakQuiescentStopWindow(
-                            profile,
-                            source,
-                            completedRounds,
-                            residencyOutput))
+                    if (completedRounds.StopBoundaryReached)
                     {
                         break;
                     }
@@ -323,6 +322,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
             finally
             {
+                // Failed assertions must not strand the worker at the test-only stop barrier.
+                completedRounds.Release();
                 if (host is not null && !hostStopped)
                 {
                     try
@@ -455,47 +456,74 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public void LongSoakStopAdmissionRequiresCompletedRoundAndPublicationLead()
+    public async Task LongSoakStopBarrierRejectsNewCyclesFromDuePublicationAndDeadline()
     {
-        const int completedCount = 15;
-        const long now = 1_000;
-        const long frequency = 1_000;
-        Assert.False(IsLongSoakQuiescentStopWindow(
-            250,
-            completedCount,
-            new LongSoakPublicationSchedule(15, HasNextPublication: false, 2_000),
-            now,
-            frequency));
-        Assert.False(IsLongSoakQuiescentStopWindow(
-            250,
-            completedCount,
-            new LongSoakPublicationSchedule(14, HasNextPublication: true, 2_000),
-            now,
-            frequency));
-        Assert.False(IsLongSoakQuiescentStopWindow(
-            250,
-            completedCount,
-            new LongSoakPublicationSchedule(15, HasNextPublication: true, 1_061),
-            now,
-            frequency));
-        Assert.True(IsLongSoakQuiescentStopWindow(
-            250,
-            completedCount,
-            new LongSoakPublicationSchedule(15, HasNextPublication: true, 1_062),
-            now,
-            frequency));
-        Assert.False(IsLongSoakQuiescentStopWindow(
-            60_000,
-            completedCount,
-            new LongSoakPublicationSchedule(15, HasNextPublication: true, 1_999),
-            now,
-            frequency));
-        Assert.True(IsLongSoakQuiescentStopWindow(
-            60_000,
-            completedCount,
-            new LongSoakPublicationSchedule(15, HasNextPublication: true, 2_000),
-            now,
-            frequency));
+        const int stopBarrierIntervalMilliseconds = 250;
+        var permits = CreateHostedScoreOnlyPermits(
+            CreateDefaultHostedScoreOnlyEpochPlan("long-soak-stop-barrier"));
+        var source = new HostedScoreOnlyEpochSource();
+        var residencyOutput = new HostedResidencyOutput(source, TimeProvider.System, controlled: true);
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true, performanceLogEnabled: true,
+            smartCoordinatorMaximumProcesses: HostedScoreOnlyMaximumProcessCount,
+            metricSamplerOverride: source, processFactsOverride: source,
+            cpuCoreReader: residencyOutput,
+            normalIntervalMilliseconds: stopBarrierIntervalMilliseconds,
+            eventIntervalMilliseconds: stopBarrierIntervalMilliseconds,
+            failFastEffects: true);
+        source.ConfigureHistory(fixture.RuntimePlan.HostManager.DataHistory);
+        var deadline = ReadPrivateField<HostManagerVersionedWakeDeadline>(
+            fixture.Coordinator, "schedulingWakeDeadline")!;
+        using var boundary = new LongSoakRoundCompletionProbe(
+            trace: null, source: null, shouldStopAtBoundary: _ => true,
+            subscriptionCanceled: () => residencyOutput.SubscriptionCanceled,
+            shutdownStarted: () => fixture.Coordinator.LifecycleState == HostManagerSmartCoordinatorLifecycleState.Closing);
+        fixture.Coordinator.OuterLoopProbe = boundary;
+        var shutdown = new HostedScoreOnlyShutdownProbe();
+        fixture.Coordinator.TransitionProbe = shutdown;
+        using var host = BuildHostedScoreOnlyTestHost(fixture);
+        try
+        {
+            source.Enqueue(permits[0]);
+            await StartHostedScoreOnlyTestHostAsync(host, CancellationToken.None);
+            await residencyOutput.WaitForSubscriptionAsync();
+            residencyOutput.Publish();
+            await boundary.StopBoundary.WaitAsync(HostedScoreOnlyCycleLivenessTimeout);
+            Assert.Equal(1, boundary.CompletedCount);
+            Assert.Equal(1, source.CompletedCount);
+            Assert.Equal("completed", ReadString(Assert.Single(fixture.DebugLogWriter.Records).Properties, "outcome"));
+
+            // Both wake sources are already due before stop. The existing worker is
+            // held after releasing its real gate, so neither can create a Profiler.
+            residencyOutput.Publish();
+            deadline.PublishForeground(TimeSpan.Zero);
+            await Task.Delay(TimeSpan.FromMilliseconds(2 * stopBarrierIntervalMilliseconds));
+            Assert.Equal(1, boundary.CompletedCount);
+            Assert.Equal(1, source.CompletedCount);
+            Assert.Single(fixture.DebugLogWriter.Records);
+            Assert.True(boundary.IsHolding);
+            Assert.Equal(HostManagerSmartCoordinatorLifecycleState.Running, fixture.Coordinator.LifecycleState);
+            Assert.False(residencyOutput.SubscriptionCanceled.IsCompleted);
+
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await host.StopAsync(stop.Token);
+            Assert.True(residencyOutput.SubscriptionCanceled.IsCompletedSuccessfully);
+            Assert.False(boundary.IsHolding);
+            Assert.Equal(HostManagerSmartCoordinatorLifecycleState.Closed, fixture.Coordinator.LifecycleState);
+            Assert.Equal(1, boundary.CompletedCount);
+            Assert.Equal(1, source.CompletedCount);
+            Assert.Equal("completed", ReadString(Assert.Single(fixture.DebugLogWriter.Records).Properties, "outcome"));
+            shutdown.AssertExactOrder();
+            AssertOwnedResourcesCleared(fixture.Coordinator);
+            fixture.CaptureHostedScoreOnlyEffectCounters().AssertAllZero();
+        }
+        finally
+        {
+            boundary.Release();
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await host.StopAsync(stop.Token);
+            fixture.Coordinator.OuterLoopProbe = null;
+        }
     }
 
     [Fact]
@@ -943,40 +971,48 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         int CompletedRounds, bool HasNextPublication, long NextPublicationAt);
 
     private sealed class LongSoakRoundCompletionProbe(
-        LongSoakOuterLoopTrace? trace, LongSoakBoundedSnapshotSource source)
-        : IHostManagerSmartCoordinatorOuterLoopProbe
+        LongSoakOuterLoopTrace? trace, LongSoakBoundedSnapshotSource? source, Func<int, bool> shouldStopAtBoundary,
+        Func<Task> subscriptionCanceled, Func<bool> shutdownStarted)
+        : IHostManagerSmartCoordinatorOuterLoopProbe, IDisposable
     {
         private int completed;
+        private int holding;
+        private readonly TaskCompletionSource stopBoundary = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int CompletedCount => Volatile.Read(ref completed);
+        internal bool StopBoundaryReached => stopBoundary.Task.IsCompletedSuccessfully;
+        internal Task StopBoundary => stopBoundary.Task;
+        internal bool IsHolding => Volatile.Read(ref holding) == 1;
         public void Observe(in HostManagerSmartCoordinatorOuterLoopEvent value)
         {
             trace?.Observe(in value);
+            // Only the bounded long-soak source publishes per round; the stop-barrier fixture has none.
             if (value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.GateWaitStarted)
-                source.BindRoundPublication();
-            if (value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.GateReleased)
-                Interlocked.Increment(ref completed);
+                source?.BindRoundPublication();
+            if (value.Phase != HostManagerSmartCoordinatorOuterLoopPhase.GateReleased) return;
+            var count = Interlocked.Increment(ref completed);
+            if (!shouldStopAtBoundary(count) || StopBoundaryReached) return;
+            // Capture the active enumeration here, after subscription reconciliation.
+            // A retired enumeration's cancellation is not an acknowledgment of Host stop.
+            var cancellation = subscriptionCanceled();
+            if (cancellation.IsCompleted)
+                throw new InvalidDataException("The stop barrier requires an active subscription.");
+            Volatile.Write(ref holding, 1);
+            stopBoundary.SetResult();
+            // The real gate is already free and the Profiler has finished. Hold only
+            // this test worker until the existing Host stop cancels its subscription.
+            // Neither a due output nor a scheduled timer can enter another Profiler.
+            try
+            {
+                var completedWait = Task.WhenAny(cancellation, released.Task)
+                    .WaitAsync(HostedScoreOnlyCycleLivenessTimeout).GetAwaiter().GetResult();
+                if (ReferenceEquals(completedWait, cancellation) && !shutdownStarted())
+                    throw new InvalidDataException("The active subscription was canceled before Host shutdown began.");
+            }
+            finally { Volatile.Write(ref holding, 0); }
         }
-    }
-
-    private static bool HasLongSoakQuiescentStopWindow(
-        LongSoakProfileDefinition profile, LongSoakBoundedSnapshotSource source,
-        LongSoakRoundCompletionProbe completed, HostedResidencyOutput output)
-    {
-        var next = output.NextPublicationAt;
-        return IsLongSoakQuiescentStopWindow(profile.NormalIntervalMilliseconds, source.CompletedCount,
-            new(completed.CompletedCount, next != 0, next), Stopwatch.GetTimestamp(), Stopwatch.Frequency);
-    }
-
-    private static bool IsLongSoakQuiescentStopWindow(
-        int normalIntervalMilliseconds, int completedCount, LongSoakPublicationSchedule snapshot,
-        long now, long timestampFrequency)
-    {
-        if (!snapshot.HasNextPublication || snapshot.CompletedRounds != completedCount
-            || snapshot.NextPublicationAt <= now) return false;
-        var minimumLeadMilliseconds = Math.Clamp(normalIntervalMilliseconds / 4, 25, 1_000);
-        var minimumLeadTicks = checked((long)(
-            ((Int128)minimumLeadMilliseconds * timestampFrequency + 999) / 1_000));
-        return snapshot.NextPublicationAt - now >= minimumLeadTicks;
+        internal void Release() => released.TrySetResult();
+        public void Dispose() => Release();
     }
     private static IReadOnlyDictionary<string, object?> ReadDictionary(
         IReadOnlyDictionary<string, object?> owner,

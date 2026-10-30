@@ -80,7 +80,24 @@ try
         throw new InvalidDataException("The compiler-generated app StateItems source is missing: " + stateItemsSource);
     // This target adds StateItems.g.cs before CoreCompile, so the explicit MSBuild
     // Compile item query does not include it. Capture that exact generated source.
-    var additionalSources = ImmutableArray.Create("artifacts/" + stateItemsRelativePath.Replace('\\', '/'));
+    const string readWriteProjectRelativePath = "src/ReadWriteCore/ResourceManager.ReadWriteCore.csproj";
+    var readWriteProject = evaluated.Single(project => string.Equals(
+        project.GetProperty("projectRelativePath").GetString(), readWriteProjectRelativePath, StringComparison.Ordinal));
+    var readWriteIntermediate = readWriteProject.GetProperty("Properties").GetProperty("IntermediateOutputPath").GetString();
+    if (string.IsNullOrWhiteSpace(readWriteIntermediate))
+        throw new InvalidDataException("The ReadWrite compiler intermediate path is missing.");
+    if (!Path.IsPathFullyQualified(readWriteIntermediate))
+        readWriteIntermediate = Path.Combine(Path.GetDirectoryName(Path.Combine(root, readWriteProjectRelativePath))!, readWriteIntermediate);
+    var nativeDefaultsSource = Path.GetFullPath(Path.Combine(readWriteIntermediate, "KernelEtwNativeDefaults.Values.g.cs"));
+    var nativeDefaultsRelativePath = Path.GetRelativePath(artifactsRoot, nativeDefaultsSource);
+    if (Path.IsPathRooted(nativeDefaultsRelativePath) || nativeDefaultsRelativePath == ".."
+        || nativeDefaultsRelativePath.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        || nativeDefaultsRelativePath.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal))
+        throw new InvalidDataException("Generated kernel ETW defaults are outside the task artifacts root.");
+    if (!File.Exists(nativeDefaultsSource))
+        throw new InvalidDataException("Generated kernel ETW defaults are missing: " + nativeDefaultsSource);
+    var additionalSources = ImmutableArray.Create("artifacts/" + stateItemsRelativePath.Replace('\\', '/'),
+        "artifacts/" + nativeDefaultsRelativePath.Replace('\\', '/'));
     var ledgerRoots = evaluated.Select(project => project.GetProperty("Properties")
             .TryGetProperty("ResourceManagerLedgerOutputRoot", out var value) ? value.GetString() : null)
         .Where(static path => !string.IsNullOrWhiteSpace(path)).Select(static path => Path.GetFullPath(path!))
@@ -156,7 +173,8 @@ try
             ? Directory.EnumerateFiles(generatedRoot, "*.cs", SearchOption.AllDirectories) : [];
         var additionalCompileFiles = string.Equals(projectPath, appProjectRelativePath, StringComparison.Ordinal)
             ? new[] { stateItemsSource }
-            : Array.Empty<string>();
+            : string.Equals(projectPath, readWriteProjectRelativePath, StringComparison.Ordinal)
+                ? new[] { nativeDefaultsSource } : Array.Empty<string>();
         var selected = compileFiles.Concat(generatedFiles).Concat(additionalCompileFiles)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (selected.Any(path => !current.TryGetRelativePath(path, out _)))

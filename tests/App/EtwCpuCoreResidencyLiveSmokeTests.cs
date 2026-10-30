@@ -14,11 +14,18 @@ public sealed class EtwCpuCoreResidencyLiveSmokeTests
     {
         Assert.True(OperatingSystem.IsWindows());
         Assert.True(TraceEventSession.IsElevated() == true, "Live kernel ETW smoke requires elevation.");
-        using var broker = new KernelEtwSessionBroker(NullLogger<KernelEtwSessionBroker>.Instance);
         var topologySampler = new WindowsCpuTopologyReader(new EmptyOverrideStore());
         var expectedTopology = topologySampler.CaptureTopology();
         using var sampling = new HostManagerSamplingSubscriptionTestFixture(
             HostManagerTestPlanFactory.CreatePlan(cpuTopology: expectedTopology));
+        var plan = sampling.Provider.Current.HostManager;
+        var configuration = KernelEtwNativeSettings.CreateConfiguration(
+            plan.KernelEtwLimits ?? throw new InvalidOperationException("Native kernel limits are unpublished."),
+            plan.CpuCoreResidency,
+            checked((uint)plan.CpuCoreResidency.PhysicalCoreByLogicalProcessor.Count));
+        var regions = new BoundedKernelEtwRegionProvider(checked((nuint)configuration.ByteCap));
+        var factory = new NativeKernelEtwSessionRuntimeFactory(regions, () => configuration);
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         using var reader = new EtwCpuCoreResidencyReader(
             broker,
             sampling.Provider,
@@ -69,6 +76,7 @@ public sealed class EtwCpuCoreResidencyLiveSmokeTests
             await reader.StopAsync(CancellationToken.None);
             broker.Dispose();
         }
+        Assert.Equal(0UL, regions.GetUsage().CurrentBytes);
     }
 
     private sealed class EmptyOverrideStore : ICpuCorePerformanceOverrideStore

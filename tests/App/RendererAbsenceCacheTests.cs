@@ -1,4 +1,5 @@
-﻿using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Diagnostics.Tracing.Parsers;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -8,9 +9,43 @@ namespace Resource_Manager_APP.Tests;
 public sealed class RendererAbsenceCacheTests
 {
     [Fact]
+    public void MissingNativePublicationNeverQualifiesANegative()
+    {
+        using var broker = new NativeRendererTestBroker(publishOnAcquire: false);
+        using var cache = new RendererAbsenceCache(broker);
+        using var run = cache.Acquire();
+        var identity = Process(701, 7001, @"C:\Apps\renderer.exe");
+        var observation = cache.Read(identity);
+        Assert.False(observation.CanPublishAbsent);
+        cache.PublishAbsent(identity, observation);
+        Assert.False(cache.Read(identity).IsAbsent);
+        Assert.Equal(1, broker.SubscribeCount);
+    }
+
+    [Fact]
+    public void NativeHistoryResetRejectsOldNegativesAndPendingPublicationStamps()
+    {
+        using var broker = new NativeRendererTestBroker();
+        using var cache = new RendererAbsenceCache(broker);
+        using var run = cache.Acquire();
+        var identity = Process(702, 7002, @"C:\Apps\renderer.exe");
+        var old = cache.Read(identity);
+        cache.PublishAbsent(identity, old);
+        Assert.True(cache.Read(identity).IsAbsent);
+        var beforeHistory = KernelEtwNativeRendererHistory.Read(broker.Source, identity.ProcessId)!.Value;
+        broker.ResetHistory();
+        var afterHistory = KernelEtwNativeRendererHistory.Read(broker.Source, identity.ProcessId)!.Value;
+        Assert.NotEqual(beforeHistory.Epoch, afterHistory.Epoch);
+        cache.PublishAbsent(identity, old);
+        Assert.False(cache.Read(identity).IsAbsent);
+        cache.PublishAbsent(identity, cache.Read(identity));
+        Assert.True(cache.Read(identity).IsAbsent);
+    }
+
+    [Fact]
     public void PassiveReadsAndPublicationNeverAcquireAndRunReleaseRejectsOldEvidence()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         var identity = Process(601, 6001, @"C:\Apps\renderer.exe");
         var inactive = cache.Read(identity);
@@ -44,7 +79,7 @@ public sealed class RendererAbsenceCacheTests
     [Fact]
     public void TypedUnknownArgumentsNeverPublishNegativeAndAreRetriedNextCycle()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         var api = new RendererQualificationReadCycleTests.Api();
@@ -78,7 +113,7 @@ public sealed class RendererAbsenceCacheTests
     [Fact]
     public void RuntimeSkipsAbsentInstanceUntilImageLoadThenReverifiesQualifiedResultsEveryCycle()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         var api = new RendererQualificationReadCycleTests.Api();
@@ -92,7 +127,7 @@ public sealed class RendererAbsenceCacheTests
         }
         Assert.Equal(1, api.Opens);
         Assert.Equal(1, api.ModuleReads);
-        cache.OnProcessChanged(broker.Source, identity.ProcessId);
+        broker.ProcessChanged(broker.Source, identity.ProcessId);
         api.ConfigureQt(false);
         for (var cycle = 0; cycle < 2; cycle++)
         {
@@ -112,7 +147,7 @@ public sealed class RendererAbsenceCacheTests
     [Fact]
     public void RuntimeReadsANewInstanceOnTheSamePidAndDoesNotPublishStaleCycleModuleFacts()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         var api = new RendererQualificationReadCycleTests.Api();
@@ -121,7 +156,7 @@ public sealed class RendererAbsenceCacheTests
         {
             Assert.Null(WindowsExternalGpuPlacementRuntime.ReadQualifiedRendererPlan(identity, reads,
                 _ => [new(1, 0, 12)], true, true, cache));
-            cache.OnProcessChanged(broker.Source, identity.ProcessId);
+            broker.ProcessChanged(broker.Source, identity.ProcessId);
             api.ConfigureQt(false);
             Assert.Null(WindowsExternalGpuPlacementRuntime.ReadQualifiedRendererPlan(identity, reads,
                 _ => [new(1, 0, 12)], true, true, cache)); // Same-cycle names precede the image event.
@@ -139,7 +174,7 @@ public sealed class RendererAbsenceCacheTests
     [Fact]
     public void RuntimeReadsReusedPidEvenWhileOldInstanceHasAValidNegative()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         var api = new RendererQualificationReadCycleTests.Api();
@@ -161,7 +196,7 @@ public sealed class RendererAbsenceCacheTests
     [Fact]
     public void PublishesAndHitsOnlyTheExactProcessIdentity()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         var identity = Process(101, 1001, @"C:\Apps\browser.exe");
@@ -179,12 +214,13 @@ public sealed class RendererAbsenceCacheTests
         Assert.Equal(1, broker.SubscribeCount);
         Assert.Equal(KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.ImageLoad,
             broker.Request!.Keywords);
+        Assert.Equal(KernelEtwNativeOutputs.Renderer, broker.Request.NativeOutputs);
     }
 
     [Fact]
     public void ProcessAndImageEventsInvalidatePidAndRejectAnOlderPublicationStamp()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         var identity = Process(201, 2001, @"C:\Apps\renderer.exe");
@@ -192,12 +228,12 @@ public sealed class RendererAbsenceCacheTests
         cache.PublishAbsent(identity, first);
         Assert.True(cache.Read(identity).IsAbsent);
 
-        cache.OnProcessChanged(broker.Source, identity.ProcessId);
+        broker.ProcessChanged(broker.Source, identity.ProcessId, processStart: true);
         cache.PublishAbsent(identity, first);
         Assert.False(cache.Read(identity).IsAbsent);
 
         var afterEvent = cache.Read(identity);
-        cache.OnProcessChanged(broker.Source, identity.ProcessId);
+        broker.ProcessChanged(broker.Source, identity.ProcessId);
         cache.PublishAbsent(identity, afterEvent);
         Assert.False(cache.Read(identity).IsAbsent);
     }
@@ -205,7 +241,7 @@ public sealed class RendererAbsenceCacheTests
     [Fact]
     public void ProcessStartInvalidationDoesNotTransferNegativeAcrossPidReuse()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         var oldIdentity = Process(301, 3001, @"C:\Apps\renderer.exe");
@@ -213,7 +249,7 @@ public sealed class RendererAbsenceCacheTests
         var oldObservation = cache.Read(oldIdentity);
         cache.PublishAbsent(oldIdentity, oldObservation);
 
-        cache.OnProcessChanged(broker.Source, oldIdentity.ProcessId);
+        broker.ProcessChanged(broker.Source, oldIdentity.ProcessId, processStart: true);
         Assert.False(cache.Read(oldIdentity).IsAbsent);
         Assert.False(cache.Read(newIdentity).IsAbsent);
 
@@ -225,7 +261,7 @@ public sealed class RendererAbsenceCacheTests
     [Fact]
     public void LossUnavailableAndRebindClearEntriesAndRejectOldStampsAndCallbacks()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         var identity = Process(401, 4001, @"C:\Apps\renderer.exe");
@@ -237,7 +273,7 @@ public sealed class RendererAbsenceCacheTests
         cache.PublishAbsent(identity, cache.Read(identity));
         Assert.True(cache.Read(identity).IsAbsent);
 
-        cache.OnProcessChanged(broker.Source, identity.ProcessId);
+        broker.ProcessChanged(broker.Source, identity.ProcessId);
         var beforeUnavailable = cache.Read(identity);
         broker.SetState("Unavailable");
         cache.PublishAbsent(identity, beforeUnavailable);
@@ -248,7 +284,7 @@ public sealed class RendererAbsenceCacheTests
         cache.PublishAbsent(identity, cache.Read(identity));
         Assert.True(cache.Read(identity).IsAbsent);
         var oldSource = broker.Source;
-        cache.OnProcessChanged(oldSource, identity.ProcessId);
+        broker.ProcessChanged(oldSource, identity.ProcessId);
         var beforeRebind = cache.Read(identity);
         broker.Rebind(2);
         cache.PublishAbsent(identity, beforeRebind);
@@ -256,10 +292,10 @@ public sealed class RendererAbsenceCacheTests
         cache.PublishAbsent(identity, cache.Read(identity));
         Assert.True(cache.Read(identity).IsAbsent);
 
-        cache.OnProcessChanged(oldSource, identity.ProcessId);
+        broker.ProcessChanged(oldSource, identity.ProcessId);
         Assert.True(cache.Read(identity).IsAbsent);
 
-        cache.OnProcessChanged(broker.Source, identity.ProcessId);
+        broker.ProcessChanged(broker.Source, identity.ProcessId);
         var beforeCoverageLoss = cache.Read(identity);
         broker.SetKeywords(KernelTraceEventParser.Keywords.Process);
         cache.PublishAbsent(identity, beforeCoverageLoss);
@@ -271,7 +307,7 @@ public sealed class RendererAbsenceCacheTests
     [Fact]
     public void CapacityOverflowClearsExistingNegativesAndDeclinesTheOverflowInsert()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker();
         using var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         var first = Process(10_000, 10_000, @"C:\Apps\renderer.exe");
@@ -297,7 +333,7 @@ public sealed class RendererAbsenceCacheTests
     [Fact]
     public void DisposalReleasesOnlyItsExplicitlyAcquiredLease()
     {
-        var broker = new FakeBroker();
+        using var broker = new NativeRendererTestBroker(keepSiblingLease: true);
         var cache = new RendererAbsenceCache(broker);
         using var observationRun = cache.Acquire();
         _ = cache.Read(Process(501, 5001, @"C:\Apps\renderer.exe"));
@@ -313,58 +349,4 @@ public sealed class RendererAbsenceCacheTests
     private static GpuPlacementProcessInstance Process(int processId, ulong startKey, string path)
         => new(processId, startKey, "renderer.exe", path);
 
-    private sealed class FakeBroker : IKernelEtwSessionBroker
-    {
-        private KernelEtwSessionSnapshot snapshot = new("Running", "fixture", 1, DateTimeOffset.UnixEpoch,
-            KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.ImageLoad, 1, 0);
-        private KernelEtwSubscriptionRequest? request;
-        private KernelEtwSessionContext context = new(1, DateTimeOffset.UnixEpoch);
-
-        internal KernelEtwSubscriptionRequest? Request => request;
-        internal KernelEtwEventSource Source { get; private set; } = new();
-        internal int SubscribeCount { get; private set; }
-        internal int DisposeCount { get; private set; }
-
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest subscriptionRequest)
-        {
-            request = subscriptionRequest;
-            SubscribeCount++;
-            BindNewSource();
-            return new Lease(this);
-        }
-
-        public KernelEtwSessionSnapshot GetSnapshot() => snapshot;
-
-        internal void SetEventsLost(int value) => snapshot = snapshot with { EventsLost = value };
-        internal void SetState(string value) => snapshot = snapshot with { State = value };
-        internal void SetKeywords(KernelTraceEventParser.Keywords value) => snapshot = snapshot with { EnabledKeywords = value };
-
-        internal void Rebind(long generation)
-        {
-            context = context with { Generation = generation };
-            snapshot = snapshot with { Generation = generation, StartedAt = context.StartedAt };
-            BindNewSource();
-        }
-
-        private void BindNewSource()
-        {
-            Source = new KernelEtwEventSource();
-            request!.Bind(Source, context);
-            Source.Activate();
-        }
-
-        private sealed class Lease(FakeBroker owner) : IKernelEtwSubscription
-        {
-            private bool disposed;
-            public KernelEtwSessionSnapshot GetSnapshot() => owner.snapshot;
-
-            public void Dispose()
-            {
-                if (disposed) return;
-                disposed = true;
-                owner.DisposeCount++;
-                owner.Source.Cancel();
-            }
-        }
-    }
 }

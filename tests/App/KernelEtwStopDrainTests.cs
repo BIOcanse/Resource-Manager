@@ -99,11 +99,12 @@ public sealed class KernelEtwStopDrainTests
     [Fact]
     public void RuntimeDisposalDoesNotSuppressItsIncompleteStopResult()
     {
-        var native = new CleanupControl();
-        using var session = new Microsoft.Diagnostics.Tracing.Session.TraceEventSession(native.Identity.Name)
+        using var session = new Microsoft.Diagnostics.Tracing.Session.TraceEventSession("ResourceManager.GenericDrain.Test")
         { StopOnDispose = false };
-        var runtime = new TraceEventSessionProcessingRuntime(session,
-            new KernelEtwSessionKeywordControl(native.Identity.Name, native));
+        var runtime = new TraceEventSessionProcessingRuntime(session);
+        // The generic runtime owns no kernel controller. Confirm this fixture's
+        // no-op provider stop without opening a native ETW session.
+        Cleanup(runtime).StopSession(static () => { });
         // No ETW source/session is opened. Supply an already failed consumer so
         // the actual runtime's initial Stop returns an incomplete drain result.
         var taskField = typeof(TraceEventSessionProcessingRuntime).GetField("processingTask",
@@ -121,13 +122,22 @@ public sealed class KernelEtwStopDrainTests
         }
     }
 
-    private sealed class CleanupControl : IKernelEtwNativeSessionControl
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GenericConsumerCannotStartAfterStop(bool externalProcess)
     {
-        internal KernelEtwNativeSessionIdentity Identity { get; } = new(
-            ResourceManagerEtwSessionNames.KernelSessionName, 1, Guid.NewGuid(),
-            KernelEtwSessionKeywordControl.RealTimeMode | KernelEtwSessionKeywordControl.SystemLoggerMode);
-        public KernelEtwNativeSessionIdentity Query(string sessionName) => Identity;
-        public void SetSystemTraceFlags(ulong sessionHandle, ulong flags) => throw new InvalidOperationException();
-        public void StopSession(ulong sessionHandle, string sessionName) { }
+        using var session = new Microsoft.Diagnostics.Tracing.Session.TraceEventSession("ResourceManager.GenericDrain.Start.Test")
+        { StopOnDispose = false };
+        using var runtime = new TraceEventSessionProcessingRuntime(session);
+        Cleanup(runtime).StopSession(static () => { });
+        Assert.True(runtime.Stop(TimeSpan.Zero).IsReleased);
+
+        if (externalProcess) Assert.Throws<ObjectDisposedException>(runtime.Process);
+        else Assert.Throws<ObjectDisposedException>(() => runtime.StartProcessing(static _ => { }));
     }
+
+    private static KernelEtwSessionRuntimeCleanup Cleanup(TraceEventSessionProcessingRuntime runtime)
+        => (KernelEtwSessionRuntimeCleanup)typeof(TraceEventSessionProcessingRuntime).GetField("cleanup",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(runtime)!;
 }

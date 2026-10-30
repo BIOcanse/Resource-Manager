@@ -1,5 +1,7 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using System.Globalization;
 using System.Net;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -10,7 +12,7 @@ using ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed partial class EtwNetworkAttributionWindowTests
+public sealed partial class OracleNetworkAttributionWindowTests
 {
     [Fact]
     public void DefaultRateReadVerifiesIdentityWithoutPublishingAnObservedWindow()
@@ -29,7 +31,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         Assert.Equal(1, opens);
         Assert.Equal("2000", Assert.Single(reader.Read(includeObservedTraffic: true).ObservedTraffic!.Processes).SendBytes);
         Assert.Equal(2, opens);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
     }
 
     [Theory]
@@ -53,7 +55,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         var row = Assert.Single(reader.Read(includeObservedTraffic: true).ObservedTraffic!.Processes);
         Assert.Equal(42, row.ProcessId);
         Assert.Equal("3", row.SendBytes);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
     }
 
     [Fact]
@@ -199,10 +201,10 @@ public sealed partial class EtwNetworkAttributionWindowTests
         long tick = 0;
         using var reader = ObservationReader(broker, () => tick, pid => new ProcessLease(pid, 100));
         reader.Read(includeObservedTraffic: true);
-        for (var index = 0; index < EtwNetworkTcpIpAttributionReader.MaximumRetainedEvents; index++)
+        for (var index = 0; index < OracleNetworkTcpIpAttributionReader.MaximumRetainedEvents; index++)
             Transfer(reader, broker, 41, -1, true, false, IPAddress.Loopback, 1000, 100);
         tick = 2001;
-        var expected = (ulong)uint.MaxValue * EtwNetworkTcpIpAttributionReader.MaximumRetainedEvents;
+        var expected = (ulong)uint.MaxValue * OracleNetworkTcpIpAttributionReader.MaximumRetainedEvents;
         Assert.Equal(expected.ToString(CultureInfo.InvariantCulture),
             Assert.Single(reader.Read(includeObservedTraffic: true).ObservedTraffic!.Processes).SendBytes);
         Transfer(reader, broker, 41, 1, true, false, IPAddress.Loopback, 2100, 100);
@@ -214,7 +216,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         var recovered = Assert.Single(reader.Read(includeObservedTraffic: true).ObservedTraffic!.Processes);
         Assert.Equal(42, recovered.ProcessId);
         Assert.Equal("8000", recovered.ReceiveBytes);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
     }
 
     [Theory]
@@ -290,8 +292,8 @@ public sealed partial class EtwNetworkAttributionWindowTests
     public void EventTimestampUsesFullUtcFileTimeAndRejectsAnUnrepresentableTime()
     {
         const long exact = 9007199254740993;
-        Assert.Equal((ulong)exact, EtwNetworkTcpIpAttributionReader.ToEventFileTime(DateTime.FromFileTimeUtc(exact)));
-        Assert.Null(EtwNetworkTcpIpAttributionReader.ToEventFileTime(DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc)));
+        Assert.Equal((ulong)exact, OracleNetworkTcpIpAttributionReader.ToEventFileTime(DateTime.FromFileTimeUtc(exact)));
+        Assert.Null(OracleNetworkTcpIpAttributionReader.ToEventFileTime(DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc)));
     }
 
     [Fact]
@@ -301,25 +303,25 @@ public sealed partial class EtwNetworkAttributionWindowTests
         long tick = 0;
         using var reader = ObservationReader(broker, () => tick, pid => new ProcessLease(pid, 100), start: false);
         await reader.StartAsync(CancellationToken.None);
-        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref broker.SubscribeCount) > 0, TimeSpan.FromSeconds(5)));
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref broker.SubscribeCount) == 2, TimeSpan.FromSeconds(5)));
         reader.Read(includeObservedTraffic: true);
         Transfer(reader, broker, 41, 100, true, false, IPAddress.Loopback, 1000, 100);
 
         await reader.StopAsync(CancellationToken.None);
 
-        Assert.Equal(1, broker.DisposeCount);
+        Assert.Equal(2, broker.DisposeCount);
         Assert.False(broker.Source.IsActive);
     }
 
-    private static EtwNetworkTcpIpAttributionReader ObservationReader(Broker broker, Func<long> clock,
+    private static OracleNetworkTcpIpAttributionReader ObservationReader(Broker broker, Func<long> clock,
         Func<uint, IWindowsNetworkEndpointProcessLease?> open, bool start = true)
     {
-        var reader = new EtwNetworkTcpIpAttributionReader(broker,
-            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock, open);
+        var reader = new OracleNetworkTcpIpAttributionReader(broker,
+            NullLogger<OracleNetworkTcpIpAttributionReader>.Instance, clock, open);
         return start ? StartReader(reader, broker) : reader;
     }
 
-    private static void Transfer(EtwNetworkTcpIpAttributionReader reader, Broker broker, int pid, int size,
+    private static void Transfer(OracleNetworkTcpIpAttributionReader reader, Broker broker, int pid, int size,
         bool send, bool udp, IPAddress remote, long tick, ulong? fileTime)
         => reader.ObserveBoundNetworkTransfer(broker.Source, broker.Context, pid, size, send, udp, remote, tick, fileTime);
 

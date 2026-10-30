@@ -1,5 +1,7 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using System.Collections.Frozen;
 using System.Diagnostics;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -23,7 +25,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
         const int processors = 32, processes = 500, eventCount = 2_000_000;
         var heapBefore = GC.GetTotalMemory(true);
         var storage = new StorageCounter();
-        var buffer = new CpuResidencyAggregationBuffer(1_000_000, 5000, 16384, 50, storage.Allocate);
+        var buffer = new OracleCpuResidencyAggregationBuffer(1_000_000, 5000, 16384, 50, storage.Allocate);
         for (var pid = 1; pid <= processes; pid++)
         {
             buffer.SeedProcess(pid, pid, "P");
@@ -108,7 +110,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     [Fact]
     public void UnalignedCpuWindowHasOnlyTheDocumentedEdgeError()
     {
-        var buffer = new CpuResidencyAggregationBuffer(1000, 1000, 8, 100);
+        var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1000, 8, 100);
         for (var pid = 1; pid <= 2; pid++) { buffer.SeedProcess(pid, pid, "P"); buffer.SeedThread(pid, pid); }
         Switch(buffer, 0, 0, 0, 1);
         var exact = new Dictionary<(int Pid, int Core), long>();
@@ -128,7 +130,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     public void HalfMillionDiskTransfersKeepGroupsAndReleaseExpiredStorage()
     {
         var storage = new StorageCounter();
-        using var disk = new EtwPhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, 100),
+        using var disk = new OraclePhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, 100),
             allocateBuckets: storage.Allocate);
         var watch = Stopwatch.StartNew();
         for (var index = 0; index < 500_000; index++)
@@ -171,9 +173,9 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     public async Task PageSizedHistoryUsesRealLedgerStorageUntilItExpires()
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        await OracleLedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
         {
-            var buffer = new CpuResidencyAggregationBuffer(1000, 1000, 8, 1, length => allocate(length));
+            var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1000, 8, 1, length => allocate(length));
             buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1); Switch(buffer, 0, 0, 0, 1); Switch(buffer, 1000, 0, 1, 0);
             Assert.True(buffer.Snapshot([0]).IsComplete);
             Assert.True(ledger.ReadTable().RegisteredBytes >= 1002UL * 24);
@@ -192,7 +194,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     {
         var host = HostManagerTestPlanFactory.CreatePlan(cpuTopology: HostManagerTestPlanFactory.CreateCpuTopology(2));
         var plan = host.CpuCoreResidency with { ObservationWindowMilliseconds = 1000 };
-        var buffer = EtwCpuResidencyCaptureOwner.CreateAggregationBuffer(new(1000, plan.ExecutionTimeSource.MaximumActivePairs,
+        var buffer = OracleCpuResidencyCaptureOwner.CreateAggregationBuffer(new(1000, plan.ExecutionTimeSource.MaximumActivePairs,
             plan.PhysicalCoreByLogicalProcessor.ToFrozenDictionary(pair => pair.Key,
                 pair => new CpuResidencyCoreAccounting(pair.Value.PhysicalCoreId, pair.Value.CcdId, pair.Value.LogicalProcessorCount, pair.Value.LogicalProcessorShare)),
             "compiled scoring test", plan.ExecutionTimeSource.BucketWidthMilliseconds), 1000);
@@ -228,7 +230,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     public void CpuSkewStorageShrinksAndSkewBeyondTheBoundIsIncomplete()
     {
         var storage = new StorageCounter();
-        var buffer = new CpuResidencyAggregationBuffer(1000, 500, 8, 5, storage.Allocate);
+        var buffer = new OracleCpuResidencyAggregationBuffer(1000, 500, 8, 5, storage.Allocate);
         buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1);
         Switch(buffer, 0, 0, 0, 1); Switch(buffer, 0, 1, 0, 0);
         Switch(buffer, 500, 1, 0, 0); Switch(buffer, 1000, 0, 1, 0);
@@ -251,7 +253,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     public void DiskPidReuseInsideOneBucketKeepsBirthsSeparateAndEdgesKeepIntegerBytes()
     {
         ulong birth = 100;
-        using var disk = new EtwPhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, birth));
+        using var disk = new OraclePhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, birth));
         disk.ObserveDiskTransfer(1, 9007199254740993UL, false, 1050, 0, 101);
         birth = 200; disk.ObserveProcessIdentityChange(1);
         disk.ObserveDiskTransfer(1, 7UL, false, 1060, 0, 201);
@@ -268,16 +270,16 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     public void StorageAdmissionFailureCannotPublishACompleteWindowOrAllocateAFallback()
     {
         var cpuAttempts = 0;
-        var cpu = new CpuResidencyAggregationBuffer(1000, 1000, 8, 50,
-            length => ++cpuAttempts == 1 ? throw new IOException("storage admission refused") : CaptureBucketMemory.AllocateManaged(length));
+        var cpu = new OracleCpuResidencyAggregationBuffer(1000, 1000, 8, 50,
+            length => ++cpuAttempts == 1 ? throw new IOException("storage admission refused") : OracleCaptureBucketMemory.AllocateManaged(length));
         cpu.SeedProcess(1, 1, "P"); cpu.SeedThread(1, 1); Switch(cpu, 0, 0, 0, 1);
         Assert.Throws<IOException>(() => Switch(cpu, 1000, 0, 1, 0));
         Assert.Equal(1, cpuAttempts); Assert.False(cpu.Snapshot([0]).IsComplete);
         Switch(cpu, 1000, 0, 0, 1); Switch(cpu, 2000, 0, 1, 0);
         Assert.True(cpu.Snapshot([0]).IsComplete); cpu.Clear();
         var diskAttempts = 0;
-        using var disk = new EtwPhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, 100),
-            allocateBuckets: length => ++diskAttempts == 1 ? throw new IOException("storage admission refused") : CaptureBucketMemory.AllocateManaged(length));
+        using var disk = new OraclePhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, 100),
+            allocateBuckets: length => ++diskAttempts == 1 ? throw new IOException("storage admission refused") : OracleCaptureBucketMemory.AllocateManaged(length));
         Assert.Throws<IOException>(() => disk.ObserveDiskTransfer(1, 7UL, false, 1000, 0, 101));
         Assert.Equal(1, diskAttempts); Assert.False(disk.ReadWindow(2000).Complete);
         disk.ObserveDiskTransfer(1, 7UL, false, 4000, 0, 101);
@@ -285,12 +287,12 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task DiskOwnerKeepsFailedLedgerCloseUntilDisposeRetry()
+    public async Task ManagedOracleDiskOwnerKeepsFailedLedgerCloseUntilDisposeRetry()
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        await OracleLedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
         {
-            var disk = new EtwPhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, 100),
+            var disk = new OraclePhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, 100),
                 bucketWidthMilliseconds: 1, allocateBuckets: length => new FailCloseOnce(allocate(length)));
             disk.ObserveDiskTransfer(1, 7UL, false, 1000, 0, 101);
             Assert.Throws<IOException>(disk.Dispose);
@@ -306,37 +308,47 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task CpuOwnerKeepsFailedLedgerCloseAcrossStopOrBrokerRebind(bool rebind)
+    public async Task ManagedOracleCpuOwnerKeepsFailedLedgerCloseAcrossStopOrBrokerRebind(bool rebind)
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        await OracleLedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
         {
             var broker = new RebindingBroker();
-            using var cpu = new EtwCpuResidencyCaptureOwner(broker,
+            using var cpu = new OracleCpuResidencyCaptureOwner(broker,
                 () => new(1000, 8, new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(), "recorded", 1),
                 new(), static (_, _) => { }, allocateBuckets: length => new FailCloseOnce(allocate(length)));
             cpu.EnsureStarted();
-            cpu.BeginWindow();
-            // Feed the actual active buffer without synthesizing OS TraceEvent objects or starting ETW.
-            var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(cpu)!;
-            var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
+            Assert.Equal(1, broker.MetadataBindAttempts);
+            Assert.Equal(1, broker.DurationBindAttempts);
+            Assert.Equal(2, broker.ActiveHolds);
+            // Feed the retained managed oracle buffer without synthesizing OS TraceEvent objects or starting ETW.
+            var session = typeof(OracleCpuResidencyCaptureOwner).GetField("activeSession", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(cpu)!;
+            var buffer = (OracleCpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
             buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1);
             Switch(buffer, 0, 0, 0, 1); Switch(buffer, Stopwatch.Frequency, 0, 1, 0);
             Assert.True(ledger.ReadTable().RegisteredBytes > 0);
             if (rebind) Assert.Throws<IOException>(broker.Rebind);
             else Assert.Throws<IOException>(() => cpu.Stop());
+            Assert.Equal(rebind ? 2 : 1, broker.MetadataBindAttempts);
+            Assert.Equal(1, broker.DurationBindAttempts);
+            Assert.Equal(rebind ? 2 : 0, broker.ActiveHolds);
             Assert.True(cpu.HasSessionLease);
             Assert.True(ledger.ReadTable().RegisteredBytes > 0);
             Assert.Equal(0UL, ledger.Tick().Released);
             if (rebind) broker.Rebind(); else cpu.Stop();
             Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+            Assert.Equal(rebind ? 3 : 1, broker.MetadataBindAttempts);
+            Assert.Equal(rebind ? 2 : 1, broker.DurationBindAttempts);
             cpu.Dispose(); cpu.Dispose();
             Assert.Equal(2, broker.Releases);
+            Assert.Equal(1, broker.MetadataReleases);
+            Assert.Equal(1, broker.DurationReleases);
+            Assert.Equal(0, broker.ActiveHolds);
             return Task.CompletedTask;
         });
     }
 
-    private sealed class FailCloseOnce(CaptureBucketMemory inner) : CaptureBucketMemory
+    private sealed class FailCloseOnce(OracleCaptureBucketMemory inner) : OracleCaptureBucketMemory
     {
         private bool failed;
         internal override Span<byte> Bytes => inner.Bytes;
@@ -346,39 +358,52 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
             inner.Dispose();
         }
     }
-    private sealed class RebindingBroker : IKernelEtwSessionBroker
+    private sealed class RebindingBroker : IOracleKernelEtwSessionBroker
     {
-        private KernelEtwSubscriptionRequest? request;
-        private KernelEtwEventSource? source;
-        private readonly List<Lease> leases = [];
+        private readonly Dictionary<long, (OracleKernelEtwSubscriptionRequest Request, OracleKernelEtwEventSource Source)> holds = [];
+        private long nextId;
         internal int Releases;
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest next)
+        internal int MetadataReleases, DurationReleases, MetadataBindAttempts, DurationBindAttempts;
+        internal int ActiveHolds => holds.Count;
+        private static bool IsMetadata(OracleKernelEtwSubscriptionRequest request)
+            => request.Keywords == (KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread);
+        public IOracleKernelEtwSubscription Acquire(OracleKernelEtwSubscriptionRequest next)
         {
-            var metadata = next.Keywords.HasFlag(Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords.Process);
-            var lease = new Lease(this, next.Keywords, metadata);
-            leases.Add(lease);
-            if (metadata) { request = next; Rebind(); }
-            else next.Bind(source!, new(7, Time));
-            return lease;
+            var id = ++nextId;
+            var source = Bind(next);
+            holds.Add(id, (next, source));
+            return new Lease(this, id);
+        }
+        private OracleKernelEtwEventSource Bind(OracleKernelEtwSubscriptionRequest request)
+        {
+            if (IsMetadata(request)) MetadataBindAttempts++; else DurationBindAttempts++;
+            var source = new OracleKernelEtwEventSource();
+            request.Bind(source, new(7, Time)); source.Activate();
+            return source;
         }
         internal void Rebind()
-        { source?.Cancel(); source = new(); request!.Bind(source, new(7, Time)); source.Activate(); }
-        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", 7, Time,
-            leases.Aggregate(Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords.None,
-                (keywords, lease) => keywords | lease.Keywords), leases.Count, 0);
-        private sealed class Lease(RebindingBroker owner,
-            Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords keywords, bool metadata) : IKernelEtwSubscription
         {
-            internal Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords Keywords { get; } = keywords;
-            private bool released;
+            // A replacement runtime binds metadata first. A failed metadata
+            // close must abort before duration callbacks are rebound.
+            foreach (var item in holds.OrderBy(item => IsMetadata(item.Value.Request) ? 0 : 1).ToArray())
+            {
+                item.Value.Source.Cancel();
+                holds[item.Key] = (item.Value.Request, Bind(item.Value.Request));
+            }
+        }
+        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", 7, Time,
+            holds.Values.Aggregate(KernelTraceEventParser.Keywords.None, (all, held) => all | held.Request.Keywords), holds.Count, 0);
+        private sealed class Lease(RebindingBroker owner, long id) : IOracleKernelEtwSubscription
+        {
+            private bool disposed;
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
             public void Dispose()
             {
-                if (released) return;
-                released = true;
-                owner.leases.Remove(this);
-                if (metadata) owner.source?.Cancel();
-                owner.Releases++;
+                if (disposed) return;
+                disposed = true;
+                var held = owner.holds[id];
+                held.Source.Cancel(); owner.holds.Remove(id); owner.Releases++;
+                if (IsMetadata(held.Request)) owner.MetadataReleases++; else owner.DurationReleases++;
             }
         }
     }
@@ -387,7 +412,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     public void DiskTemporaryIdentityFailureRecoversOnlyWithANewVerifiedCleanWindow()
     {
         var readable = false;
-        using var disk = new EtwPhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0,
+        using var disk = new OraclePhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0,
             pid => readable ? new ProcessLease(pid, 100) : null);
         disk.ObserveDiskTransfer(1, 7UL, false, 1000, 0, 101);
         readable = true;
@@ -402,9 +427,9 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     public async Task CpuResizeRetainsBothFailedLedgerCloseObligations()
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        await OracleLedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
         {
-            var buffer = new CpuResidencyAggregationBuffer(1000, 1000, 8, 1,
+            var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1000, 8, 1,
                 length => new FailCloseOnce(allocate(length)));
             buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1);
             Switch(buffer, 0, 0, 0, 1); Switch(buffer, 0, 1, 0, 0);
@@ -419,7 +444,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
         });
     }
 
-    private static void Switch(CpuResidencyAggregationBuffer buffer, long tick, int core, int old, int next)
+    private static void Switch(OracleCpuResidencyAggregationBuffer buffer, long tick, int core, int old, int next)
         => buffer.ObserveContextSwitch(tick, Time, core, old, old, next, null, next);
     private static void AddExact(Dictionary<(int Pid, int Core), long> totals, int pid, int core, long from, long to, long start, long end)
     {
@@ -432,8 +457,8 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     private sealed class StorageCounter
     {
         internal long LiveBytes, PeakBytes;
-        internal CaptureBucketMemory Allocate(int length) { LiveBytes += length; PeakBytes = Math.Max(PeakBytes, LiveBytes); return new Counted(this, length); }
-        private sealed class Counted(StorageCounter owner, int length) : CaptureBucketMemory
+        internal OracleCaptureBucketMemory Allocate(int length) { LiveBytes += length; PeakBytes = Math.Max(PeakBytes, LiveBytes); return new Counted(this, length); }
+        private sealed class Counted(StorageCounter owner, int length) : OracleCaptureBucketMemory
         {
             private byte[]? bytes = new byte[length];
             internal override Span<byte> Bytes => bytes ?? throw new ObjectDisposedException(nameof(Counted));
@@ -446,9 +471,9 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
         public bool TryReadCreationFileTime(out ulong value) { value = birth; return true; }
         public void Dispose() { }
     }
-    private sealed class Broker : IKernelEtwSessionBroker
+    private sealed class Broker : IOracleKernelEtwSessionBroker
     {
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request) => throw new NotSupportedException("recorded intake only");
+        public IOracleKernelEtwSubscription Acquire(OracleKernelEtwSubscriptionRequest request) => throw new NotSupportedException("recorded intake only");
         public KernelEtwSessionSnapshot GetSnapshot() => throw new NotSupportedException("recorded intake only");
     }
 }

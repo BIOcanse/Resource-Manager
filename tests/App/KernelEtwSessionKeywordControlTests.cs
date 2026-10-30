@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -10,15 +11,15 @@ public sealed class KernelEtwSessionKeywordControlTests
     {
         var native = new FakeNativeControl();
         var control = new KernelEtwSessionKeywordControl(native.Identity.Name, native);
-        var dispatcher = new KernelEtwSubscriptionDispatcher();
-        KernelEtwEventSource? source = null;
+        var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
+        OracleKernelEtwEventSource? source = null;
         dispatcher.InitializeSubscriptions([new(1, "cpu", KernelTraceEventParser.Keywords.ContextSwitch,
             (bound, _) => source = bound)], new(1, DateTimeOffset.UnixEpoch));
         // TraceEvent sessions start lazily at EnableKernelProvider. This fixture never
         // starts or controls an OS session; only the injected native controller is used.
         using var session = new Microsoft.Diagnostics.Tracing.Session.TraceEventSession(native.Identity.Name)
         { StopOnDispose = false };
-        var runtime = new TraceEventSessionProcessingRuntime(session, control, dispatcher);
+        var runtime = new OracleTraceEventSessionProcessingRuntime(session, control, dispatcher);
         native.StopFailure = new UnauthorizedAccessException("fixture stop denied");
 
         var first = runtime.Stop(TimeSpan.Zero);
@@ -77,8 +78,8 @@ public sealed class KernelEtwSessionKeywordControlTests
         Assert.Equal(
             new[]
             {
-                (native.Identity.Handle, WithMetadata(union)),
-                (native.Identity.Handle, WithMetadata(KernelTraceEventParser.Keywords.NetworkTCPIP))
+                (native.Identity.Handle, (ulong)(uint)union),
+                (native.Identity.Handle, (ulong)(uint)KernelTraceEventParser.Keywords.NetworkTCPIP)
             },
             native.Updates);
     }
@@ -183,8 +184,6 @@ public sealed class KernelEtwSessionKeywordControlTests
         Assert.Equal(failQuery ? 0 : 1, native.Updates.Count);
     }
 
-    private static ulong WithMetadata(KernelTraceEventParser.Keywords keywords)
-        => (uint)(keywords | KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread);
 
     private sealed class FakeNativeControl : IKernelEtwNativeSessionControl
     {

@@ -1,5 +1,4 @@
-﻿using Microsoft.Diagnostics.Tracing.Parsers;
-using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -9,28 +8,32 @@ namespace ResourceManager.App.Infrastructure.GpuPlacement.External;
 internal sealed class RendererAbsenceCache : IDisposable
 {
     internal const int MaximumCachedEntries = 4096;
-    private const int RevisionSlotCount = 4096;
     private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.Process
         | KernelTraceEventParser.Keywords.ImageLoad;
 
     private readonly object gate = new();
     private readonly object lifetimeGate = new();
     private readonly IKernelEtwSessionBroker broker;
+    private readonly Func<KernelEtwEventSource, int, KernelEtwNativeRendererHistory.Revision?> readRevision;
     private readonly Dictionary<CacheKey, CacheEntry> entries = new(CacheKeyComparer.Instance);
-    // Hash collisions only cause conservative misses. The fixed table bounds invalidation stamps.
-    private readonly long[] pidRevisions = new long[RevisionSlotCount];
     private readonly string subscriptionId = $"renderer-absence-cache:{Guid.NewGuid():N}";
     private IKernelEtwSubscription? lease;
     private Binding? currentBinding;
     private object cacheEpoch = new();
-    private long nextBindingId;
     private long? observedGeneration;
     private int? observedEventsLost;
     private int holders;
     private bool disposed;
 
     public RendererAbsenceCache(IKernelEtwSessionBroker broker)
-        => this.broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        : this(broker, KernelEtwNativeRendererHistory.Read) { }
+
+    internal RendererAbsenceCache(IKernelEtwSessionBroker broker,
+        Func<KernelEtwEventSource, int, KernelEtwNativeRendererHistory.Revision?> readRevision)
+    {
+        this.broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        this.readRevision = readRevision;
+    }
 
     internal readonly record struct Observation(bool IsAbsent, object? Stamp)
     {
@@ -50,17 +53,17 @@ internal sealed class RendererAbsenceCache : IDisposable
                 || observedGeneration != snapshot.Generation || observedEventsLost != snapshot.EventsLost)
                 return default;
 
-            var revisionSlot = GetRevisionSlot(identity.ProcessId);
-            var revision = pidRevisions[revisionSlot];
+            var revision = ReadRevision(binding, identity.ProcessId);
+            if (revision is null) return default;
             if (entries.TryGetValue(key, out var entry))
             {
-                if (entry.RevisionSlot == revisionSlot && entry.Revision == revision)
+                if (entry.Revision == revision.Value)
                     return new(true, null);
                 entries.Remove(key);
             }
 
             return new(false, new PublicationStamp(key, binding, snapshot.Generation,
-                snapshot.EventsLost, cacheEpoch, revisionSlot, revision));
+                snapshot.EventsLost, cacheEpoch, revision.Value));
         }
     }
 
@@ -81,12 +84,11 @@ internal sealed class RendererAbsenceCache : IDisposable
                 || !binding.Source.IsActive || !ReferenceEquals(cacheEpoch, stamp.CacheEpoch)
                 || snapshot.Generation != stamp.Generation || snapshot.EventsLost != stamp.EventsLost
                 || observedGeneration != stamp.Generation || observedEventsLost != stamp.EventsLost
-                || stamp.RevisionSlot != GetRevisionSlot(identity.ProcessId)
-                || pidRevisions[stamp.RevisionSlot] != stamp.Revision)
+                || ReadRevision(binding, identity.ProcessId) != stamp.Revision)
                 return;
 
             if (entries.TryGetValue(key, out var existing)
-                && existing.RevisionSlot == stamp.RevisionSlot && existing.Revision == stamp.Revision)
+                && existing.Revision == stamp.Revision)
                 return;
 
             if (entries.Count >= MaximumCachedEntries)
@@ -96,22 +98,8 @@ internal sealed class RendererAbsenceCache : IDisposable
                 return;
             }
 
-            entries[key] = new CacheEntry(stamp.RevisionSlot, stamp.Revision);
+            entries[key] = new CacheEntry(stamp.Revision);
         }
-    }
-
-    // The production ETW handlers route decoded PIDs through this helper. It is also
-    // the deterministic test seam because TraceEvent payload classes are sealed.
-    internal void OnProcessChanged(KernelEtwEventSource source, int processId)
-    {
-        Binding? binding;
-        lock (gate)
-        {
-            binding = currentBinding;
-            if (binding is null || !ReferenceEquals(binding.Source, source)) return;
-        }
-
-        OnProcessChanged(binding, processId);
     }
 
     /// <summary>Held by the owning Smart block for its entire run, never by a read or sampling round.</summary>
@@ -126,7 +114,8 @@ internal sealed class RendererAbsenceCache : IDisposable
             }
             try
             {
-                var acquired = broker.Subscribe(new(subscriptionId, RequiredKeywords, BindSource));
+                var acquired = broker.Acquire(new(subscriptionId, RequiredKeywords, BindSource)
+                { NativeOutputs = KernelEtwNativeOutputs.Renderer });
                 lock (gate) Volatile.Write(ref lease, acquired);
                 return new Hold(this);
             }
@@ -168,17 +157,14 @@ internal sealed class RendererAbsenceCache : IDisposable
     private void ReleaseCapture()
     {
         IKernelEtwSubscription? ownedLease;
-        Binding? binding;
         lock (gate)
         {
             ownedLease = lease;
             Volatile.Write(ref lease, null);
-            binding = currentBinding;
             currentBinding = null;
             ClearTrackingLocked();
         }
-        try { if (binding is not null) Detach(binding); }
-        finally { ownedLease?.Dispose(); }
+        ownedLease?.Dispose();
     }
 
     private sealed class Hold(RendererAbsenceCache cache) : IDisposable
@@ -189,30 +175,21 @@ internal sealed class RendererAbsenceCache : IDisposable
 
     private void BindSource(KernelEtwEventSource source, KernelEtwSessionContext context)
     {
-        Binding candidate;
+        source.ConsumerCounter("renderer-invalidation");
+        source.ConsumerRejectionCounter("renderer-invalidation", "invalid-process");
+        source.ConsumerRejectionCounter("renderer-invalidation", "stale-binding");
         lock (gate)
         {
             if (disposed || holders == 0) return;
-            candidate = new Binding(this, ++nextBindingId, source, context);
+            currentBinding = new Binding(source, context);
+            ClearTrackingLocked();
         }
+    }
 
-        Attach(candidate);
-
-        Binding? previous = null;
-        var accepted = false;
-        lock (gate)
-        {
-            if (!disposed && holders != 0 && (currentBinding is null || candidate.Id > currentBinding.Id))
-            {
-                previous = currentBinding;
-                currentBinding = candidate;
-                ClearTrackingLocked();
-                accepted = true;
-            }
-        }
-
-        if (previous is not null) Detach(previous);
-        if (!accepted) Detach(candidate);
+    private KernelEtwNativeRendererHistory.Revision? ReadRevision(Binding binding, int processId)
+    {
+        try { return readRevision(binding.Source, processId); }
+        catch (ObjectDisposedException) when (!binding.Source.IsActive) { return null; }
     }
 
     private bool TryGetUsableBinding(IKernelEtwSubscription subscription, out Binding binding,
@@ -265,56 +242,6 @@ internal sealed class RendererAbsenceCache : IDisposable
         lock (gate) ClearTrackingLocked();
     }
 
-    private void OnProcessChanged(Binding binding, int processId)
-    {
-        binding.Counter.Receive();
-        if (processId <= 0)
-        {
-            binding.Counter.Drop();
-            binding.Source.RecordConsumerRejection("renderer-invalidation", "invalid-process");
-            return;
-        }
-        lock (gate)
-        {
-            if (disposed || !ReferenceEquals(currentBinding, binding) || !binding.Source.IsActive)
-            {
-                binding.Counter.Drop();
-                binding.Source.RecordConsumerRejection("renderer-invalidation", "stale-binding");
-                return;
-            }
-
-            var revisionSlot = GetRevisionSlot(processId);
-            if (pidRevisions[revisionSlot] == long.MaxValue)
-            {
-                ClearCacheLocked();
-            }
-            else
-            {
-                pidRevisions[revisionSlot]++;
-                // Entries are invalid immediately by revision and removed on their next read.
-                // Keep image callbacks constant-time; the cache remains bounded independently.
-            }
-        }
-    }
-
-    private void Attach(Binding binding)
-    {
-        binding.Source.ProcessStartGroup += binding.ProcessStarted;
-        binding.Source.ProcessEndGroup += binding.ProcessEnded;
-        binding.Source.ImageDCStart += binding.ImageChanged;
-        binding.Source.ImageLoad += binding.ImageChanged;
-        binding.Source.ImageUnload += binding.ImageChanged;
-    }
-
-    private static void Detach(Binding binding)
-    {
-        binding.Source.ProcessStartGroup -= binding.ProcessStarted;
-        binding.Source.ProcessEndGroup -= binding.ProcessEnded;
-        binding.Source.ImageDCStart -= binding.ImageChanged;
-        binding.Source.ImageLoad -= binding.ImageChanged;
-        binding.Source.ImageUnload -= binding.ImageChanged;
-    }
-
     private void ClearTrackingLocked()
     {
         ClearCacheLocked();
@@ -325,12 +252,8 @@ internal sealed class RendererAbsenceCache : IDisposable
     private void ClearCacheLocked()
     {
         entries.Clear();
-        Array.Clear(pidRevisions, 0, pidRevisions.Length);
         cacheEpoch = new object();
     }
-
-    private static int GetRevisionSlot(int processId)
-        => (int)(unchecked((uint)processId * 2654435761u) % RevisionSlotCount);
 
     private static bool TryCreateKey(GpuPlacementProcessInstance identity, out CacheKey key)
     {
@@ -347,31 +270,21 @@ internal sealed class RendererAbsenceCache : IDisposable
 
     private sealed class Binding
     {
-        internal Binding(RendererAbsenceCache owner, long id, KernelEtwEventSource source,
+        internal Binding(KernelEtwEventSource source,
             KernelEtwSessionContext context)
         {
-            Id = id;
             Source = source;
             Context = context;
-            Counter = source.ConsumerCounter("renderer-invalidation");
-            ProcessStarted = data => owner.OnProcessChanged(this, data.ProcessID);
-            ProcessEnded = data => owner.OnProcessChanged(this, data.ProcessID);
-            ImageChanged = data => owner.OnProcessChanged(this, data.ProcessID);
         }
 
-        internal long Id { get; }
         internal KernelEtwEventSource Source { get; }
         internal KernelEtwSessionContext Context { get; }
-        internal EtwEventDropCounter Counter { get; }
-        internal Action<ProcessTraceData> ProcessStarted { get; }
-        internal Action<ProcessTraceData> ProcessEnded { get; }
-        internal Action<ImageLoadTraceData> ImageChanged { get; }
     }
 
     private readonly record struct CacheKey(int ProcessId, ulong ProcessStartKey, string ExecutablePath);
-    private readonly record struct CacheEntry(int RevisionSlot, long Revision);
+    private readonly record struct CacheEntry(KernelEtwNativeRendererHistory.Revision Revision);
     private sealed record PublicationStamp(CacheKey Key, Binding Binding, long Generation, int EventsLost,
-        object CacheEpoch, int RevisionSlot, long Revision);
+        object CacheEpoch, KernelEtwNativeRendererHistory.Revision Revision);
 
     private sealed class CacheKeyComparer : IEqualityComparer<CacheKey>
     {

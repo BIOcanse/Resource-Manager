@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,18 +20,16 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
     public async Task LiveCpuNetworkInterruptAndDiskConsumersRetainTheirOneSession()
     {
         Assert.True(TraceEventSession.IsElevated());
-        var dpcEvents = 0;
-        var factory = new OwnedRuntimeFactory
-        {
-            ObserveParser = parser => parser.PerfInfoDPC += data =>
-            {
-                if (data.ElapsedTimeMSec > 0) Interlocked.Increment(ref dpcEvents);
-            }
-        };
-        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         var topology = new WindowsCpuTopologyReader(new EmptyConsumerOverrides()).CaptureTopology();
         using var sampling = new HostManagerSamplingSubscriptionTestFixture(
             HostManagerTestPlanFactory.CreatePlan(cpuTopology: topology));
+        var nativeConfiguration = KernelEtwNativeSettings.CreateConfiguration(
+            sampling.Provider.Current.HostManager.KernelEtwLimits
+                ?? throw new InvalidOperationException("Native kernel limits were not published."),
+            sampling.Provider.Current.HostManager.CpuCoreResidency,
+            checked((uint)sampling.Provider.Current.HostManager.CpuCoreResidency.PhysicalCoreByLogicalProcessor.Count));
+        var factory = new NativeConsumerRuntimeFactory(nativeConfiguration);
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         using var cpu = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
             NullLogger<EtwCpuCoreResidencyReader>.Instance);
         using var cpuDemand = cpu.AcquireSubscription("owned.native.cpu", TimeSpan.FromMilliseconds(100));
@@ -46,6 +45,7 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         using var stopWriter = new CancellationTokenSource();
         Thread? writer = null;
         Exception? writerFailure = null;
+        LiveDpcDurationEvidence? dpcEvidence = null;
         await cpu.StartAsync(CancellationToken.None);
         try
         {
@@ -53,7 +53,10 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
                 process.ProcessId == Environment.ProcessId && process.ExecutionTimeMilliseconds > 0),
                 "CPU consumer did not publish owned execution durations", TimeSpan.FromSeconds(20));
             var initial = broker.GetSnapshot();
-            Assert.Equal(1, initial.SubscriptionCount);
+            Assert.Equal(2, initial.SubscriptionCount);
+            // Independent live decoding of the same already-owned session is
+            // evidence for DPC itself, not merely the native window's maximum kind.
+            dpcEvidence = new(ResourceManagerEtwSessionNames.KernelSessionName);
             await network.StartAsync(CancellationToken.None);
             network.Read();
             var interruptInterval = TimeSpan.FromMilliseconds(sampling.Provider.Current.HostManager.RequirePublished()
@@ -62,7 +65,7 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
             await interrupts.StartAsync(CancellationToken.None);
             await disk.StartAsync(CancellationToken.None);
             disk.Read();
-            await UntilAsync(() => broker.GetSnapshot().SubscriptionCount == 4, "four production consumers did not subscribe");
+            await UntilAsync(() => broker.GetSnapshot().SubscriptionCount == 7, "the four production consumers did not install their seven metadata/data holds");
             var combined = broker.GetSnapshot();
             Assert.Equal(initial.Generation, combined.Generation);
             Assert.Equal(initial.StartedAt, combined.StartedAt);
@@ -101,9 +104,17 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
                 && row.WriteBytesPerSecond > 0, "disk consumer did not attribute owned physical writes");
             await UntilAsync(() => interrupts.Read() is { Available: true, EventCount: > 0 },
                 "interrupt consumer did not publish real ISR/DPC events",
-                SystemInterruptWindowAggregator.BucketDuration + TimeSpan.FromSeconds(5));
+                TimeSpan.FromSeconds(15));
             Assert.Equal(initial.Generation, interrupts.Read().SourceGeneration);
-            Assert.True(Volatile.Read(ref dpcEvents) > 0, "The real parser did not receive DPC durations.");
+            dpcEvidence.ThrowIfFailed();
+            Assert.True(dpcEvidence.PositiveDpcDurations > 0,
+                "The independent real-time parser did not receive positive DPC durations.");
+            Assert.NotNull(interrupts.Read().MaximumEventKind);
+            Assert.Contains(interrupts.Read().MaximumEventKind!, new[] {
+                ResourceManager.App.Domain.SystemHealth.SystemInterruptEventKinds.Isr,
+                ResourceManager.App.Domain.SystemHealth.SystemInterruptEventKinds.Dpc,
+                ResourceManager.App.Domain.SystemHealth.SystemInterruptEventKinds.ThreadedDpc,
+                ResourceManager.App.Domain.SystemHealth.SystemInterruptEventKinds.TimerDpc });
             Assert.Equal(0, broker.GetSnapshot().EventsLost);
             var measuredThrough = cpu.Read()!.MeasuredThrough;
             stopWriter.Cancel();
@@ -114,7 +125,7 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
             interruptDemand.Dispose();
             await interrupts.StopAsync(CancellationToken.None);
             var retained = broker.GetSnapshot();
-            Assert.Equal(1, retained.SubscriptionCount);
+            Assert.Equal(2, retained.SubscriptionCount);
             Assert.Equal(initial.Generation, retained.Generation);
             Assert.Equal(initial.StartedAt, retained.StartedAt);
             Assert.Equal(KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread
@@ -122,7 +133,9 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
             await UntilAsync(() => cpu.Read() is { } next && next.MeasuredThrough > measuredThrough,
                 "retained CPU consumer did not advance its real measured window after other consumers left");
             Assert.Equal(1, factory.Created);
+            await dpcEvidence.DisposeAsync();
             cpuDemand.Dispose();
+            await cpu.StopAsync(CancellationToken.None); // Explicit run return owns the metadata/duration resource lifetime.
             await UntilAsync(() => !broker.GetSnapshot().IsRunning, "the last consumer did not release the session");
             await UntilAsync(() => !TraceEventSession.GetActiveSessionNames().Contains(
                 ResourceManagerEtwSessionNames.KernelSessionName), "the owned native session did not finish releasing");
@@ -131,6 +144,7 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         {
             stopWriter.Cancel();
             if (writer is not null) Assert.True(writer.Join(TimeSpan.FromSeconds(5)));
+            if (dpcEvidence is not null) await dpcEvidence.DisposeAsync();
             await disk.StopAsync(CancellationToken.None);
             await network.StopAsync(CancellationToken.None);
             await interrupts.StopAsync(CancellationToken.None);
@@ -140,6 +154,65 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         }
     }
 
+    /// <summary>Test-only independent consumer; it never creates or controls a provider.</summary>
+    private sealed class LiveDpcDurationEvidence : IAsyncDisposable
+    {
+        private readonly ETWTraceEventSource source;
+        private readonly Task processing;
+        private int positiveDpcDurations;
+        private int disposed;
+        internal int PositiveDpcDurations => Volatile.Read(ref positiveDpcDurations);
+        internal LiveDpcDurationEvidence(string existingSessionName)
+        {
+            source = new(existingSessionName, TraceEventSourceType.Session);
+            source.Kernel.PerfInfoDPC += data =>
+            {
+                if (double.IsFinite(data.ElapsedTimeMSec) && data.ElapsedTimeMSec > 0)
+                    Interlocked.Increment(ref positiveDpcDurations);
+            };
+            processing = Task.Run(() => source.Process());
+        }
+        internal void ThrowIfFailed()
+        {
+            if (processing.IsFaulted) processing.GetAwaiter().GetResult();
+        }
+        public async ValueTask DisposeAsync()
+        {
+            if (Volatile.Read(ref disposed) != 0) return;
+            source.StopProcessing();
+            try { await processing.WaitAsync(TimeSpan.FromSeconds(5)); }
+            finally
+            {
+                // Keep cleanup retryable if the consumer has not actually joined.
+                if (processing.IsCompleted)
+                {
+                    source.Dispose();
+                    Volatile.Write(ref disposed, 1);
+                }
+            }
+        }
+    }
+
+    private sealed class NativeConsumerRuntimeFactory : IKernelEtwSessionRuntimeFactory
+    {
+        private readonly NativeKernelEtwSessionRuntimeFactory inner;
+        internal int Created { get; private set; }
+        internal NativeConsumerRuntimeFactory(NativeKernelEtwSessionConfig configuration)
+            => inner = new(new BoundedKernelEtwRegionProvider(checked((nuint)configuration.ByteCap)),
+                () => configuration, name =>
+                {
+                    Assert.Equal(ResourceManagerEtwSessionNames.KernelSessionName, name);
+                    Assert.DoesNotContain(name, TraceEventSession.GetActiveSessionNames());
+                });
+        public void ValidateRequest(KernelEtwSubscriptionRequest request) => inner.ValidateRequest(request);
+        public bool TryGetAvailability(out string state, out string message) => inner.TryGetAvailability(out state, out message);
+        public IKernelEtwSessionRuntime Create(string name, KernelTraceEventParser.Keywords keywords,
+            KernelEtwSessionContext context, IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions)
+        {
+            var runtime = inner.Create(name, keywords, context, subscriptions);
+            Created++; return runtime;
+        }
+    }
     private static async Task SendOwnedLoopbackAsync()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));

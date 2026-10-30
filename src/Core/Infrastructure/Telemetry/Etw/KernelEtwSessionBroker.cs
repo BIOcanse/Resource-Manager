@@ -1,4 +1,4 @@
-﻿using ResourceManager.ReadWrite.Windows.Processes.Etw;
+using ResourceManager.ReadWrite.Windows.Processes.Etw;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -12,15 +12,6 @@ public sealed class KernelEtwSessionBroker : IKernelEtwSessionBroker, IDisposabl
     private Timer? reconciliation;
     private readonly TimeSpan reconciliationInterval;
     private readonly ILogger<KernelEtwSessionBroker> logger;
-    public KernelEtwSessionBroker(ILogger<KernelEtwSessionBroker> logger)
-    {
-        this.logger = logger;
-        owner = new(new TraceEventKernelEtwSessionRuntimeFactory(sessionName =>
-            ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
-                ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName)),
-            new(value => Report(logger, value)));
-        reconciliationInterval = TimeSpan.FromSeconds(5);
-    }
     internal KernelEtwSessionBroker(IKernelEtwSessionRuntimeFactory factory, ILogger<KernelEtwSessionBroker> logger)
         : this(factory, logger, TimeSpan.FromSeconds(5)) { }
     internal KernelEtwSessionBroker(IKernelEtwSessionRuntimeFactory factory, ILogger<KernelEtwSessionBroker> logger, TimeSpan interval)
@@ -39,14 +30,20 @@ public sealed class KernelEtwSessionBroker : IKernelEtwSessionBroker, IDisposabl
             KernelEtwDiagnosticLevel.Warning => LogLevel.Warning,
             _ => LogLevel.Error
         }, value.Exception, value.MessageTemplate, value.Arguments.ToArray());
-    public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+    public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
     {
         lock (lifetimeGate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            var subscription = owner.Subscribe(request);
+            var subscription = owner.Acquire(request);
             if (holders++ == 0)
-                reconciliation = new Timer(_ => Reconcile(), null, reconciliationInterval, reconciliationInterval);
+            {
+                var previous = Interlocked.Exchange(ref reconciliation, null);
+                previous?.Dispose();
+                Timer? next = null;
+                next = new Timer(_ => Reconcile(next), null, reconciliationInterval, reconciliationInterval);
+                reconciliation = next;
+            }
             return new Holder(this, subscription);
         }
     }
@@ -56,10 +53,11 @@ public sealed class KernelEtwSessionBroker : IKernelEtwSessionBroker, IDisposabl
     {
         lock (lifetimeGate)
         {
-            try { subscription.Dispose(); }
+            var released = false;
+            try { subscription.Dispose(); released = true; }
             finally
             {
-                if (--holders == 0)
+                if (--holders == 0 && released)
                 {
                     reconciliation?.DisposeAsync().AsTask().GetAwaiter().GetResult();
                     reconciliation = null;
@@ -67,9 +65,17 @@ public sealed class KernelEtwSessionBroker : IKernelEtwSessionBroker, IDisposabl
             }
         }
     }
-    private void Reconcile()
+    private void Reconcile(Timer? expected)
     {
-        try { owner.Reconcile(); }
+        try
+        {
+            owner.Reconcile();
+            // Last-return cleanup may need a later retry after a published read
+            // reference returns. Stop this cleanup timer once release is proven.
+            if (Volatile.Read(ref holders) == 0 && owner.GetSnapshot().State is "Idle" or "Stopped"
+                && ReferenceEquals(Interlocked.CompareExchange(ref reconciliation, null, expected), expected))
+                expected?.Dispose();
+        }
         catch (Exception error) { logger.LogWarning(error, "Shared kernel ETW resource reconciliation failed."); }
     }
     public void Dispose()

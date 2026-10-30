@@ -1,3 +1,4 @@
+using Resource_Manager_APP.Tests.Oracles.KernelEtw;
 using System.Net;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,7 +9,7 @@ using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed partial class EtwNetworkAttributionWindowTests
+public sealed partial class OracleNetworkAttributionWindowTests
 {
     [Fact]
     public void EventLossDiscardsOldRatesAndRecoversWithAStableNonzeroCumulativeCount()
@@ -39,7 +40,8 @@ public sealed partial class EtwNetworkAttributionWindowTests
         Assert.Equal(4096, recovered.Processes[42].SendBytesPerSecond);
         tick = 4300;
         Assert.Equal(4096, reader.Read().RawProcessValues[42].SendBytesPerSecond);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
+        Assert.Equal(KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.NetworkTCPIP, broker.Keywords);
     }
 
     [Fact]
@@ -61,7 +63,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         Assert.Empty(result.Processes);
         Assert.Null(result.ObservedTraffic);
         Assert.Equal(NetworkAttributionProviderStates.Warming, result.ProviderState.State);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
 
         var stillIncomplete = reader.Read(includeObservedTraffic: true);
         Assert.Empty(stillIncomplete.RawProcessValues);
@@ -75,7 +77,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         Assert.Equal(4096, row.Value.SendBytesPerSecond);
         Assert.Equal(NetworkAttributionProviderStates.Running, recovered.ProviderState.State);
         Assert.NotNull(recovered.ObservedTraffic);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
     }
 
     [Fact]
@@ -92,7 +94,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
 
         Assert.Equal(NetworkAttributionProviderStates.Running, snapshot.ProviderState.State);
         Assert.Equal(2000, snapshot.RawProcessValues[41].SendBytesPerSecond);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
     }
 
     [Fact]
@@ -139,76 +141,90 @@ public sealed partial class EtwNetworkAttributionWindowTests
         reader.Dispose();
         reader.Dispose();
 
-        Assert.Equal(1, broker.DisposeCount);
+        Assert.Equal(2, broker.DisposeCount);
         Assert.False(broker.Source.IsActive);
         Assert.Throws<ObjectDisposedException>(() => reader.Read());
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
     }
 
-    private static EtwNetworkTcpIpAttributionReader NewReader(Broker broker, Func<long> clock)
+    private static OracleNetworkTcpIpAttributionReader NewReader(Broker broker, Func<long> clock)
         => StartReader(new(broker,
-            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock, pid => new ProcessLease(pid, 100)), broker);
+            NullLogger<OracleNetworkTcpIpAttributionReader>.Instance, clock, pid => new ProcessLease(pid, 100)), broker);
 
-    private static EtwNetworkTcpIpAttributionReader StartReader(EtwNetworkTcpIpAttributionReader reader, Broker broker)
+    private static OracleNetworkTcpIpAttributionReader StartReader(OracleNetworkTcpIpAttributionReader reader, Broker broker, int expectedAcquisitions = 2)
     {
         reader.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
-        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref broker.SubscribeCount) > 0,
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref broker.SubscribeCount) == expectedAcquisitions,
             TimeSpan.FromSeconds(5)), "Hosted network reader did not acquire its session lease.");
         // Start holds the capture gate until binding and activation are complete.
         reader.Read();
         return reader;
     }
 
-    private static void Observe(EtwNetworkTcpIpAttributionReader reader, Broker broker, int pid, int bytes, long tick)
+    private static void Observe(OracleNetworkTcpIpAttributionReader reader, Broker broker, int pid, int bytes, long tick)
         => reader.ObserveBoundNetworkTransfer(broker.Source, broker.Context, pid, bytes, true, false,
             IPAddress.Parse("203.0.113.1"), tick, 100);
 
-    private sealed class Broker : IKernelEtwSessionBroker
+    private sealed class Broker : IOracleKernelEtwSessionBroker
     {
-        internal KernelEtwSubscriptionRequest? Request;
+        private readonly object gate = new();
+        private readonly Dictionary<long, Hold> active = [];
+        private long next;
         internal KernelEtwSessionContext Context { get; } = new(61, DateTimeOffset.UnixEpoch);
-        internal KernelEtwEventSource Source { get; private set; } = new();
-        internal int EventsLost;
-        internal int SubscribeCount;
-        internal int DisposeCount;
+        // Transfer deliveries use the data hold's source, never the metadata binding.
+        internal OracleKernelEtwEventSource Source { get; private set; } = new();
+        internal int EventsLost, SubscribeCount, DisposeCount;
         internal Action? AfterNextSnapshot;
-
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        internal KernelTraceEventParser.Keywords Keywords
+        { get { lock (gate) return active.Values.Aggregate(KernelTraceEventParser.Keywords.None, static (all, hold) => all | hold.Request.Keywords); } }
+        public IOracleKernelEtwSubscription Acquire(OracleKernelEtwSubscriptionRequest request)
         {
-            Request = request;
-            Rebind();
+            Hold hold;
+            lock (gate)
+            {
+                hold = new(++next, request, new());
+                active.Add(hold.Id, hold);
+            }
+            Bind(hold);
             Interlocked.Increment(ref SubscribeCount);
-            return new Lease(this);
+            return new Lease(this, hold);
         }
-
+        private void Bind(Hold hold)
+        {
+            if (hold.Request.Keywords.HasFlag(KernelTraceEventParser.Keywords.NetworkTCPIP)) Source = hold.Source;
+            hold.Request.Bind(hold.Source, Context);
+            hold.Source.Activate();
+        }
         internal void Rebind()
         {
-            Source = new KernelEtwEventSource();
-            Request!.Bind(Source, Context);
-            Source.Activate();
+            Hold[] holds;
+            lock (gate) holds = active.Values.ToArray();
+            foreach (var hold in holds) { hold.Source.Cancel(); hold.Source = new(); Bind(hold); }
         }
-
         public KernelEtwSessionSnapshot GetSnapshot()
         {
-            var snapshot = new KernelEtwSessionSnapshot("Running", "fixture", Context.Generation,
-                Context.StartedAt, KernelTraceEventParser.Keywords.NetworkTCPIP, 1 - DisposeCount, EventsLost);
+            KernelEtwSessionSnapshot snapshot;
+            lock (gate) snapshot = new(active.Count == 0 ? "Idle" : "Running", "fixture", Context.Generation,
+                Context.StartedAt, Keywords, active.Count, EventsLost);
             var afterSnapshot = AfterNextSnapshot;
             AfterNextSnapshot = null;
             afterSnapshot?.Invoke();
             return snapshot;
         }
-
-        private sealed class Lease(Broker owner) : IKernelEtwSubscription
+        private sealed class Hold(long id, OracleKernelEtwSubscriptionRequest request, OracleKernelEtwEventSource source)
         {
+            internal readonly long Id = id;
+            internal readonly OracleKernelEtwSubscriptionRequest Request = request;
+            internal OracleKernelEtwEventSource Source = source;
+        }
+        private sealed class Lease(Broker owner, Hold hold) : IOracleKernelEtwSubscription
+        {
+            private int disposed;
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-
-            private bool disposed;
             public void Dispose()
             {
-                if (disposed) return;
-                disposed = true;
-                owner.DisposeCount++;
-                owner.Source.Cancel();
+                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+                lock (owner.gate) { hold.Source.Cancel(); owner.active.Remove(hold.Id); Interlocked.Increment(ref owner.DisposeCount); }
             }
         }
     }

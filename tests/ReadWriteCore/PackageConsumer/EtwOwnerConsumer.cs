@@ -10,10 +10,12 @@ internal static class EtwOwnerConsumer
     {
         Require(typeof(KernelEtwSessionOwner).Assembly == typeof(ProcessMetricFieldRegistry).Assembly,
             "independent resource owner assembly");
-        var factory = new RecordedFactory();
+        try { _ = new KernelEtwEventSource(null!); throw new InvalidOperationException("Null native binding was accepted."); }
+        catch (ArgumentNullException) { }
+        var factory = new ControlOnlyFactory();
         using var broker = new KernelEtwSessionOwner(factory);
-        using var cpu = broker.Subscribe(new("recorded-cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
-        using var network = broker.Subscribe(new("recorded-network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
+        using var cpu = broker.Acquire(new("recorded-cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        using var network = broker.Acquire(new("recorded-network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
         broker.Reconcile();
         Require(factory.Created == 1 && broker.GetSnapshot().SubscriptionCount == 2,
             "shared runtime across original reconciliation");
@@ -27,32 +29,32 @@ internal static class EtwOwnerConsumer
         Require(factory.Runtime!.Stops == 1, "last lease invokes original resource release");
         broker.Dispose();
         Require(broker.GetSnapshot().State == "Stopped", "composition shutdown confirmed");
-        try { broker.Subscribe(new("disposed", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        try { broker.Acquire(new("disposed", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
             throw new InvalidOperationException("Disposed owner admitted a lease."); }
         catch (ObjectDisposedException) { }
 
-        var failingFactory = new RecordedFactory();
+        var failingFactory = new ControlOnlyFactory();
         using var blockedBroker = new KernelEtwSessionOwner(failingFactory);
-        var first = blockedBroker.Subscribe(new("recorded-first", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        var first = blockedBroker.Acquire(new("recorded-first", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
         failingFactory.Runtime!.UnconfirmedStop = true;
         first.Dispose();
         Require(blockedBroker.GetSnapshot().State == "StopFailed", "unconfirmed release state");
-        using var next = blockedBroker.Subscribe(new("recorded-later", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
+        using var next = blockedBroker.Acquire(new("recorded-later", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
         blockedBroker.Reconcile();
         Require(failingFactory.Created == 1 && blockedBroker.GetSnapshot().State == "StopFailed",
             "unconfirmed release forbids another runtime");
-        Console.WriteLine("ETW public broker recorded union/reconcile/stop-block/disposal consumer passed; no external TCPIP window/birth recording claim.");
+        Console.WriteLine("ETW public broker control-only union/reconcile/stop-block/disposal consumer passed; native output binding is required explicitly.");
     }
     private static void Require(bool value, string contract)
     {
         if (!value) throw new InvalidOperationException("ETW resource owner: " + contract);
     }
-    private sealed class RecordedFactory : IKernelEtwSessionRuntimeFactory
+    private sealed class ControlOnlyFactory : IKernelEtwSessionRuntimeFactory
     {
         internal int Created;
-        internal RecordedRuntime? Runtime;
+        internal ControlOnlyRuntime? Runtime;
         public bool TryGetAvailability(out string state, out string message)
-        { state = "Available"; message = "recorded runtime"; return true; }
+        { state = "Available"; message = "injected control-only runtime"; return true; }
         public IKernelEtwSessionRuntime Create(string sessionName, KernelTraceEventParser.Keywords keywords,
             KernelEtwSessionContext context, IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions)
         {
@@ -62,7 +64,7 @@ internal static class EtwOwnerConsumer
             return Runtime;
         }
     }
-    private sealed class RecordedRuntime : IKernelEtwSessionRuntime
+    private sealed class ControlOnlyRuntime : IKernelEtwSessionRuntime
     {
         private readonly HashSet<long> bindings = [];
         internal int Stops;
@@ -75,12 +77,12 @@ internal static class EtwOwnerConsumer
         {
             bindings.IntersectWith(subscriptions.Select(static item => item.LeaseId));
             foreach (var item in subscriptions)
-                if (bindings.Add(item.LeaseId)) item.Bind(new KernelEtwEventSource(), context);
-            // No second window or invented event source activation implementation.
+                bindings.Add(item.LeaseId);
+            // This public control seam never binds a reader or invents a native session. Actual native binding is covered by SDK/native fixtures.
         }
         public KernelEtwSessionStopResult Stop(TimeSpan waitTimeout)
         { Stops++; IsProcessing = false; return UnconfirmedStop
-            ? new(false, true, true, ["recorded unconfirmed release"]) : KernelEtwSessionStopResult.Released; }
+            ? new(false, true, true, ["injected unconfirmed release"]) : KernelEtwSessionStopResult.Released; }
         public void Dispose() { }
     }
 }
