@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ResourceManager.App.Domain.LocalSystem;
@@ -111,51 +113,141 @@ public sealed class NativeHotkeyRequestConsumerTests
     }
 
     [Fact]
-    public async Task NativeDesktopPublisherSendsItsKeyOnlyAsAHeaderOnTheSelectedConnection()
+    public async Task NativeDesktopPublisherStreamsChunkedNdjsonLinesWithItsKeyOnlyAsAHeader()
     {
         const string apiKey = "rm_sk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        var builder = WebApplication.CreateBuilder();
-        builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
-        await using var app = builder.Build();
-        string? selectedConnection = null;
-        string? publishedConnection = null;
-        string? publishedJson = null;
-        app.MapPost("/api/runtime/interactive-desktop/publisher/select", (HttpContext context) =>
+        await using var server = await DesktopPublisherStreamServer.StartAsync();
+        using var session = await CreateOwnedTestSessionAsync(server.Address, apiKey);
+        var sample = CurrentProcessSample();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await session.RunDesktopPublisherStreamAsync(async (write, token) =>
         {
-            Assert.Equal(apiKey, context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString());
-            Assert.True(context.Request.ContentLength is null or 0);
-            selectedConnection = context.Connection.Id;
-            return Results.NoContent();
+            await write(sample, token);
+            // The first line reaches the backend while the body is still open: one chunk per line.
+            await server.Received.WaitAsync(token);
+            await write(sample with { ObservedAtUtcTicks = sample.ObservedAtUtcTicks + 1 }, token);
+        }, deadline.Token);
+
+        await server.WaitForEndsAsync(1, deadline.Token);
+        var request = Assert.Single(server.Requests);
+        Assert.Equal(apiKey, request.Key);
+        Assert.Null(request.ContentLength);
+        Assert.Contains("chunked", request.TransferEncoding, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("application/x-ndjson", request.ContentType, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, server.Lines.Count);
+        Assert.All(server.Lines, line =>
+        {
+            Assert.DoesNotContain(apiKey, line, StringComparison.Ordinal);
+            Assert.Contains("publisherProcessId", line, StringComparison.Ordinal);
         });
-        app.MapPost(InteractiveDesktopObservation.EndpointPath, async (HttpContext context) =>
+        // The body ended with its terminating chunk, not with an aborted request.
+        Assert.Equal("completed", Assert.Single(server.Ends));
+
+        // A rejected stream fails once its body has ended.
+        server.RejectNext(StatusCodes.Status409Conflict);
+        var rejected = await Assert.ThrowsAsync<HttpRequestException>(() => session.RunDesktopPublisherStreamAsync(
+            (write, token) => write(sample, token), deadline.Token));
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, rejected.StatusCode);
+    }
+
+    [Fact]
+    public async Task NativeDesktopPublisherStopEndsTheStreamWithItsTerminatingChunk()
+    {
+        const string apiKey = "rm_sk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        await using var server = await DesktopPublisherStreamServer.StartAsync();
+        using var session = await CreateOwnedTestSessionAsync(server.Address, apiKey);
+        var sample = CurrentProcessSample();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var stop = new CancellationTokenSource();
+
+        var streaming = session.RunDesktopPublisherStreamAsync(async (write, token) =>
         {
-            Assert.Equal(apiKey, context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString());
-            publishedConnection = context.Connection.Id;
-            publishedJson = await new StreamReader(context.Request.Body).ReadToEndAsync();
-            return Results.Ok();
-        });
-        app.MapGet("/api/runtime/capabilities", () => Results.Json(new { profileId = "test" }));
-        await app.StartAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        try
+            await write(sample, token);
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+        }, stop.Token);
+        await server.Received.WaitAsync(deadline.Token);
+        stop.Cancel();
+
+        await streaming.WaitAsync(deadline.Token);
+        await server.WaitForEndsAsync(1, deadline.Token);
+        Assert.Equal("completed", Assert.Single(server.Ends));
+        Assert.Single(server.Lines);
+    }
+
+    private static InteractiveDesktopObservation CurrentProcessSample()
+    {
+        using var process = Process.GetCurrentProcess();
+        return new InteractiveDesktopObservation(process.Id, process.StartTime.ToUniversalTime().ToFileTimeUtc(),
+            process.SessionId, DateTimeOffset.UtcNow.UtcTicks, false, false, null, []);
+    }
+
+    // A stand-in backend for the publisher stream: records each request's headers and lines and how
+    // its body ended ("completed" at the terminating chunk, "aborted" otherwise).
+    private sealed class DesktopPublisherStreamServer : IAsyncDisposable
+    {
+        private readonly WebApplication app;
+        private int rejectStatus;
+
+        private DesktopPublisherStreamServer(WebApplication app) => this.app = app;
+
+        internal string Address { get; private set; } = "";
+        internal SemaphoreSlim Received { get; } = new(0);
+        internal ConcurrentQueue<(string Key, long? ContentLength, string TransferEncoding, string ContentType)> Requests { get; } = new();
+        internal ConcurrentQueue<string> Lines { get; } = new();
+        internal ConcurrentQueue<string> Ends { get; } = new();
+
+        internal static async Task<DesktopPublisherStreamServer> StartAsync()
         {
-            var address = Assert.Single(app.Services.GetRequiredService<IServer>().Features
+            var builder = WebApplication.CreateBuilder();
+            builder.Logging.ClearProviders();
+            builder.WebHost.UseUrls("http://127.0.0.1:0");
+            var server = new DesktopPublisherStreamServer(builder.Build());
+            server.app.MapPost(InteractiveDesktopObservation.PublisherStreamPath, server.RunAsync);
+            server.app.MapGet("/api/runtime/capabilities", () => Results.Json(new { profileId = "test" }));
+            await server.app.StartAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            server.Address = Assert.Single(server.app.Services.GetRequiredService<IServer>().Features
                 .Get<IServerAddressesFeature>()!.Addresses);
-            using var session = await CreateOwnedTestSessionAsync(address, apiKey);
-            using var process = Process.GetCurrentProcess();
-            var sample = new InteractiveDesktopObservation(process.Id, process.StartTime.ToUniversalTime().ToFileTimeUtc(),
-                process.SessionId, DateTimeOffset.UtcNow.UtcTicks, false, false, null, []);
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-
-            await session.PublishDesktopAsync(sample, deadline.Token);
-
-            Assert.False(string.IsNullOrWhiteSpace(selectedConnection));
-            Assert.Equal(selectedConnection, publishedConnection);
-            Assert.NotNull(publishedJson);
-            Assert.DoesNotContain(apiKey, publishedJson, StringComparison.Ordinal);
-            Assert.Contains("publisherProcessId", publishedJson, StringComparison.Ordinal);
+            return server;
         }
-        finally { await app.StopAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
+
+        internal void RejectNext(int status) => Volatile.Write(ref rejectStatus, status);
+
+        internal async Task WaitForEndsAsync(int count, CancellationToken token)
+        {
+            while (Ends.Count < count) await Task.Delay(10, token);
+        }
+
+        private async Task RunAsync(HttpContext context)
+        {
+            Requests.Enqueue((context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString(),
+                context.Request.ContentLength, context.Request.Headers.TransferEncoding.ToString(),
+                context.Request.ContentType ?? ""));
+            if (Interlocked.Exchange(ref rejectStatus, 0) is var status and not 0)
+            {
+                context.Response.StatusCode = status;
+                return;
+            }
+            context.Features.Get<IHttpMinRequestBodyDataRateFeature>()!.MinDataRate = null;
+            await context.Response.StartAsync();
+            using var reader = new StreamReader(context.Request.Body);
+            try
+            {
+                while (await reader.ReadLineAsync(context.RequestAborted) is { } line)
+                {
+                    Lines.Enqueue(line);
+                    Received.Release();
+                }
+                Ends.Enqueue("completed");
+            }
+            catch (Exception) { Ends.Enqueue("aborted"); }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try { await app.StopAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
+            finally { await app.DisposeAsync(); }
+        }
     }
 
     private static async Task<BackendServiceSession> CreateOwnedTestSessionAsync(string address, string apiKey)

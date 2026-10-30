@@ -7,6 +7,18 @@ using ResourceManager.Shared.Runtime;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
+// One interactive desktop observation per Windows session, held for the publisher the session
+// selected. A publisher is a key plus a lifetime: the publisher stream uses a key made for each stream
+// and the stream's request lifetime; the legacy select uses the connection id and its close. The
+// selection lives exactly as long as that lifetime (and the key it was selected with), and releasing
+// it removes the session's observation with it.
+//
+// Publisher obligation: while its stream is open, the selected publisher writes one line within one
+// observation period after the observed content changes (foreground, the window set and each row's
+// visible/background flags, completeness), and writes nothing while it does not change. The store
+// therefore treats the latest observation as current until it is replaced, not as a snapshot that
+// ages from ObservedAt. The NativeUi publisher and the future event-driven resident publisher carry
+// the same contract.
 public sealed class InteractiveDesktopObservationStore
 {
     private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
@@ -23,21 +35,23 @@ public sealed class InteractiveDesktopObservationStore
         Func<InteractiveDesktopObservation, bool> verifyPublisher, Func<ProcessInstanceKey, int?> readSession)
         => (this.clock, this.verifyPublisher, this.readSession) = (clock, verifyPublisher, readSession);
 
-    internal bool SelectPublisher(int sessionId, string connectionId, int processId,
-        long creationFileTimeUtc, CancellationToken connectionClosed, CancellationToken keyRevoked = default)
+    // publisherLifetime ends the selection: the stream's request lifetime, or the legacy selecting
+    // connection's close.
+    internal bool SelectPublisher(int sessionId, string publisherKey, int processId,
+        long creationFileTimeUtc, CancellationToken publisherLifetime, CancellationToken keyRevoked = default)
     {
-        if (sessionId <= 0 || string.IsNullOrWhiteSpace(connectionId) || processId <= 4
-            || creationFileTimeUtc <= 0 || connectionClosed.IsCancellationRequested
+        if (sessionId <= 0 || string.IsNullOrWhiteSpace(publisherKey) || processId <= 4
+            || creationFileTimeUtc <= 0 || publisherLifetime.IsCancellationRequested
             || keyRevoked.IsCancellationRequested) return false;
         lock (gate)
         {
             if (publishers.TryGetValue(sessionId, out var previous))
-                return previous.ConnectionId == connectionId && previous.ProcessId == processId
+                return previous.Key == publisherKey && previous.ProcessId == processId
                     && previous.CreationFileTimeUtc == creationFileTimeUtc;
             if (publishers.Count >= 64) return false;
-            var publisher = new Publisher(connectionId, processId, creationFileTimeUtc);
+            var publisher = new Publisher(publisherKey, processId, creationFileTimeUtc);
             publishers.Add(sessionId, publisher);
-            publisher.Closed = connectionClosed.Register(() => ReleasePublisher(sessionId, publisher));
+            publisher.Closed = publisherLifetime.Register(() => ReleasePublisher(sessionId, publisher));
             publisher.Revoked = keyRevoked.Register(() => ReleasePublisher(sessionId, publisher));
             if (publishers.TryGetValue(sessionId, out var selected) && ReferenceEquals(selected, publisher))
                 return true;
@@ -61,7 +75,7 @@ public sealed class InteractiveDesktopObservationStore
         publisher.Revoked.Unregister();
     }
 
-    public bool Publish(InteractiveDesktopObservation observation, string connectionId)
+    public bool Publish(InteractiveDesktopObservation observation, string publisherKey)
     {
         var now = clock.GetUtcNow().UtcTicks;
         if (observation.SessionId <= 0 || observation.PublisherProcessId <= 4
@@ -78,7 +92,7 @@ public sealed class InteractiveDesktopObservationStore
         lock (gate)
         {
             if (!publishers.TryGetValue(observation.SessionId, out var publisher)
-                || publisher.ConnectionId != connectionId || publisher.ProcessId != observation.PublisherProcessId
+                || publisher.Key != publisherKey || publisher.ProcessId != observation.PublisherProcessId
                 || publisher.CreationFileTimeUtc != observation.PublisherCreationFileTimeUtc) return false;
             if (sessions.TryGetValue(observation.SessionId, out var previous)
                 && observation.ObservedAtUtcTicks < previous.ObservedAtUtcTicks) return false;
@@ -92,6 +106,9 @@ public sealed class InteractiveDesktopObservationStore
         IReadOnlyDictionary<int, int>? helperOwnerByProcessId = null)
     {
         Dictionary<int, InteractiveDesktopObservation> current;
+        var now = clock.GetUtcNow().UtcTicks;
+        // Every held observation belongs to a selected publisher whose stream is open, so it covers
+        // the session up to now: a process that started after ObservedAt is judged by it.
         lock (gate) current = sessions.ToDictionary();
         var windows = current.ToDictionary(pair => pair.Key,
             pair => pair.Value.Windows.ToDictionary(window => window.ProcessId));
@@ -109,7 +126,7 @@ public sealed class InteractiveDesktopObservationStore
                 continue;
             }
             if (!current.TryGetValue(session.Value, out var sample)
-                || DateTime.FromFileTimeUtc(process.StartKey).Ticks > sample.ObservedAtUtcTicks) continue;
+                || DateTime.FromFileTimeUtc(process.StartKey).Ticks > now) continue;
             if (!sample.ForegroundKnown) continue;
             windows[session.Value].TryGetValue(process.ProcessId, out var window);
             var foreground = sample.Foreground;
@@ -132,8 +149,9 @@ public sealed class InteractiveDesktopObservationStore
         => Read([new(processId, creationFileTimeUtc)]).Processes.TryGetValue(new(processId, creationFileTimeUtc), out var fact)
             ? fact.ForegroundFocused : null;
 
-    // An unverified row carries only the PID; the start-time check above already limits it to the
-    // instance that existed when the desktop was observed.
+    // An unverified row carries only the PID and matches whichever instance holds that PID. When the
+    // row's process exits its windows go with it, and the publisher replaces the observation within
+    // one observation period, which bounds how long a reused PID can match the old row.
     private static bool SameInstance(DesktopProcessWindowObservation row, ProcessInstanceKey process)
         => row.CreationFileTimeUtc == DesktopProcessWindowObservation.UnverifiedCreationTime
             || row.CreationFileTimeUtc == process.StartKey;
@@ -164,9 +182,9 @@ public sealed class InteractiveDesktopObservationStore
         { return null; }
     }
 
-    private sealed class Publisher(string connectionId, int processId, long creationFileTimeUtc)
+    private sealed class Publisher(string key, int processId, long creationFileTimeUtc)
     {
-        internal string ConnectionId { get; } = connectionId;
+        internal string Key { get; } = key;
         internal int ProcessId { get; } = processId;
         internal long CreationFileTimeUtc { get; } = creationFileTimeUtc;
         internal CancellationTokenRegistration Closed;

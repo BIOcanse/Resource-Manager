@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using System.Net.Http;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Threading.Channels;
 using ResourceManager.NativeUi.Preferences;
 
 namespace ResourceManager.NativeUi.Overlay;
@@ -30,58 +34,154 @@ internal static class OverlaySubscriptions
                     + "&fields=" + string.Join(',', device.Fields.Select(Uri.EscapeDataString))))))
             .ToArray();
 
-    // The controller observes operational settings without sampling. Only the
-    // explicit data stream below owns observation dependencies.
+    internal const string OperationsSubscriptionId = "startup-modules";
+    internal const string OperationsSubscriptionPath = "/api/startup-modules/settings/subscribe";
+
+    // The controller observes operational settings without sampling: the backend pushes the current
+    // module selections when the subscription opens and again after each committed change, and the
+    // local preferences' changes arrive as wakeups. Each one recomputes the desired data
+    // subscriptions; only a different set replaces the data stream. When the settings subscription
+    // ends or fails, the data stream is released and the subscription is opened again after
+    // reconnectDelay. Only the explicit data stream below owns observation dependencies.
     internal static async Task RunAsync(
-        Func<CancellationToken, Task<StartupModuleOperationsDocument>> readOperations,
+        Func<CancellationToken, IAsyncEnumerable<StartupModuleOperationsDocument>> subscribeOperations,
         Func<FrontendPreferences> readPreferences,
+        ChannelReader<bool> preferencesChanged,
         Func<OverlaySubscription[], CancellationToken, Task> observe,
-        Action clear, TimeSpan settingsInterval, CancellationToken cancellationToken)
+        Action clear, TimeSpan reconnectDelay, CancellationToken cancellationToken)
     {
         CancellationTokenSource? active = null;
         Task stream = Task.CompletedTask;
         string? previous = null;
+        async Task ReleaseAsync()
+        {
+            active?.Cancel();
+            try { await stream; }
+            catch (OperationCanceledException) { }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            { Trace.TraceError("Overlay data stream failed: {0}", error); }
+            finally
+            {
+                active?.Dispose(); active = null;
+                stream = Task.CompletedTask;
+            }
+        }
+        async Task ApplyAsync(StartupModuleOperationsDocument operations)
+        {
+            try
+            {
+                var desired = Create(readPreferences(), operations);
+                var signature = string.Join('\n', desired.Select(static item => item.Path));
+                if (signature == previous) return;
+                await ReleaseAsync();
+                clear();
+                previous = signature;
+                if (desired.Length > 0)
+                {
+                    active = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    stream = observe(desired, active.Token);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                // The next pushed frame or preference change computes the set again.
+                Trace.TraceError("Overlay dependencies could not be refreshed: {0}", error);
+                await ReleaseAsync();
+                previous = null;
+                clear();
+            }
+        }
+        var preferenceWake = preferencesChanged.WaitToReadAsync(cancellationToken).AsTask();
         try
         {
-            using var timer = new PeriodicTimer(settingsInterval);
-            do
+            while (!cancellationToken.IsCancellationRequested)
             {
-                try
+                using (var subscription = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
-                    var operations = await readOperations(cancellationToken);
-                    var desired = Create(readPreferences(), operations);
-                    var signature = string.Join('\n', desired.Select(static item => item.Path));
-                    if (signature == previous) continue;
-                    active?.Cancel();
-                    await stream;
-                    active?.Dispose(); active = null;
-                    clear();
-                    previous = signature;
-                    if (desired.Length > 0)
+                    IAsyncEnumerator<StartupModuleOperationsDocument>? frames = null;
+                    var nextFrame = Task.FromResult(false);
+                    try
                     {
-                        active = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                        stream = observe(desired, active.Token);
+                        frames = subscribeOperations(subscription.Token).GetAsyncEnumerator(subscription.Token);
+                        nextFrame = frames.MoveNextAsync().AsTask();
+                        StartupModuleOperationsDocument? operations = null;
+                        while (true)
+                        {
+                            if (await Task.WhenAny(nextFrame, preferenceWake) == nextFrame)
+                            {
+                                if (!await nextFrame) break;
+                                operations = frames.Current;
+                                nextFrame = frames.MoveNextAsync().AsTask();
+                            }
+                            else
+                            {
+                                // A completed channel never wakes again.
+                                if (!await preferenceWake) preferenceWake = new TaskCompletionSource<bool>().Task;
+                                else
+                                {
+                                    while (preferencesChanged.TryRead(out _)) { }
+                                    preferenceWake = preferencesChanged.WaitToReadAsync(cancellationToken).AsTask();
+                                }
+                                if (operations is null) continue;
+                            }
+                            await ApplyAsync(operations);
+                        }
+                        Trace.TraceInformation("Overlay settings subscription ended; reconnecting.");
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
+                    catch (Exception error) when (error is not OutOfMemoryException)
+                    {
+                        Trace.TraceError("Overlay settings subscription failed; reconnecting: {0}", error);
+                    }
+                    finally
+                    {
+                        subscription.Cancel();
+                        // Already observed above when it failed; here it only has to finish.
+                        try { await nextFrame; }
+                        catch (Exception error) when (error is not OutOfMemoryException) { }
+                        if (frames is not null) await frames.DisposeAsync();
                     }
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
-                catch (Exception error) when (error is not OutOfMemoryException)
-                {
-                    Trace.TraceError("Overlay dependencies could not be refreshed: {0}", error);
-                    active?.Cancel();
-                    try { await stream; } catch (OperationCanceledException) { }
-                    active?.Dispose(); active = null;
-                    stream = Task.CompletedTask;
-                    previous = null;
-                    clear();
-                }
-            } while (await timer.WaitForNextTickAsync(cancellationToken));
+                await ReleaseAsync();
+                previous = null;
+                clear();
+                await Task.Delay(reconnectDelay, cancellationToken);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         finally
         {
-            active?.Cancel();
-            try { await stream; } catch (OperationCanceledException) { }
-            active?.Dispose();
+            await ReleaseAsync();
+        }
+    }
+
+    // Reads the pushed module selections of one settings subscription channel. The sequence ends when
+    // the channel ends; a malformed frame or a denied selector fails it.
+    internal static async IAsyncEnumerable<StartupModuleOperationsDocument> ReadOperationsAsync(
+        Func<CancellationToken, Task<HttpResponseMessage>> openStream,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var response = await openStream(cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var reader = new StreamReader(stream);
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        {
+            StartupModuleOperationsDocument document;
+            using (var frame = JsonDocument.Parse(line))
+            {
+                var root = frame.RootElement;
+                if (!root.TryGetProperty("subscriptionId", out var id) || id.GetString() != OperationsSubscriptionId
+                    || !root.TryGetProperty("value", out var value)) continue;
+                if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty("statusCode", out var status))
+                    throw new HttpRequestException($"Startup module settings subscription returned {status}.");
+                document = value.Deserialize(OverlayStartupModulesJson.Default.StartupModuleOperationsDocument)
+                    ?? throw new InvalidDataException("Missing startup module operations.");
+            }
+            if (document.Version != 1 || document.Software is null)
+                throw new InvalidDataException("Invalid startup module operations.");
+            yield return document;
         }
     }
 }

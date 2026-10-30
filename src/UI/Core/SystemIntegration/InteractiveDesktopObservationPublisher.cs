@@ -7,8 +7,19 @@ using ResourceManager.Shared.Runtime;
 namespace ResourceManager.NativeUi.SystemIntegration;
 
 // Window enumeration belongs to the interactive UI, never to the Session 0 service.
+//
+// Publication contract (shared with the backend's InteractiveDesktopObservationStore and with the
+// future event-driven resident publisher): the publisher holds one stream open to the backend, and
+// while it is open the backend treats its latest line as the session's current observation until the
+// next line replaces it; when the stream ends the backend drops it. The publisher therefore writes
+// the current observation when a stream opens, then one line within one observation period whenever
+// the observed content changes (foreground, the window set and each row's visible/background flags,
+// completeness), and nothing while it does not change. ObservedAt alone is not a change.
 internal sealed class InteractiveDesktopObservationPublisher : IDisposable, IAsyncDisposable
 {
+    // The period at which the desktop is observed to detect changes. A stream that ended for any
+    // reason is opened again one period later.
+    internal static readonly TimeSpan ObservationPeriod = TimeSpan.FromMilliseconds(200);
     private static readonly Lazy<PublisherIdentity> Publisher = new(CreatePublisherIdentity);
     private CancellationTokenSource? lifetime;
     private readonly object lifetimeSync = new();
@@ -28,10 +39,11 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable, IAsy
     {
         var lastVisibilityWindow = IntPtr.Zero;
         bool? lastVisibility = null;
-        return RunAsync(async token =>
+        var identities = new ProcessIdentityCache();
+        return RunAsync(() =>
         {
             var visibilityWindow = new IntPtr(Interlocked.Read(ref visibilityWindowHandle));
-            var sample = Capture(visibilityWindow, out var hostWindowVisible);
+            var sample = Capture(visibilityWindow, identities, out var hostWindowVisible);
             if (hostWindowVisible is bool visible
                 && (visibilityWindow != lastVisibilityWindow || visible != lastVisibility))
             {
@@ -39,13 +51,47 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable, IAsy
                 lastVisibility = visible;
                 HostWindowVisibilityChanged?.Invoke(visibilityWindow, visible);
             }
-            using var request = CancellationTokenSource.CreateLinkedTokenSource(token);
-            request.CancelAfter(TimeSpan.FromSeconds(1));
-            await session.PublishDesktopAsync(sample, request.Token).ConfigureAwait(false);
+            return sample;
+        }, session.RunDesktopPublisherStreamAsync, cancellationToken);
+    }
+
+    // Each step of the flow is one publisher stream. The desktop is observed before the stream opens,
+    // so an observation that fails opens no stream; the stream then starts with that current sample
+    // and writes a line only when the observed content changes. A failed write, a failed observation
+    // or the end of the request ends the step, and the next step opens a new stream.
+    internal Task RunAsync(Func<InteractiveDesktopObservation> capture,
+        Func<Func<Func<InteractiveDesktopObservation, CancellationToken, Task>, CancellationToken, Task>,
+            CancellationToken, Task> runStream,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(capture);
+        ArgumentNullException.ThrowIfNull(runStream);
+        return RunAsync(token =>
+        {
+            var current = capture();
+            return runStream((write, streamToken) => WriteChangesAsync(capture, current, write, streamToken), token);
         }, cancellationToken);
     }
 
-    // A sample and its publication are one serial step of the observation flow.
+    // The body of one stream: the current sample first, then only changed content.
+    private static async Task WriteChangesAsync(Func<InteractiveDesktopObservation> capture,
+        InteractiveDesktopObservation current, Func<InteractiveDesktopObservation, CancellationToken, Task> write,
+        CancellationToken cancellationToken)
+    {
+        var written = new WrittenDesktopObservation();
+        while (true)
+        {
+            if (!written.Holds(current))
+            {
+                await write(current, cancellationToken).ConfigureAwait(false);
+                written.Accept(current);
+            }
+            await Task.Delay(ObservationPeriod, cancellationToken).ConfigureAwait(false);
+            current = capture();
+        }
+    }
+
+    // One step at a time; the next step starts one period after the previous one ended.
     internal Task RunAsync(Func<CancellationToken, Task> observeAsync, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(observeAsync);
@@ -97,9 +143,10 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable, IAsy
                     await observeAsync(owner.Token).ConfigureAwait(false);
                 }
                 catch (Exception error) when (error is HttpRequestException or OperationCanceledException
-                    or ObjectDisposedException or InvalidOperationException or System.ComponentModel.Win32Exception)
+                    or ObjectDisposedException or InvalidOperationException or System.ComponentModel.Win32Exception
+                    or IOException)
                 { Trace.WriteLine($"Interactive desktop observation unavailable: {error.Message}"); }
-                await Task.Delay(TimeSpan.FromMilliseconds(200), owner.Token).ConfigureAwait(false);
+                await Task.Delay(ObservationPeriod, owner.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (owner.IsCancellationRequested) { }
@@ -113,48 +160,38 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable, IAsy
         }
     }
 
-    internal static InteractiveDesktopObservation Capture() => Capture(IntPtr.Zero, out _);
+    private static DesktopProcessWindowObservation? ReadIdentity(int id, int publisherSessionId)
+    {
+        if (ProcessIdToSessionId(checked((uint)id), out var session)
+            && session != checked((uint)publisherSessionId))
+            return null;
 
-    private static InteractiveDesktopObservation Capture(IntPtr visibilityWindow, out bool? hostWindowVisible)
+        var processIdentity = NativeProcessCreationTimeReader.Read(
+            id,
+            WindowsProcessCreationTimeNativeCalls.Instance);
+        if (processIdentity.HandleCloseFailed || processIdentity.Error is not null)
+            Trace.WriteLine($"NativeUi could not read or release process identity for PID {id}: {processIdentity.Win32Error} {processIdentity.Error}");
+        if (processIdentity.Status == ProcessCreationTimeReadStatus.Exited) return null;
+
+        // A process this user cannot query (for example a protected game or anti-cheat) is
+        // still reported by PID; the service matches it against its own process inventory.
+        return new DesktopProcessWindowObservation(
+            id,
+            processIdentity.Status == ProcessCreationTimeReadStatus.Success
+                ? processIdentity.CreationFileTimeUtc ?? DesktopProcessWindowObservation.UnverifiedCreationTime
+                : DesktopProcessWindowObservation.UnverifiedCreationTime,
+            false,
+            false);
+    }
+
+    private static InteractiveDesktopObservation Capture(IntPtr visibilityWindow, ProcessIdentityCache cache,
+        out bool? hostWindowVisible)
     {
         var publisher = Publisher.Value;
         var observedAt = DateTime.UtcNow.Ticks;
         var complete = true;
-        var windows = new Dictionary<int, DesktopProcessWindowObservation>();
-        var identities = new Dictionary<int, DesktopProcessWindowObservation?>();
-        DesktopProcessWindowObservation? ReadIdentity(int id)
-        {
-            if (identities.TryGetValue(id, out var cached)) return cached;
-            if (ProcessIdToSessionId(checked((uint)id), out var session)
-                && session != checked((uint)publisher.SessionId))
-            {
-                identities[id] = null;
-                return null;
-            }
-
-            var processIdentity = NativeProcessCreationTimeReader.Read(
-                id,
-                WindowsProcessCreationTimeNativeCalls.Instance);
-            if (processIdentity.HandleCloseFailed || processIdentity.Error is not null)
-                Trace.WriteLine($"NativeUi could not read or release process identity for PID {id}: {processIdentity.Win32Error} {processIdentity.Error}");
-            if (processIdentity.Status == ProcessCreationTimeReadStatus.Exited)
-            {
-                identities[id] = null;
-                return null;
-            }
-
-            // A process this user cannot query (for example a protected game or anti-cheat) is
-            // still reported by PID; the service matches it against its own process inventory.
-            var identity = new DesktopProcessWindowObservation(
-                id,
-                processIdentity.Status == ProcessCreationTimeReadStatus.Success
-                    ? processIdentity.CreationFileTimeUtc ?? DesktopProcessWindowObservation.UnverifiedCreationTime
-                    : DesktopProcessWindowObservation.UnverifiedCreationTime,
-                false,
-                false);
-            identities[id] = identity;
-            return identity;
-        }
+        var flags = new Dictionary<int, (bool Visible, bool Background)>();
+        cache.BeginObservation();
         var visibilityWindowFound = false;
         var coverageComplete = true;
         var coverageWindowCount = 0;
@@ -172,12 +209,11 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable, IAsy
         else if (targetShown && !targetBoundsAvailable)
             observedHostWindowVisible = true;
         var foregroundWindow = GetForegroundWindow();
-        DesktopProcessWindowObservation? foreground = null;
+        var foregroundProcessId = 0;
         if (foregroundWindow != IntPtr.Zero)
         {
             _ = GetWindowThreadProcessId(foregroundWindow, out var pid);
-            foreground = pid is > 0 and <= int.MaxValue ? ReadIdentity((int)pid) : null;
-            if (foreground is null) complete = false;
+            if (pid is > 0 and <= int.MaxValue) foregroundProcessId = (int)pid;
         }
         var enumerated = EnumWindows((window, parameter) =>
         {
@@ -207,22 +243,30 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable, IAsy
                 }
             }
             if (!shown) return true;
-            if (windows.Count >= InteractiveDesktopObservation.MaximumWindows) { complete = false; return false; }
+            if (flags.Count >= InteractiveDesktopObservation.MaximumWindows) { complete = false; return false; }
             _ = GetWindowThreadProcessId(window, out var pid);
             if (pid is 0 or > int.MaxValue) { complete = false; return true; }
-            if (!windows.TryGetValue((int)pid, out var state))
-            {
-                state = ReadIdentity((int)pid);
-                if (state is null) return true;
-            }
+            cache.RecordWindow(window, (int)pid);
+            flags.TryGetValue((int)pid, out var state);
             var visible = !minimized;
-            windows[(int)pid] = state with
-            {
-                HasVisibleWindow = state.HasVisibleWindow || visible,
-                HasBackgroundWindow = state.HasBackgroundWindow || shown && !visible
-            };
+            flags[(int)pid] = (state.Visible || visible, state.Background || !visible);
             return true;
         }, IntPtr.Zero);
+        // Identities are resolved after enumeration, once per PID, so the cache can tell whether the
+        // PID still shows a window it showed last time.
+        var windows = new List<DesktopProcessWindowObservation>(flags.Count);
+        DesktopProcessWindowObservation? foreground = null;
+        foreach (var (id, state) in flags)
+        {
+            var identity = cache.Resolve(id, publisher.SessionId);
+            if (identity is null) continue;
+            windows.Add(identity with { HasVisibleWindow = state.Visible, HasBackgroundWindow = state.Background });
+            if (id == foregroundProcessId) foreground = identity;
+        }
+        cache.EndObservation();
+        if (foregroundProcessId != 0 && !flags.ContainsKey(foregroundProcessId))
+            foreground = ReadIdentity(foregroundProcessId, publisher.SessionId);
+        if (foregroundWindow != IntPtr.Zero && foreground is null) complete = false;
         if (visibilityWindow != IntPtr.Zero && targetShown
             && (!targetBoundsAvailable || !enumerated || !coverageComplete || !visibilityWindowFound))
             observedHostWindowVisible = true;
@@ -230,7 +274,80 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable, IAsy
             observedHostWindowVisible = false;
         hostWindowVisible = observedHostWindowVisible;
         return new(publisher.ProcessId, publisher.StartTimeFileTimeUtc, checked((int)publisher.SessionId),
-            observedAt, complete && enumerated, foreground is not null, foreground, windows.Values.ToArray());
+            observedAt, complete && enumerated, foreground is not null, foreground, windows.ToArray());
+    }
+
+    // Process identities (creation times) carried across observations by PID, so an unchanged desktop
+    // does not reopen every windowed process each period. An entry is kept only for a PID that shows a
+    // window in the current observation, and is reused only while that PID still shows at least one
+    // window it showed last time: a PID whose windows were all replaced may now be another process
+    // (PID reuse) and is read again.
+    private sealed class ProcessIdentityCache
+    {
+        private Dictionary<int, DesktopProcessWindowObservation> identities = [];
+        private Dictionary<int, DesktopProcessWindowObservation> nextIdentities = [];
+        private Dictionary<IntPtr, int> windowOwners = [];
+        private Dictionary<IntPtr, int> nextWindowOwners = [];
+        private readonly HashSet<int> continued = [];
+
+        internal void BeginObservation()
+        {
+            nextIdentities.Clear();
+            nextWindowOwners.Clear();
+            continued.Clear();
+        }
+
+        internal void RecordWindow(IntPtr window, int processId)
+        {
+            nextWindowOwners[window] = processId;
+            if (windowOwners.TryGetValue(window, out var owner) && owner == processId) continued.Add(processId);
+        }
+
+        internal DesktopProcessWindowObservation? Resolve(int processId, int publisherSessionId)
+        {
+            var identity = continued.Contains(processId) && identities.TryGetValue(processId, out var cached)
+                ? cached : ReadIdentity(processId, publisherSessionId);
+            if (identity is not null) nextIdentities[processId] = identity;
+            return identity;
+        }
+
+        // PIDs not resolved in this observation are dropped here.
+        internal void EndObservation()
+        {
+            (identities, nextIdentities) = (nextIdentities, identities);
+            (windowOwners, nextWindowOwners) = (nextWindowOwners, windowOwners);
+            nextIdentities.Clear();
+            nextWindowOwners.Clear();
+        }
+    }
+
+    // The last observation written to the current stream, compared by content.
+    private sealed class WrittenDesktopObservation
+    {
+        private InteractiveDesktopObservation? accepted;
+        private readonly Dictionary<int, DesktopProcessWindowObservation> acceptedWindows = [];
+
+        internal bool Holds(InteractiveDesktopObservation sample)
+        {
+            if (accepted is not { } previous
+                || previous.PublisherProcessId != sample.PublisherProcessId
+                || previous.PublisherCreationFileTimeUtc != sample.PublisherCreationFileTimeUtc
+                || previous.SessionId != sample.SessionId
+                || previous.Complete != sample.Complete
+                || previous.ForegroundKnown != sample.ForegroundKnown
+                || !Equals(previous.Foreground, sample.Foreground)
+                || acceptedWindows.Count != sample.Windows.Count) return false;
+            foreach (var window in sample.Windows)
+                if (!acceptedWindows.TryGetValue(window.ProcessId, out var held) || held != window) return false;
+            return true;
+        }
+
+        internal void Accept(InteractiveDesktopObservation sample)
+        {
+            accepted = sample;
+            acceptedWindows.Clear();
+            foreach (var window in sample.Windows) acceptedWindows[window.ProcessId] = window;
+        }
     }
 
     private static PublisherIdentity CreatePublisherIdentity()

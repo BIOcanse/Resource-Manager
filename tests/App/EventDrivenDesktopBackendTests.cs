@@ -25,7 +25,7 @@ using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class EventDrivenDesktopBackendTests
+public sealed partial class EventDrivenDesktopBackendTests
 {
     [Fact]
     public async Task ProductionSettingsChannelDeliversCurrentThenOnlyCommittedContentChanges()

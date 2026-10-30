@@ -1,4 +1,5 @@
 using ResourceManager.NativeUi.Localization;
+using System.Buffers;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net;
@@ -17,6 +18,9 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     private const string ApiKeyHeaderName = TrustedAccessHeaders.KeyHeader;
     private const int MaximumProbeResponseBytes = 16 * 1024;
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
+    // How long a stopped desktop publisher stream may take to send its terminating chunk before the
+    // request is aborted (the same bound a single desktop publication had).
+    private static readonly TimeSpan DesktopPublisherStopGrace = TimeSpan.FromSeconds(1);
     private static readonly NativeBackendProbeJsonContext ProbeJsonContext = new(
         new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
@@ -62,10 +66,11 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             BaseAddress = endpoint,
             Timeout = TimeSpan.FromSeconds(30)
         };
+        // Carries only the desktop publisher stream, which lasts as long as the publisher runs.
         desktopPublisherClient = new HttpClient(CreateHandler(), disposeHandler: true)
         {
             BaseAddress = endpoint,
-            Timeout = TimeSpan.FromSeconds(30)
+            Timeout = Timeout.InfiniteTimeSpan
         };
         streamClient = new HttpClient(CreateHandler(), disposeHandler: true)
         {
@@ -139,6 +144,13 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         => OpenSubscriptionStreamAsync(
             new[] { new { id = "updates", path = "/api/updates/product/status/subscribe" } }, cancellationToken);
 
+    // The overlay's module selections are pushed: current value on open, then committed changes.
+    internal Task<HttpResponseMessage> OpenStartupModuleSettingsStreamAsync(CancellationToken cancellationToken)
+        => OpenSubscriptionStreamAsync(
+            new[] { new { id = ResourceManager.NativeUi.Overlay.OverlaySubscriptions.OperationsSubscriptionId,
+                path = ResourceManager.NativeUi.Overlay.OverlaySubscriptions.OperationsSubscriptionPath } },
+            cancellationToken);
+
     internal Task<HttpResponseMessage> OpenTrayNotificationStreamAsync(CancellationToken cancellationToken)
         => OpenSubscriptionStreamAsync(
             new[] { new { id = TrayBackendNotifications.SubscriptionId, path = TrayBackendNotifications.SubscriptionPath } },
@@ -165,18 +177,6 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         throw new HttpRequestException($"Subscription stream returned {(int)statusCode}.", null, statusCode);
     }
 
-
-    internal async Task<ResourceManager.NativeUi.Overlay.StartupModuleOperationsDocument> ReadStartupModulesAsync(CancellationToken cancellationToken)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/startup-modules/settings");
-        ApplyRequestAuthorization(request);
-        using var response = await actionClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var document = await response.Content.ReadFromJsonAsync(ResourceManager.NativeUi.Overlay.OverlayStartupModulesJson.Default.StartupModuleOperationsDocument,
-            cancellationToken) ?? throw new InvalidDataException("Missing startup module operations.");
-        if (document.Version != 1 || document.Software is null) throw new InvalidDataException("Invalid startup module operations.");
-        return document;
-    }
 
     public async Task<string> TerminateProcessesAsync(
         IReadOnlyList<ForceTerminateProcessTarget> targets,
@@ -226,22 +226,90 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         return string.Format(text.TerminateResultFormat, succeeded, items.GetArrayLength());
     }
 
-    internal async Task PublishDesktopAsync(InteractiveDesktopObservation observation, CancellationToken cancellationToken)
+    // The desktop publisher stream: one long POST whose chunked application/x-ndjson body carries one
+    // observation per line, each line one chunk. The backend holds this process as its session's
+    // publisher for as long as the request lasts. writeLines runs as the body and writes lines through
+    // the writer it is given; the stream ends when writeLines ends or a write fails. This completes
+    // once the stream has ended.
+    //
+    // Over HTTP/1.1 SendAsync sends the whole body before it reads the response, so it returns only
+    // after writeLines has ended. Nothing here waits for the response before writing: the first line
+    // goes out as soon as the body starts, and the stream's end is the body's end, awaited on its own
+    // so a transport that returns at the response headers still keeps the stream open.
+    //
+    // A stop (cancellationToken) ends writeLines between lines and the body then ends with its
+    // terminating chunk, which the backend takes as the publisher's normal stop. The request itself
+    // is aborted only DesktopPublisherStopGrace after the stop, if it has not ended by then.
+    internal async Task RunDesktopPublisherStreamAsync(
+        Func<Func<InteractiveDesktopObservation, CancellationToken, Task>, CancellationToken, Task> writeLines,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        using (var select = new HttpRequestMessage(HttpMethod.Post,
-            "/api/runtime/interactive-desktop/publisher/select"))
-        {
-            ApplyRequestAuthorization(select);
-            using var selected = await desktopPublisherClient.SendAsync(select, cancellationToken);
-            if (selected.StatusCode != HttpStatusCode.NoContent)
-                throw new HttpRequestException($"Interactive desktop publisher selection returned {(int)selected.StatusCode}.");
-        }
-        using var request = new HttpRequestMessage(HttpMethod.Post, InteractiveDesktopObservation.EndpointPath)
-        { Content = JsonContent.Create(observation) };
+        using var abort = new CancellationTokenSource();
+        using var stopping = cancellationToken.Register(() => abort.CancelAfter(DesktopPublisherStopGrace));
+        var content = new DesktopObservationStreamContent(writeLines, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Post, InteractiveDesktopObservation.PublisherStreamPath)
+        { Content = content };
+        request.Headers.TransferEncodingChunked = true;
         ApplyRequestAuthorization(request);
-        using var response = await desktopPublisherClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        using var response = await desktopPublisherClient.SendAsync(request,
+            HttpCompletionOption.ResponseHeadersRead, abort.Token);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException(
+                $"Interactive desktop publisher stream returned {(int)response.StatusCode}.", null, response.StatusCode);
+        await content.Ended.WaitAsync(abort.Token);
+    }
+
+    // No length: the body is chunked and each line goes out as its own chunk when it is written.
+    private sealed class DesktopObservationStreamContent : HttpContent
+    {
+        private static readonly JsonSerializerOptions LineJson = new(JsonSerializerDefaults.Web);
+        private readonly Func<Func<InteractiveDesktopObservation, CancellationToken, Task>, CancellationToken, Task> writeLines;
+        private readonly CancellationToken stop;
+        private readonly TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal DesktopObservationStreamContent(
+            Func<Func<InteractiveDesktopObservation, CancellationToken, Task>, CancellationToken, Task> writeLines,
+            CancellationToken stop)
+        {
+            this.writeLines = writeLines;
+            this.stop = stop;
+            Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-ndjson");
+        }
+
+        internal Task Ended => ended.Task;
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+            => SerializeToStreamAsync(stream, context, CancellationToken.None);
+
+        // cancellationToken is the request's own: a line being written is bounded by the request, not
+        // cut off by the stop, so a stop always lands between lines.
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var line = new ArrayBufferWriter<byte>();
+                await writeLines(async (observation, _) =>
+                {
+                    line.ResetWrittenCount();
+                    using (var writer = new Utf8JsonWriter(line)) JsonSerializer.Serialize(writer, observation, LineJson);
+                    line.Write("\n"u8);
+                    await stream.WriteAsync(line.WrittenMemory, cancellationToken).ConfigureAwait(false);
+                    await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }, stop).ConfigureAwait(false);
+            }
+            // Returning normally lets HttpClient write the terminating chunk.
+            catch (OperationCanceledException) when (stop.IsCancellationRequested
+                && !cancellationToken.IsCancellationRequested) { }
+            finally { ended.TrySetResult(); }
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
     }
 
     public async Task<string> EnsureConnectedAsync(CancellationToken cancellationToken)

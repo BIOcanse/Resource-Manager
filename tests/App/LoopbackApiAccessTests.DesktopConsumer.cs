@@ -59,14 +59,16 @@ public sealed partial class LoopbackApiAccessTests
         Assert.Equal(0, fixture.Administrator.Calls);
     }
 
-    [Fact]
-    public async Task DesktopPublisherRequiresAKeyWithTheDesktopScope()
+    [Theory]
+    [InlineData(InteractiveDesktopObservation.PublisherStreamPath)]
+    // Legacy: remove this row with the select endpoint (.local/reports/desktop-publisher-stream.deletion-list.md).
+    [InlineData(InteractiveDesktopObservation.EndpointPath + "/publisher/select")]
+    public async Task DesktopPublisherRequiresAKeyWithTheDesktopScope(string path)
     {
         await using var fixture = await Fixture.StartAsync();
         var readOnly = await fixture.Keys.CreateAsync(new AccessKeyCreateRequest(
             "read only", AccessKeyPurposes.Control, [AccessKeyScopes.Read]), CancellationToken.None);
-        using var denied = new HttpRequestMessage(HttpMethod.Post,
-            InteractiveDesktopObservation.EndpointPath + "/publisher/select");
+        using var denied = new HttpRequestMessage(HttpMethod.Post, path);
         denied.Headers.Add(TrustedAccessHeaders.KeyHeader, readOnly.ApiKey);
         using var response = await fixture.Client.SendAsync(denied);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);

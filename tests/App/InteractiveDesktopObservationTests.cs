@@ -85,6 +85,27 @@ public sealed class InteractiveDesktopObservationTests
     }
 
     [Fact]
+    public void ProcessStartedAfterObservedAtIsJudgedByTheLatestObservationOnlyWhileItsStreamIsOpen()
+    {
+        var clock = new Clock();
+        var store = new InteractiveDesktopObservationStore(clock, _ => true, _ => 1);
+        // A publisher stream: its own key and the request's lifetime.
+        using var stream = new CancellationTokenSource();
+        const string key = "stream:live";
+        Assert.True(store.SelectPublisher(1, key, 999, Start, stream.Token));
+        Assert.True(store.Publish(Sample(1, 100, [100]), key));
+        // The desktop content has not changed since, so the stream has carried no newer line.
+        clock.Now = Epoch.AddMinutes(10);
+        var later = Epoch.AddSeconds(10).UtcDateTime.ToFileTimeUtc();
+        var result = store.Read([new(100, Start), new(300, later)]);
+        Assert.True(result.Processes[new(100, Start)].ForegroundFocused);
+        Assert.Equal(HostManagerRuntimeStates.BackgroundProcess, result.Processes[new(300, later)].RuntimeState);
+        stream.Cancel();
+        Assert.Empty(store.Read([new(100, Start), new(300, later)]).Processes);
+        Assert.Null(store.IsForeground(300, later));
+    }
+
+    [Fact]
     public void PidReuseAndUnknownForegroundAreNeverConfirmedBackground()
     {
         var store = new InteractiveDesktopObservationStore(new Clock(), _ => true, _ => 1);
@@ -115,7 +136,7 @@ public sealed class InteractiveDesktopObservationTests
         Assert.True(result.Processes[new(100, Start)].ForegroundFocused);
         Assert.Equal(HostManagerRuntimeStates.ForegroundUnfocused, result.Processes[new(101, Start)].RuntimeState);
         Assert.Equal(HostManagerRuntimeStates.BackgroundProcess, result.Processes[new(102, Start)].RuntimeState);
-        // A process that started after the observation cannot inherit the PID-only row.
+        // Coverage reaches up to the store's now and not past it: a later start has no state.
         Assert.Null(store.IsForeground(100, Epoch.AddSeconds(1).UtcDateTime.ToFileTimeUtc()));
     }
 

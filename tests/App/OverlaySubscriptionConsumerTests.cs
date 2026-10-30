@@ -1,6 +1,8 @@
 using ResourceManager.NativeUi.Overlay;
 using ResourceManager.NativeUi.Preferences;
 using System.Collections.Concurrent;
+using System.Net;
+using System.Threading.Channels;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -76,43 +78,157 @@ public sealed class OverlaySubscriptionConsumerTests
     }
 
     [Fact]
-    public async Task ChangingCachedSelectionReplacesDemandAndDisablingReleasesIt()
+    public async Task OnlyPushedSettingsAndPreferenceWakeupsRecomputeDemand()
     {
         var preferences = new FrontendPreferences();
-        var plans = new ConcurrentQueue<OverlaySubscription[]>();
-        var active = 0;
+        var reads = 0;
+        var pushes = new SettingsPushes();
+        var streams = new DataStreams();
+        var wake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var run = OverlaySubscriptions.RunAsync(
-            _ => Task.FromResult(new StartupModuleOperationsDocument(1, [])),
-            () => Volatile.Read(ref preferences),
-            async (plan, token) =>
-            {
-                plans.Enqueue(plan); Interlocked.Increment(ref active);
-                try { await Task.Delay(Timeout.Infinite, token); }
-                catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-                finally { Interlocked.Decrement(ref active); }
-            }, () => { }, TimeSpan.FromMilliseconds(10), stop.Token);
+        var run = OverlaySubscriptions.RunAsync(pushes.Subscribe,
+            () => { Interlocked.Increment(ref reads); return Volatile.Read(ref preferences); },
+            wake.Reader, streams.ObserveAsync, () => { }, TimeSpan.FromMilliseconds(10), stop.Token);
         try
         {
-            await Task.Delay(30, stop.Token);
-            Assert.Empty(plans);
+            await Wait(() => pushes.Opened.Count == 1, stop.Token);
+            // Before the first push there is nothing to compute; a wakeup alone does not read anything.
+            wake.Writer.TryWrite(true);
+            await Task.Delay(50, stop.Token);
+            Assert.Equal(0, Volatile.Read(ref reads));
+            await pushes.Latest.Writer.WriteAsync(new(1, []), stop.Token);
+            await Wait(() => Volatile.Read(ref reads) == 1, stop.Token);
+            Assert.Empty(streams.Plans);
+
+            // Nothing samples the preferences: a change is seen only when its wakeup arrives.
             Volatile.Write(ref preferences, new() { Overlays = new Dictionary<string, FrontendOverlayPresentation> { ["game"] = new() { Enabled = true } } });
-            await Wait(() => plans.Count == 1 && Volatile.Read(ref active) == 1);
+            await Task.Delay(100, stop.Token);
+            Assert.Equal(1, Volatile.Read(ref reads));
+            Assert.Empty(streams.Plans);
+            wake.Writer.TryWrite(true);
+            await Wait(() => streams.Plans.Count == 1 && Volatile.Read(ref streams.Active) == 1, stop.Token);
+
             Volatile.Write(ref preferences, new() { Overlays = new Dictionary<string, FrontendOverlayPresentation>
                 { ["game"] = new() { Enabled = true, Metrics = ["target.memory"] } } });
-            await Wait(() => plans.Count == 2 && Volatile.Read(ref active) == 1);
-            Assert.EndsWith("&ids=target.memory", plans.ToArray()[1][0].Path);
+            wake.Writer.TryWrite(true);
+            await Wait(() => streams.Plans.Count == 2 && Volatile.Read(ref streams.Active) == 1, stop.Token);
+            Assert.EndsWith("&ids=target.memory", streams.Plans.ToArray()[1][0].Path);
+
+            // The same pushed selections keep the running data stream.
+            await pushes.Latest.Writer.WriteAsync(new(1, []), stop.Token);
+            await Wait(() => Volatile.Read(ref reads) == 4, stop.Token);
             Volatile.Write(ref preferences, new());
-            await Wait(() => Volatile.Read(ref active) == 0);
-            await Task.Delay(30, stop.Token);
-            Assert.Equal(2, plans.Count);
+            wake.Writer.TryWrite(true);
+            await Wait(() => Volatile.Read(ref streams.Active) == 0, stop.Token);
+            await Task.Delay(50, stop.Token);
+            Assert.Equal(2, streams.Plans.Count);
+            Assert.Equal(5, Volatile.Read(ref reads));
+            Assert.Single(pushes.Opened);
         }
         finally { stop.Cancel(); await run; }
-        Assert.Equal(0, active);
+        Assert.Equal(0, streams.Active);
+    }
 
-        async Task Wait(Func<bool> condition)
+    [Fact]
+    public async Task PushedModuleSelectionsDriveInjectedDemandAndAnEndedSubscriptionIsOpenedAgain()
+    {
+        var preferences = new FrontendPreferences { Overlays = new Dictionary<string, FrontendOverlayPresentation>
+            { ["game"] = new() { Mode = "injected", Enabled = true } } };
+        var selected = new StartupModuleOperationsDocument(1, [new("game", ["performance-overlay-preload", "performance-overlay-vulkan"])]);
+        var reads = 0;
+        var clears = 0;
+        var pushes = new SettingsPushes();
+        var streams = new DataStreams();
+        var wake = Channel.CreateBounded<bool>(1);
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var run = OverlaySubscriptions.RunAsync(pushes.Subscribe,
+            () => { Interlocked.Increment(ref reads); return preferences; },
+            wake.Reader, streams.ObserveAsync, () => Interlocked.Increment(ref clears), TimeSpan.FromMilliseconds(10), stop.Token);
+        try
         {
-            while (!condition()) await Task.Delay(10, stop.Token);
+            await Wait(() => pushes.Opened.Count == 1, stop.Token);
+            await Task.Delay(50, stop.Token);
+            Assert.Equal(0, Volatile.Read(ref reads));
+            await pushes.Latest.Writer.WriteAsync(selected, stop.Token);
+            await Wait(() => streams.Plans.Count == 1 && Volatile.Read(ref streams.Active) == 1, stop.Token);
+            await pushes.Latest.Writer.WriteAsync(new(1, []), stop.Token);
+            await Wait(() => Volatile.Read(ref streams.Active) == 0, stop.Token);
+            await pushes.Latest.Writer.WriteAsync(selected, stop.Token);
+            await Wait(() => streams.Plans.Count == 2 && Volatile.Read(ref streams.Active) == 1, stop.Token);
+
+            // An ended subscription releases the data stream, clears, and opens the subscription again;
+            // the reopened one waits for its first push instead of reading on a timer.
+            var clearsBeforeEnd = Volatile.Read(ref clears);
+            pushes.Latest.Writer.Complete();
+            await Wait(() => Volatile.Read(ref streams.Active) == 0 && pushes.Opened.Count == 2, stop.Token);
+            Assert.True(Volatile.Read(ref clears) > clearsBeforeEnd);
+            await Task.Delay(50, stop.Token);
+            Assert.Equal(3, Volatile.Read(ref reads));
+            await pushes.Latest.Writer.WriteAsync(selected, stop.Token);
+            await Wait(() => streams.Plans.Count == 3 && Volatile.Read(ref streams.Active) == 1, stop.Token);
+
+            // A failed subscription is opened again the same way.
+            pushes.Latest.Writer.Complete(new HttpRequestException("lost"));
+            await Wait(() => Volatile.Read(ref streams.Active) == 0 && pushes.Opened.Count == 3, stop.Token);
+        }
+        finally { stop.Cancel(); await run; }
+        Assert.Equal(0, streams.Active);
+    }
+
+    [Fact]
+    public async Task SettingsFramesAreReadForTheirOwnIdUntilTheSelectorIsDenied()
+    {
+        var body = string.Join('\n',
+            """{"subscriptionId":"other","value":{"version":1,"software":[]}}""",
+            """{"subscriptionId":"startup-modules","value":{"version":1,"software":[{"softwareId":"game","moduleIds":["performance-overlay-preload"]}]}}""",
+            """{"subscriptionId":"startup-modules","value":{"statusCode":403,"error":"denied"}}""",
+            """{"subscriptionId":"startup-modules","value":{"version":1,"software":[]}}""") + "\n";
+        var documents = new List<StartupModuleOperationsDocument>();
+        await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        {
+            await foreach (var document in OverlaySubscriptions.ReadOperationsAsync(
+                _ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) }),
+                CancellationToken.None))
+                documents.Add(document);
+        });
+        var read = Assert.Single(documents);
+        var software = Assert.Single(read.Software);
+        Assert.Equal("game", software.SoftwareId);
+        Assert.Equal(new[] { "performance-overlay-preload" }, software.ModuleIds);
+    }
+
+    private static async Task Wait(Func<bool> condition, CancellationToken token)
+    {
+        while (!condition()) await Task.Delay(10, token);
+    }
+
+    // Each opened settings subscription is a channel the test pushes frames into and ends.
+    private sealed class SettingsPushes
+    {
+        public readonly ConcurrentQueue<Channel<StartupModuleOperationsDocument>> Opened = new();
+
+        public Channel<StartupModuleOperationsDocument> Latest => Opened.Last();
+
+        public IAsyncEnumerable<StartupModuleOperationsDocument> Subscribe(CancellationToken token)
+        {
+            var frames = Channel.CreateUnbounded<StartupModuleOperationsDocument>();
+            Opened.Enqueue(frames);
+            return frames.Reader.ReadAllAsync(token);
+        }
+    }
+
+    private sealed class DataStreams
+    {
+        public readonly ConcurrentQueue<OverlaySubscription[]> Plans = new();
+        public int Active;
+
+        public async Task ObserveAsync(OverlaySubscription[] plan, CancellationToken token)
+        {
+            Plans.Enqueue(plan);
+            Interlocked.Increment(ref Active);
+            try { await Task.Delay(Timeout.Infinite, token); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            finally { Interlocked.Decrement(ref Active); }
         }
     }
 }

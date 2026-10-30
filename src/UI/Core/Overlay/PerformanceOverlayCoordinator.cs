@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading.Channels;
 using ResourceManager.NativeUi.Localization;
 using ResourceManager.NativeUi.Preferences;
 
@@ -10,12 +11,15 @@ namespace ResourceManager.NativeUi.Overlay;
 internal sealed class PerformanceOverlayCoordinator : IDisposable, IAsyncDisposable
 {
     private static readonly JsonSerializerOptions StreamJson = new(JsonSerializerDefaults.Web);
+    // Both the settings subscription and the data stream reopen after this delay when they end.
+    private static readonly TimeSpan StreamReconnectDelay = TimeSpan.FromSeconds(1);
     private readonly Action<Action> dispatch;
     private readonly object callbackSync = new();
     private readonly Dictionary<long, Action> pendingCallbacks = [];
     private readonly System.Windows.Forms.Timer windowTimer;
     private readonly Dictionary<OverlayTargetId, DisplayTarget> targets = [];
     private CancellationTokenSource? subscriptionCancellation;
+    private Channel<bool>? preferenceChanges;
     private Task? completion;
     private long streamGeneration;
     private long callbackId;
@@ -46,10 +50,26 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable, IAsyncDisposa
         => _ = RunAsync(session, CancellationToken.None);
 
     public Task RunAsync(BackendServiceSession session, CancellationToken cancellationToken)
-        => RunAsync((post, token) => OverlaySubscriptions.RunAsync(
-            session.ReadStartupModulesAsync, FrontendPreferencesOwner.Current.Read,
-            (subscriptions, streamToken) => ReadStreamAsync(session, subscriptions, post, streamToken),
-            () => post(Clear), TimeSpan.FromMilliseconds(500), token), cancellationToken);
+        => RunAsync(async (post, token) =>
+        {
+            var changes = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+            { FullMode = BoundedChannelFullMode.DropWrite, SingleReader = true });
+            Volatile.Write(ref preferenceChanges, changes);
+            try
+            {
+                await OverlaySubscriptions.RunAsync(
+                    subscriptionToken => OverlaySubscriptions.ReadOperationsAsync(
+                        session.OpenStartupModuleSettingsStreamAsync, subscriptionToken),
+                    FrontendPreferencesOwner.Current.Read, changes.Reader,
+                    (subscriptions, streamToken) => ReadStreamAsync(session, subscriptions, post, streamToken),
+                    () => post(Clear), StreamReconnectDelay, token);
+            }
+            finally { Interlocked.CompareExchange(ref preferenceChanges, null, changes); }
+        }, cancellationToken);
+
+    // FrontendPreferencesOwner has no change event of its own; the window that saves the
+    // preferences reports each save here, and the running flow recomputes its subscriptions.
+    internal void NotifyPreferencesChanged() => Volatile.Read(ref preferenceChanges)?.Writer.TryWrite(true);
 
     // Called and awaited on the original UI context, so output cleanup stays on its STA.
     internal Task RunAsync(Func<Action<Action>, CancellationToken, Task> observeAsync,
@@ -271,7 +291,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable, IAsyncDisposa
                 Trace.WriteLine(exception);
             }
             post(Clear);
-            try { await Task.Delay(1000, cancellationToken); }
+            try { await Task.Delay(StreamReconnectDelay, cancellationToken); }
             catch (OperationCanceledException) { break; }
         }
     }

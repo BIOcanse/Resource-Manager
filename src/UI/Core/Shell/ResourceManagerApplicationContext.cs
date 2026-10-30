@@ -271,6 +271,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
         form.FormClosed += OnMainFormClosed;
         form.HandleCreated += OnMainFormHandleCreated;
         form.HandleDestroyed += OnMainFormHandleDestroyed;
+        form.PreferencesChanged += OnFrontendPreferencesChanged;
         mainForm = form;
         if (form.IsHandleCreated)
             desktopObservations.SetVisibilityWindow(form.Handle);
@@ -289,6 +290,10 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
         if (ReferenceEquals(mainForm, sender) && sender is MainForm form)
             desktopObservations.SetVisibilityWindow(IntPtr.Zero);
     }
+
+    // The overlay reads the same preferences owner the window saves through.
+    private void OnFrontendPreferencesChanged(object? sender, EventArgs args)
+        => performanceOverlay.NotifyPreferencesChanged();
 
     // Called by the current desktop observation run's owned callback scope.
     private void OnObservedHostWindowVisibilityChanged(IntPtr window, bool visible)
@@ -594,6 +599,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
         form.FormClosed -= OnMainFormClosed;
         form.HandleCreated -= OnMainFormHandleCreated;
         form.HandleDestroyed -= OnMainFormHandleDestroyed;
+        form.PreferencesChanged -= OnFrontendPreferencesChanged;
         desktopObservations.SetVisibilityWindow(IntPtr.Zero);
         if (!form.IsDisposed)
         {

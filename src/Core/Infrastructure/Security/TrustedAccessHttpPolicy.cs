@@ -330,6 +330,9 @@ internal static class TrustedAccessHttpPolicy
         Add(Protected(AccessKeyScopes.GpuReport),
             "POST /api/gpu-placement/process-history/observe");
         Add(Protected(AccessKeyScopes.DesktopPublish),
+            "POST /api/runtime/interactive-desktop/publisher",
+            // Legacy select-then-POST pair, no product caller; deleted once the user has reviewed
+            // .local/reports/desktop-publisher-stream.deletion-list.md.
             "POST /api/runtime/interactive-desktop",
             "POST /api/runtime/interactive-desktop/publisher/select");
         Add(SubscriptionRequirement,

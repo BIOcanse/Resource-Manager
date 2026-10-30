@@ -19,7 +19,11 @@ public sealed record InteractiveDesktopObservation(
     IReadOnlyList<DesktopProcessWindowObservation> Windows)
 {
     public const string EndpointPath = "/api/runtime/interactive-desktop";
+    // The publisher stream: one long request whose body carries one observation per line. The stream
+    // is the session's selected publisher while it is open; each line replaces the observation.
+    public const string PublisherStreamPath = EndpointPath + "/publisher";
     public const int MaximumWindows = 2048;
-    // Covers the maximum typed JSON frame, including publisher and foreground metadata.
+    // Covers the maximum typed JSON frame, including publisher and foreground metadata. On the
+    // publisher stream it bounds each line.
     public const int MaximumRequestBytes = 512 * 1024;
 }
