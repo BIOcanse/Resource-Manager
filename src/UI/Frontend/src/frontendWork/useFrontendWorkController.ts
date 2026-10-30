@@ -50,6 +50,7 @@ export function useFrontendWorkController(): FrontendWorkController {
   const visibilityDemandControllers = new Map<string, FrontendVisibilityDemandController>();
   const visibilitySurfaces = new Map<HTMLElement, FrontendVisibilitySurfaceRuntime>();
   const workReferenceCounts = new Map<FrontendWorkId, number>();
+  const droppedSurfaces = new Set<HTMLElement>();
   let visibleDemandIds = new Set<string>();
   let root: HTMLElement | null = null;
   let intersectionObserver: IntersectionObserver | null = null;
@@ -126,6 +127,7 @@ export function useFrontendWorkController(): FrontendWorkController {
 
     const handleDocumentVisibility = () => {
       syncFrontendVisibility();
+      if (document.visibilityState === "visible") remeasureDroppedSurfaces();
       if (frontendVisible()) {
         refreshVisibilitySurfaces();
       }
@@ -137,6 +139,7 @@ export function useFrontendWorkController(): FrontendWorkController {
       } else if (message === "host.visibility:visible") {
         hostVisible = true;
         syncFrontendVisibility();
+        remeasureDroppedSurfaces();
         if (frontendVisible()) {
           refreshVisibilitySurfaces();
         }
@@ -159,6 +162,7 @@ export function useFrontendWorkController(): FrontendWorkController {
       visibilityDemandControllers.clear();
       visibilitySurfaces.clear();
       workReferenceCounts.clear();
+      droppedSurfaces.clear();
       visibleDemandIds.clear();
       root = null;
       intersectionObserver = null;
@@ -186,6 +190,7 @@ export function useFrontendWorkController(): FrontendWorkController {
       }
       intersectionObserver?.unobserve(element);
       visibilitySurfaces.delete(element);
+      droppedSurfaces.delete(element);
       changed = true;
     }
 
@@ -219,7 +224,15 @@ export function useFrontendWorkController(): FrontendWorkController {
   function handleSurfaceIntersections(entries: IntersectionObserverEntry[]) {
     // A minimized/occluded document may deliver empty geometry. Preserve the
     // last visible observation; only the cooldown may withdraw window demand.
-    if (!hostVisible || document.visibilityState !== "visible") return;
+    // The observer reports a surface only when its intersection changes, so a
+    // dropped entry is never repeated: those surfaces are observed again once
+    // the host and the document are visible.
+    if (!hostVisible || document.visibilityState !== "visible") {
+      for (const entry of entries) {
+        if (visibilitySurfaces.has(entry.target as HTMLElement)) droppedSurfaces.add(entry.target as HTMLElement);
+      }
+      return;
+    }
     let changed = false;
     for (const entry of entries) {
       const runtime = visibilitySurfaces.get(entry.target as HTMLElement);
@@ -238,6 +251,16 @@ export function useFrontendWorkController(): FrontendWorkController {
     }
   }
 
+  function remeasureDroppedSurfaces() {
+    if (!hostVisible || document.visibilityState !== "visible" || droppedSurfaces.size === 0) return;
+    // Observing again makes the browser deliver a fresh initial entry after layout.
+    for (const element of droppedSurfaces) {
+      if (!visibilitySurfaces.has(element)) continue;
+      intersectionObserver?.unobserve(element);
+      intersectionObserver?.observe(element);
+    }
+    droppedSurfaces.clear();
+  }
   function refreshVisibilitySurfaces() {
     // 只同步标记和消费已交付的观察；新元素等待浏览器布局后的首个相交结果。
     const changed = syncVisibilitySurfaces();
