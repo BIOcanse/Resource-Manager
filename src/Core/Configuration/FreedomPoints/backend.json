@@ -9,6 +9,19 @@
           "id": "monitoring",
           "description": "Backend subscriptions publish current values; readers do not sample.",
           "build": {
+            "simple": [
+              {
+                "index": 0,
+                "id": "single_request_stop_buffer_ms",
+                "description": "Shared subscription-source stop buffer after a single request ends. Zero disables the buffer; keeping a source in use never schedules sampling.",
+                "value_type": "nonnegative_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 10000,
+                "consumers": ["SubscriptionSourceSettings.CompileStopBuffer"]
+              }
+            ],
             "complex": [
               {
                 "value_source": "registry",

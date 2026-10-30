@@ -37,10 +37,30 @@ public sealed class WindowsControlObjectCatalog(
     /// <summary>处理器的身份。核显跟着它走 —— 核显没有自己的标识。</summary>
     private readonly WindowsCpuIdentityReader cpuIdentityReader = new();
 
+    internal WindowsControlObjectCatalog(HardwareMetricCatalogState catalogState,
+        IEnumerable<IControlWriter> writers, IControlAccessLevel accessLevel, FanControlCoreClient fanCore,
+        WindowsChassisKindReader chassis, IMetricSnapshotObservationSource observations,
+        IMetricSnapshotPushSource metrics, WindowsCpuIdentityReader cpuIdentityReader)
+        : this(catalogState, writers, accessLevel, fanCore, chassis, observations, metrics)
+        => this.cpuIdentityReader = cpuIdentityReader;
+
     /// <summary>没有任何写入器认领这一项时的原因。接进一个就少一条。</summary>
     private const string WriterNotImplemented = "control-writer-missing";
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
+
+    public async Task EnsureActualTopologyAsync(CancellationToken cancellationToken)
+    {
+        // A declaration probe is finite work, only before the first topology publication.
+        if (catalogState.Current is null)
+            await metrics.FetchOnceAsync("control.actual-state-reader:topology",
+                MetricSampleRequest.CatalogProbe, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task DiscoverActualReadingsAsync(CancellationToken cancellationToken)
+    {
+        await fanCore.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+    }
 
     // Every entry in this cached description declares a FanCore-backed fan.
     // Actual-value subscriptions currently select the whole catalog.

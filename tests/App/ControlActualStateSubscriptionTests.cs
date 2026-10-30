@@ -30,6 +30,7 @@ public sealed class ControlActualStateSubscriptionTests
         var first = subscriptions[0].RunAsync(writer, firstCancellation.Token);
         var second = subscriptions[1].RunAsync(writer, secondCancellation.Token);
         Assert.Equal(2, owner.Active);
+        Assert.Equal([TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60)], owner.Intervals);
         Assert.True(owner.Reads >= 2);
         var frames = System.Text.Encoding.UTF8.GetString(body.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.True(frames.Length >= 2);
@@ -81,7 +82,7 @@ public sealed class ControlActualStateSubscriptionTests
         Assert.Equal(0, owner.Reads);
 
         var readOnly = new EmptyControlActualStateOwner();
-        using var demand = readOnly.AcquireSubscription();
+        using var demand = readOnly.AcquireSubscription(TimeSpan.FromSeconds(10));
         Assert.Same(ControlActualState.Empty, readOnly.Current);
     }
 
@@ -120,6 +121,7 @@ public sealed class ControlActualStateSubscriptionTests
         public int Acquired;
         public int Released;
         public int Reads;
+        public List<TimeSpan> Intervals { get; } = [];
         public ControlActualState Current
         {
             get
@@ -128,8 +130,9 @@ public sealed class ControlActualStateSubscriptionTests
                 return new([new("device", "power", 42)], DateTimeOffset.UnixEpoch);
             }
         }
-        public IDisposable AcquireSubscription()
+        public IDisposable AcquireSubscription(TimeSpan interval)
         {
+            Intervals.Add(interval);
             Interlocked.Increment(ref Acquired);
             Interlocked.Increment(ref Active);
             return new Lease(this);

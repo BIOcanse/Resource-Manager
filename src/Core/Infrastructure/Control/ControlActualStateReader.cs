@@ -1,24 +1,15 @@
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
-using System.Runtime.CompilerServices;
-using ResourceManager.ReadWrite.Publications;
-using ResourceManager.Subscription;
 using ResourceManager.App.Infrastructure.Control.Writers;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
 /// <summary>
-/// 实际状态：这台机器现在实际是什么样。
-///
-/// **它不是期望状态的回声。** 固件会按温度自己调度，用户也可能用别的软件改过 ——
-/// 两者对不上是常态，而且正是用户需要看见的信息，所以两份都留着，不互相覆盖。
-///
-/// 这一份和统一写入层是**分开**的两条路：写走写入层，读走这里再进统一订阅源。
-/// 分开之后，两边各按各的节奏跑，不会因为共用一个对象而互相等锁。
-///
-/// 订阅表发布是否在用，父决策节点决定本块启停。运行时按固定间隔采样，
-/// 新结果先完整读出来再原子替换；停止后保留当前值。读取端只拿当前值，
-/// 不触发采样也不等待 —— 订阅者再多，硬件那一侧也只有这一条采样路。
+/// 实际值和期望值各有所有者。父决策节点按本源的“被用”事实启停本块。
+/// 入口只做一次风扇发现；订阅首轮立即到期，以后按各自间隔到期，单次请求立即安排一轮。
+/// 没有到期工作时只等待下一次到期或新工作，不采样。单次请求结束后的停止缓冲只保活。
+/// 每轮投影已发布的目录并回读写入器，未就绪的能力发布带原因的空值，不等就绪。
+/// 新结果完整生成后原子替换，停止后保留当前值。
 /// </summary>
 public sealed class ControlActualStateReader(
     IControlObjectCatalog catalog,
@@ -27,165 +18,279 @@ public sealed class ControlActualStateReader(
     HardwareBridgeClient? bridge = null)
     : BackgroundService, IControlActualStateOwner
 {
-    /// <summary>
-    /// 采样间隔。
-    ///
-    /// 控制面这些量变化不快（功耗上限、频率偏移、电压档位都是用户设了才变），
-    /// 但每次采样都要走 SMU 邮箱或驱动调用，压得太密只会和写入抢同一条通道。
-    /// </summary>
-    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
-
-    /// <summary>
-    /// 需求出现后先等一会儿。开机那阵子驱动、辅助进程、监控快照都还没就绪，
-    /// 这时候去读只会得到一堆"读不到"，然后把它当成当前值挂出去。
-    /// </summary>
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(12);
-
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
     private readonly TimeProvider clock = TimeProvider.System;
+    private readonly TimeSpan stopBuffer = SubscriptionSourceSettings.ProductStopBuffer;
     private readonly object subscriptionGate = new();
+    private readonly HashSet<SubscriptionLease> subscriptions = [];
+    private readonly HashSet<SingleRequest> requests = [];
+    private readonly SemaphoreSlim work = new(0, 1);
     private IDisposable? bridgeReadings;
-    private int leases;
+    // The resident subscription owner keeps this deadline across worker restarts,
+    // just as it keeps live leases. Only expiry or owner disposal withdraws it.
+    private ITimer? bufferTimer;
+    private DateTimeOffset? bufferUntil;
     private bool actualControlValuesInUse;
     private bool fanReadingsInUse;
     private int disposed;
     private volatile ControlActualState current = ControlActualState.Empty;
-    private readonly SamplingPublicationSignal publications = new();
-    private const string ActualDataset = "control.actual";
 
     internal ControlActualStateReader(IControlObjectCatalog catalog, IEnumerable<IControlWriter> writers,
-        TimeProvider clock, HardwareBridgeClient? bridge = null) : this(catalog, writers, bridge: bridge)
+        TimeProvider clock, HardwareBridgeClient? bridge = null, TimeSpan? stopBuffer = null)
+        : this(catalog, writers, bridge: bridge)
     {
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        if (stopBuffer < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(stopBuffer));
+        this.stopBuffer = stopBuffer ?? this.stopBuffer;
     }
 
     public ControlActualState Current => current;
-
     internal bool ActualControlValuesInUse => Volatile.Read(ref actualControlValuesInUse);
     internal event Action? SubscriptionsChanged;
     internal bool FanReadingsInUse => Volatile.Read(ref fanReadingsInUse);
     internal event Action? FanReadingsChanged;
 
-    public Task<ControlActualState?> FetchOnceAsync(string holder, CancellationToken cancellationToken)
-        => SubscriptionSingleFetch.ReadAsync(SubscribeOnceAsync(holder, cancellationToken),
-            static _ => true, cancellationToken);
-
-    private async IAsyncEnumerable<ControlActualState> SubscribeOnceAsync(string holder,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+    public async Task<ControlActualState?> FetchOnceAsync(string holder, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(holder);
         cancellationToken.ThrowIfCancellationRequested();
-        using var publication = publications.Subscribe([ActualDataset]);
-        using var lease = AcquireSubscription();
-        logger?.LogDebug("Control actual-state subscription {Holder} acquired.", holder);
-        try
-        {
-            // No initial cached delivery: this waits for the original worker,
-            // including its normal startup delay and shared ten-second cadence.
-            await publication.WaitAsync(cancellationToken).ConfigureAwait(false);
-            yield return Current;
-        }
-        finally { logger?.LogDebug("Control actual-state subscription {Holder} released.", holder); }
-    }
-
-    public IDisposable AcquireSubscription()
-    {
-        bool changed;
-        bool fanChanged;
+        var request = new SingleRequest();
+        (bool Usage, bool Fan) changes;
         lock (subscriptionGate)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-            changed = leases++ == 0;
-            Volatile.Write(ref actualControlValuesInUse, true);
-            fanChanged = RefreshReadingSubscriptionsLocked();
+            requests.Add(request);
+            changes = RefreshUsageLocked();
+            WakeLocked();
         }
-        if (changed) SubscriptionsChanged?.Invoke();
-        if (fanChanged) FanReadingsChanged?.Invoke();
-        return new SubscriptionLease(this);
+        PublishChanges(changes);
+        logger?.LogDebug("Control actual-state request {Holder} acquired.", holder);
+        try { return await request.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false); }
+        finally
+        {
+            lock (subscriptionGate)
+            {
+                requests.Remove(request);
+                if (Volatile.Read(ref disposed) == 0 && stopBuffer > TimeSpan.Zero)
+                {
+                    bufferUntil = clock.GetUtcNow() + stopBuffer;
+                    bufferTimer ??= clock.CreateTimer(_ => ExpireBuffer(), null,
+                        Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+                    bufferTimer.Change(stopBuffer, Timeout.InfiniteTimeSpan);
+                }
+                changes = RefreshUsageLocked();
+            }
+            PublishChanges(changes);
+            logger?.LogDebug("Control actual-state request {Holder} released.", holder);
+        }
     }
 
-    private void ReleaseSubscription()
+    public IDisposable AcquireSubscription(TimeSpan interval)
     {
-        bool changed;
-        bool fanChanged;
+        if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
+        SubscriptionLease lease;
+        (bool Usage, bool Fan) changes;
         lock (subscriptionGate)
         {
-            if (leases == 0) return;
-            changed = --leases == 0;
-            Volatile.Write(ref actualControlValuesInUse, leases != 0);
-            fanChanged = RefreshReadingSubscriptionsLocked();
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+            lease = new(this, interval, clock.GetUtcNow());
+            subscriptions.Add(lease);
+            changes = RefreshUsageLocked();
+            WakeLocked();
         }
-        if (changed) SubscriptionsChanged?.Invoke();
-        if (fanChanged) FanReadingsChanged?.Invoke();
+        PublishChanges(changes);
+        return lease;
     }
 
-    // Called only when the subscription owner changes or refreshes its declarations.
-    // State-authority reads load the published Boolean and never call the catalog.
+    private void ReleaseSubscription(SubscriptionLease lease)
+    {
+        (bool Usage, bool Fan) changes;
+        lock (subscriptionGate)
+        {
+            if (!subscriptions.Remove(lease)) return;
+            changes = RefreshUsageLocked();
+            WakeLocked();
+        }
+        PublishChanges(changes);
+    }
+
+    private void ExpireBuffer()
+    {
+        (bool Usage, bool Fan) changes;
+        lock (subscriptionGate)
+        {
+            if (bufferUntil is not { } until || Volatile.Read(ref disposed) != 0) return;
+            var remaining = until - clock.GetUtcNow();
+            if (remaining > TimeSpan.Zero)
+            {
+                bufferTimer?.Change(remaining, Timeout.InfiniteTimeSpan);
+                return;
+            }
+            bufferUntil = null;
+            changes = RefreshUsageLocked();
+        }
+        PublishChanges(changes);
+    }
+
+    private (bool Usage, bool Fan) RefreshUsageLocked()
+    {
+        var next = subscriptions.Count != 0 || requests.Count != 0 || bufferUntil is not null;
+        var changed = actualControlValuesInUse != next;
+        Volatile.Write(ref actualControlValuesInUse, next);
+        return (changed, RefreshReadingSubscriptionsLocked());
+    }
+
+    // event: only subscription/request edges, buffer expiry and declaration reads refresh holds.
     private bool RefreshReadingSubscriptionsLocked()
     {
-        if (leases != 0 && catalog.ActualReadingsUseHardwareBridge)
+        if (actualControlValuesInUse && catalog.ActualReadingsUseHardwareBridge)
             bridgeReadings ??= bridge?.SubscribeReadings();
         else
         {
             bridgeReadings?.Dispose();
             bridgeReadings = null;
         }
-        var next = leases != 0 && catalog.ActualReadingsUseFanCore;
+        var next = actualControlValuesInUse && catalog.ActualReadingsUseFanCore;
         if (fanReadingsInUse == next) return false;
         Volatile.Write(ref fanReadingsInUse, next);
         return true;
     }
 
+    private void PublishChanges((bool Usage, bool Fan) changes)
+    {
+        if (changes.Usage) SubscriptionsChanged?.Invoke();
+        if (changes.Fan) FanReadingsChanged?.Invoke();
+    }
+
+    private void WakeLocked()
+    {
+        if (Volatile.Read(ref disposed) != 0) return;
+        if (work.CurrentCount == 0) work.Release();
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        lock (subscriptionGate)
+        {
+            foreach (var subscription in subscriptions) subscription.NextDue = clock.GetUtcNow();
+        }
         try
         {
-            await Task.Delay(StartupDelay, clock, stoppingToken).ConfigureAwait(false);
-            using var timer = new PeriodicTimer(Interval, clock);
-            do
+            try { await catalog.DiscoverActualReadingsAsync(stoppingToken).ConfigureAwait(false); }
+            catch (Exception error) when (error is not OperationCanceledException)
             {
-                stoppingToken.ThrowIfCancellationRequested();
+                logger?.LogWarning(error, "Actual-state fan discovery failed; reading declared capabilities.");
+            }
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                SingleRequest[] batch;
+                bool due;
+                DateTimeOffset? nextDue;
+                lock (subscriptionGate)
+                {
+                    var now = clock.GetUtcNow();
+                    batch = requests.Where(request => !request.Assigned && !request.Completion.Task.IsCompleted).ToArray();
+                    due = subscriptions.Any(subscription => subscription.NextDue <= now);
+                    if (due || batch.Length != 0)
+                    {
+                        foreach (var request in batch) request.Assigned = true;
+                        foreach (var subscription in subscriptions.Where(subscription => subscription.NextDue <= now))
+                            subscription.NextDue = now + subscription.Interval;
+                    }
+                    nextDue = subscriptions.Count == 0 ? null : subscriptions.Min(subscription => subscription.NextDue);
+                }
+                if (!due && batch.Length == 0)
+                {
+                    await WaitForWorkAsync(nextDue, stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
+                // Requests admitted after this point belong to the next round.
                 var next = await ReadOnceAsync(stoppingToken).ConfigureAwait(false);
                 lock (subscriptionGate)
                 {
-                    if (!stoppingToken.IsCancellationRequested)
-                    {
-                        current = next;
-                        publications.Publish([ActualDataset]);
-                    }
+                    stoppingToken.ThrowIfCancellationRequested();
+                    current = next;
+                    foreach (var request in batch) request.Completion.TrySetResult(next);
                 }
             }
-            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        finally
         {
-            // 正常收摊。
+            lock (subscriptionGate)
+            {
+                foreach (var request in requests) request.Assigned = false;
+            }
+        }
+    }
+
+    private async Task WaitForWorkAsync(DateTimeOffset? due, CancellationToken stop)
+    {
+        if (due is null)
+        {
+            await work.WaitAsync(stop).ConfigureAwait(false);
+            return;
+        }
+        var delay = due.Value - clock.GetUtcNow();
+        if (delay <= TimeSpan.Zero) return;
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        var signal = work.WaitAsync(wait.Token);
+        var deadline = Task.Delay(delay, clock, wait.Token);
+        try { await await Task.WhenAny(signal, deadline).ConfigureAwait(false); }
+        finally
+        {
+            wait.Cancel();
+            try { await Task.WhenAll(signal, deadline).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (wait.IsCancellationRequested) { }
         }
     }
 
     public override void Dispose()
     {
         if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-        try { StopAsync(CancellationToken.None).GetAwaiter().GetResult(); }
+        ITimer? expiry;
+        lock (subscriptionGate)
+        {
+            expiry = bufferTimer;
+            bufferTimer = null;
+            bufferUntil = null;
+        }
+        try
+        {
+            StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        }
         finally
         {
-            bool fanChanged;
+            if (expiry is not null) expiry.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            (bool Usage, bool Fan) changes;
             lock (subscriptionGate)
             {
-                leases = 0;
-                Volatile.Write(ref actualControlValuesInUse, false);
-                fanChanged = RefreshReadingSubscriptionsLocked();
+                subscriptions.Clear();
+                foreach (var request in requests)
+                    request.Completion.TrySetException(new ObjectDisposedException(nameof(ControlActualStateReader)));
+                requests.Clear();
+                changes = RefreshUsageLocked();
             }
-            SubscriptionsChanged?.Invoke();
-            if (fanChanged) FanReadingsChanged?.Invoke();
+            PublishChanges(changes);
+            work.Dispose();
             base.Dispose();
         }
     }
 
-    private sealed class SubscriptionLease(ControlActualStateReader owner) : IDisposable
+    private sealed class SingleRequest
+    {
+        internal readonly TaskCompletionSource<ControlActualState?> Completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal bool Assigned;
+    }
+
+    private sealed class SubscriptionLease(ControlActualStateReader owner, TimeSpan interval,
+        DateTimeOffset nextDue) : IDisposable
     {
         private ControlActualStateReader? current = owner;
-        public void Dispose() => Interlocked.Exchange(ref current, null)?.ReleaseSubscription();
+        internal TimeSpan Interval { get; } = interval;
+        internal DateTimeOffset NextDue { get; set; } = nextDue;
+        public void Dispose() => Interlocked.Exchange(ref current, null)?.ReleaseSubscription(this);
     }
 
     private async Task<ControlActualState> ReadOnceAsync(CancellationToken cancellationToken)
@@ -193,7 +298,10 @@ public sealed class ControlActualStateReader(
         var values = new List<ControlActualValue>();
         try
         {
-            var declared = await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            await catalog.EnsureActualTopologyAsync(cancellationToken).ConfigureAwait(false);
+            // live: project already-published topology and optional current observations.
+            var declared = catalog.ReadObjects();
             bool fanChanged;
             lock (subscriptionGate) fanChanged = RefreshReadingSubscriptionsLocked();
             if (fanChanged) FanReadingsChanged?.Invoke();
@@ -202,11 +310,7 @@ public sealed class ControlActualStateReader(
                 foreach (var capability in controlObject.Capabilities)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (ReadOne(controlObject, capability, cancellationToken) is { } task
-                        && await task.ConfigureAwait(false) is { } value)
-                    {
-                        values.Add(value);
-                    }
+                    values.Add(await ReadOneAsync(controlObject, capability, cancellationToken).ConfigureAwait(false));
                 }
             }
         }
@@ -223,33 +327,33 @@ public sealed class ControlActualStateReader(
         return new ControlActualState(values, clock.GetUtcNow());
     }
 
-    private Task<ControlActualValue?>? ReadOne(
+    private async Task<ControlActualValue> ReadOneAsync(
         ControlObject controlObject,
         ControlCapability capability,
         CancellationToken cancellationToken)
     {
-        foreach (var writer in writers)
+        try
         {
-            var availability = writer.Probe(controlObject, capability);
-            if (!availability.IsMine)
+            foreach (var writer in writers)
             {
-                continue;
+                var availability = writer.Probe(controlObject, capability);
+                if (!availability.IsMine) continue;
+                // Read-only thresholds still have actual values. Only skip the hardware
+                // call when the owning writer explicitly says it cannot read this capability.
+                if (!availability.IsReadable) return Unreadable(availability.Reason);
+                return await writer.ReadAsync(controlObject, capability, cancellationToken).ConfigureAwait(false)
+                    ?? Unreadable();
             }
-            /*
-             * **判据是"读不读得到"，不是"能不能写"。**
-             *
-             * 先前这里写的是"调不了的项也不去读，读不到是必然的" —— 那个前提是错的：
-             * 显卡的温度墙、降速阈值、保护关机阈值在消费级卡上全都读得到
-             * （89 / 102 / 105），只是驱动不接受改。那几个数对用户有用，
-             * 界面会把它们单独列成只读项。
-             *
-             * 仍然不去读"既写不了也读不到"的那些 —— 那才是徒增一次硬件调用。
-             */
-            return availability.IsReadable
-                ? writer.ReadAsync(controlObject, capability, cancellationToken)
-                : null;
+            return Unreadable(capability.UnavailableReason);
         }
-        return null;
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            logger?.LogWarning(error, "Actual-state read failed: {Object} / {Capability}.", controlObject.Id, capability.Id);
+            return Unreadable();
+        }
+
+        ControlActualValue Unreadable(ControlApplyReason? reason = null) => new(controlObject.Id, capability.Id,
+            Unit: capability.Range?.Unit, UnreadableReason: reason ?? new("control-setting-read-unavailable"));
     }
 
 }

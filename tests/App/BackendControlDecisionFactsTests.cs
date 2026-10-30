@@ -40,7 +40,7 @@ public sealed class BackendControlDecisionFactsTests
             Assert.Equal(NoValueReason.NotPublished,
                 authority.Read<bool>(StateItemUids.BackgroundReportsEnabled).NoValueReason);
             Assert.False(authority.Read<bool>(StateItemUids.ActualControlValuesInUse).Value);
-            using (reader.AcquireSubscription())
+            using (reader.AcquireSubscription(TimeSpan.FromSeconds(10)))
                 Assert.True(authority.Read<bool>(StateItemUids.ActualControlValuesInUse).Value);
             Assert.False(authority.Read<bool>(StateItemUids.ActualControlValuesInUse).Value);
             await bindings.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
@@ -99,8 +99,8 @@ public sealed class BackendControlDecisionFactsTests
         var changes = 0;
         reader.SubscriptionsChanged += () => changes++;
         Assert.False(reader.ActualControlValuesInUse);
-        using var first = reader.AcquireSubscription();
-        using var second = reader.AcquireSubscription();
+        using var first = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
+        using var second = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
         Assert.True(reader.ActualControlValuesInUse);
         Assert.Equal(1, changes);
         await reader.StopAsync(default);

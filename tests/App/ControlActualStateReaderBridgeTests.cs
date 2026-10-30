@@ -7,11 +7,90 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.StateItems;
 using ResourceManager.ReadWrite.Windows.Metrics.Writes;
+using ResourceManager.App.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.Json;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed partial class ControlActualStateReaderTests
 {
+    [Fact]
+    public async Task BridgeAndFanHoldsIncludeStopBufferAndDisappearAtExpiryWithoutIdleRounds()
+    {
+        var opened = 0;
+        var closed = 0;
+        await using var fan = new FanControlCoreClient(new FanTestEnvironment(), (_, _) =>
+        {
+            Interlocked.Increment(ref opened);
+            return new DelegateFanSession(_ => JsonSerializer.SerializeToElement(new
+            {
+                ok = true, available = true, fans = new[] { new { index = 0, writable = true } }
+            }), () => Interlocked.Increment(ref closed));
+        });
+        using var bridge = new HardwareBridgeClient(() => null, HardwareBridgeSessionTests.Options, null);
+        var clock = new ControlledClock();
+        var writer = new CountingWriter();
+        using var reader = new ControlActualStateReader(new FanCatalog(fan), [writer], clock, bridge);
+        await using var fixture = NativeBackendBlockTestSupport.CreateFullTreeFixture(
+            new Dictionary<int, IBusinessBlock>
+            { [BlockUids.FanControlCoreLifetimeService] = new FanLifetimeBlock(new FanControlCoreLifetimeService(fan)) });
+        await fixture.InitializeHostPermitsAsync();
+        using var services = new ServiceCollection().AddSingleton(new RuntimePlanProvider(new HostManagerDeploymentState()))
+            .AddSingleton(reader).AddSingleton(fan).BuildServiceProvider();
+        await using var bindings = new BackendDecisionStateBindings(services, NullLogger<BackendDecisionStateBindings>.Instance);
+        await bindings.InitializeAsync(fixture.Authority, default);
+        Assert.False(bridge.Owner.ReadingsInUse);
+        Assert.False(reader.FanReadingsInUse);
+        Assert.Equal(0, opened);
+
+        var first = reader.FetchOnceAsync("holds:first", default);
+        await reader.StartAsync(default);
+        await first.WaitAsync(Deadline);
+        await fixture.WaitForStateAsync(BlockUids.FanControlCoreLifetimeService, BusinessBlockState.Running);
+        Assert.True(bridge.Owner.ReadingsInUse);
+        Assert.True(reader.FanReadingsInUse);
+        Assert.Equal(1, opened - closed);
+        clock.Advance(TimeSpan.FromSeconds(9));
+        Assert.Equal(1, writer.Reads);
+        Assert.True(bridge.Owner.ReadingsInUse);
+        await reader.FetchOnceAsync("holds:second", default).WaitAsync(Deadline);
+        Assert.Equal(2, writer.Reads);
+        Assert.Equal(1, opened - closed);
+        clock.Advance(TimeSpan.FromSeconds(10));
+        Assert.False(reader.ActualControlValuesInUse);
+        Assert.False(bridge.Owner.ReadingsInUse);
+        Assert.False(reader.FanReadingsInUse);
+        await fixture.WaitForStateAsync(BlockUids.FanControlCoreLifetimeService, BusinessBlockState.Stopped);
+        Assert.Equal(opened, closed);
+        Assert.Equal(2, writer.Reads);
+        await reader.StopAsync(default);
+    }
+
+    private sealed class FanCatalog(FanControlCoreClient fan) : IControlObjectCatalog
+    {
+        public bool ActualReadingsUseHardwareBridge => true;
+        public bool ActualReadingsUseFanCore => fan.Describe().Count != 0;
+        public async Task DiscoverActualReadingsAsync(CancellationToken token) => await fan.DiscoverAsync(token);
+        public ControlObjectCatalog ReadObjects() => new Catalog().ReadObjects();
+    }
+
+    private sealed class FanLifetimeBlock(FanControlCoreLifetimeService lifetime) : IBusinessBlock
+    {
+        public async Task RunAsync(BusinessBlockRunContext context)
+        {
+            try
+            {
+                await lifetime.StartAsync(context.StopNotification);
+                context.ReportRunning();
+                await Task.Delay(Timeout.Infinite, context.StopNotification);
+            }
+            catch (OperationCanceledException) when (context.StopNotification.IsCancellationRequested) { }
+            finally { await lifetime.StopAsync(default); }
+        }
+    }
+
     [Theory]
     [InlineData("cpu_amd_requested_stapm_power_limit_watts", true)]
     [InlineData("gpu_amd_requested_curve_optimizer_counts", true)]
@@ -35,8 +114,8 @@ public sealed partial class ControlActualStateReaderTests
         var edges = new List<bool>();
         bridge.Owner.ReadingsInUseChanged += edges.Add;
 
-        var first = reader.AcquireSubscription();
-        var second = reader.AcquireSubscription();
+        var first = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
+        var second = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
         Assert.Equal(usesBridge, bridge.Owner.ReadingsInUse);
         Assert.False(reader.FanReadingsInUse);
         Assert.Null(bridge.ReadCurrentReadings());
@@ -56,7 +135,7 @@ public sealed partial class ControlActualStateReaderTests
         var reader = new ControlActualStateReader(catalog, [], bridge: bridge);
         var edges = new List<bool>();
         bridge.Owner.ReadingsInUseChanged += edges.Add;
-        var lease = reader.AcquireSubscription();
+        var lease = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
         Assert.True(bridge.Owner.ReadingsInUse);
         reader.Dispose();
         lease.Dispose();
@@ -96,21 +175,20 @@ public sealed partial class ControlActualStateReaderTests
             }
         };
         using var reader = new ControlActualStateReader(catalog, [writer], clock, bridge);
-        await reader.StartAsync(default);
-        using var first = reader.AcquireSubscription();
-        using var second = reader.AcquireSubscription();
+        using var first = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
+        using var second = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
         // The first complete declaration can arrive after subscription admission.
         catalog.HasBridge = true;
-        var startup = await clock.NextTimerAsync();
-        startup.Fire();
-        var periodic = await clock.NextTimerAsync();
+        await reader.StartAsync(default);
         await BusinessBlockTestSupport.State(fixture.Scheduler, BlockUids.HardwareBridgeProcessOwner, BusinessBlockState.Running);
         // The first read may precede the controller starting its sibling. Later rounds use that run.
-        periodic.Fire();
-        await WaitUntilAsync(() => reader.Current.Values.Count == 1);
+        await clock.WaitForDueAsync(TimeSpan.FromSeconds(10));
+        clock.Advance(TimeSpan.FromSeconds(10));
+        await WaitUntilAsync(() => reader.Current.Values.Any(value => value.Number == 42));
         var previous = reader.Current;
         first.Dispose();
-        periodic.Fire();
+        await clock.WaitForDueAsync(TimeSpan.FromSeconds(20));
+        clock.Advance(TimeSpan.FromSeconds(10));
         await WaitUntilAsync(() => !ReferenceEquals(previous, reader.Current));
         Assert.True(bridge.Owner.ReadingsInUse);
         Assert.False(commands.HasPending);

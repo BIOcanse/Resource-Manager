@@ -61,6 +61,7 @@ public sealed partial class HostManagerPlanCompiler
         var serviceRecoveryReset = CompileServiceRecovery(freedom);
         var trustedAccessRequestLifetime = CompileTrustedAccessRequestLifetime(freedom);
         var hardwareBridgeAvailabilityCheckInterval = CompileHardwareBridgeAvailabilityCheckInterval(freedom);
+        var singleRequestStopBuffer = ResourceManager.App.Infrastructure.Control.SubscriptionSourceSettings.CompileStopBuffer(freedom);
         var backendControlSettings = BackendControlSettings.Compile(freedom);
 
         var buildSpecialize = CompileBuildSpecialize(
@@ -542,6 +543,7 @@ public sealed partial class HostManagerPlanCompiler
             CpuScoring = compiledCpuScoring,
             SchedulerSamplingInterval = schedulerSamplingInterval,
             HardwareBridgeAvailabilityCheckInterval = hardwareBridgeAvailabilityCheckInterval,
+            SingleRequestStopBuffer = singleRequestStopBuffer,
             ServiceRecoveryResetPeriodSeconds = serviceRecoveryReset,
             TrustedAccessRequestLifetimeMilliseconds = trustedAccessRequestLifetime,
             BackendControlSettings = backendControlSettings,

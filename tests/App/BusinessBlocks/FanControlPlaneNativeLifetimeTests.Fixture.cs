@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -26,7 +25,7 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
         internal readonly PausingWriter Writer;
         internal readonly PausingLayer Layer;
         internal readonly ControlActualStateReader? Actual;
-        internal readonly ControlledClock Clock = new();
+        internal readonly ControlActualStateReaderTests.ControlledClock Clock = new();
         private int reads;
         internal bool FailWrites;
         internal int Opened => Volatile.Read(ref opened);
@@ -125,29 +124,7 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
             await core.DiscoverAsync(token);
             return ReadObjects();
         }
-    }
-
-    private sealed class ControlledClock : TimeProvider
-    {
-        private readonly Channel<ControlledTimer> timers = Channel.CreateUnbounded<ControlledTimer>();
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-        {
-            var timer = new ControlledTimer(callback, state);
-            timers.Writer.TryWrite(timer);
-            return timer;
-        }
-        internal async Task<ControlledTimer> NextTimerAsync()
-            => await timers.Reader.ReadAsync().AsTask().WaitAsync(BusinessBlockTestSupport.TestTimeout);
-    }
-
-    private sealed class ControlledTimer(TimerCallback callback, object? state) : ITimer
-    {
-        private int disposed;
-        internal bool Disposed => Volatile.Read(ref disposed) != 0;
-        internal void Fire() { if (!Disposed) callback(state); }
-        public bool Change(TimeSpan dueTime, TimeSpan period) => !Disposed;
-        public void Dispose() => Interlocked.Exchange(ref disposed, 1);
-        public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+        public async Task DiscoverActualReadingsAsync(CancellationToken token) => await core.DiscoverAsync(token);
     }
 
     private sealed class Access : IControlAccessLevel

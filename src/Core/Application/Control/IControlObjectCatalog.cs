@@ -10,6 +10,12 @@ namespace ResourceManager.App.Application.Control;
 /// </summary>
 public interface IControlObjectCatalog
 {
+    /// <summary>Updates declarations once only if topology has never been published.</summary>
+    Task EnsureActualTopologyAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>Finite cached discovery at actual-reader run entry, never per round.</summary>
+    Task DiscoverActualReadingsAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
     /// <summary>Whether the current all-object actual-value subscription includes
     /// cached FanCore objects. Classification reads declarations only, never probes.</summary>
     bool ActualReadingsUseFanCore => false;

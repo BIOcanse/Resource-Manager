@@ -150,6 +150,7 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.RequestLifetimeMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "TrustedAccessRequestLifetimeMilliseconds"),
             BackendFreedomPointPositions.AvailabilityCheckIntervalMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "HardwareBridgeAvailabilityCheckInterval"),
             BackendFreedomPointPositions.ObservationGrowthLimit => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerReportCoordinatorBuildPlan", "ObservationGrowthLimit"),
+            BackendFreedomPointPositions.SingleRequestStopBufferMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "SingleRequestStopBuffer"),
             BackendFreedomPointPositions.WorkerCount => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "WorkerCount"),
             BackendFreedomPointPositions.HistoryCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "HistoryCapacity"),
             BackendFreedomPointPositions.CompletionCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "CompletionCapacity"),
@@ -194,6 +195,8 @@ internal sealed class FreedomPointSdkAdapter
         Slots = point.Path.Kind == PointKind.Complex ? [] : [point.ValueType switch
         {
             "positive_int32" => new SlotContract { Kind = ValueKind.Integer, IntegerMinimum = 1, IntegerMaximum = int.MaxValue },
+            "nonnegative_int32" when point.Path.Raw == BackendFreedomPointPositions.SingleRequestStopBufferMs
+                => new SlotContract { Kind = ValueKind.Integer, Unit = "milliseconds", IntegerMinimum = 0, IntegerMaximum = int.MaxValue },
             "nonnegative_int32" => new SlotContract { Kind = ValueKind.Integer, IntegerMinimum = 0, IntegerMaximum = int.MaxValue },
             "number" => new SlotContract { Kind = ValueKind.Decimal },
             "boolean" => new SlotContract { Kind = ValueKind.Choose, Options = ["false", "true"], RequiredSelectionCount = 1 },

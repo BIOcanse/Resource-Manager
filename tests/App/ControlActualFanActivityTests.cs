@@ -14,8 +14,8 @@ public sealed class ControlActualFanActivityTests
         var edges = new List<bool>();
         reader.FanReadingsChanged += () => edges.Add(reader.FanReadingsInUse);
         Assert.False(reader.FanReadingsInUse);
-        var first = reader.AcquireSubscription();
-        var second = reader.AcquireSubscription();
+        var first = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
+        var second = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
         Assert.Equal([true], edges);
         var reads = catalog.ClassificationReads;
         for (var index = 0; index < 100; index++) Assert.True(reader.FanReadingsInUse);
@@ -37,12 +37,12 @@ public sealed class ControlActualFanActivityTests
         using var reader = new ControlActualStateReader(catalog, []);
         var edges = new List<bool>();
         reader.FanReadingsChanged += () => edges.Add(reader.FanReadingsInUse);
-        var unrelated = reader.AcquireSubscription();
+        var unrelated = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
         Assert.True(reader.ActualControlValuesInUse);
         Assert.False(reader.FanReadingsInUse);
         Assert.Empty(edges);
         catalog.HasFan = true;
-        var fan = reader.AcquireSubscription();
+        var fan = reader.AcquireSubscription(TimeSpan.FromSeconds(10));
         Assert.True(reader.FanReadingsInUse);
         Assert.Equal([true], edges);
         reader.Dispose();
@@ -52,7 +52,7 @@ public sealed class ControlActualFanActivityTests
         unrelated.Dispose();
         fan.Dispose();
         Assert.Equal([true, false], edges);
-        Assert.Throws<ObjectDisposedException>(() => reader.AcquireSubscription());
+        Assert.Throws<ObjectDisposedException>(() => reader.AcquireSubscription(TimeSpan.FromSeconds(10)));
         Assert.Equal(0, catalog.Probes);
     }
 

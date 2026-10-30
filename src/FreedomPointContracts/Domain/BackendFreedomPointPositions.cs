@@ -3,6 +3,7 @@ namespace ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
 
 internal static class BackendFreedomPointPositions
 {
+    public const ulong SingleRequestStopBufferMs = 0x0001000200040000UL;
     public const ulong KernelLeakObservation = 0x0001000200050000UL;
     public const ulong Notifications = 0x0001000200050001UL;
     public const ulong MemoryProtection = 0x0001000200050002UL;

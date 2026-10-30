@@ -11,6 +11,9 @@
     <DefineConstants Condition="'$(ResourceManagerStateNames)' == 'true'">$(DefineConstants);RM_STATE_NAMES</DefineConstants>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../Core/ResourceManager.App.csproj" /></ItemGroup>
+  <Target Name="CaptureActualTimingInputs" AfterTargets="Build" Condition="'$(ActualTimingInputsFile)' != ''">
+    <WriteLinesToFile File="$(ActualTimingInputsFile)" Lines="@(Compile->'%(FullPath)');@(ReferencePath->'%(FullPath)');@(Content->'%(FullPath)');@(None->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+  </Target>
   <Target Name="RequireDevelopmentStateNames" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(ResourceManagerStateNames)' != 'true'" Text="ControlDecisionAcceptance is development-only and requires ResourceManagerStateNames=true." />
   </Target>

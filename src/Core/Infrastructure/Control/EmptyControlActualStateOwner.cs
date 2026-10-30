@@ -14,7 +14,7 @@ public sealed class EmptyControlActualStateOwner : IControlActualStateOwner
 {
     public ControlActualState Current => ControlActualState.Empty;
 
-    public IDisposable AcquireSubscription() => EmptySubscription.Instance;
+    public IDisposable AcquireSubscription(TimeSpan interval) => EmptySubscription.Instance;
 
     private sealed class EmptySubscription : IDisposable
     {

@@ -800,7 +800,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         => subscription.Compile(async (writer, cancellationToken) =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var demand = owner.AcquireSubscription();
+            using var demand = owner.AcquireSubscription(interval);
             await PublishAlignedPeriodicSubscriptionAsync(subscription.Id, () => owner.Current,
                 interval, writer, cancellationToken);
         });

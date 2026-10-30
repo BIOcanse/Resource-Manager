@@ -52,6 +52,9 @@ public sealed record CompiledHostManagerPlan(
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.AvailabilityCheckIntervalMs)]
     public TimeSpan HardwareBridgeAvailabilityCheckInterval { get; init; }
 
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SingleRequestStopBufferMs)]
+    public TimeSpan SingleRequestStopBuffer { get; init; }
+
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.CrashCounterResetSeconds)]
     public int ServiceRecoveryResetPeriodSeconds { get; init; }
 

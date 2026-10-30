@@ -181,31 +181,66 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
         var pendingEdges = 0;
         fixture.Core.PendingCommandsChanged += () => Interlocked.Increment(ref pendingEdges);
         var actual = fixture.Actual!;
-        var subscription = actual.AcquireSubscription();
+        var subscription = actual.AcquireSubscription(TimeSpan.FromSeconds(10));
         try
         {
             await fixture.WaitRunningAsync();
             Assert.True(fixture.Scheduler.Authority.Read<bool>(BackendItems.FanReadingsInUse).Value);
             Assert.False(fixture.Plane.AppliedFanControlExists);
-            var startup = await fixture.Clock.NextTimerAsync();
-            startup.Fire();
-            var periodic = await fixture.Clock.NextTimerAsync();
+            // Entry publishes without a startup delay. If the sibling FanCore
+            // run starts after that read, its values arrive at the next due round.
+            await fixture.Clock.WaitForDueAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DateTimeOffset.UnixEpoch, actual.Current.ReadAt);
+            await BusinessBlockTestSupport.Until(() => fixture.Opened - fixture.Closed == 1);
+            var opened = fixture.Opened;
+            var closed = fixture.Closed;
+            Assert.Equal(1, opened - closed);
+            var entryReads = fixture.Reads;
+            fixture.Clock.Advance(TimeSpan.FromSeconds(9));
+            Assert.Equal(entryReads, fixture.Reads);
+            fixture.Clock.Advance(TimeSpan.FromSeconds(1));
             await BusinessBlockTestSupport.Until(() => actual.Current.Values.Any(value =>
-                value.CapabilityId == "fan.rpm" && value.Number == 1800));
+                value.CapabilityId == "fan.rpm" && value.Number == 1800)
+                && actual.Current.ReadAt == DateTimeOffset.UnixEpoch.AddSeconds(10));
             var firstReads = fixture.Reads;
             Assert.True(firstReads > 0);
-            periodic.Fire();
-            await BusinessBlockTestSupport.Until(() => fixture.Reads > firstReads);
+            Assert.Equal(opened, fixture.Opened);
+            Assert.Equal(closed, fixture.Closed);
+            // Only a completed single request arms the stop buffer. Withdrawing
+            // a subscription alone does not create one.
+            var once = await actual.FetchOnceAsync("fan-lifetime-test", default)
+                .WaitAsync(BusinessBlockTestSupport.TestTimeout);
+            Assert.Contains(once!.Values, value => value.CapabilityId == "fan.rpm" && value.Number == 1800);
+            Assert.True(fixture.Reads > firstReads);
             Assert.False(fixture.Core.PendingCommands);
             Assert.Equal(0, Volatile.Read(ref pendingEdges));
-            Assert.Equal(1, fixture.Opened);
-            Assert.Equal(0, fixture.Closed);
+            Assert.False(fixture.Plane.AppliedFanControlExists);
+            Assert.All(fixture.Duties, duty => Assert.Null(duty));
+            Assert.Equal(opened, fixture.Opened);
+            Assert.Equal(closed, fixture.Closed);
             subscription.Dispose();
+            var bufferedReads = fixture.Reads;
+            fixture.Clock.Advance(TimeSpan.FromSeconds(9));
+            Assert.True(actual.ActualControlValuesInUse);
+            Assert.True(actual.FanReadingsInUse);
+            Assert.Equal(BusinessBlockState.Running,
+                fixture.Scheduler.ReadState(BackendUids.FanControlCoreLifetimeService));
+            Assert.Equal(opened, fixture.Opened);
+            Assert.Equal(closed, fixture.Closed);
+            Assert.Equal(bufferedReads, fixture.Reads);
+            fixture.Clock.Advance(TimeSpan.FromSeconds(1));
             await fixture.WaitStoppedAsync();
             await BusinessBlockTestSupport.State(fixture.Scheduler, BackendUids.ControlActualStateReader, BusinessBlockState.Stopped);
-            Assert.True(periodic.Disposed);
+            Assert.False(actual.ActualControlValuesInUse);
+            Assert.Equal(0, fixture.Clock.ActiveTimers);
             Assert.False(fixture.Scheduler.Authority.Read<bool>(BackendItems.FanReadingsInUse).Value);
-            Assert.Equal(1, fixture.Closed);
+            Assert.Equal(opened, fixture.Opened);
+            Assert.Equal(closed + 1, fixture.Closed);
+            Assert.Equal(bufferedReads, fixture.Reads);
+            Assert.Equal(0, Volatile.Read(ref pendingEdges));
+            Assert.False(fixture.Core.PendingCommands);
+            Assert.False(fixture.Plane.AppliedFanControlExists);
+            Assert.All(fixture.Duties, duty => Assert.Null(duty));
         }
         finally { subscription.Dispose(); }
     }
