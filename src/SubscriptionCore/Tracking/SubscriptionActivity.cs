@@ -15,6 +15,7 @@ public sealed class SubscriptionActivity
     private readonly object gate = new();
     private Dictionary<int, Func<bool>> roles = [];
     private Dictionary<SubscriptionFieldGroup, Func<bool>> fields = [];
+    private Dictionary<int, Func<SubscriptionRoleHolders>> holders = [];
     public event Action<int>? RoleChanged;
     public event Action<SubscriptionFieldGroup>? FieldChanged;
 
@@ -47,6 +48,18 @@ public sealed class SubscriptionActivity
         });
         if (last) RoleChanged?.Invoke(roleId);
     }
+
+    /// <summary>Registers the role's holder read beside its activity read; the role's tracker binds both.</summary>
+    public void BindHolders(int roleId, Func<SubscriptionRoleHolders> read)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        lock (gate) Volatile.Write(ref holders, new Dictionary<int, Func<SubscriptionRoleHolders>>(holders) { [roleId] = read });
+    }
+
+    /// <summary>Every bound role's current holders, ordered by role. Debug and GET only: no lease, no sampling.</summary>
+    [global::ResourceManager.ReadWrite.RuntimeRead(global::ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "SubscriptionsChanged")]
+    public IReadOnlyList<SubscriptionRoleHolders> ReadHolders()
+        => [.. Volatile.Read(ref holders).OrderBy(static pair => pair.Key).Select(static pair => pair.Value())];
 
     public void BindField(SubscriptionFieldGroup group, Func<bool> read, Action<Action> subscribe)
     {

@@ -20,6 +20,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         app.MapEventDropsDebugEndpoint();
         app.MapNativeMemoryDebugEndpoint();
+        app.MapSubscriptionHoldersDebugEndpoint();
         app.MapGet("/api/debug/kernel-leaks", (HttpResponse response, Application.KernelLeak.IKernelLeakReportSource reports) =>
         {
             response.Headers.CacheControl = "no-store";
@@ -162,6 +163,24 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var table = ledger.ReadTable();
             return Results.Ok(new NativeMemoryDebugPayload(
                 new(table.RegisteredBytes, table.SystemPageBytes), ledger.ReadWorkspaceCapacities()));
+        });
+        return app;
+    }
+
+    // Who holds which subscription, at what interval, for which items. Each sampling role's tracker binds its
+    // holder read in SubscriptionActivity when it is constructed; Present and the kernel ETW broker are read from
+    // their own holder tables. The read takes no lease, samples nothing and changes nothing.
+    internal static IEndpointRouteBuilder MapSubscriptionHoldersDebugEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/debug/subscriptions", (HttpResponse response,
+            [Microsoft.AspNetCore.Mvc.FromServices] Infrastructure.RuntimeSpecialization.HostManagerSamplingSubscriptionOwner owner,
+            [Microsoft.AspNetCore.Mvc.FromServices] Infrastructure.Telemetry.Etw.PresentFrameEtwSource present,
+            [Microsoft.AspNetCore.Mvc.FromServices] Infrastructure.Telemetry.Etw.KernelEtwSessionBroker kernel) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            var session = kernel.GetSnapshot();
+            return Results.Ok(new SubscriptionHoldersDebugPayload(owner.Activity.ReadHolders(), present.ReadHolders(),
+                new(session.State, session.EnabledKeywords.ToString(), kernel.ReadHolders())));
         });
         return app;
     }

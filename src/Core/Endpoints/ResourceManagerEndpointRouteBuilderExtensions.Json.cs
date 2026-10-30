@@ -68,6 +68,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(DiagnosticLinesPayload))]
     [JsonSerializable(typeof(DebugSchedulingPayload))]
     [JsonSerializable(typeof(NativeMemoryDebugPayload))]
+    [JsonSerializable(typeof(SubscriptionHoldersDebugPayload))]
     [JsonSerializable(typeof(GpuPlacementFailurePayload))]
     [JsonSerializable(typeof(FrameTimingStatePayload))]
     [JsonSerializable(typeof(RunningStatePayload))]

@@ -18,6 +18,7 @@ internal sealed class NativeItemSamplingSubscriptionTracker<TRequest> :
         ResizeLog = owner is null ? null : owner.ReportWorkspaceResize;
         owner?.Activity.BindRole(roleId, () => HasInUseSubscriptions,
             handler => SubscriptionsChanged += handler);
+        owner?.Activity.BindHolders(roleId, ReadHolders);
     }
 }
 

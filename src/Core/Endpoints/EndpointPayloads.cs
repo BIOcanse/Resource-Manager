@@ -55,6 +55,23 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         public global::ResourceManager.ReadWrite.ReadVolatility Volatility => global::ResourceManager.ReadWrite.ReadVolatility.Sampled;
     }
 
+    // GET /api/debug/subscriptions. Sampling: every bound sampling role's current holders, read from its
+    // tracker's published source table. Present and Kernel: the ETW holder tables those owners already keep.
+    // Live debug read, no lease, no sampling; it may be stale by the time it is used.
+    private sealed record SubscriptionHoldersDebugPayload(
+        global::System.Collections.Generic.IReadOnlyList<global::ResourceManager.Subscription.SubscriptionRoleHolders> Sampling,
+        global::System.Collections.Generic.IReadOnlyList<global::ResourceManager.App.Infrastructure.Telemetry.Etw.PresentFrameEtwSource.PresentHolder> Present,
+        KernelEtwHoldersPayload Kernel)
+    {
+        public global::ResourceManager.ReadWrite.ReadVolatility Volatility
+            => global::ResourceManager.ReadWrite.ReadVolatility.EventDriven("subscriptions-changed");
+    }
+
+    private sealed record KernelEtwHoldersPayload(
+        string State,
+        string EnabledKeywords,
+        global::System.Collections.Generic.IReadOnlyList<global::ResourceManager.App.Infrastructure.Telemetry.Etw.KernelEtwHolderView> Holders);
+
     private sealed record NativeMemoryLedgerTablePayload(
         ulong RegisteredBytes,
         ulong SystemPageBytes);

@@ -193,6 +193,7 @@ public sealed class TrustedAccessPolicyAuditTests
     [InlineData("/api/debug/frame-timing")]
     [InlineData("/api/debug/thread-cpu")]
     [InlineData("/api/debug/scheduling-inputs")]
+    [InlineData("/api/debug/subscriptions")]
     [InlineData("/api/gpu-placement/software/{softwareId}")]
     [InlineData("/api/optimization/reports")]
     [InlineData("/api/optimization/smart/state")]

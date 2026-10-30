@@ -289,6 +289,7 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/debug/thread-cpu",
             "GET /api/debug/gpu-renderers",
             "GET /api/debug/scheduling-inputs",
+            "GET /api/debug/subscriptions",
             "GET /api/gpu-placement/software/{softwareId}",
             "GET /api/optimization/reports",
             "GET /api/optimization/smart/diagnostics/decision-snapshot/subscribe",

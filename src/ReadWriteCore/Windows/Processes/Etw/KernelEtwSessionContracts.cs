@@ -36,6 +36,9 @@ public sealed record KernelEtwSessionSnapshot(
     public bool IsRunning => State.Equals("Running", StringComparison.OrdinalIgnoreCase);
 }
 
+/// <summary>One current holder of the shared kernel session: its lease, its named id and the keywords it asked for.</summary>
+public sealed record KernelEtwHolderView(long LeaseId, string Id, string Keywords);
+
 public sealed record KernelEtwSubscriptionRegistration(
     long LeaseId,
     string Id,

@@ -51,6 +51,7 @@ public sealed class KernelEtwSessionBroker : IKernelEtwSessionBroker, IDisposabl
         }
     }
     public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+    internal KernelEtwHolderView[] ReadHolders() => owner.ReadHolders();
     private void Release(IKernelEtwSubscription subscription)
     {
         lock (lifetimeGate)

@@ -31,14 +31,48 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
         if (snapshot.Sources.Length == 0) return false;
         var settings = CurrentSettings();
         if (settings is null) return false;
-        var raw = RawTimestamp(clock.GetUtcNow());
-        var elapsed = clock.GetElapsedTime(snapshot.CommandTimestamp, clock.GetTimestamp());
-        var now = Math.Max(raw, checked(snapshot.CommandMilliseconds + (ulong)(elapsed.Ticks / TimeSpan.TicksPerMillisecond)));
+        var now = ActivityNow(snapshot);
         foreach (var payload in snapshot.Sources)
         {
             if (IsInUse(payload, now, settings) && (matches is null || matches(payload.Request))) return true;
         }
         return false;
+    }
+
+    /// <summary>Lists the current holders from the published source table. It takes no lease, does not
+    /// sample and changes no state; debug and GET use only.</summary>
+    [global::ResourceManager.ReadWrite.RuntimeRead(global::ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, nameof(SubscriptionsChanged))]
+    public SubscriptionRoleHolders ReadHolders()
+    {
+        var snapshot = Volatile.Read(ref activitySnapshot);
+        var settings = CurrentSettings();
+        var now = snapshot.Sources.Length == 0 || settings is null ? 0 : ActivityNow(snapshot);
+        var holders = new SubscriptionHolder[snapshot.Sources.Length];
+        for (var index = 0; index < holders.Length; index++)
+        {
+            var payload = snapshot.Sources[index];
+            holders[index] = new SubscriptionHolder(
+                payload.SourceKey,
+                payload.ExplicitInterval is { } interval
+                    ? checked((long)Math.Ceiling(interval.TotalMilliseconds))
+                    : settings?.DefaultIntervalMilliseconds,
+                payload.ExplicitInterval is not null,
+                payload.Persistent,
+                settings is not null && IsInUse(payload, now, settings),
+                payload.ItemIds,
+                payload.Since,
+                payload.LastSeen);
+        }
+        Array.Sort(holders, static (left, right) => StringComparer.Ordinal.Compare(left.Holder, right.Holder));
+        return new SubscriptionRoleHolders(roleId, typeof(TRequest).Name,
+            settings?.DefaultIntervalMilliseconds, settings?.MinimumIntervalMilliseconds, holders);
+    }
+
+    private ulong ActivityNow(ActivitySnapshot snapshot)
+    {
+        var raw = RawTimestamp(clock.GetUtcNow());
+        var elapsed = clock.GetElapsedTime(snapshot.CommandTimestamp, clock.GetTimestamp());
+        return Math.Max(raw, checked(snapshot.CommandMilliseconds + (ulong)(elapsed.Ticks / TimeSpan.TicksPerMillisecond)));
     }
 
     private ISubscriptionRoleSettings? CurrentSettings()

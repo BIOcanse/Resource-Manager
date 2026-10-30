@@ -105,6 +105,15 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         }
     }
 
+    /// <summary>The current holder table, ordered by lease. Debug and GET only: it starts and changes nothing.</summary>
+    [global::ResourceManager.ReadWrite.RuntimeRead(global::ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "kernel-etw-subscriptions-changed")]
+    public KernelEtwHolderView[] ReadHolders()
+    {
+        lock (stateGate)
+            return [.. subscriptions.Values.OrderBy(static item => item.LeaseId)
+                .Select(static item => new KernelEtwHolderView(item.LeaseId, item.Id, item.Keywords.ToString()))];
+    }
+
     private KernelEtwSessionSnapshot GetSnapshot(long leaseId)
     {
         lock (stateGate)

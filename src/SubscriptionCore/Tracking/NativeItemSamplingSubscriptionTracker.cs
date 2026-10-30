@@ -689,6 +689,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 itemHandles.Add(item.ItemId, item.Handle);
                 itemIds.Add(item.Handle, item.ItemId);
             }
+            var since = sourcePayloads.TryGetValue(sourceHandle, out var previous) ? previous.Since : now;
             sourcePayloads[sourceHandle] = new SourcePayload(
                 request,
                 sourceKey,
@@ -697,7 +698,8 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 commandTimestamp,
                 persistent,
                 explicitInterval,
-                samplingFlags);
+                samplingFlags,
+                since);
             ReleaseUnusedItemMappings();
             latestMergedItemIdsDirty = true;
             RefreshActivity();
@@ -1279,7 +1281,9 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
         ulong NativeObservedAtMilliseconds,
         bool Persistent,
         TimeSpan? ExplicitInterval,
-        NativeSamplingSubscriptionSourceFlags SamplingFlags);
+        NativeSamplingSubscriptionSourceFlags SamplingFlags,
+        // First Track of this source key; a renewal keeps it. Read only by ReadHolders.
+        DateTimeOffset Since);
 }
 
 public enum NativeItemSamplingSubscriptionScheduleOrigin
