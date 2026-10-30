@@ -96,7 +96,7 @@ export type AppLogicRefreshIntervalKey =
 /** 软件详细信息对话框的分页。 */
 export type SoftwareDetailTabId = "overview" | "policy" | "processes" | "overlay";
 
-export type SettingsSection = "runtimePolicy" | "memory" | "memoryProtection" | "hardwareControl" | "reportRules" | "appearance" | "performanceOverlay" | "systemIntegration" | "publicServices" | "trustedAccess" | "notifications" | "updates" | "debug" | "credits";
+export type SettingsSection = "runtimePolicy" | "memory" | "memoryCpuTier" | "memoryProtection" | "hardwareControl" | "reportRules" | "appearance" | "performanceOverlay" | "systemIntegration" | "publicServices" | "trustedAccess" | "notifications" | "updates" | "debug" | "credits";
 
 /** Frontend view model; backend wire facts are declared in data/monitor/metricWire.ts. */
 export interface MetricDefinition {
@@ -274,6 +274,8 @@ export interface DashboardSettingsResult {
 
 export interface AppSettings {
   memoryProtection?: import("./data/memoryProtection/memoryProtectionTypes.ts").HostMemoryProtectionSettings | null;
+  /** 内存与 CPU 取舍：档位和逐项单独设置；保存时整节替换（清除一项就是从 overrides 里去掉）。 */
+  memoryCpuTier?: import("./data/memoryCpuTier/memoryCpuTierTypes.ts").MemoryCpuTierSettings;
   reports?: AppReportSettings;
   version?: string;
   /** keepAlive 关时保存的控制设定只在启动时下发一次；开时按 reassertionIntervalSeconds 反复下发（用户 10-29）。 */

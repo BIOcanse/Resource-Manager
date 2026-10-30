@@ -84,6 +84,7 @@ export default createSettingsLocale("de-DE", {
   "sections": {
     "runtimePolicy": "Laufzeitrichtlinie",
     "memory": "Arbeitsspeicher",
+    "memoryCpuTier": "Abwägung zwischen Arbeitsspeicher und CPU",
     "memoryProtection": "Speicherschutz des Hosts",
     "hardwareControl": "Hardwaresteuerung",
     "reportRules": "Berichtsregeln",

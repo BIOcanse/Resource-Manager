@@ -9,7 +9,7 @@ import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { NOT_GHOST } from "./liveLocator.js";
 import { waitForContentSettled } from "./contentSettled.js";
 
-const sectionOrder = ["runtimePolicy", "memory", "memoryProtection", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
+const sectionOrder = ["runtimePolicy", "memory", "memoryCpuTier", "memoryProtection", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
   "systemIntegration", "publicServices", "trustedAccess", "notifications", "updates", "debug", "credits"];
 const newSections = ["runtimePolicy", "memory", "hardwareControl", "reportRules", "publicServices", "trustedAccess"];
 const readOnlySections = new Set(["performanceOverlay", "trustedAccess", "credits"]);

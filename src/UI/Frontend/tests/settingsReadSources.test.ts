@@ -31,11 +31,16 @@ const keys = { keys: [key("one")], defaultEnabled: false, defaultKeyId: null, av
 const versions = { installedVersion: "1", status: "loaded", complete: true, checkedAt: "2026-10-27T00:00:00Z",
   options: [{ choice: "latest", version: "2", assetName: "fixture", downloadUrl: "https://example.invalid/fixture",
     checksumUrl: "https://example.invalid/checksum", selectable: true, eligibility: "eligible" }] };
+const memoryCpuTierReading = { tier: 3, options: [{ name: "browserRuntimeSnapshotSeconds", value: 30, unit: "seconds",
+  range: { kind: "integer", min: 0, max: 600, unset: false },
+  tiers: [0, 10, 30, 60, 300].map(value => ({ value, category: "proportional" })),
+  category: "proportional", source: "tier", apply: "immediate" }] };
 const tick = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 try {
   for (const [handle, value, empty, path] of [
     [sources.reportRules, { rules: reportRules }, { rules: [] }, "/api/settings/report-rules"],
+    [sources.memoryCpuTier, memoryCpuTierReading, { tier: 3, options: [] }, "/api/settings/memory-cpu-tier"],
     [sources.accessKeys, keys, { ...keys, keys: [] }, "/api/access-keys"],
     [sources.productVersions, versions, { ...versions, options: [] }, "/api/updates/product/versions"]
   ] as const) {

@@ -62,6 +62,8 @@ import { normalizeOptimizationModeValue } from "../features/settings/optimizatio
 import { applySettingsPatch, createSettingsPatch } from "../features/settings/settingsPatch.ts";
 import { uiText } from "../text.ts";
 import { normalizeReportSettings } from "../features/settings/reportRuleSettingsModel.ts";
+import { normalizeMemoryCpuTierSettings } from "../features/settings/memoryCpuTierModel.ts";
+import { defaultMemoryCpuTierSettings } from "../data/memoryCpuTier/memoryCpuTierTypes.ts";
 import { RequestProblem } from "../frontendRuntime/request/RequestProblem.ts";
 import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 import {
@@ -105,6 +107,7 @@ export interface SettingsStore {
   resetFrontendPreferences: () => Promise<void>;
   updateReports: (reports: NonNullable<AppSettings["reports"]>) => void;
   updateMemoryProtection: (memoryProtection: NonNullable<AppSettings["memoryProtection"]>) => void;
+  updateMemoryCpuTier: (memoryCpuTier: NonNullable<AppSettings["memoryCpuTier"]>) => void;
   updateControl: (control: NonNullable<AppSettings["control"]>) => void;
   updatePreciseGpuPlacement: (enabled: boolean) => void;
   updateKeepSmartRecordHistory: (enabled: boolean) => void;
@@ -504,6 +507,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     resetDraftToDefaults,
     updateReports: (reports) => updateDraft(current => ({ ...current, reports })),
     updateMemoryProtection: (memoryProtection) => updateDraft(current => ({ ...current, memoryProtection })),
+    updateMemoryCpuTier: (memoryCpuTier) => updateDraft(current => ({ ...current, memoryCpuTier })),
     updateControl: (control) => updateDraft(current => ({ ...current, control })),
     updatePreciseGpuPlacement: (enabled) => updatePerformance((performance) => ({
       ...performance,
@@ -741,6 +745,7 @@ export function applySectionDefaults(section: SettingsSection, draft: AppSetting
   switch (section) {
     case "runtimePolicy": return withPerformance(sectionPerformanceFields.runtimePolicy);
     case "memory": return withPerformance(sectionPerformanceFields.memory);
+    case "memoryCpuTier": return { ...draft, memoryCpuTier: structuredClone(defaults.memoryCpuTier) };
     case "memoryProtection": return { ...draft, memoryProtection: structuredClone(defaults.memoryProtection) };
     case "hardwareControl": return { ...draft, control: structuredClone(defaults.control) };
     case "reportRules": return { ...draft, reports: structuredClone(defaults.reports) };
@@ -764,6 +769,7 @@ export function defaultAppSettings(): AppSettings {
       minimumProcessGrowthBytes: 1073741824, protectedProcesses: ["explorer.exe"] },
     control: { keepAlive: false, reassertionIntervalSeconds: 120 },
     reports: { ruleOverrides: [] },
+    memoryCpuTier: defaultMemoryCpuTierSettings(),
     performance: {
       optimizationMode: "normal",
       preciseGpuPlacementEnabled: false,
@@ -823,6 +829,7 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
     },
     reports: normalizeReportSettings(settings?.reports),
+    memoryCpuTier: normalizeMemoryCpuTierSettings(settings?.memoryCpuTier),
     // 只列出当前模型里的字段：旧文件里已删除的键（旧布尔副本、隐藏时刷新、三项无读取方的刷新频率等）在这里自然丢弃。
     performance: {
       optimizationMode: normalizeOptimizationMode(settings?.performance?.optimizationMode),

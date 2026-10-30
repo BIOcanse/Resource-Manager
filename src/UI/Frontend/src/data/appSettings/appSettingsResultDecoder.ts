@@ -19,6 +19,7 @@ import {
 import { decodeServiceRecovery } from "./serviceRecoveryDecoder.ts";
 import { decodeReportSettings } from "./reportRuleSettingsDecoder.ts";
 import { decodeHostMemoryProtectionSettings } from "../memoryProtection/memoryProtectionDecoders.ts";
+import { decodeMemoryCpuTierSettings } from "../memoryCpuTier/memoryCpuTierDecoder.ts";
 
 export type AppSettingsApplicationDisposition = NonNullable<
   AppSettingsResult["runtimeApplicationDisposition"]
@@ -81,6 +82,9 @@ export const appSettingsResultDecoder =
 
       if (settingsRecord.reports !== undefined) {
         decodeReportSettings(settingsRecord.reports, "$.settings.reports");
+      }
+      if (settingsRecord.memoryCpuTier !== undefined) {
+        decodeMemoryCpuTierSettings(settingsRecord.memoryCpuTier, "$.settings.memoryCpuTier");
       }
       if (settingsRecord.memoryProtection !== undefined && settingsRecord.memoryProtection !== null) {
         decodeHostMemoryProtectionSettings(settingsRecord.memoryProtection, "$.settings.memoryProtection");

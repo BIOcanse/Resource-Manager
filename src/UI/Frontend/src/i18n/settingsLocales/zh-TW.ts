@@ -82,6 +82,7 @@ export default createSettingsLocale("zh-TW", {
   "sections": {
     "runtimePolicy": "執行策略",
     "memory": "記憶體",
+    "memoryCpuTier": "記憶體與 CPU 取捨",
     "memoryProtection": "主機記憶體保護",
     "hardwareControl": "硬體控制",
     "reportRules": "報告規則",

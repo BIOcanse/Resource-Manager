@@ -193,6 +193,7 @@ assert.doesNotMatch(
 for (const [section, workId, consumers] of [
   ["HardwareControlSettings", "settingsHardwareControl", ["ControlAccessLevelSetting"]],
   ["MemoryProtectionSettingsSection", "settingsMemoryProtection", ["MemoryProtectionSettingsSection"]],
+  ["MemoryCpuTierSettingsSection", "settingsMemoryCpuTier", ["MemoryCpuTierSettingsSection"]],
   ["ReportRuleSettings", "settingsReportRules", ["ReportRuleSettings"]],
   ["PerformanceOverlaySettingsSection", "settingsPerformanceOverlay", ["PerformanceOverlaySettingsSection"]],
   ["SystemIntegrationSettingsSection", "settingsSystemIntegration", ["FrontendStartupSetting"]],

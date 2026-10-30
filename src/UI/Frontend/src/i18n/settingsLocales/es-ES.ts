@@ -84,6 +84,7 @@ export default createSettingsLocale("es-ES", {
   "sections": {
     "runtimePolicy": "Directiva de ejecución",
     "memory": "Memoria",
+    "memoryCpuTier": "Equilibrio entre memoria y CPU",
     "memoryProtection": "Protección de memoria del equipo",
     "hardwareControl": "Control de hardware",
     "reportRules": "Reglas de informes",

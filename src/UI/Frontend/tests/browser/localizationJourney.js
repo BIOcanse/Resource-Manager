@@ -1,4 +1,4 @@
-import { liveText } from "./liveLocator.js";
+import { liveText, NOT_GHOST } from "./liveLocator.js";
 import { productUpdateCopy } from "../../src/features/settings/productUpdatePresentation.ts";
 import { componentFixture } from "./componentFixtures.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
@@ -344,6 +344,41 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
         await group.getByText(notificationText[`${option}Description`], { exact: true }).waitFor();
       }
     }
+    // 内存与 CPU 取舍：分区名、档位、两端说明、实测行、选项标题和说明、三种标记、秒数和重启前后两个值都随语言换。
+    await page.getByRole("button", { name: settings.sections.memoryCpuTier, exact: true }).click();
+    const tierText = app.memoryCpuTier;
+    const tierPanel = page.locator(".memory-cpu-tier-settings").and(page.locator(NOT_GHOST));
+    await liveText(page, tierText.intro).waitFor();
+    const tierGroup = tierPanel.getByRole("radiogroup", { name: tierText.tierAriaLabel, exact: true });
+    for (let tier = 1; tier <= 5; tier++) await tierGroup.getByRole("radio", { name: tierText.tierLabel(tier), exact: true }).waitFor();
+    for (const label of [tierText.tierTitle, tierText.tierDescription, tierText.tierLowEnd, tierText.tierHighEnd,
+      tierText.measuredTitle, tierText.measuredDescription, `${tierText.savedTier(3)} · ${tierText.defaultTier(3)}`]) {
+      await tierPanel.getByText(label, { exact: true }).waitFor();
+    }
+    await tierPanel.getByRole("heading", { name: tierText.optionsTitle(3), exact: true }).waitFor();
+    const measured = (await tierPanel.locator("[data-memory-cpu-tier-measured]").allInnerTexts()).map(text => text.trim());
+    if (measured.length !== 5 || measured.some(text => !text.includes(tierText.notMeasured)))
+      throw new Error(`${option.id}: measured rows are ${JSON.stringify(measured)}`);
+    const tierOption = name => tierPanel.locator(`[data-memory-cpu-tier-option="${name}"]`);
+    const tierAttribute = async (name, kind) => (await tierOption(name).locator(`[data-memory-cpu-tier-${kind}]`).innerText()).trim();
+    for (const name of ["gcGen0MaxBudget", "gcConserveMemory", "ledgerMemoryModeFloor", "browserRuntimeSnapshotSeconds", "rendererAbsenceEntries"]) {
+      await tierOption(name).getByText(tierText.options[name].title, { exact: true }).waitFor();
+      await tierOption(name).getByText(tierText.options[name].description, { exact: true }).waitFor();
+      if (await tierAttribute(name, "category") !== tierText.categories.proportional
+        || await tierAttribute(name, "source") !== tierText.sources.tier)
+        throw new Error(`${option.id}: ${name} badges are not localized`);
+    }
+    if (await tierAttribute("gcGen0MaxBudget", "apply") !== tierText.applyModes.restart
+      || await tierAttribute("browserRuntimeSnapshotSeconds", "apply") !== tierText.applyModes.immediate
+      || await tierAttribute("browserRuntimeSnapshotSeconds", "value") !== tierText.seconds("30")
+      || await tierAttribute("ledgerMemoryModeFloor", "value") !== tierText.choices.auto)
+      throw new Error(`${option.id}: memory-CPU tier values are not localized`);
+    const [runningPrefix] = tierText.currentlyRunning("\u0000").split("\u0000");
+    const [afterPrefix] = tierText.afterRestart("\u0000").split("\u0000");
+    if (!(await tierAttribute("gcGen0MaxBudget", "running")).startsWith(runningPrefix.trim())
+      || !(await tierAttribute("gcGen0MaxBudget", "value")).startsWith(afterPrefix.trim()))
+      throw new Error(`${option.id}: restart option does not show both localized values`);
+    await tierOption("gcGen0MaxBudget").getByText(tierText.restartNote, { exact: true }).waitFor();
     await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
     const modeGroup = page.getByRole("radiogroup", { name: settings.updates.modeTitle, exact: true });
     for (const mode of settings.updates.modeOptions) await modeGroup.getByRole("radio", { name: mode.label, exact: true }).waitFor();

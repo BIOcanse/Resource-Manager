@@ -18,6 +18,7 @@ export const frontendWorkIds = {
   // 设置页里读后端数据的分区：每个分区一项，可见区域是分区本身（同一时刻只建着当前分区）。
   settingsHardwareControl: "settings.hardware-control",
   settingsMemoryProtection: "settings.memory-protection",
+  settingsMemoryCpuTier: "settings.memory-cpu-tier",
   settingsReportRules: "settings.report-rules",
   settingsPerformanceOverlay: "settings.performance-overlay",
   settingsSystemIntegration: "settings.system-integration",

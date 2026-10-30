@@ -9,6 +9,7 @@ import { targetedReport } from "./ja-JP-targetedReport.ts";
 import { kernelLeakReport } from "./ja-JP-kernelLeakReport.ts";
 import { smartFailure } from "./ja-JP-smartFailure.ts";
 import { memoryProtection } from "./ja-JP-memoryProtection.ts";
+import { memoryCpuTier } from "./ja-JP-memoryCpuTier.ts";
 import { fieldLabel, fieldValueLabel } from "./ja-JP-fieldLabels.ts";
 
 const jaJpAppCopy: AppCopy = {
@@ -41,6 +42,7 @@ const jaJpAppCopy: AppCopy = {
   kernelLeakReport,
   smartFailure,
   memoryProtection,
+  memoryCpuTier,
   fieldLabel,
   fieldValueLabel,
   common: {

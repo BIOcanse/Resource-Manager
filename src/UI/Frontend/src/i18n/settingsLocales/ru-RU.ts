@@ -84,6 +84,7 @@ export default createSettingsLocale("ru-RU", {
   "sections": {
     "runtimePolicy": "Политика выполнения",
     "memory": "Память",
+    "memoryCpuTier": "Баланс памяти и ЦП",
     "memoryProtection": "Защита памяти компьютера",
     "hardwareControl": "Управление оборудованием",
     "reportRules": "Правила отчётов",

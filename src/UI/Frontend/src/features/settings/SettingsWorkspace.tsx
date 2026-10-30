@@ -43,6 +43,8 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onReportsChange={settings.updateReports}
         onMemoryProtectionChange={settings.updateMemoryProtection}
         committedMemoryProtection={settings.settings().memoryProtection}
+        onMemoryCpuTierChange={settings.updateMemoryCpuTier}
+        committedMemoryCpuTier={settings.settings().memoryCpuTier}
         confirmDialog={props.confirmDialog}
         onControlChange={settings.updateControl}
         onPreciseGpuPlacementChange={settings.updatePreciseGpuPlacement}

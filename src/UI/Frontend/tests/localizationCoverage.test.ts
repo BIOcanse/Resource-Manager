@@ -89,6 +89,16 @@ appCases.push(
   { path: "smartFailure.nativePlanStatus", render: copy => copy.smartFailure.nativePlanStatus("Status-A"), parameters: ["Status-A"], requiresTranslation: true },
   { path: "smartFailure.detailSummary", render: copy => copy.smartFailure.detailSummary(64, 130), parameters: ["64", "130"], requiresTranslation: true }
 );
+// 内存与 CPU 取舍：档位号、已保存/默认档位、选项标题、重启前后两个值和秒数都经参数化文案拼出。
+appCases.push(
+  { path: "memoryCpuTier.tierLabel", render: copy => copy.memoryCpuTier.tierLabel(4), parameters: ["4"], requiresTranslation: true },
+  { path: "memoryCpuTier.savedTier", render: copy => copy.memoryCpuTier.savedTier(2), parameters: ["2"], requiresTranslation: true },
+  { path: "memoryCpuTier.defaultTier", render: copy => copy.memoryCpuTier.defaultTier(3), parameters: ["3"], requiresTranslation: true },
+  { path: "memoryCpuTier.optionsTitle", render: copy => copy.memoryCpuTier.optionsTitle(5), parameters: ["5"], requiresTranslation: true },
+  { path: "memoryCpuTier.currentlyRunning", render: copy => copy.memoryCpuTier.currentlyRunning("2 MiB"), parameters: ["2 MiB"], requiresTranslation: true },
+  { path: "memoryCpuTier.afterRestart", render: copy => copy.memoryCpuTier.afterRestart("4 MiB"), parameters: ["4 MiB"], requiresTranslation: true },
+  { path: "memoryCpuTier.seconds", render: copy => copy.memoryCpuTier.seconds("30"), parameters: ["30"], requiresTranslation: false }
+);
 const settingsCases: FunctionCase<SettingsTextBundle>[] = [
   { path: "updates.confirmPrepare", render: copy => copy.updates.confirmPrepare("4.7.9-beta.8"), parameters: ["4.7.9-beta.8"], requiresTranslation: true },
   { path: "systemIntegration.trustedAccess.requestExpired", render: copy => copy.systemIntegration.trustedAccess.requestExpired, parameters: [], requiresTranslation: true },
@@ -190,6 +200,24 @@ try {
       const english = englishSettings.animationStyleOptions.find(item => item.id === option.id)!;
       issues.push(...inspectText(language, `settings.animationStyleOptions.${option.id}.label`, option.label, english.label, true));
       issues.push(...inspectText(language, `settings.animationStyleOptions.${option.id}.description`, option.description, english.description, true));
+    }
+    // 内存与 CPU 取舍：分区名、标记、端点说明、取值和选项标题多是两三个词，同样按必须翻译逐项检查。
+    issues.push(...inspectText(language, "settings.sections.memoryCpuTier", currentSettingsText().sections.memoryCpuTier, englishSettings.sections.memoryCpuTier, true));
+    const tierText = uiText.memoryCpuTier; const englishTier = englishApp.memoryCpuTier;
+    for (const key of ["tierTitle", "tierLowEnd", "tierHighEnd", "measuredTitle", "notMeasured", "retry", "unknownOption", "unset",
+      "valueLabel", "choiceLabel", "clear"] as const) {
+      issues.push(...inspectText(language, `app.memoryCpuTier.${key}`, tierText[key], englishTier[key], true));
+    }
+    for (const group of ["categories", "applyModes", "sources", "choices"] as const) {
+      const english = englishTier[group] as Record<string, string>;
+      for (const [key, value] of Object.entries(tierText[group] as Record<string, string>)) {
+        issues.push(...inspectText(language, `app.memoryCpuTier.${group}.${key}`, value, english[key], true));
+      }
+    }
+    for (const [key, value] of Object.entries(tierText.options)) {
+      const english = englishTier.options[key as keyof typeof englishTier.options];
+      issues.push(...inspectText(language, `app.memoryCpuTier.options.${key}.title`, value.title, english.title, true));
+      issues.push(...inspectText(language, `app.memoryCpuTier.options.${key}.description`, value.description, english.description, true));
     }
     assert.match(uiText.backendMessage.software.selfNoUninstall, /UninstallResourceManager\.exe/, `${language}: self-uninstall must direct users to the external executable.`);
 

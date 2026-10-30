@@ -171,6 +171,7 @@ const allJourneys = [
   ["software-protection-source", async (...args) => (await import("./softwareProtectionSourceJourney.js")).default(...args)],
   ["software-base-score-source", async (...args) => (await import("./softwareBaseScoreSourceJourney.js")).default(...args)],
   ["memory-protection-settings", async (...args) => (await import("./memoryProtectionSettingsJourney.js")).default(...args)],
+  ["memory-cpu-tier", async (...args) => (await import("./memoryCpuTierJourney.js")).default(...args)],
   ["memory-protection-no-dump", async (...args) => (await import("./memoryProtectionNoDumpJourney.js")).default(...args)],
   ["memory-protection-layout", async (...args) => (await import("./memoryProtectionLayoutJourney.js")).default(...args)],
   ["memory-protection-events", async (...args) => (await import("./memoryProtectionEventsJourney.js")).default(...args)],

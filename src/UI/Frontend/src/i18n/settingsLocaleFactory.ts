@@ -26,6 +26,7 @@ const zhCnSettingsCopy: SettingsCopy = {
   sections: {
     runtimePolicy: "运行策略",
     memory: "内存",
+    memoryCpuTier: "内存与 CPU 取舍",
     memoryProtection: "主机内存保护",
     hardwareControl: "硬件控制",
     reportRules: "报告规则",
@@ -462,6 +463,7 @@ const enSettingsCopy: SettingsCopy = {
   sections: {
     runtimePolicy: "Runtime Policy",
     memory: "Memory",
+    memoryCpuTier: "Memory and CPU Trade-off",
     memoryProtection: "Host Memory Protection",
     hardwareControl: "Hardware Control",
     reportRules: "Report Rules",

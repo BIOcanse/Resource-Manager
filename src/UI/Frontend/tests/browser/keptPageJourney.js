@@ -13,7 +13,7 @@ const PAGE_ENDPOINTS = {
   diskUsage: ["/api/disk-usage/"],
   control: ["/api/control/"],
   details: ["/api/cpu/", "/api/device-topology/", "/api/kernel-leaks/", "/api/optimization/smart/state/", "/api/gpu/"],
-  settings: ["/api/memory-protection", "/api/settings/report-rules", "/api/access-keys", "/api/startup-modules/"]
+  settings: ["/api/memory-protection", "/api/settings/report-rules", "/api/settings/memory-cpu-tier", "/api/access-keys", "/api/startup-modules/"]
 };
 // 离开后观察这么久：长于各页的刷新间隔，期间窗口还回到一次前台。
 const HIDDEN_OBSERVATION_MS = 2500;

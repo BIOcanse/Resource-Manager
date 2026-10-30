@@ -8,6 +8,7 @@ import { targetedReport } from "./ru-RU-targetedReport.ts";
 import { kernelLeakReport } from "./ru-RU-kernelLeakReport.ts";
 import { smartFailure } from "./ru-RU-smartFailure.ts";
 import { memoryProtection } from "./ru-RU-memoryProtection.ts";
+import { memoryCpuTier } from "./ru-RU-memoryCpuTier.ts";
 import { fieldLabel, fieldValueLabel } from "./ru-RU-fieldLabels.ts";
 import { plural } from "../../plural.ts";
 
@@ -41,6 +42,7 @@ const ruRuAppCopy: AppCopy = {
   kernelLeakReport,
   smartFailure,
   memoryProtection,
+  memoryCpuTier,
   fieldLabel,
   fieldValueLabel,
   common: {

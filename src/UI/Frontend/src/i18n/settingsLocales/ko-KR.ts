@@ -83,6 +83,7 @@ export default createSettingsLocale("ko-KR", {
   "sections": {
     "runtimePolicy": "실행 정책",
     "memory": "메모리",
+    "memoryCpuTier": "메모리와 CPU 균형",
     "memoryProtection": "호스트 메모리 보호",
     "hardwareControl": "하드웨어 제어",
     "reportRules": "보고서 규칙",

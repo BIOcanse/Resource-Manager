@@ -1,0 +1,58 @@
+import { cjkText } from "../../cjkSpacing.ts";
+import type { AppCopy } from "../index.ts";
+
+export const memoryCpuTier: AppCopy["memoryCpuTier"] = {
+  intro: "メモリと CPU を相互に引き換える一連のオプションを五段階にまとめています。段階 1 はメモリ使用量が最も少なく CPU への負荷が最も高く、段階 5 は CPU 使用量が最も少なくメモリへの負荷が最も高くなります。既定は段階 3 です。段階 2 から 4 では、もう一方への影響が小さい比例項目を比率を変えて有効にし、段階 1 と 5 ではこれに加えて代償の大きい積極項目を有効にします。各オプションは個別にも設定できます。",
+  tierTitle: "段階",
+  tierDescription: "段階を選ぶと、その段階の各オプションの値が下に表示されます。",
+  tierAriaLabel: "メモリと CPU のバランスの段階",
+  tierLabel: (tier: number) => cjkText`段階${tier}`,
+  tierLowEnd: "メモリ節約",
+  tierHighEnd: "CPU 節約",
+  savedTier: (tier: number) => cjkText`保存済み：段階${tier}`,
+  defaultTier: (tier: number) => cjkText`既定：段階${tier}`,
+  measuredTitle: "実測による差",
+  measuredDescription: "各段階でメモリと CPU の使用量がおよそどれだけ増減するか。",
+  notMeasured: "未測定",
+  optionsTitle: (tier: number) => cjkText`段階${tier}のオプション`,
+  previewNote: "これは保存前のプレビューです。値は選択した段階と個別設定から求めています。保存後はバックエンドが返した値を表示します。",
+  loading: "段階とオプションを読み込んでいます…",
+  loadFailed: "メモリと CPU のバランスの段階とオプションを読み込めませんでした。",
+  retry: "再試行",
+  noOptions: "バックエンドからオプションが返されませんでした。",
+  unknownOption: "不明なオプション",
+  unset: "設定しない",
+  valueLabel: "設定値",
+  choiceLabel: "選択値",
+  categories: { proportional: "比例項目", aggressive: "積極項目" },
+  applyModes: { immediate: "すぐに反映", restart: "再起動後に反映" },
+  sources: { tier: "段階による値", user: "個別設定" },
+  currentlyRunning: (value: string) => cjkText`現在の使用値：${value}`,
+  afterRestart: (value: string) => cjkText`再起動後：${value}`,
+  restartNote: "サービスの再起動後に反映されます。このページは何も再起動しません。",
+  clear: "クリア",
+  seconds: (value: string) => cjkText`${value}秒`,
+  milliseconds: (value: string) => cjkText`${value}ミリ秒`,
+  choices: {
+    optimize: "少なくとも最適化（確認のたびに返却）",
+    autoLean: "自動（メモリを少なめに保持）",
+    auto: "自動",
+    autoRetain: "自動（メモリを多めに保持）",
+    unrestricted: "制限なし（自発的には返却しない）"
+  },
+  options: {
+    gcGen0MaxBudget: { title: "GC 第 0 世代の予算上限", description: "ランタイムが二回の回収の間に新たに割り当てられるメモリの上限です。小さいほど回収が増え、メモリを節約します。設定しない場合はランタイムがプロセッサのキャッシュに応じて決めます。" },
+    gcConserveMemory: { title: "GC の圧縮傾向", description: "メモリを減らすためにランタイムがヒープを整理する積極度で、0 から 9 です。高いほどメモリを節約し、CPU を多く使います。" },
+    ledgerMemoryModeFloor: { title: "台帳メモリモードの下限", description: "アプリ自身のメモリ台帳が未使用メモリを返却する最低限の積極度です。" },
+    bufferReturn: { title: "バッファーの返却", description: "プロセス列挙バッファーやカウンター解析領域などの一時領域が、使用後どれだけ早くメモリを返却するかです。" },
+    nativeWorkareaGrowth: { title: "ネイティブ作業領域の拡張", description: "ネイティブモジュールの作業領域を実際の使用量に応じて拡張・縮小するか、上限まで一度に確保するかです。" },
+    singleRequestStopBufferMs: { title: "単発読み取り後のサンプリング元保持時間", description: "単発の読み取りが終わった後も共有サンプリング元を保持する時間です。すぐ次に読み取る場合に起動し直す必要がなくなります。0 は読み取り終了と同時に停止します。保持中に追加のサンプリングは行いません。" },
+    serviceIdentityCacheMs: { title: "サービススナップショットの有効期間", description: "サービスとプロセスの対応関係のスナップショットを再利用する時間です。0 は毎回読み直します。" },
+    browserRuntimeSnapshotSeconds: { title: "ブラウザーランタイム一覧スナップショットの有効期間", description: "ブラウザーランタイム一覧のスナップショットを再利用する時間です。0 は毎回読み直します。" },
+    platformSensorSnapshotSeconds: { title: "プラットフォームセンサースナップショットの有効期間", description: "プラットフォームセンサーの読み取り値のスナップショットを再利用する時間です。0 は毎回読み直します。" },
+    storageSnapshotSeconds: { title: "ストレージスナップショットの有効期間", description: "ストレージデバイス情報のスナップショットを再利用する時間です。0 は毎回読み直します。" },
+    rendererAbsenceEntries: { title: "レンダラー不在キャッシュの件数", description: "レンダラーを持たないプロセスとして記憶する件数の上限です。多いほど繰り返しの確認が減り、メモリを多く使います。" },
+    fileQuerySessionsMax: { title: "ファイル照会セッションの上限", description: "同時に保持するファイル照会セッションの最大数です。" },
+    fileQuerySessionsPrebuilt: { title: "事前作成するファイル照会セッション", description: "あらかじめ作成していつでも使えるようにしておくファイル照会セッションの数です。0 は必要時に作成します。" }
+  }
+};

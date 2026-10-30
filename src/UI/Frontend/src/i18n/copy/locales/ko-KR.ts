@@ -8,6 +8,7 @@ import { targetedReport } from "./ko-KR-targetedReport.ts";
 import { kernelLeakReport } from "./ko-KR-kernelLeakReport.ts";
 import { smartFailure } from "./ko-KR-smartFailure.ts";
 import { memoryProtection } from "./ko-KR-memoryProtection.ts";
+import { memoryCpuTier } from "./ko-KR-memoryCpuTier.ts";
 import { fieldLabel, fieldValueLabel } from "./ko-KR-fieldLabels.ts";
 
 const koKrAppCopy: AppCopy = {
@@ -40,6 +41,7 @@ const koKrAppCopy: AppCopy = {
   kernelLeakReport,
   smartFailure,
   memoryProtection,
+  memoryCpuTier,
   fieldLabel,
   fieldValueLabel,
   common: {

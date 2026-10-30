@@ -55,7 +55,7 @@ export const loadingSettingsText: SettingsTextBundle = {
     accessRequestNoticeMessage: () => "", accessRequestNoticeOpen: "" },
   language: "zh-CN",
   navigationLabel: "",
-  sections: { runtimePolicy: "", memory: "", memoryProtection: "", hardwareControl: "", reportRules: "", appearance: "", performanceOverlay: "", systemIntegration: "", publicServices: "", trustedAccess: "", notifications: "", updates: "", debug: "", credits: "" },
+  sections: { runtimePolicy: "", memory: "", memoryCpuTier: "", memoryProtection: "", hardwareControl: "", reportRules: "", appearance: "", performanceOverlay: "", systemIntegration: "", publicServices: "", trustedAccess: "", notifications: "", updates: "", debug: "", credits: "" },
   saveState: { saving: "", saved: "", constrained: "", partial: "", error: "", dirty: "", conflict: "", invalidValueType: "" },
   loadState: {
     loading: "",

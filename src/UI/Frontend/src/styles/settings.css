@@ -1620,3 +1620,25 @@
   .memory-protection-reserve-row { grid-template-columns: minmax(0, 1fr) auto; }
   .memory-protection-location { grid-column: 1 / -1; }
 }
+
+/* 内存与 CPU 取舍分区（MemoryCpuTierSettingsSection.tsx）：档位分段控件夹在两端说明之间，放不下时换行；
+   实测差别每档一行；选项沿用报告规则的卡片排法，名称后跟三枚标记，值和编辑行在下面。 */
+.memory-cpu-tier-scale { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px 12px; }
+.memory-cpu-tier-scale > span { color: var(--muted); font-size: 13px; }
+.memory-cpu-tier-measured { min-width: 0; display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.memory-cpu-tier-measured li { display: grid; grid-template-columns: minmax(64px, auto) minmax(0, 1fr); gap: 12px; font-size: 13px; }
+.memory-cpu-tier-measured li > span:last-child { color: var(--muted); }
+.memory-cpu-tier-options { min-width: 0; display: grid; gap: 10px; }
+.memory-cpu-tier-options h3 { margin: 8px 0 0; font-size: 14px; }
+.memory-cpu-tier-preview-note { margin: 0; color: var(--muted); font-size: 13px; }
+.memory-cpu-tier-option { min-width: 0; display: grid; gap: 6px; border-top: 1px solid var(--divider-soft); padding-top: 10px; }
+.memory-cpu-tier-option-head { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.memory-cpu-tier-option-head > strong { font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+.memory-cpu-tier-option-description { color: var(--muted); font-size: 13px; }
+.memory-cpu-tier-option-value { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 13px; }
+.memory-cpu-tier-restart-note { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+.settings-row.memory-cpu-tier-option-edit { min-height: 0; display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: flex-end; gap: 8px; border-bottom: 0; padding: 0 0 4px; }
+.memory-cpu-tier-option-edit > .settings-number-field { width: var(--settings-number-width); }
+.memory-cpu-tier-unset { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.memory-cpu-tier-settings > p[role="alert"] { margin: 0; color: var(--danger); font-size: 13px; }
+.memory-cpu-tier-retry { justify-self: start; }

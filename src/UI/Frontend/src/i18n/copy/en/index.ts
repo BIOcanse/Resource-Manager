@@ -26,6 +26,7 @@ import { enTargetedReportCopy } from "./targetedReport.ts";
 import { enKernelLeakReportCopy } from "./kernelLeakReport.ts";
 import { enSmartFailureCopy } from "./smartFailure.ts";
 import { enMemoryProtectionCopy } from "./memoryProtection.ts";
+import { enMemoryCpuTierCopy } from "./memoryCpuTier.ts";
 import type { AppCopy } from "../zh/index.ts";
 
 // 英文基底：非中文语言在此之上合并各自补丁。
@@ -53,6 +54,7 @@ export const enAppCopy: AppCopy = {
   ...enKernelLeakReportCopy,
   ...enSmartFailureCopy,
   ...enMemoryProtectionCopy,
+  ...enMemoryCpuTierCopy,
   ...enRuntimeAndReportsCopy,
   ...enStoresCopy,
   ...enRuntimeErrorsCopy,

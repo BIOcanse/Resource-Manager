@@ -26,6 +26,7 @@ import { zhTwTargetedReportCopy } from "./targetedReport.ts";
 import { zhTwKernelLeakReportCopy } from "./kernelLeakReport.ts";
 import { zhTwSmartFailureCopy } from "./smartFailure.ts";
 import { zhTwMemoryProtectionCopy } from "./memoryProtection.ts";
+import { zhTwMemoryCpuTierCopy } from "./memoryCpuTier.ts";
 
 // 中文基底：全应用文案的唯一权威形状，其他语言按同一形状提供翻译。
 export const zhAppCopy = {
@@ -52,6 +53,7 @@ export const zhAppCopy = {
   ...zhTwKernelLeakReportCopy,
   ...zhTwSmartFailureCopy,
   ...zhTwMemoryProtectionCopy,
+  ...zhTwMemoryCpuTierCopy,
   ...zhRuntimeAndReportsCopy,
   ...zhStoresCopy,
   ...zhRuntimeErrorsCopy,

@@ -8,6 +8,7 @@ import { targetedReport } from "./fr-FR-targetedReport.ts";
 import { kernelLeakReport } from "./fr-FR-kernelLeakReport.ts";
 import { smartFailure } from "./fr-FR-smartFailure.ts";
 import { memoryProtection } from "./fr-FR-memoryProtection.ts";
+import { memoryCpuTier } from "./fr-FR-memoryCpuTier.ts";
 import { fieldLabel, fieldValueLabel } from "./fr-FR-fieldLabels.ts";
 import { plural } from "../../plural.ts";
 
@@ -41,6 +42,7 @@ const frFrAppCopy: AppCopy = {
   kernelLeakReport,
   smartFailure,
   memoryProtection,
+  memoryCpuTier,
   fieldLabel,
   fieldValueLabel,
   common: {

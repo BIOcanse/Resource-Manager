@@ -83,6 +83,7 @@ export default createSettingsLocale("ja-JP", {
   "sections": {
     "runtimePolicy": "実行ポリシー",
     "memory": "メモリ",
+    "memoryCpuTier": "メモリと CPU のバランス",
     "memoryProtection": "ホスト メモリ保護",
     "hardwareControl": "ハードウェア制御",
     "reportRules": "レポート ルール",

@@ -10,6 +10,7 @@ import { CreditsSettingsSection } from "./components/CreditsSettingsSection";
 import { DebugSettingsSection } from "./components/DebugSettingsSection";
 import { PerformanceOverlaySettingsSection } from "./components/PerformanceOverlaySettingsSection";
 import { MemorySettingsSection } from "./components/MemorySettingsSection";
+import { MemoryCpuTierSettingsSection } from "./components/MemoryCpuTierSettingsSection";
 import { PublicServicesSettingsSection } from "./components/PublicServicesSettingsSection";
 import { RefreshCadenceSetting } from "./components/RefreshCadenceSetting";
 import { RuntimePolicySettingsSection } from "./components/RuntimePolicySettingsSection";
@@ -52,6 +53,9 @@ interface SettingsPageProps {
   runtimeFailurePath: string | null;
   onReportsChange: (reports: NonNullable<AppSettings["reports"]>) => void;
   onMemoryProtectionChange: (memoryProtection: NonNullable<AppSettings["memoryProtection"]>) => void;
+  onMemoryCpuTierChange: (memoryCpuTier: NonNullable<AppSettings["memoryCpuTier"]>) => void;
+  /** 已保存的内存与 CPU 取舍设置：分区据此区分预览和后端的值，保存提交后重读后端。 */
+  committedMemoryCpuTier: AppSettings["memoryCpuTier"];
   /** 删除已保存的正常运行点前的确认（删除不能撤销）。 */
   confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
   /** 已保存的内存保护设置：分区据此判断有没有未保存的更改，保存提交后重新读后端状态。 */
@@ -115,7 +119,7 @@ interface SettingsPageProps {
 }
 
 const settingSections: SettingsSection[] = [
-  "runtimePolicy", "memory", "memoryProtection", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
+  "runtimePolicy", "memory", "memoryCpuTier", "memoryProtection", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
   "systemIntegration", "publicServices", "trustedAccess", "notifications", "updates", "debug", "credits"
 ];
 // 只读的分区（性能浮层总览、可信访问、致谢）不改设置草稿，没有重新加载、恢复为默认和保存；
@@ -336,6 +340,13 @@ export function SettingsPage(props: SettingsPageProps) {
               text={text()}
               onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}
               onMemoryOptimizationTargetLinesChange={props.onMemoryOptimizationTargetLinesChange}
+            />
+          </Show>
+          <Show when={props.activeSection === "memoryCpuTier"}>
+            <MemoryCpuTierSettingsSection
+              settings={props.settings.memoryCpuTier}
+              committed={props.committedMemoryCpuTier}
+              onChange={props.onMemoryCpuTierChange}
             />
           </Show>
           <Show when={props.activeSection === "memoryProtection"}>

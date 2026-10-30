@@ -5,6 +5,7 @@ import { kernelLeakReportFrames } from "../fixtures/kernelLeakReports.js";
 import * as showcase from "./readmeShowcaseFixture.js";
 import { createMemoryProtectionFixture, defaultMemoryProtectionSettings, memoryProtectionScenarios, defaultSoftwarePolicy, invalidMemoryProtectionPatch } from "./memoryProtectionFixture.mjs";
 import { mockBaseScoreResolution } from "./baseScoreFixture.mjs";
+import { defaultMemoryCpuTierSettings, invalidMemoryCpuTierSettings, memoryCpuTierReading, memoryCpuTierScenarios } from "./memoryCpuTierFixture.mjs";
 import { loadSliceReplay } from "../realData/replaySlice.mjs";
 import { generatedMetricDefinitions, generatedMetricItems, generatedGpuScores, generatedFieldDevices } from "../realData/generatedMockData.mjs";
 import { generateScenario } from "../realData/generateScenario.mjs";
@@ -39,6 +40,8 @@ const recordedDeclarationStates = Object.fromEntries(await Promise.all(Object.en
 }).map(async ([name, file]) => [name, JSON.parse(await readFile(new URL(`../fixtures/${file}`, import.meta.url), "utf8"))])));
 const defaultScenario = {
   memoryProtection: "no-point",
+  // 内存与 CPU 取舍的 GET：ready 正常表，unknown-option 多一项前端不认识的名称，malformed 回复不合合同，error 读取失败。
+  memoryCpuTier: "ready",
   // 新建、切换、删除正常运行点的响应延迟，用来看按钮的进行中状态。
   memoryProtectionPointChangeDelayMs: 0,
   slice: null,
@@ -277,6 +280,7 @@ const targetedRecordings = new Map();
 const defaultAppSettings = {
   version: "1.0.37",
   memoryProtection: defaultMemoryProtectionSettings(),
+  memoryCpuTier: defaultMemoryCpuTierSettings(),
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5, keepSmartRecordHistory: false },
   reports: { ruleOverrides: [] },
   control: { keepAlive: false, reassertionIntervalSeconds: 120 },
@@ -749,6 +753,10 @@ async function handleApi(request, response, url) {
     }, Math.max(0, Math.min(5000, Math.floor(Number(scenario.diskUsageScanCompletionDelayMs) || 900))));
     return json(response, 200, diskScanOperation);
   }
+  if (path === "/api/settings/memory-cpu-tier" && request.method === "GET") {
+    if (scenario.memoryCpuTier === "error") return text(response, 503, "memory-cpu tier unavailable");
+    return json(response, 200, memoryCpuTierReading(appSettings.memoryCpuTier ?? defaultMemoryCpuTierSettings(), scenario.memoryCpuTier));
+  }
   if (path === "/api/settings/report-rules" && request.method === "GET") {
     return json(response, 200, { rules: reportRules });
   }
@@ -820,7 +828,9 @@ async function handleApi(request, response, url) {
         || patch.expectedRevision !== scenario.settingsRevision) {
         return json(response, 409, appSettingsResult("revisionConflict"));
       }
-      const typeProblemPath = invalidMemoryProtectionPatch(patch.changes) ?? settingsValueTypeProblem(patch.changes);
+      const typeProblemPath = invalidMemoryProtectionPatch(patch.changes)
+        ?? (Object.hasOwn(patch.changes, "memoryCpuTier") ? invalidMemoryCpuTierSettings(patch.changes.memoryCpuTier) : null)
+        ?? settingsValueTypeProblem(patch.changes);
       if (typeProblemPath !== null) {
         return json(response, 409, { ...appSettingsResult("rejectedBeforeCommit"),
           runtimeFailureCode: "invalid-settings-value-type", runtimeFailurePath: typeProblemPath });
@@ -830,6 +840,8 @@ async function handleApi(request, response, url) {
         if (memoryProblem) return json(response, 409, { ...appSettingsResult("rejectedBeforeCommit"), runtimeFailureCode: memoryProblem });
       }
       mergeRecord(appSettings, patch.changes);
+      // memoryCpuTier 整节替换：清除一项单独设置就是补丁里少了这个键，逐键合并会把旧值留下。
+      if (Object.hasOwn(patch.changes, "memoryCpuTier")) appSettings.memoryCpuTier = structuredClone(patch.changes.memoryCpuTier);
       if (appSettings.memoryProtection) appSettings.memoryProtection.reserves ??= [];
       if (Object.hasOwn(patch.changes, "memoryProtection")) memoryProtection.prepare();
       publishMemoryProtectionStatus();
@@ -1628,6 +1640,7 @@ const scenarioChoices = {
   smartStatusSegment: ["success", "cycle-failed", "native-plan-failed"],
   kernelLeakReport: Object.keys(kernelLeakReportFrames),
   memoryProtection: memoryProtectionScenarios,
+  memoryCpuTier: memoryCpuTierScenarios,
   deviceTopologyMachineIdentity: [null, "workstation", "mobile_workstation", "laptop", "desktop", "unknown"],
   deviceTopologyWireless: [null, "standards", "unknown"],
   metricCatalogAddresses: ["none", "reading-source"],
