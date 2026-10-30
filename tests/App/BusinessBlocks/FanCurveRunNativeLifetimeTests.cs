@@ -53,9 +53,9 @@ public sealed class FanCurveRunNativeLifetimeTests
                 services.AddSingleton<IControlPlane>(plane);
                 services.AddSingleton(new RuntimePlanProvider(new HostManagerDeploymentState()));
                 services.AddSingleton<BackendDecisionStateBindings>();
-                services.AddBusinessBlockHostedService<FanControlCoreLifetimeService>(BackendUids.FanControlCoreLifetimeService,
-                    _ => new FanControlCoreLifetimeService(core));
-                services.AddBusinessBlockHostedService<FanCurveTemperatureFeed>(BackendUids.FanCurveTemperatureFeed, _ => feed);
+                services.AddBusinessBlockLifetime<FanControlCoreLifetimeService>(BackendUids.FanControlCoreLifetimeService,
+                    _ => new FanControlCoreLifetimeService(core), constructService: true);
+                services.AddBusinessBlockWorker<FanCurveTemperatureFeed>(BackendUids.FanCurveTemperatureFeed, _ => feed, constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();

@@ -12,11 +12,7 @@ public sealed record BusinessBlockRegistration(
 
 /// <summary>The entry task and host error policy explicitly selected by this hosted block's owner.</summary>
 internal sealed record HostedBusinessBlockExecution(Func<IHostedService, Task?> ReadTask, bool ForwardRunFailureToHost,
-    Func<IHostedService, bool>? ResourceFailureHandled = null)
-{
-    internal static readonly HostedBusinessBlockExecution EntryExitOrBackground = new(
-        static service => (service as BackgroundService)?.ExecuteTask, false);
-}
+    Func<IHostedService, bool>? ResourceFailureHandled = null);
 
 /// <summary>An observation-only component can publish diagnostics without being a runnable block.</summary>
 public sealed record BusinessBlockDiagnosticRegistration(int Id);

@@ -234,7 +234,7 @@ public sealed class BackendBlockProductionTreeTests
                     services.AddSingleton(registration with { Create = _ => new Probe() });
                 services.AddSingleton<SerialInitialization>(_ => initialization);
                 services.AddSerialHostedServiceAlias<SerialInitialization>();
-                services.AddBusinessBlockHostedService<FollowingWorker>(workerBlockId, _ => worker);
+                services.AddBusinessBlockWorker<FollowingWorker>(workerBlockId, _ => worker, constructService: true);
             }).Build();
         Task? start = null;
         Task? stop = null;

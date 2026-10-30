@@ -19,9 +19,9 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var observations = new ConcurrentQueue<StopObservation>();
         using var host = BuildHost(services =>
         {
-            services.AddBusinessBlockHostedService<FirstStopService>(BackendUids.RuntimeSpecializationCoordinator, _ => new(observations));
-            services.AddBusinessBlockHostedService<SecondStopService>(BackendUids.ServiceAutoStartSettings, _ => new(observations));
-            services.AddBusinessBlockHostedService<ThirdStopService>(BackendUids.TrustedAccessInvocationHostedService, _ => new(observations));
+            services.AddBusinessBlockLifetime<FirstStopService>(BackendUids.RuntimeSpecializationCoordinator, _ => new(observations), constructService: true);
+            services.AddBusinessBlockLifetime<SecondStopService>(BackendUids.ServiceAutoStartSettings, _ => new(observations), constructService: true);
+            services.AddBusinessBlockLifetime<ThirdStopService>(BackendUids.TrustedAccessInvocationHostedService, _ => new(observations), constructService: true);
         });
 
         await host.StartAsync();
@@ -45,7 +45,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var releaseStop = NewSignal();
         var service = new LifecycleService(_ => releaseStop.Task);
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(BackendUids.RuntimeSpecializationCoordinator, _ => service));
+            services.AddBusinessBlockLifetime<LifecycleService>(BackendUids.RuntimeSpecializationCoordinator, _ => service, constructService: true));
         await host.StartAsync();
         await WaitUntilAsync(() => service.StartCount == 1);
         var stopping = Hosted<LifecycleService>(host).StopAsync(hostDeadline.Token);
@@ -76,7 +76,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var failure = new TimeoutException("service-owned timeout");
         var service = new LifecycleService(_ => Task.FromException(failure));
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(BackendUids.RuntimeSpecializationCoordinator, _ => service));
+            services.AddBusinessBlockLifetime<LifecycleService>(BackendUids.RuntimeSpecializationCoordinator, _ => service, constructService: true));
         await host.StartAsync();
         await WaitUntilAsync(() => service.StartCount == 1);
         var thrown = await Assert.ThrowsAsync<TimeoutException>(() => Hosted<LifecycleService>(host).StopAsync(CancellationToken.None));
@@ -97,7 +97,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var worker = new GatedBackgroundService(release.Task);
         using var cancellation = new CancellationTokenSource();
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<GatedBackgroundService>(BackendUids.RuntimeSpecializationCoordinator, _ => worker));
+            services.AddBusinessBlockWorker<GatedBackgroundService>(BackendUids.RuntimeSpecializationCoordinator, _ => worker, constructService: true));
         await host.StartAsync();
         await worker.ExecutionStarted.Task.WaitAsync(TestTimeout);
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
@@ -126,7 +126,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
     {
         var service = new GatedStartService();
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<GatedStartService>(BackendUids.RuntimeSpecializationCoordinator, _ => service));
+            services.AddBusinessBlockLifetime<GatedStartService>(BackendUids.RuntimeSpecializationCoordinator, _ => service, constructService: true));
         var hosted = Hosted<GatedStartService>(host);
         var starting = hosted.StartAsync(CancellationToken.None);
         await service.StartEntered.Task.WaitAsync(TestTimeout);
@@ -149,7 +149,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
     {
         var service = new RecoverableStartService();
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<RecoverableStartService>(BackendUids.RuntimeSpecializationCoordinator, _ => service));
+            services.AddBusinessBlockLifetime<RecoverableStartService>(BackendUids.RuntimeSpecializationCoordinator, _ => service, constructService: true));
         var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(BackendUids.RuntimeSpecializationCoordinator, () => service);
         var first = block.PrepareStart(CancellationToken.None);
         var firstRun = block.RunAsync(new(CancellationToken.None, () => { }));
@@ -192,7 +192,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
     {
         var service = new LifecycleService(_ => Task.CompletedTask);
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(BackendUids.RuntimeSpecializationCoordinator, _ => service));
+            services.AddBusinessBlockLifetime<LifecycleService>(BackendUids.RuntimeSpecializationCoordinator, _ => service, constructService: true));
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
         await host.Services.GetRequiredService<BackendHostPermitFacts>().SetAsync(BackendUids.RuntimeSpecializationCoordinator, true, TestReason("early-permit")).WaitAsync(TestTimeout);
         try
@@ -218,7 +218,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
             return releaseSecondStop.Task;
         });
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(BackendUids.RuntimeSpecializationCoordinator, _ => service));
+            services.AddBusinessBlockLifetime<LifecycleService>(BackendUids.RuntimeSpecializationCoordinator, _ => service, constructService: true));
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
         Task? stopping = null;
         try
@@ -250,13 +250,13 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var events = new ConcurrentQueue<string>();
         using var host = BuildHost(services =>
         {
-            services.AddBusinessBlockHostedService<FirstConstructedService>(BackendUids.RuntimeSpecializationCoordinator, _ =>
-            { events.Enqueue("first:construct"); return new(events); });
+            services.AddBusinessBlockLifetime<FirstConstructedService>(BackendUids.RuntimeSpecializationCoordinator, _ =>
+            { events.Enqueue("first:construct"); return new(events); }, constructService: true);
             services.AddSingleton<LazyAliasService>(_ =>
             { events.Enqueue("alias:construct"); return new(events); });
-            services.AddHostedServiceAlias<LazyAliasService>(BackendUids.ServiceAutoStartSettings);
-            services.AddBusinessBlockHostedService<SecondConstructedService>(BackendUids.TrustedAccessRequestOwner, _ =>
-            { events.Enqueue("second:construct"); return new(events); });
+            services.AddHostedServiceAlias<LazyAliasService>(BackendUids.ServiceAutoStartSettings, static _ => null, forwardRunFailureToHost: false);
+            services.AddBusinessBlockLifetime<SecondConstructedService>(BackendUids.TrustedAccessRequestOwner, _ =>
+            { events.Enqueue("second:construct"); return new(events); }, constructService: true);
         });
         var hosted = host.Services.GetServices<IHostedService>()
             .Where(static service => service is NonOwningHostedService<FirstConstructedService>
@@ -274,9 +274,9 @@ public sealed class BusinessBlockHostedCompatibilityTests
         {
             services.AddSingleton<LazyAliasService>(_ =>
             { events.Enqueue("alias:construct"); return new(events); });
-            services.AddHostedServiceAlias<LazyAliasService>(BackendUids.ServiceAutoStartSettings);
-            services.AddBusinessBlockHostedService<ThrowingConstructedService>(BackendUids.ServiceRecoverySettings, _ =>
-            { events.Enqueue("direct:construct"); throw failure; });
+            services.AddHostedServiceAlias<LazyAliasService>(BackendUids.ServiceAutoStartSettings, static _ => null, forwardRunFailureToHost: false);
+            services.AddBusinessBlockLifetime<ThrowingConstructedService>(BackendUids.ServiceRecoverySettings, _ =>
+            { events.Enqueue("direct:construct"); throw failure; }, constructService: true);
         });
         var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => host.StartAsync());
         Assert.Same(failure, thrown);

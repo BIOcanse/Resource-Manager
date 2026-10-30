@@ -17,7 +17,7 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ProbeWorker>(BackendUids.RuntimeSpecializationCoordinator, _ => worker);
+                services.AddBusinessBlockWorker<ProbeWorker>(BackendUids.RuntimeSpecializationCoordinator, _ => worker, constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
             .Build();
@@ -58,7 +58,7 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ProbeWorker>(BackendUids.RuntimeSpecializationCoordinator, _ => worker);
+                services.AddBusinessBlockWorker<ProbeWorker>(BackendUids.RuntimeSpecializationCoordinator, _ => worker, constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
             .Build();
@@ -98,11 +98,11 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<PlainService>(BackendUids.RuntimeSpecializationCoordinator, _ =>
+                services.AddBusinessBlockLifetime<PlainService>(BackendUids.RuntimeSpecializationCoordinator, _ =>
                 {
                     created++;
                     return service = new PlainService();
-                });
+                }, constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         try

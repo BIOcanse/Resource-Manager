@@ -23,7 +23,7 @@ public sealed class BusinessBlockHostedRestartFailureTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<RestartableService>(BackendUids.ControlActualStateReader, _ => service);
+                services.AddBusinessBlockWorker<RestartableService>(BackendUids.ControlActualStateReader, _ => service, constructService: true);
                 services.AddSingleton<ILogger<BusinessBlockDiagnosticsRegistry>>(resultLog);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();

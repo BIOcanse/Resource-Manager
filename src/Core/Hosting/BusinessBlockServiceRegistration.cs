@@ -46,38 +46,24 @@ public static partial class ResourceManagerServiceCollectionExtensions
         return services;
     }
 
-    internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services,
-        int id) where TService : class, IHostedService
-    {
-        services.TryAddSingleton<TService>();
-        return services.AddHostedServiceAlias<TService>(id, constructService: true);
-    }
-
-    internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services,
-        int id, Func<IServiceProvider, TService> factory) where TService : class, IHostedService
-    {
-        services.TryAddSingleton(factory);
-        return services.AddHostedServiceAlias<TService>(id, constructService: true);
-    }
-
     internal static IServiceCollection AddBusinessBlockWorker<TService>(this IServiceCollection services,
-        int id, Func<IServiceProvider, TService>? factory = null) where TService : BackgroundService
+        int id, Func<IServiceProvider, TService>? factory = null, bool constructService = false) where TService : BackgroundService
     {
         if (factory is null) services.TryAddSingleton<TService>();
         else services.TryAddSingleton(factory);
         return services.AddHostedServiceAlias<TService>(id, static service => service.ExecuteTask,
-            forwardRunFailureToHost: false);
+            forwardRunFailureToHost: false, constructService: constructService);
     }
 
     // Callback/resource owners have entering and leaving work, but no private
     // worker. Their explicit contract lasts until stop; no fake task is created.
     internal static IServiceCollection AddBusinessBlockLifetime<TService>(this IServiceCollection services,
-        int id, Func<IServiceProvider, TService>? factory = null) where TService : class, IHostedService
+        int id, Func<IServiceProvider, TService>? factory = null, bool constructService = false) where TService : class, IHostedService
     {
         if (factory is null) services.TryAddSingleton<TService>();
         else services.TryAddSingleton(factory);
         return services.AddHostedServiceAlias<TService>(id, static _ => null,
-            forwardRunFailureToHost: false);
+            forwardRunFailureToHost: false, constructService: constructService);
     }
 
     internal static void RegisterHostedBusinessBlock<TService>(IServiceCollection services,

@@ -21,10 +21,12 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         var broker = new TimedInterruptBroker();
         using var source = new EtwSystemInterruptSnapshotSource(broker, sampling.Owner,
             NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
-        var diagnostics = new BusinessBlockDiagnosticsRegistry(
-            [new(BackendUids.EtwSystemInterruptSnapshotSource, _ => throw new InvalidOperationException())],
+        var registration = new BusinessBlockRegistration(BackendUids.EtwSystemInterruptSnapshotSource,
+            _ => throw new InvalidOperationException())
+        { HostedExecution = new(static service => ((EtwSystemInterruptSnapshotSource)service).ExecuteTask, false) };
+        var diagnostics = new BusinessBlockDiagnosticsRegistry([registration],
             NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
-        var registry = new HostedBusinessBlockRegistry(diagnostics, []);
+        var registry = new HostedBusinessBlockRegistry(diagnostics, [registration]);
         await using var tree = NativeBackendBlockTestSupport.CreateFullTreeFixture(
             new Dictionary<int, Func<IServiceProvider, IBusinessBlock>>
             {

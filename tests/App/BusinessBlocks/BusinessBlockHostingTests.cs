@@ -18,12 +18,12 @@ public sealed class BusinessBlockHostingTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ConsumerService>(BackendUids.TrustedAccessRequestOwner,
-                    _ => new ConsumerService(events));
+                services.AddBusinessBlockLifetime<ConsumerService>(BackendUids.TrustedAccessRequestOwner,
+                    _ => new ConsumerService(events), constructService: true);
 
                 // A data input does not control another hosted service's lifecycle.
-                services.AddBusinessBlockHostedService<DependencyService>(BackendUids.RuntimeSpecializationCoordinator,
-                    _ => new DependencyService(events));
+                services.AddBusinessBlockLifetime<DependencyService>(BackendUids.RuntimeSpecializationCoordinator,
+                    _ => new DependencyService(events), constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
             .Build();
@@ -70,9 +70,9 @@ public sealed class BusinessBlockHostingTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ThrowingStartService>(BackendUids.TrustedAccessRequestOwner, _ => failed);
-                services.AddBusinessBlockHostedService<DependencyService>(BackendUids.RuntimeSpecializationCoordinator,
-                    _ => new DependencyService(events));
+                services.AddBusinessBlockLifetime<ThrowingStartService>(BackendUids.TrustedAccessRequestOwner, _ => failed, constructService: true);
+                services.AddBusinessBlockLifetime<DependencyService>(BackendUids.RuntimeSpecializationCoordinator,
+                    _ => new DependencyService(events), constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
@@ -130,11 +130,11 @@ public sealed class BusinessBlockHostingTests
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
-                services.AddBusinessBlockHostedService<LazyService>(BackendUids.TrustedAccessRequestOwner, _ =>
+                services.AddBusinessBlockLifetime<LazyService>(BackendUids.TrustedAccessRequestOwner, _ =>
                 {
                     constructed++;
                     return new LazyService();
-                }))
+                }, constructService: true))
             .ConfigureServices(NativeBackendBlockTestSupport.AddFullTreeHostFixture).Build();
 
         var query = host.Services.GetRequiredService<IBusinessBlockQuery>();

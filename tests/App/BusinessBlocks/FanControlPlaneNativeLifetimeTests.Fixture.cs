@@ -56,11 +56,11 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
                     services.AddSingleton<IControlPlane>(Plane);
                     services.AddSingleton(new RuntimePlanProvider(new HostManagerDeploymentState()));
                     services.AddSingleton<BackendDecisionStateBindings>();
-                    services.AddBusinessBlockHostedService<FanControlCoreLifetimeService>(BackendUids.FanControlCoreLifetimeService,
-                        _ => new FanControlCoreLifetimeService(Core));
+                    services.AddBusinessBlockLifetime<FanControlCoreLifetimeService>(BackendUids.FanControlCoreLifetimeService,
+                        _ => new FanControlCoreLifetimeService(Core), constructService: true);
                     if (Actual is { } actual)
-                        services.AddBusinessBlockHostedService<ControlActualStateReader>(BackendUids.ControlActualStateReader,
-                            _ => actual);
+                        services.AddBusinessBlockWorker<ControlActualStateReader>(BackendUids.ControlActualStateReader,
+                            _ => actual, constructService: true);
                     NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
                 }).Build();
         }

@@ -69,17 +69,17 @@ internal static class NonOwningHostedServiceRegistration
 {
     internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
         int id, Func<TService, Task?> executionTask, bool forwardRunFailureToHost,
-        Func<TService, bool>? resourceFailureHandled = null) where TService : class, IHostedService
+        Func<TService, bool>? resourceFailureHandled = null, bool constructService = false) where TService : class, IHostedService
     {
-        services.AddHostedServiceAlias<TService>(id);
+        services.AddHostedServiceAlias<TService>(id, constructService);
         return WithExecution(services, executionTask, forwardRunFailureToHost, resourceFailureHandled);
     }
 
     internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
         Func<TService, Task?> executionTask, bool forwardRunFailureToHost,
-        Func<TService, bool>? resourceFailureHandled = null) where TService : class, IHostedService
+        Func<TService, bool>? resourceFailureHandled = null, bool constructService = false) where TService : class, IHostedService
     {
-        services.AddHostedServiceAlias<TService>();
+        services.AddHostedServiceAlias<TService>(constructService);
         return WithExecution(services, executionTask, forwardRunFailureToHost, resourceFailureHandled);
     }
 

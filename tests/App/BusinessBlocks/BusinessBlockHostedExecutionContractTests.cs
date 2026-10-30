@@ -14,6 +14,21 @@ public sealed class BusinessBlockHostedExecutionContractTests
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     [Fact]
+    public void RegistryRejectsHostedRegistrationWithoutExecutionContractBeforeResolvingService()
+    {
+        var registration = new BusinessBlockRegistration(BackendUids.CpuTopologySnapshotProvider,
+            _ => throw new InvalidOperationException("The malformed registration must never be resolved."))
+        {
+            HostedServiceType = typeof(BackgroundWorker)
+        };
+        var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+
+        var error = Assert.Throws<InvalidOperationException>(() => new HostedBusinessBlockRegistry(diagnostics, [registration]));
+
+        Assert.Contains(registration.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), error.Message);
+    }
+
+    [Fact]
     public Task CustomHostedWorkerReturnsItsFailureAndRestartsWithoutStoppingHost()
     {
         var worker = new CustomWorker();

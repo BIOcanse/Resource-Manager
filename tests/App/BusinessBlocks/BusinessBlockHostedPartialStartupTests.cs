@@ -22,7 +22,7 @@ public sealed class BusinessBlockHostedPartialStartupTests
             {
                 services.AddBusinessBlockController();
                 services.AddSingleton<IHostedService>(earlier);
-                services.AddBusinessBlockHostedService<GatedStopService>(BackendUids.RuntimeSpecializationCoordinator, _ => later);
+                services.AddBusinessBlockLifetime<GatedStopService>(BackendUids.RuntimeSpecializationCoordinator, _ => later, constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();

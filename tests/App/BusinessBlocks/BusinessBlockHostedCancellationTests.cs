@@ -18,7 +18,7 @@ public sealed class BusinessBlockHostedCancellationTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<GatedCleanup>(BackendUids.RuntimeSpecializationCoordinator, _ => service);
+                services.AddBusinessBlockLifetime<GatedCleanup>(BackendUids.RuntimeSpecializationCoordinator, _ => service, constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
@@ -65,8 +65,8 @@ public sealed class BusinessBlockHostedCancellationTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<WaitingBackgroundService>(
-                    BackendUids.EtwNetworkTcpIpAttributionReader, _ => service);
+                services.AddBusinessBlockWorker<WaitingBackgroundService>(
+                    BackendUids.EtwNetworkTcpIpAttributionReader, _ => service, constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var alias = host.Services.GetServices<IHostedService>()

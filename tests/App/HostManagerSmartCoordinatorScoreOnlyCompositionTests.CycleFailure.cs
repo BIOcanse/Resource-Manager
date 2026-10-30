@@ -43,7 +43,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 services.AddSingleton(fixture.Coordinator);
                 services.AddSingleton<IHostedService>(provider => new HostedScoreOnlyPlanFacts(
                     fixture, provider.GetRequiredService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>()));
-                services.AddHostedServiceAlias<ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinator>(BackendUids.HostManagerSmartCoordinator);
+                services.AddHostedServiceAlias<ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinator>(BackendUids.HostManagerSmartCoordinator, static service => service.ExecuteTask, forwardRunFailureToHost: false);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
             .Build();

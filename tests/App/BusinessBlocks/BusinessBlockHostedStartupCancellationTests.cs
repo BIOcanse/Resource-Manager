@@ -82,7 +82,8 @@ public sealed class BusinessBlockHostedStartupCancellationTests
 
     private static (HostedBusinessBlock Block, BusinessBlockDiagnosticsRegistry Diagnostics) CreateBlock(IHostedService service)
     {
-        var registration = new BusinessBlockRegistration(BackendUids.ControlActualStateReader, _ => throw new NotSupportedException());
+        var registration = new BusinessBlockRegistration(BackendUids.ControlActualStateReader, _ => throw new NotSupportedException())
+        { HostedExecution = new(static _ => null, false) };
         var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         var registry = new HostedBusinessBlockRegistry(diagnostics, [registration]);
         return (registry.GetOrAdd(registration.Id, () => service), diagnostics);

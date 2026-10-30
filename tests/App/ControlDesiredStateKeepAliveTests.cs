@@ -118,8 +118,8 @@ public sealed class ControlDesiredStateKeepAliveTests
                     services.AddSingleton<IAppSettingsStore>(provider => new JsonAppSettingsStore(
                         provider.GetRequiredService<StateAuthority>(), environment));
                     services.AddSingleton<BackendDecisionStateBindings>();
-                    services.AddBusinessBlockHostedService<ControlDesiredStateReassertion>(BlockUids.ControlDesiredStateReassertion,
-                        provider => new(Plane, provider.GetRequiredService<IAppSettingsStore>(), plans, timeProvider: Clock));
+                    services.AddBusinessBlockWorker<ControlDesiredStateReassertion>(BlockUids.ControlDesiredStateReassertion,
+                        provider => new(Plane, provider.GetRequiredService<IAppSettingsStore>(), plans, timeProvider: Clock), constructService: true);
                     NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
                 }).Build();
         }

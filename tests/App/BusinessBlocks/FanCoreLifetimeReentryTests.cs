@@ -38,8 +38,8 @@ public sealed class FanCoreLifetimeReentryTests
                 services.AddSingleton(core);
                 services.AddSingleton(new RuntimePlanProvider(new HostManagerDeploymentState()));
                 services.AddSingleton<BackendDecisionStateBindings>();
-                services.AddBusinessBlockHostedService<FanControlCoreLifetimeService>(BackendUids.FanControlCoreLifetimeService,
-                    _ => new FanControlCoreLifetimeService(core));
+                services.AddBusinessBlockLifetime<FanControlCoreLifetimeService>(BackendUids.FanControlCoreLifetimeService,
+                    _ => new FanControlCoreLifetimeService(core), constructService: true);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
