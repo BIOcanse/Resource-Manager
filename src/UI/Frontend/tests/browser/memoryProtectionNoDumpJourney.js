@@ -16,7 +16,6 @@ export default async function memoryProtectionNoDumpJourney(page, baseUrl) {
       writes.push(request.postDataJSON());
     }
   });
-  await page.route("**/api/optimization/protection", route => route.fulfill({ json: [] }));
   await scenario({ gpuPlacementEnabled: true, runtimeEffectOwners: true });
   await page.setViewportSize({ width: 1280, height: 800 });
 

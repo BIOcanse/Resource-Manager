@@ -585,6 +585,10 @@ async function handleApi(request, response, url) {
       }
     });
   }
+  // 保护列表：模拟后端没有任何保护条目；要测保护的 journey 自己路由有内容的列表和写入。
+  if (path === "/api/optimization/protection" && request.method === "GET") {
+    return json(response, 200, []);
+  }
   if (path === "/api/optimization/smart/status" && request.method === "GET") {
     return json(response, 200, smartCoordinatorStatus());
   }

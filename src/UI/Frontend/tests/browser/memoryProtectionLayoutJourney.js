@@ -15,7 +15,6 @@ const shotLanguages = new Set(["zh-CN", "en-US"]);
 export default async function memoryProtectionLayoutJourney(page, baseUrl) {
   const errors = [];
   page.on("pageerror", error => errors.push(String(error)));
-  await page.route("**/api/optimization/protection", route => route.fulfill({ json: [] }));
   await scenario({ gpuPlacementEnabled: true, runtimeEffectOwners: true });
   await page.setViewportSize(viewports[0]);
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });

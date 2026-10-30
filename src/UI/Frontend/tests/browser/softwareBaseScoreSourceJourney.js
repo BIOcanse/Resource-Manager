@@ -30,8 +30,6 @@ export default async function softwareBaseScoreSourceJourney(page, baseUrl) {
 
   const backend = { malformed: false };
   let reads = 0;
-  // 策略页的保护开关会读保护列表；模拟后端没有这个路由，这里给一份空列表（本 journey 不测保护）。
-  await page.route("**/api/optimization/protection", route => route.fulfill({ json: [] }));
   await page.route(url => url.pathname === settingsPath, async route => {
     if (route.request().method() !== "GET") return route.fallback();
     reads += 1;
