@@ -104,7 +104,7 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordsTitle: "Registro de actuaciones",
   recordsDescription: (capacity: number) => plural("es-ES", capacity, { one: "Los registros se conservan tras reiniciar, hasta {count} registro; cuando la lista está llena, las actuaciones siguientes se realizan con normalidad, pero ya no se registran.", many: "Los registros se conservan tras reiniciar, hasta {count} de registros; cuando la lista está llena, las actuaciones siguientes se realizan con normalidad, pero ya no se registran.", other: "Los registros se conservan tras reiniciar, hasta {count} registros; cuando la lista está llena, las actuaciones siguientes se realizan con normalidad, pero ya no se registran." }),
   recordsEmpty: "No hay actuaciones registradas",
-  recordsCount: (count: string, capacity: string) => `Registros: ${count} de un máximo de ${capacity}.`,
+  recordsCount: (count: string, capacity: string) => `Registros: ${count}; máximo ${capacity}.`,
   recordsUnrecorded: (count: number) => plural("es-ES", count, { one: "La lista está llena; {count} actuación no se ha registrado. El registro se reanuda después de borrar el historial.", many: "La lista está llena; {count} de actuaciones no se han registrado. El registro se reanuda después de borrar el historial.", other: "La lista está llena; {count} actuaciones no se han registrado. El registro se reanuda después de borrar el historial." }),
   recordsLoading: "Leyendo el registro de actuaciones…",
   recordsUnavailable: "No se pudo leer el registro de actuaciones",

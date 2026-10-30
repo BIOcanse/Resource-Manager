@@ -105,7 +105,7 @@ export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
     recordsTitle: "Action records",
     recordsDescription: (capacity: number) => plural("en-US", capacity, { one: "Action records are kept across restarts, up to {count} record; once the list is full, later actions still run but are not recorded.", other: "Action records are kept across restarts, up to {count} records; once the list is full, later actions still run but are not recorded." }),
     recordsEmpty: "No action records",
-    recordsCount: (count: string, capacity: string) => `Records: ${count} of at most ${capacity}.`,
+    recordsCount: (count: string, capacity: string) => `Records: ${count}; at most ${capacity}.`,
     recordsUnrecorded: (count: number) => plural("en-US", count, { one: "The record list is full; {count} action was not recorded. Recording starts again after the history is cleared.", other: "The record list is full; {count} actions were not recorded. Recording starts again after the history is cleared." }),
     recordsLoading: "Reading action records…",
     recordsUnavailable: "Action records could not be read",

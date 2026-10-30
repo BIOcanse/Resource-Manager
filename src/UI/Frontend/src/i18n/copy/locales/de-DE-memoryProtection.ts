@@ -104,7 +104,7 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordsTitle: "Behandlungsprotokoll",
   recordsDescription: (capacity: number) => plural("de-DE", capacity, { one: "Behandlungseinträge bleiben über Neustarts erhalten, höchstens {count} Eintrag; ist die Liste voll, laufen weitere Behandlungen normal, werden aber nicht mehr protokolliert.", other: "Behandlungseinträge bleiben über Neustarts erhalten, höchstens {count} Einträge; ist die Liste voll, laufen weitere Behandlungen normal, werden aber nicht mehr protokolliert." }),
   recordsEmpty: "Keine Behandlungen protokolliert",
-  recordsCount: (count: string, capacity: string) => `Einträge: ${count} von höchstens ${capacity}.`,
+  recordsCount: (count: string, capacity: string) => `Einträge: ${count}; höchstens ${capacity}.`,
   recordsUnrecorded: (count: number) => plural("de-DE", count, { one: "Das Protokoll ist voll; {count} Behandlung wurde nicht protokolliert. Nach dem Löschen des Verlaufs wird wieder protokolliert.", other: "Das Protokoll ist voll; {count} Behandlungen wurden nicht protokolliert. Nach dem Löschen des Verlaufs wird wieder protokolliert." }),
   recordsLoading: "Behandlungsprotokoll wird gelesen…",
   recordsUnavailable: "Das Behandlungsprotokoll konnte nicht gelesen werden",

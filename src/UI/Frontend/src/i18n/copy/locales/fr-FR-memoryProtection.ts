@@ -104,7 +104,7 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordsTitle: "Historique des actions",
   recordsDescription: (capacity: number) => plural("fr-FR", capacity, { one: "Les entrées sont conservées après un redémarrage, au plus {count} entrée ; une fois la liste pleine, les actions suivantes ont lieu normalement mais ne sont plus enregistrées.", many: "Les entrées sont conservées après un redémarrage, au plus {count} d’entrées ; une fois la liste pleine, les actions suivantes ont lieu normalement mais ne sont plus enregistrées.", other: "Les entrées sont conservées après un redémarrage, au plus {count} entrées ; une fois la liste pleine, les actions suivantes ont lieu normalement mais ne sont plus enregistrées." }),
   recordsEmpty: "Aucune action enregistrée",
-  recordsCount: (count: string, capacity: string) => `Entrées : ${count} sur ${capacity} au plus.`,
+  recordsCount: (count: string, capacity: string) => `Entrées : ${count} ; au plus ${capacity}.`,
   recordsUnrecorded: (count: number) => plural("fr-FR", count, { one: "La liste est pleine ; {count} action n’a pas été enregistrée. L’enregistrement reprend après l’effacement de l’historique.", many: "La liste est pleine ; {count} d’actions n’ont pas été enregistrées. L’enregistrement reprend après l’effacement de l’historique.", other: "La liste est pleine ; {count} actions n’ont pas été enregistrées. L’enregistrement reprend après l’effacement de l’historique." }),
   recordsLoading: "Lecture de l’historique des actions…",
   recordsUnavailable: "Impossible de lire l’historique des actions",
