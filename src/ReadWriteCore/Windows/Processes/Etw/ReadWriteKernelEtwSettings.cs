@@ -21,6 +21,7 @@ internal static class ReadWriteKernelEtwSettings
     internal static NativeKernelEtwSessionRuntimeFactory CreateFactory(Func<CpuResidencyCaptureConfiguration> cpu)
     {
         var limits = KernelEtwNativeDefaults.SelectedLimits;
-        return new(new BoundedKernelEtwRegionProvider(checked((nuint)limits.ByteCap)), () => CreateConfiguration(cpu()));
+        return new(new BoundedKernelEtwRegionProvider(checked((nuint)limits.ByteCap)), () => CreateConfiguration(cpu()),
+            static () => KernelEtwNativeDefaults.SelectedSessionBuffers);
     }
 }

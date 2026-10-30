@@ -37,7 +37,10 @@ public sealed record CompiledKernelEtwLimits(
     [property: JsonRequired, JsonPropertyName("disk_bucket_milliseconds")] long DiskBucketMilliseconds,
     [property: JsonRequired, JsonPropertyName("maximum_pending_events")] uint MaximumPendingEvents,
     [property: JsonRequired, JsonPropertyName("maximum_pending_path_units")] uint MaximumPendingPathUnits,
-    [property: JsonRequired, JsonPropertyName("maximum_renderer_processes")] uint MaximumRendererProcesses)
+    [property: JsonRequired, JsonPropertyName("maximum_renderer_processes")] uint MaximumRendererProcesses,
+    // The real-time kernel session's ETW buffer pool. Managed only: it sizes the TraceEvent session, not the native owner.
+    [property: JsonRequired, JsonPropertyName("session_buffer_kib")] uint SessionBufferKib,
+    [property: JsonRequired, JsonPropertyName("session_minimum_buffers")] uint SessionMinimumBuffers)
 {
     public bool IsPublished => RegionBytes > 0 && CpuBytes > 0 && InterruptBytes > 0
         && DiskBytes > 0 && NetworkBytes > 0 && FileBytes > 0 && HistoryBytes > 0
@@ -55,5 +58,8 @@ public sealed record CompiledKernelEtwLimits(
         && MaximumRendererProcesses > 0
         && PublicationBanks is >= 2 and <= 8
         && IoWindowMilliseconds > 0 && IoRetentionMilliseconds >= IoWindowMilliseconds
-        && DiskBucketMilliseconds > 0;
+        && DiskBucketMilliseconds > 0
+        // TraceEvent takes the pool as whole MiB (BufferSizeMB) and divides it by the buffer size.
+        && SessionBufferKib > 0 && SessionMinimumBuffers > 0
+        && (ulong)SessionBufferKib * SessionMinimumBuffers % 1024 == 0;
 }

@@ -119,7 +119,7 @@
               {
                 "id": "kernel_etw_limits",
                 "index": 4,
-                "description": "Bounded native kernel ETW working state and immutable publications. Capacity exhaustion is a reported failure.",
+                "description": "Bounded native kernel ETW working state and immutable publications, plus the real-time kernel session's ETW buffer pool (session_buffer_kib per buffer, session_minimum_buffers at start; TraceEvent sets the maximum to 5/4 of the minimum plus 10, and ETW raises the minimum to 2 per logical processor). Capacity exhaustion is a reported failure.",
                 "value_type": "object",
                 "value_source": "registry",
                 "status": "active",
@@ -159,7 +159,9 @@
                   "disk_bucket_milliseconds": 100,
                   "maximum_pending_events": 16384,
                   "maximum_pending_path_units": 1048576,
-                  "maximum_renderer_processes": 4096
+                  "maximum_renderer_processes": 4096,
+                  "session_buffer_kib": 64,
+                  "session_minimum_buffers": 64
                 }
               }
             ]

@@ -277,7 +277,8 @@ public sealed class NativeKernelEtwSessionRuntimeTests
 
     private sealed class NativeValidatingFactory(Session session) : IKernelEtwSessionRuntimeFactory
     {
-        private readonly NativeKernelEtwSessionRuntimeFactory nativePolicy = new(new BoundedKernelEtwRegionProvider(1), static () => default);
+        private readonly NativeKernelEtwSessionRuntimeFactory nativePolicy = new(new BoundedKernelEtwRegionProvider(1), static () => default,
+            static () => KernelEtwNativeSettings.CreateSessionBuffers(KernelEtwNativeSettings.ProductDefaults));
         internal int Creations;
         public void ValidateRequest(KernelEtwSubscriptionRequest request) => nativePolicy.ValidateRequest(request);
         public bool TryGetAvailability(out string state, out string message)

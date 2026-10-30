@@ -26,7 +26,10 @@ internal static partial class Program
                 return KernelEtwNativeSettings.CreateConfiguration(
                     plan.KernelEtwLimits ?? throw new InvalidOperationException("Kernel ETW limits are unpublished."),
                     plan.CpuCoreResidency, checked((uint)plan.CpuCoreResidency.PhysicalCoreByLogicalProcessor.Count));
-            }, name => RequireOwnSessionName(ResourceManagerEtwSessionNames.KernelPrefix, name),
+            }, () => KernelEtwNativeSettings.CreateSessionBuffers(
+                provider.GetRequiredService<IRuntimePlanProvider>().Current.HostManager.RequirePublished().KernelEtwLimits
+                    ?? throw new InvalidOperationException("Kernel ETW limits are unpublished.")),
+            name => RequireOwnSessionName(ResourceManagerEtwSessionNames.KernelPrefix, name),
                 provider.GetRequiredService<KernelEtwConsumerThreadDiagnostics>());
             return new KernelEtwSessionBroker(factory, provider.GetRequiredService<ILogger<KernelEtwSessionBroker>>());
         }));

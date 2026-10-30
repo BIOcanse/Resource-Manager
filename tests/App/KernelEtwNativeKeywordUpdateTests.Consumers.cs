@@ -199,7 +199,7 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         internal int Created { get; private set; }
         internal NativeConsumerRuntimeFactory(NativeKernelEtwSessionConfig configuration)
             => inner = new(new BoundedKernelEtwRegionProvider(checked((nuint)configuration.ByteCap)),
-                () => configuration, name =>
+                () => configuration, static () => KernelEtwNativeSettings.CreateSessionBuffers(KernelEtwNativeSettings.ProductDefaults), name =>
                 {
                     Assert.Equal(ResourceManagerEtwSessionNames.KernelSessionName, name);
                     Assert.DoesNotContain(name, TraceEventSession.GetActiveSessionNames());

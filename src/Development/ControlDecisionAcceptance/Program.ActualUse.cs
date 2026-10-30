@@ -76,6 +76,7 @@ internal static partial class Program
         var memorySamples = new List<ActualUseKernelMemorySample>();
         var eventRates = new List<ActualUseEventRateInterval>();
         var nativeSamples = new List<ActualUseNativeSample>();
+        KernelEtwSessionBuffers? declaredBuffers = null;
         var names = new[] { ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.PresentFramesPrefix,
             ResourceManagerEtwSessionNames.GpuAllocationsPrefix, ResourceManagerEtwSessionNames.DxgkrnlVidMmPrefix }
             .Select(prefix => ResourceManagerEtwSessionNames.Create(prefix, ResourceManagerEtwSessionNames.CurrentOwner)).ToArray();
@@ -271,6 +272,7 @@ internal static partial class Program
                         == ResourceManager.Shared.BusinessBlocks.BusinessBlockState.Stopped, token);
                 address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
                 if (new Uri(address).Port is 0 or 9321 or 9333) throw new InvalidDataException("Probe listener is not private.");
+                declaredBuffers = ReadKernelSessionBuffers(app.Services);
                 await SaveAsync(evidence, "run-metadata.json", new { processId = Environment.ProcessId, names, address, pipe, image, root,
                     artifactManifest = artifacts, overrides = EffectBoundaries.Overrides, orphanRecovery = "disabled",
                     portableDiscovery = "existing host admission false in every phase; no portable ETW consumer",
@@ -506,6 +508,13 @@ internal static partial class Program
                 var table = ValidateNativeMemoryEvidence(memorySamples);
                 await SaveAsync(evidence, "native-memory.json", new { status = "passed", table, samples = memorySamples });
             }, CancellationToken.None);
+            await RunCaseAsync(cases, evidence, "kernel-session-buffers", TimeSpan.FromSeconds(5), async token =>
+            {
+                token.ThrowIfCancellationRequested();
+                var rows = SummarizeKernelSessionBuffers(samples);
+                await SaveAsync(evidence, "kernel-session-buffers.json", new { declared = declaredBuffers, rows });
+                ValidateKernelSessionBuffers(rows, declaredBuffers ?? throw new InvalidDataException("Startup did not read the declared kernel session buffers."));
+            }, CancellationToken.None);
             await RunCaseAsync(cases, evidence, "managed-window-allocation", TimeSpan.FromSeconds(5), async token =>
             {
                 token.ThrowIfCancellationRequested();
@@ -558,7 +567,7 @@ internal static partial class Program
         return results.ToArray();
     }
 
-    private sealed record NativeKernelQuery(bool Exists, uint Flags, uint EventsLost);
+    private sealed record NativeKernelQuery(bool Exists, uint Flags, uint EventsLost, NativeKernelBuffers? Buffers = null);
     private sealed record ActualUseSample(string Phase, DateTimeOffset At, bool WindowActive,
         NativeKernelQuery Native, KernelEtwSessionSnapshot Managed, bool StableWindow, ActualUseHolders Holders);
 
@@ -611,7 +620,9 @@ internal static partial class Program
             var status = QueryControlTrace(0, name, value, 0);
             if (status == 4201) return new(false, 0, 0);
             if (status != 0) throw new Win32Exception((int)status, "Read-only query of own kernel session failed.");
-            return new(true, value->EnableFlags, value->EventsLost);
+            return new(true, value->EnableFlags, value->EventsLost, new(value->BufferSize, value->MinimumBuffers,
+                value->MaximumBuffers, value->NumberOfBuffers, value->FreeBuffers, value->BuffersWritten,
+                value->LogBuffersLost, value->RealTimeBuffersLost));
         }
     }
     [StructLayout(LayoutKind.Sequential)]

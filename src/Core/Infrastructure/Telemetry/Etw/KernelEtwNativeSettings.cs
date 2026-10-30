@@ -25,6 +25,12 @@ internal static class KernelEtwNativeSettings
             new CompiledCpuScoringPlan(1d, CompiledCpuCoreWeights.Empty)));
     }
 
+    internal static KernelEtwSessionBuffers CreateSessionBuffers(CompiledKernelEtwLimits limits)
+    {
+        if (!limits.IsPublished) throw new InvalidOperationException("Kernel ETW session buffers require published limits.");
+        return new(checked((int)limits.SessionBufferKib), checked((int)limits.SessionMinimumBuffers));
+    }
+
     internal static NativeKernelEtwSessionConfig CreateConfiguration(
         CompiledKernelEtwLimits limits, CompiledCpuCoreResidencyPlan cpu, uint processorCount)
     {

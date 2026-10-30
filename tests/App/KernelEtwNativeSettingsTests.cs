@@ -72,6 +72,28 @@ public sealed class KernelEtwNativeSettingsTests
         Assert.Equal(baseline.KernelEtwLimits.DiskBytes, config.DiskByteCap);
     }
 
+    [Fact]
+    public void DeclaredSessionBufferPoolFlowsIntoTheKernelSessionInsteadOfTheTraceEventDefault()
+    {
+        var baseline = HostManagerTestPlanFactory.CreatePlan();
+        var declared = KernelEtwNativeSettings.CreateSessionBuffers(baseline.KernelEtwLimits!);
+        Assert.Equal((64, 64, 4), (declared.BufferKib, declared.MinimumBuffers, declared.PoolMib));
+        var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+        {
+            var value = FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.KernelEtwLimits)["value"]!;
+            value["session_buffer_kib"] = 32;
+            value["session_minimum_buffers"] = 96;
+        });
+        var buffers = KernelEtwNativeSettings.CreateSessionBuffers(changed.KernelEtwLimits!);
+        Assert.Equal((32, 96, 3), (buffers.BufferKib, buffers.MinimumBuffers, buffers.PoolMib));
+        // The pool is a managed session setting; the native owner configuration is unchanged.
+        var json = new JsonSerializerOptions { IncludeFields = true };
+        Assert.Equal(JsonSerializer.SerializeToUtf8Bytes(KernelEtwNativeSettings.CreateConfiguration(baseline.KernelEtwLimits!, baseline.CpuCoreResidency, 2), json),
+            JsonSerializer.SerializeToUtf8Bytes(KernelEtwNativeSettings.CreateConfiguration(changed.KernelEtwLimits!, changed.CpuCoreResidency, 2), json));
+        Assert.NotEqual(baseline.BuildSha256, changed.BuildSha256);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new KernelEtwSessionBuffers(64, 3));
+    }
+
     [Theory]
     [InlineData("region_bytes", 1)]
     [InlineData("maximum_cells", 0)]
@@ -79,6 +101,9 @@ public sealed class KernelEtwNativeSettingsTests
     [InlineData("io_retention_milliseconds", 100)]
     [InlineData("disk_bucket_milliseconds", 0)]
     [InlineData("disk_bucket_milliseconds", -1)]
+    [InlineData("session_buffer_kib", 0)]
+    [InlineData("session_minimum_buffers", 0)]
+    [InlineData("session_minimum_buffers", 3)] // 3 x 64 KiB is not whole MiB.
     public void InvalidOwnerCapsFailCompilationInsteadOfSubstitutingDefaults(string field, int value)
     {
         Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>

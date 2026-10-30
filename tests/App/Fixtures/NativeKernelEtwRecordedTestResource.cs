@@ -67,7 +67,7 @@ internal sealed unsafe class NativeKernelEtwRecordedTestResource : IKernelEtwSes
         if (Configuration.Residency.QpcFrequency != QpcFrequency || Configuration.Residency.MaximumProcessors < ProcessorCount)
             throw new ArgumentException("The explicit recorded configuration does not cover its actual header frequency/topology.", nameof(configure));
         regions = new(checked((nuint)Configuration.ByteCap));
-        var nativeFactory = new NativeKernelEtwSessionRuntimeFactory(regions, () => Configuration);
+        var nativeFactory = new NativeKernelEtwSessionRuntimeFactory(regions, () => Configuration, static () => KernelEtwNativeSettings.CreateSessionBuffers(KernelEtwNativeSettings.ProductDefaults));
         owner = new(new RecordedFactory(this, nativeFactory));
     }
 

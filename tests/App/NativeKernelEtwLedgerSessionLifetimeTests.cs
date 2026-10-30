@@ -18,7 +18,7 @@ public sealed class NativeKernelEtwLedgerSessionLifetimeTests
         var configuration = KernelEtwNativeSettings.CreateConfiguration(plan.KernelEtwLimits!, plan.CpuCoreResidency, 2);
         using var ledger = new ResourceManagerLedgerOwner();
         var allocations = new ObservedAllocationProvider(new NativeKernelEtwLedgerRegionProvider(ledger));
-        var factory = new NativeKernelEtwSessionRuntimeFactory(allocations, () => configuration);
+        var factory = new NativeKernelEtwSessionRuntimeFactory(allocations, () => configuration, static () => KernelEtwNativeSettings.CreateSessionBuffers(KernelEtwNativeSettings.ProductDefaults));
         var absentInput = Path.Combine(Path.GetTempPath(), $"etw-zig-never-created-{Guid.NewGuid():N}.etl");
         Assert.False(File.Exists(absentInput));
         Assert.Throws<InvalidOperationException>(() => factory.CreateRecorded(absentInput, new(1, DateTimeOffset.UnixEpoch),
@@ -47,7 +47,8 @@ public sealed class NativeKernelEtwLedgerSessionLifetimeTests
         configuration.Residency.QpcFrequency = frequency;
         configuration.StartedTickMilliseconds = 1000;
         using var ledger = new ResourceManagerLedgerOwner();
-        var native = new NativeKernelEtwSessionRuntimeFactory(new NativeKernelEtwLedgerRegionProvider(ledger), () => configuration);
+        var native = new NativeKernelEtwSessionRuntimeFactory(new NativeKernelEtwLedgerRegionProvider(ledger), () => configuration,
+            static () => KernelEtwNativeSettings.CreateSessionBuffers(KernelEtwNativeSettings.ProductDefaults));
         var recorded = new RecordedFactory(path, native);
         using var broker = new KernelEtwSessionOwner(recorded);
         string? first = null;

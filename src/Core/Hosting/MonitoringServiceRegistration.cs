@@ -243,7 +243,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
                     plan.KernelEtwLimits ?? throw new InvalidOperationException("Kernel ETW limits are unpublished."),
                     plan.CpuCoreResidency,
                     checked((uint)plan.CpuCoreResidency.PhysicalCoreByLogicalProcessor.Count));
-            }, sessionName => ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
+            }, () => KernelEtwNativeSettings.CreateSessionBuffers(
+                provider.GetRequiredService<IRuntimePlanProvider>().Current.HostManager.RequirePublished().KernelEtwLimits
+                    ?? throw new InvalidOperationException("Kernel ETW limits are unpublished.")),
+            sessionName => ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
                 ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName),
                 provider.GetRequiredService<KernelEtwConsumerThreadDiagnostics>());
             return new KernelEtwSessionBroker(factory, logger);

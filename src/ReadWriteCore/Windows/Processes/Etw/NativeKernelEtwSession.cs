@@ -98,7 +98,7 @@ public sealed unsafe partial class NativeKernelEtwSession : IKernelEtwNativeRunt
         if (!providerStopped) provider?.Flush();
     }
 
-    internal void Initialize(string name, NativeKernelEtwSessionConfig config,
+    internal void Initialize(string name, NativeKernelEtwSessionConfig config, KernelEtwSessionBuffers buffers,
         KernelTraceEventParser.Keywords keywords, Action<string>? beforeCreate, DateTimeOffset publicationOriginUtc,
         bool realtime = true)
     {
@@ -124,7 +124,12 @@ public sealed unsafe partial class NativeKernelEtwSession : IKernelEtwNativeRunt
         if (realtime)
         {
             beforeCreate?.Invoke(name);
-            provider = new TraceEventSession(name, TraceEventSessionOptions.Create) { StopOnDispose = false };
+            provider = new TraceEventSession(name, TraceEventSessionOptions.Create)
+            {
+                StopOnDispose = false,
+                // The declared pool, not TraceEvent's 64 MiB default (1,024 buffers of 64 KiB).
+                BufferQuantumKB = buffers.BufferKib, BufferSizeMB = buffers.PoolMib
+            };
             provider.EnableKernelProvider(keywords);
             keywordControl = new(name, nativeControl);
         }

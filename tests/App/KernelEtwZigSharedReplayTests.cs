@@ -251,7 +251,8 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
     {
         using var ledger = new ResourceManagerLedgerOwner();
         var observer = new TimingObserver();
-        var factory = new NativeKernelEtwSessionRuntimeFactory(new NativeKernelEtwLedgerRegionProvider(ledger), () => config, observer: observer);
+        var factory = new NativeKernelEtwSessionRuntimeFactory(new NativeKernelEtwLedgerRegionProvider(ledger), () => config,
+            static () => KernelEtwNativeSettings.CreateSessionBuffers(KernelEtwNativeSettings.ProductDefaults), observer: observer);
         NativeKernelEtwSession? session = null;
         using var runtime = factory.CreateRecorded(path, new(7, DateTimeOffset.UnixEpoch),
             [new(1, "shared-replay-native", KernelTraceEventParser.Keywords.All, (source, _) => session = source.NativeSession)

@@ -8,6 +8,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 public sealed class NativeKernelEtwSessionRuntimeFactory(
     IKernelEtwRegionProvider regionProvider,
     Func<NativeKernelEtwSessionConfig> readConfig,
+    Func<KernelEtwSessionBuffers> readBuffers,
     Action<string>? beforeCreate = null,
     IKernelEtwConsumerThreadObserver? observer = null) : IKernelEtwSessionRuntimeFactory
 {
@@ -75,6 +76,7 @@ public sealed class NativeKernelEtwSessionRuntimeFactory(
     {
         NativeKernelEtwSessionRuntime.ValidateSubscriptions(subscriptions);
         var config = readConfig();
+        var buffers = readBuffers();
         if (realtime) config.StartedTickMilliseconds = Environment.TickCount64;
         var publicationOriginUtc = DateTimeOffset.UtcNow;
         if (realtime) config.Residency.QpcFrequency = Stopwatch.Frequency;
@@ -99,7 +101,7 @@ public sealed class NativeKernelEtwSessionRuntimeFactory(
                 config.DiskByteCap, config.NetworkByteCap, config.FileByteCap,
                 config.HistoryByteCap, config.ByteCap, config.ByteCap
             ]);
-            session.Initialize(name, config, keywords, beforeCreate, publicationOriginUtc, realtime);
+            session.Initialize(name, config, buffers, keywords, beforeCreate, publicationOriginUtc, realtime);
             dispatcher.InitializeSubscriptions(subscriptions, context);
             return runtime;
         }

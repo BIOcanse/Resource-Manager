@@ -24,7 +24,7 @@ public sealed class EtwCpuCoreResidencyLiveSmokeTests
             plan.CpuCoreResidency,
             checked((uint)plan.CpuCoreResidency.PhysicalCoreByLogicalProcessor.Count));
         var regions = new BoundedKernelEtwRegionProvider(checked((nuint)configuration.ByteCap));
-        var factory = new NativeKernelEtwSessionRuntimeFactory(regions, () => configuration);
+        var factory = new NativeKernelEtwSessionRuntimeFactory(regions, () => configuration, static () => KernelEtwNativeSettings.CreateSessionBuffers(KernelEtwNativeSettings.ProductDefaults));
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         using var reader = new EtwCpuCoreResidencyReader(
             broker,
