@@ -53,6 +53,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 .GetRequiredService<IManagementInventoryRevisionOwner>()
                 .ObserveSoftwareInventoryContentChanged));
         services.AddSingleton<IInstalledSoftwareInventory>(static provider => provider.GetRequiredService<WindowsInstalledSoftwareInventory>());
+        services.AddOptions<RuntimeProcessAttributionCatalogAvailabilityOptions>()
+            .BindConfiguration(RuntimeProcessAttributionCatalogAvailabilityOptions.SectionName)
+            .Validate(options => options.RecoveryCheckIntervalSeconds >= 0,
+                "Catalog recovery check interval must be nonnegative; zero disables checks.");
         services.AddSingleton<IRuntimeProcessAttributionCatalogProvider, RuntimeProcessAttributionCatalogProvider>();
         services.AddSingleton<IWindowsGameListSource, WindowsGameListSource>();
         services.AddSingleton<ISoftwareOperationManager, SoftwareOperationManager>();

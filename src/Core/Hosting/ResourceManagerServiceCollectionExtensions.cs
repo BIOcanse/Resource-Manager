@@ -49,7 +49,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 StartupCapability.PublicServiceCoordination)));
         services.AddSingleton(new RuntimePersistenceCapabilityPolicy(
             startupCapabilities.Allows(StartupCapability.MutablePersistence)));
-        services.AddHostedServiceAlias<RuntimeSpecializationCoordinator>(BlockUids.RuntimeSpecializationCoordinator);
+        services.AddHostedServiceAlias<RuntimeSpecializationCoordinator>(BlockUids.RuntimeSpecializationCoordinator, static service => service.ExecutionTask, forwardRunFailureToHost: false);
         services.AddHttpClient();
         services.AddHttpClient(ProductUpdateSource.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -64,7 +64,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         {
             services.AddSingleton<IProductPackageUsage, ProductPackageUsage>();
             services.AddSingleton<IInternetConnectivity, WindowsInternetConnectivity>();
-            services.AddBusinessBlockHostedService<AutomaticProductUpdateService>(BlockUids.AutomaticProductUpdateService);
+            services.AddBusinessBlockWorker<AutomaticProductUpdateService>(BlockUids.AutomaticProductUpdateService);
         }
 
         RegisterHostedBusinessBlock<ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySnapshotProvider>(services,
@@ -131,7 +131,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 这也是那两个服务图测试守着的东西。
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
-            services.AddBusinessBlockHostedService<ControlDesiredStateReassertion>(BlockUids.ControlDesiredStateReassertion);
+            services.AddBusinessBlockWorker<ControlDesiredStateReassertion>(BlockUids.ControlDesiredStateReassertion);
             /*
              * 给软件风扇曲线喂温度。
              *
@@ -148,7 +148,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             services.AddSingleton<ControlActualStateReader>();
             services.AddSingleton<IControlActualStateOwner>(static provider =>
                 provider.GetRequiredService<ControlActualStateReader>());
-            services.AddBusinessBlockHostedService<ControlActualStateReader>(BlockUids.ControlActualStateReader,
+            services.AddBusinessBlockWorker<ControlActualStateReader>(BlockUids.ControlActualStateReader,
                 static provider => provider.GetRequiredService<ControlActualStateReader>());
         }
         else

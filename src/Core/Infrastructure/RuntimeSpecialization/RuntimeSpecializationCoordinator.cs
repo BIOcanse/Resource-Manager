@@ -24,6 +24,9 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
     private readonly IHostManagerRollbackStateStore? smartRollbackStateStore;
     private CancellationTokenSource? changedWorkerCancellation;
     private Task? changedWorker;
+    private Task? executionTask;
+
+    internal Task? ExecutionTask => Volatile.Read(ref executionTask);
     private long changedSequence;
     private long processedChangedSequence;
     private long version;
@@ -298,27 +301,46 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         changedWorker = Task.Run(
             () => RunMonitoringSourceChangePumpAsync(workerCancellation.Token),
             CancellationToken.None);
+        Volatile.Write(ref executionTask, changedWorker);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         monitoringSourceZoneRegistry.Changed -= OnMonitoringSourceZonesChanged;
-        var cancellation = Interlocked.Exchange(
-            ref changedWorkerCancellation,
-            null);
-        var worker = Interlocked.Exchange(ref changedWorker, null);
+        var cancellation = changedWorkerCancellation;
+        var worker = changedWorker;
         if (cancellation is null)
         {
             return;
         }
 
-        cancellation.Cancel();
-        SignalChangedWorker();
-        if (worker is not null)
+        await DrainChangedWorkerAsync(cancellation, worker).WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task DrainChangedWorkerAsync(CancellationTokenSource cancellation, Task? worker)
+    {
+        Exception? failure = null;
+        try
         {
-            await worker.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try { await cancellation.CancelAsync().ConfigureAwait(false); }
+            catch (ObjectDisposedException) { }
+            catch (Exception error) { failure = error; }
+            SignalChangedWorker();
+            try { if (worker is not null) await worker.ConfigureAwait(false); }
+            catch (Exception error) { failure = error; }
         }
-        cancellation.Dispose();
+        finally
+        {
+            Interlocked.CompareExchange(ref changedWorker, null, worker);
+            if (ReferenceEquals(Interlocked.CompareExchange(
+                    ref changedWorkerCancellation, null, cancellation), cancellation))
+            {
+                cancellation.Dispose();
+            }
+        }
+        if (failure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
     private void OnMonitoringSourceZonesChanged()

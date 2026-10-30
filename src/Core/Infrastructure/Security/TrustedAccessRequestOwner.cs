@@ -30,11 +30,13 @@ public sealed class TrustedAccessRequestOwner(
     private TaskCompletionSource<bool> changed = NewSignal();
     private CancellationTokenSource? expirationPumpCancellation;
     private Task? expirationPump;
+    private Task? executionTask;
     private int activeWaiters;
     private int activeSubscribers;
     private bool hasPendingRequests;
 
     internal bool HasPendingRequests => Volatile.Read(ref hasPendingRequests);
+    internal Task? ExecutionTask => Volatile.Read(ref executionTask);
     internal event Action? PendingRequestsChanged;
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -43,27 +45,48 @@ public sealed class TrustedAccessRequestOwner(
             throw new InvalidOperationException("The trusted-access request owner is already started.");
         expirationPumpCancellation = new CancellationTokenSource();
         expirationPump = RunExpirationPumpAsync(expirationPumpCancellation.Token);
+        Volatile.Write(ref executionTask, expirationPump);
         return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        var cancellation = Interlocked.Exchange(ref expirationPumpCancellation, null);
-        var pump = Interlocked.Exchange(ref expirationPump, null);
+        var cancellation = expirationPumpCancellation;
+        var pump = expirationPump;
         if (cancellation is null)
             return;
-        await cancellation.CancelAsync();
-        if (pump is not null)
+        await DrainExpirationPumpAsync(cancellation, pump).WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task DrainExpirationPumpAsync(CancellationTokenSource cancellation, Task? pump)
+    {
+        Exception? failure = null;
+        try
         {
+            try { await cancellation.CancelAsync().ConfigureAwait(false); }
+            catch (ObjectDisposedException) { }
+            catch (Exception error) { failure = error; }
             try
             {
-                await pump.WaitAsync(cancellationToken);
+                if (pump is not null) await pump.ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
             }
+            catch (Exception) { /* The run failure remains on ExecutionTask. */ }
         }
-        cancellation.Dispose();
+        finally
+        {
+            Interlocked.CompareExchange(ref expirationPump, null, pump);
+            if (ReferenceEquals(Interlocked.CompareExchange(
+                    ref expirationPumpCancellation, null, cancellation), cancellation))
+            {
+                cancellation.Dispose();
+            }
+        }
+        if (failure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
     public async ValueTask<TrustedAccessRequestCreateResult> CreateAsync(

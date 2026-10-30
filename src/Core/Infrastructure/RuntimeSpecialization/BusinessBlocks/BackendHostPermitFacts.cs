@@ -8,9 +8,12 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 internal sealed class BackendHostPermitFacts
 {
     private readonly Dictionary<int, Permit> permits = new();
+    private readonly HostedRunResultFacts failures;
 
-    public BackendHostPermitFacts(StateAuthority authority, NativeControl native, IEnumerable<HostedBusinessBlockAlias> aliases)
+    public BackendHostPermitFacts(StateAuthority authority, NativeControl native, IEnumerable<HostedBusinessBlockAlias> aliases,
+        HostedRunResultFacts failures)
     {
+        this.failures = failures;
         var hostedIds = aliases.Select(alias => alias.Id).ToHashSet();
         foreach (var id in native.Graph.BlockIds)
             permits.Add(id, new Permit(authority, id, !hostedIds.Contains(id)));
@@ -23,7 +26,8 @@ internal sealed class BackendHostPermitFacts
         {
             if (!permits.TryGetValue(id, out permit!)) throw new KeyNotFoundException($"Unknown host alias UID {id}.");
         }
-        Volatile.Write(ref permit.Allowed, allowed ? 1 : 0);
+        var previous = Interlocked.Exchange(ref permit.Allowed, allowed ? 1 : 0);
+        if (allowed && previous == 0) failures.Reset(id);
         return permit.Reader.NotifyChangedAsync(reason);
     }
 

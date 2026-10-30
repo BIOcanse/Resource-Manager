@@ -144,21 +144,27 @@ public sealed class KernelEtwActualUseHoldTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.StartAsync(canceledStart.Token));
         broker.Checkpoint("cancelled start has no event consumer");
         await service.StartAsync(default);
+        var failure = new InvalidOperationException("recorded catalog failure");
+        var worker = service.ExecutionTask!;
         try
         {
             await provider.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             broker.Checkpoint("discovery consumes process starts", ("portable-software-discovery", KernelTraceEventParser.Keywords.Process));
-            provider.Result.TrySetException(new InvalidOperationException("recorded catalog failure"));
-            var worker = (Task)typeof(PortableSoftwareDiscoveryService).GetField("workerTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!;
-            await worker.WaitAsync(TimeSpan.FromSeconds(5));
+            provider.Result.TrySetException(failure);
+            Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                worker.WaitAsync(TimeSpan.FromSeconds(5))));
             broker.Checkpoint("worker returned before StopAsync");
         }
         finally
         {
             provider.Result.TrySetException(new InvalidOperationException("test cleanup"));
-            await service.StopAsync(default);
+            await service.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
         }
         broker.Checkpoint("host stopped");
+        Assert.Same(worker, service.ExecutionTask);
+        Assert.True(worker.IsFaulted);
+        Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => worker));
+        await service.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, broker.Acquires);
         Assert.Equal(1, broker.Releases);
     }

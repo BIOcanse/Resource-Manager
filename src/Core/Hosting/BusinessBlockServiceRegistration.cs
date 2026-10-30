@@ -19,6 +19,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.TryAddSingleton<BackendStateItems>(provider => new(provider.GetRequiredService<NativeControl>()));
         services.TryAddSingleton<StateAuthority>(provider => provider.GetRequiredService<BackendStateItems>().Authority);
         services.TryAddSingleton<NativeEtwSessionAvailability>();
+        services.TryAddSingleton<HostedRunResultFacts>();
         services.TryAddSingleton<BusinessBlockDiagnosticsRegistry>();
         services.TryAddSingleton<HostedBusinessBlockRegistry>();
         services.TryAddSingleton<BackendHostPermitFacts>();
@@ -33,10 +34,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.TryAddSingleton<IEtwConsumerThreadObserver, BusinessBlockEtwThreadObserver>();
         services.AddSingleton<IHostedService, BusinessBlockDependencyLifetime>();
         services.TryAddSingleton<NativeEtwLifetimeService>();
-        AddHostedBlockDeclaration<NativeEtwLifetimeService>(services, BlockUids.NativeEtwLifetimeService);
-        services.AddSingleton(new HostedBusinessBlockAlias(BlockUids.NativeEtwLifetimeService));
-        services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<NativeEtwLifetimeService>(
-            provider, BlockUids.NativeEtwLifetimeService, constructService: true));
+        services.AddHostedServiceAlias<NativeEtwLifetimeService>(BlockUids.NativeEtwLifetimeService,
+            static _ => null, forwardRunFailureToHost: false);
         return services;
     }
 
@@ -59,6 +58,26 @@ public static partial class ResourceManagerServiceCollectionExtensions
     {
         services.TryAddSingleton(factory);
         return services.AddHostedServiceAlias<TService>(id, constructService: true);
+    }
+
+    internal static IServiceCollection AddBusinessBlockWorker<TService>(this IServiceCollection services,
+        int id, Func<IServiceProvider, TService>? factory = null) where TService : BackgroundService
+    {
+        if (factory is null) services.TryAddSingleton<TService>();
+        else services.TryAddSingleton(factory);
+        return services.AddHostedServiceAlias<TService>(id, static service => service.ExecuteTask,
+            forwardRunFailureToHost: false);
+    }
+
+    // Callback/resource owners have entering and leaving work, but no private
+    // worker. Their explicit contract lasts until stop; no fake task is created.
+    internal static IServiceCollection AddBusinessBlockLifetime<TService>(this IServiceCollection services,
+        int id, Func<IServiceProvider, TService>? factory = null) where TService : class, IHostedService
+    {
+        if (factory is null) services.TryAddSingleton<TService>();
+        else services.TryAddSingleton(factory);
+        return services.AddHostedServiceAlias<TService>(id, static _ => null,
+            forwardRunFailureToHost: false);
     }
 
     internal static void RegisterHostedBusinessBlock<TService>(IServiceCollection services,

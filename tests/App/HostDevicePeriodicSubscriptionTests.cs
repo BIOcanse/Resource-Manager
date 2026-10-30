@@ -9,6 +9,7 @@ using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 using ResourceManager.App.Infrastructure.DiskUsage;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Software;
+using ResourceManager.App.StateItems;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Information;
 using ResourceManager.ReadWrite.Windows.Devices;
@@ -47,6 +48,8 @@ public sealed class HostDevicePeriodicSubscriptionTests
         Volatile.Write(ref failReads, 1); // Registration uses the real typed backend before the recorded run fault is armed.
         await using var controller = await ProducerSubscriptionRestartHost<DeviceTopologySnapshotProvider>
             .StartAsync(fixture.Provider, static producer => producer.CaptureSamplingWorkerTask(),
+                BlockUids.DeviceTopologySnapshotProvider, StateItemUids.SamplingDeviceTopologyInUse,
+                () => fixture.SamplingOwner.Activity.HasInUseSubscriptions(2),
                 () => Volatile.Write(ref failReads, 0));
         var firstRun = await controller.FirstRun;
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -408,6 +411,7 @@ public sealed class HostDevicePeriodicSubscriptionTests
         internal RecordedTopologyReader Topology { get; }
         internal DeviceTopologySnapshotProvider Provider { get; }
         internal InformationReadWriteBackend Backend { get; }
+        internal HostManagerSamplingSubscriptionOwner SamplingOwner => sampling.Owner;
 
         internal (uint ActiveSources, uint PersistentSources) ReadDemand() => sampling.Owner.Execute(2, session =>
         {

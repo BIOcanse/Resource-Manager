@@ -983,7 +983,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         IRuntimeServiceIdentityResolver? serviceIdentityResolver = null,
         IRuntimeRootIdentityResolver? rootIdentityResolver = null,
         IRuntimeSystemProcessClassifier? systemClassifier = null,
-        ResourceManager.App.Application.Management.IManagementInventoryRevisionOwner? inventoryRevisionOwner = null)
+        ResourceManager.App.Application.Management.IManagementInventoryRevisionOwner? inventoryRevisionOwner = null, TimeProvider? clock = null)
     {
         var resolvers = new NullResolvers();
         return new RuntimeProcessAttributionCatalogProvider(
@@ -996,7 +996,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             systemClassifier ?? resolvers,
             softwareIdentityCatalog ?? SoftwareIdentityCatalogTestData.Empty,
             softwareIdentityOwner ?? SoftwareIdentityCatalogTestData.Owner,
-            windowsGameListSource ?? new FakeWindowsGameListSource(), inventoryRevisionOwner);
+            windowsGameListSource ?? new FakeWindowsGameListSource(), inventoryRevisionOwner, clock);
     }
 
     private sealed class MutableSoftwareIdentityCatalog : ISoftwareIdentityCatalog,

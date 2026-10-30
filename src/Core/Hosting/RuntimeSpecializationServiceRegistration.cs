@@ -59,7 +59,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<RuntimeSpecializationCoordinator>();
         services.AddSingleton<IRuntimeSpecializationCoordinator>(static provider => provider.GetRequiredService<RuntimeSpecializationCoordinator>());
         services.AddSingleton<HostManagerSamplingSubscriptionOwner>();
-        services.AddHostedServiceAlias<HostManagerSamplingSubscriptionOwner>(BlockUids.HostManagerSamplingSubscriptionOwner);
+        services.AddHostedServiceAlias<HostManagerSamplingSubscriptionOwner>(BlockUids.HostManagerSamplingSubscriptionOwner,
+            static _ => null, forwardRunFailureToHost: false);
         services.AddSingleton<HostManagerMetricSnapshotOwner>();
         services.AddSingleton<HostManagerSoftwareIdentityOwner>();
         services.AddSingleton<HostManagerFileQueryOwner>();
@@ -69,7 +70,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (startupCapabilities.Allows(StartupCapability.PublicServiceCoordination))
         {
             services.AddSingleton<HostManagerPublicServiceCoordinatorOwner>();
-            services.AddHostedServiceAlias<HostManagerPublicServiceCoordinatorOwner>(BlockUids.HostManagerPublicServiceCoordinatorOwner);
+            services.AddHostedServiceAlias<HostManagerPublicServiceCoordinatorOwner>(BlockUids.HostManagerPublicServiceCoordinatorOwner, static service => service.ExecutionTask, forwardRunFailureToHost: false);
         }
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
@@ -102,7 +103,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 provider.GetRequiredService<HostManagerOperationCoordinatorOwner>());
             services.AddSingleton<IHostManagerOperationQueryService>(static provider =>
                 provider.GetRequiredService<HostManagerOperationCoordinatorOwner>());
-            services.AddHostedServiceAlias<HostManagerOperationCoordinatorOwner>(BlockUids.HostManagerOperationCoordinatorOwner);
+            services.AddHostedServiceAlias<HostManagerOperationCoordinatorOwner>(BlockUids.HostManagerOperationCoordinatorOwner, static service => service.ExecutionTask, forwardRunFailureToHost: false);
         }
         return services;
     }

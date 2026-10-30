@@ -103,7 +103,7 @@ public sealed partial class StateRegistryTests
                 Assert.Equal(BackendItems.KernelLeakObservationEnabled, Assert.Single(reads).GetProperty("item").GetInt32());
             }
             else if (!perBlock && condition.GetProperty("decides").GetInt32() == BackendUids.FanCurveTemperatureFeed)
-                Assert.Equal(new[] { BackendItems.SoftwareCurveRunNeeded }, reads.Select(read => read.GetProperty("item").GetInt32()));
+                Assert.Equal(new[] { BackendItems.SoftwareCurveRunNeeded, BackendItems.HostedRunEnded }, reads.Select(read => read.GetProperty("item").GetInt32()));
             else
                 Assert.Contains(reads, read => read.GetProperty("item").GetInt32() == BackendItems.HostStartPermitted
                     && (perBlock ? !read.TryGetProperty("block", out _)
@@ -113,9 +113,19 @@ public sealed partial class StateRegistryTests
                 var item = byUid[read.GetProperty("item").GetInt32()];
                 Assert.Equal("bool", item.GetProperty("type").GetString());
                 Assert.Equal("reference", item.GetProperty("storage").GetString());
-                Assert.Equal("event", item.GetProperty("trigger").GetString());
                 Assert.True(item.GetProperty("owner").TryGetProperty("component", out _));
-                Assert.False(string.IsNullOrWhiteSpace(item.GetProperty("changeEvent").GetString()));
+                if (item.GetProperty("uid").GetInt32() == BackendItems.PortableAttributionCatalogAvailable)
+                {
+                    Assert.Equal("poll", item.GetProperty("trigger").GetString());
+                    Assert.Equal("RuntimeProcessAttributionCatalogAvailability:RecoveryCheckIntervalSeconds",
+                        item.GetProperty("pollInterval").GetString());
+                    Assert.Equal("RuntimeProcessAttributionCatalogProvider", item.GetProperty("owner").GetProperty("component").GetString());
+                }
+                else
+                {
+                    Assert.Equal("event", item.GetProperty("trigger").GetString());
+                    Assert.False(string.IsNullOrWhiteSpace(item.GetProperty("changeEvent").GetString()));
+                }
             }
         }
     }

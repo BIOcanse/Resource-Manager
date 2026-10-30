@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.Operations;
 
@@ -57,6 +58,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        WorkspaceHold? runWorkspace = null;
         try
         {
             var firstPlannerCycle = new TaskCompletionSource(
@@ -67,7 +69,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ThrowIfRetiringLocked();
                 if (started || workerCancellation is not null)
                     throw new InvalidOperationException("The operation coordinator owner is already started.");
-                runWorkspaceHold = AcquireWorkspaceLocked();
+                Volatile.Write(ref executionTask, null);
+                runWorkspace = AcquireWorkspaceLocked();
                 // The immediate first cycle covers mutations queued while stopped.
                 _ = plannerWake.Wait(0);
                 var plan = appliedPlan
@@ -92,8 +95,9 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                         SingleReader = false,
                         AllowSynchronousContinuations = false
                     });
-                workerCancellation = new CancellationTokenSource();
-                var ownerStopping = workerCancellation.Token;
+                var cancellation = new CancellationTokenSource();
+                workerCancellation = cancellation;
+                var ownerStopping = cancellation.Token;
                 started = true;
                 plannerWorker = Task.Run(
                     () => RunPlannerLoopAsync(ownerStopping, firstPlannerCycle),
@@ -104,6 +108,20 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                         () => RunActionWorkerAsync(ownerStopping),
                         CancellationToken.None);
                 }
+                var workers = actionWorkers.Append(plannerWorker).ToArray();
+                var firstWorker = Task.WhenAny(workers);
+                // The owner ends its own internal workers off this start turn,
+                // without invoking callbacks inline under the mutation gate.
+                var ownerDrain = Task.Run(async () =>
+                {
+                    await firstWorker.ConfigureAwait(false);
+                    await cancellation.CancelAsync().ConfigureAwait(false);
+                }, CancellationToken.None);
+                var lifetime = HostedWorkerLifetime.JoinAsync(
+                    firstWorker, ownerDrain, ownerStopping, workers);
+                Volatile.Write(ref executionTask, lifetime);
+                workspaceRunTask = ReleaseRunWorkspaceAsync(runWorkspace, lifetime);
+                runWorkspace = null;
             }
             finally
             {
@@ -112,16 +130,37 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             await firstPlannerCycle.Task.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch
+        catch (Exception error)
         {
-            await StopAsync(CancellationToken.None).ConfigureAwait(false);
+            try { await StopAsync(CancellationToken.None).ConfigureAwait(false); }
+            catch { /* Startup retains the failure that initiated cleanup. */ }
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
             throw;
         }
+        finally
+        {
+            if (runWorkspace is not null)
+                await runWorkspace.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static async Task ReleaseRunWorkspaceAsync(IAsyncDisposable runWorkspace, Task lifetime)
+    {
+        try
+        {
+            // ExecutionTask is the run's result. Cleanup observes that result,
+            // then releases this run's local hold after every worker has exited.
+            await lifetime.ConfigureAwait(false);
+        }
+        catch (Exception) { }
+        finally { await runWorkspace.DisposeAsync().ConfigureAwait(false); }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         Task[] workers;
+        Task lifetime;
+        Task workspaceRun;
         CancellationTokenSource? cancellation;
         Channel<HostManagerOperationActionTicket>? channel;
         await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -139,6 +178,9 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 .ToArray();
             cancellation = workerCancellation;
             channel = actionChannel;
+            lifetime = cancellation is null ? Task.WhenAll(workers)
+                : executionTask ?? Task.WhenAll(workers);
+            workspaceRun = workspaceRunTask ?? Task.CompletedTask;
         }
         finally
         {
@@ -147,42 +189,49 @@ public sealed partial class HostManagerOperationCoordinatorOwner
 
         // Cancellation callbacks and effects may enter the owner. Never hold its
         // mutation gate while cancelling or waiting for the original workers.
-        if (workers.Any(static worker => !worker.IsCompleted))
-        {
-            attemptArbiter.RequestStopAll();
-        }
-        cancellation?.Cancel();
-        channel?.Writer.TryComplete();
-        if (workers.Length != 0)
-        {
-            await Task.WhenAll(workers).WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
-        }
-        await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Exception? stopFailure = null;
         try
         {
+            if (workers.Any(static worker => !worker.IsCompleted))
+                attemptArbiter.RequestStopAll();
+        }
+        catch (Exception error) { stopFailure = error; }
+        await DrainStoppedRunAsync(cancellation, channel, lifetime, workspaceRun, stopFailure).WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task DrainStoppedRunAsync(CancellationTokenSource? cancellation,
+        Channel<HostManagerOperationActionTicket>? channel, Task lifetime,
+        Task workspaceRun, Exception? stopFailure)
+    {
+        try { if (cancellation is not null) await cancellation.CancelAsync().ConfigureAwait(false); }
+        catch (ObjectDisposedException) { }
+        catch (Exception error) { stopFailure ??= error; }
+        channel?.Writer.TryComplete();
+        try
+        {
+            await lifetime.ConfigureAwait(false);
+        }
+        catch (Exception) { /* The original failure remains on ExecutionTask. */ }
+        try { await workspaceRun.ConfigureAwait(false); }
+        catch (Exception error) { stopFailure ??= error; }
+        await mutationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            if (!ReferenceEquals(workerCancellation, cancellation)) return;
             workerCancellation?.Dispose();
             workerCancellation = null;
             actionChannel = null;
             plannerWorker = null;
             actionWorkers = [];
-            if (runWorkspaceHold is not null)
-            {
-                // Native calls by workers have drained; finite commands retain
-                // their own references until their individual return paths.
-                if (workspaceHolder!.Release())
-                {
-                    workspace = null;
-                    workspaceHolder = null;
-                    workspaceDrained.TrySetResult();
-                }
-                runWorkspaceHold = null;
-            }
+            workspaceRunTask = null;
         }
         finally
         {
             mutationGate.Release();
         }
+        if (stopFailure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(stopFailure).Throw();
     }
 
     public void Dispose()
@@ -235,7 +284,9 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             PublishHealthOnlyLocked();
         }
         finally { mutationGate.Release(); }
-        await StopAsync(CancellationToken.None).ConfigureAwait(false);
+        Exception? cleanupFailure = null;
+        try { await StopAsync(CancellationToken.None).ConfigureAwait(false); }
+        catch (Exception error) { cleanupFailure = error; }
         await workspaceDrained.Task.ConfigureAwait(false);
         await mutationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
@@ -257,6 +308,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             // a publication already queued on it must enter and reject retirement.
             mutationGate.Release();
         }
+        if (cleanupFailure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
     }
 
     private void CloseRuntimeLocked()
@@ -266,7 +319,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         workspace?.Dispose();
         workspace = null;
         workspaceHolder = null;
-        runWorkspaceHold = null;
+        workspaceRunTask = null;
         store?.Dispose();
         store = null;
         appliedPlan = null;

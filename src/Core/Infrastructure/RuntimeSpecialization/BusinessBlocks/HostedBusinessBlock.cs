@@ -5,7 +5,7 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 /// <summary>Owns the original hosted service's readiness and stop contract.</summary>
 internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
     HostedBusinessBlockRegistry registry, BusinessBlockDiagnosticsRegistry diagnostics,
-    HostedBusinessBlockExecution executionContract) : IBusinessBlock
+    HostedBusinessBlockExecution executionContract, HostedRunResultFacts? failures = null) : IBusinessBlock
 {
     private readonly object sync = new();
     private readonly SemaphoreSlim lifecycle = new(1, 1);
@@ -45,6 +45,7 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
 
     public async Task RunAsync(BusinessBlockRunContext context)
     {
+        var runInputs = 0L;
         Session session;
         lock (sync)
         {
@@ -92,6 +93,7 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
                 }
                 stage = BusinessBlockFailureStage.Run;
                 await execution.ConfigureAwait(false);
+                runInputs = failures?.CaptureInputs(id) ?? 0;
             }
             else
             {
@@ -107,7 +109,15 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
         }
         catch (Exception error)
         {
-            result = BusinessBlockResult.Failed(error, stage);
+            runInputs = failures?.CaptureInputs(id) ?? 0;
+            // Resource unavailability can withdraw the permit before this
+            // continuation observes the failed worker. StopAsync then joins and
+            // rethrows that same worker error; it is still the run's result.
+            var failureStage = stage == BusinessBlockFailureStage.Stop
+                && session.Execution is { IsFaulted: true } failedExecution
+                && failedExecution.Exception!.InnerExceptions.Any(inner => ReferenceEquals(inner, error))
+                    ? BusinessBlockFailureStage.Run : stage;
+            result = BusinessBlockResult.Failed(error, failureStage);
         }
         finally
         {
@@ -132,12 +142,19 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
                 catch (Exception error)
                 {
                     if (result.Outcome != BusinessBlockOutcome.Failed)
+                    {
+                        runInputs = failures?.CaptureInputs(id) ?? 0;
                         result = BusinessBlockResult.Failed(error, BusinessBlockFailureStage.Run);
+                    }
                 }
             }
         }
         if (result.Error is { } failure) session.Readiness.TrySetException(failure);
         else if (context.StopNotification.IsCancellationRequested) session.Readiness.TrySetCanceled(context.StopNotification);
+        if ((result is { Outcome: BusinessBlockOutcome.Failed, FailureStage: BusinessBlockFailureStage.Run }
+                && !(session.Service is { } service && executionContract.ResourceFailureHandled?.Invoke(service) == true))
+            || (result.Outcome == BusinessBlockOutcome.Done && session.Execution is not null))
+            failures?.RecordEnd(id, runInputs);
         RecordResult(session, result);
         if (stopFailure is not null) executionFailure.TrySetException(stopFailure);
         else if (result.Error is { } hostFailure

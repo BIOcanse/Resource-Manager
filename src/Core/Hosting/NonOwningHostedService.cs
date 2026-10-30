@@ -68,21 +68,24 @@ internal sealed class NonOwningHostedService<TService> : BackgroundService where
 internal static class NonOwningHostedServiceRegistration
 {
     internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
-        int id, Func<TService, Task?> executionTask, bool forwardRunFailureToHost) where TService : class, IHostedService
+        int id, Func<TService, Task?> executionTask, bool forwardRunFailureToHost,
+        Func<TService, bool>? resourceFailureHandled = null) where TService : class, IHostedService
     {
         services.AddHostedServiceAlias<TService>(id);
-        return WithExecution(services, executionTask, forwardRunFailureToHost);
+        return WithExecution(services, executionTask, forwardRunFailureToHost, resourceFailureHandled);
     }
 
     internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
-        Func<TService, Task?> executionTask, bool forwardRunFailureToHost) where TService : class, IHostedService
+        Func<TService, Task?> executionTask, bool forwardRunFailureToHost,
+        Func<TService, bool>? resourceFailureHandled = null) where TService : class, IHostedService
     {
         services.AddHostedServiceAlias<TService>();
-        return WithExecution(services, executionTask, forwardRunFailureToHost);
+        return WithExecution(services, executionTask, forwardRunFailureToHost, resourceFailureHandled);
     }
 
     private static IServiceCollection WithExecution<TService>(IServiceCollection services,
-        Func<TService, Task?> executionTask, bool forwardRunFailureToHost) where TService : class, IHostedService
+        Func<TService, Task?> executionTask, bool forwardRunFailureToHost,
+        Func<TService, bool>? resourceFailureHandled) where TService : class, IHostedService
     {
         ArgumentNullException.ThrowIfNull(executionTask);
         var descriptor = services.Single(value => value.ImplementationInstance is BusinessBlockRegistration registration
@@ -90,7 +93,8 @@ internal static class NonOwningHostedServiceRegistration
         var declaration = (BusinessBlockRegistration)descriptor.ImplementationInstance!;
         services[services.IndexOf(descriptor)] = ServiceDescriptor.Singleton(declaration with
         {
-            HostedExecution = new(service => executionTask((TService)service), forwardRunFailureToHost)
+            HostedExecution = new(service => executionTask((TService)service), forwardRunFailureToHost,
+                resourceFailureHandled is null ? null : service => resourceFailureHandled((TService)service))
         });
         return services;
     }

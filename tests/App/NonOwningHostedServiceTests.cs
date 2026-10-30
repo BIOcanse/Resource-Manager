@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NonOwningHostedServiceTests
 {
     [Fact]
-    public async Task AsynchronousWorkerFailureReachesTheHost()
+    public async Task AsynchronousWorkerFailureStopsItsBlockWithoutStoppingTheHost()
     {
         var worker = new ProbeWorker();
         using var host = Host.CreateDefaultBuilder()
@@ -22,8 +22,6 @@ public sealed class NonOwningHostedServiceTests
             })
             .Build();
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
-        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var registration = lifetime.ApplicationStopping.Register(() => stopping.TrySetResult());
         await host.StartAsync();
         try
         {
@@ -33,7 +31,18 @@ public sealed class NonOwningHostedServiceTests
             var error = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => execution.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Equal("worker failure after startup", error.Message);
-            await stopping.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
+            await BusinessBlockTestSupport.State(scheduler,
+                BackendUids.RuntimeSpecializationCoordinator, BusinessBlockState.Stopped);
+            var result = host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>()
+                .Read(BackendUids.RuntimeSpecializationCoordinator).Result;
+            Assert.Equal(BusinessBlockOutcome.Failed, result!.Outcome);
+            Assert.Equal(BusinessBlockFailureStage.Run, result.FailureStage);
+            Assert.True(scheduler.Authority.Read<bool>(new(BackendItems.HostedRunEnded,
+                BackendUids.RuntimeSpecializationCoordinator)).Value);
+            var alias = Assert.Single(host.Services.GetServices<IHostedService>().OfType<NonOwningHostedService<ProbeWorker>>());
+            Assert.False(alias.ExecuteTask!.IsCompleted);
+            Assert.False(lifetime.ApplicationStopping.IsCancellationRequested);
         }
         finally
         {

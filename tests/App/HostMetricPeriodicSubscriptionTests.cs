@@ -7,6 +7,7 @@ using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.ReadWrite;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.StateItems;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Dependencies;
 using ResourceManager.Subscription;
@@ -31,7 +32,9 @@ public sealed partial class MetricCatalogueSubscriptionTests
             FieldSubscriptionOptions.Default, backend, timeout.Token).GetAsyncEnumerator(timeout.Token);
         var pending = stream.MoveNextAsync().AsTask();
         await using var controller = await ProducerSubscriptionRestartHost<WindowsHardwareMetricSampler>
-            .StartAsync(harness.Sampler, static producer => producer.CaptureSamplingWorkerTask(), backend);
+            .StartAsync(harness.Sampler, static producer => producer.CaptureSamplingWorkerTask(),
+                BlockUids.WindowsHardwareMetricSampler, StateItemUids.SamplingHardwareMetricsInUse,
+                () => harness.SamplingOwner.Activity.HasInUseSubscriptions(1), backend);
         var firstRun = await controller.FirstRun;
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(
             () => firstRun.WaitAsync(timeout.Token));

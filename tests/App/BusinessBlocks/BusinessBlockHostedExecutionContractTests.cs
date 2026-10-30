@@ -53,7 +53,7 @@ public sealed class BusinessBlockHostedExecutionContractTests
     {
         var failure = new IOException("host lifecycle failed");
         var service = new LifecycleFaultService(stage, failure);
-        var registration = new BusinessBlockRegistration(BackendUids.ControlActualStateReader, _ => throw new NotSupportedException())
+        var registration = new BusinessBlockRegistration(BackendUids.CpuTopologySnapshotProvider, _ => throw new NotSupportedException())
         { HostedExecution = new(static _ => Task.CompletedTask, false) };
         var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         var registry = new HostedBusinessBlockRegistry(diagnostics, [registration]);
@@ -74,30 +74,30 @@ public sealed class BusinessBlockHostedExecutionContractTests
             {
                 services.AddSingleton(worker);
                 services.AddSingleton<ILogger<BusinessBlockDiagnosticsRegistry>>(log);
-                services.AddHostedServiceAlias(BackendUids.ControlActualStateReader, execution, forwardRunFailureToHost: false);
+                services.AddHostedServiceAlias(BackendUids.CpuTopologySnapshotProvider, execution, forwardRunFailureToHost: false);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
         log.ReadResult = () => host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>()
-            .Read(BackendUids.ControlActualStateReader).Result;
-        var fact = scheduler.Authority.ClaimCell<bool>(BackendItems.ActualControlValuesInUse);
+            .Read(BackendUids.CpuTopologySnapshotProvider).Result;
+        var fact = scheduler.Authority.ClaimCell<bool>(BackendItems.SamplingCpuTopologyInUse);
         await fact.PublishAsync(true, new(BusinessBlockRequestKind.User, "worker-contract-test", "subscription-active", 0));
         await host.StartAsync().WaitAsync(Timeout);
         try
         {
             var alias = Assert.Single(host.Services.GetServices<IHostedService>().OfType<NonOwningHostedService<TService>>());
             await Until(() => worker.StartCount == 1
-                && scheduler.ReadState(BackendUids.ControlActualStateReader) == BusinessBlockState.Running);
+                && scheduler.ReadState(BackendUids.CpuTopologySnapshotProvider) == BusinessBlockState.Running);
             worker.ReleaseFailure.TrySetResult();
             var result = await log.Failed.Task.WaitAsync(Timeout);
             Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
             Assert.Equal(BusinessBlockFailureStage.Run, result.FailureStage);
             Assert.Equal(typeof(IOException).FullName, result.FailureType);
             await Until(() => worker.StartCount == 2
-                && scheduler.ReadState(BackendUids.ControlActualStateReader) == BusinessBlockState.Running);
+                && scheduler.ReadState(BackendUids.CpuTopologySnapshotProvider) == BusinessBlockState.Running);
             Assert.False(alias.ExecuteTask!.IsCompleted);
             Assert.False(host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
-            Assert.True(scheduler.Authority.Read<bool>(BackendItems.ActualControlValuesInUse).Value);
+            Assert.True(scheduler.Authority.Read<bool>(BackendItems.SamplingCpuTopologyInUse).Value);
         }
         finally { await host.StopAsync().WaitAsync(Timeout); }
     }

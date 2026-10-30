@@ -11,6 +11,7 @@ using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.Shared.BusinessBlocks.State;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.Operations;
 
@@ -36,7 +37,6 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private NativeOperationCoordinatorWorkspace? workspace;
     private NativeOperationCoordinatorWorkspace? pendingWorkspaceClose;
     private WorkspaceHolder? workspaceHolder;
-    private WorkspaceHold? runWorkspaceHold;
     private TaskCompletionSource workspaceDrained = CompletedWorkspaceDrain();
     private readonly Func<ulong, IComputeScratch> createScratch;
     private readonly WorkspaceFactory createWorkspace;
@@ -50,6 +50,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private CancellationTokenSource? workerCancellation;
     private Task? plannerWorker;
     private Task[] actionWorkers = [];
+    private Task? executionTask;
+    private Task? workspaceRunTask;
     private CommittedState committedState = CommittedState.Empty;
     private byte[] lastEnvelopeSha256 =
         HostManagerOperationCanonicalEnvelopeCodec.ZeroDigest();
@@ -68,6 +70,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private int hasPendingOperations = -1;
 
     internal bool HasPendingOperations => Volatile.Read(ref hasPendingOperations) > 0;
+    internal Task? ExecutionTask => Volatile.Read(ref executionTask);
     internal StateRead<bool> PendingOperationsPublication
     {
         get

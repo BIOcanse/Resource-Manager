@@ -10,7 +10,7 @@ internal sealed class BackendPreciseRuleTestFacts
         BackendItems.GpuAllocationNativeSessionAvailable, BackendItems.VidMmNativeSessionAvailable];
     private readonly Dictionary<StateItemKey, StateCell<bool>> cells = [];
     internal BackendPreciseRuleTestFacts(StateAuthority authority, NativeControl native,
-        bool hostPermits = true, bool nativeFacts = false)
+        bool hostPermits = true, bool nativeFacts = false, bool? hostedRunFailures = null)
     {
         foreach (var declaration in StateRegistry.Items.Where(item => item.ValueType == typeof(bool)
             && item.Storage == StateItemStorage.Reference && !item.PerBlock
@@ -20,13 +20,19 @@ internal sealed class BackendPreciseRuleTestFacts
             foreach (var block in native.Graph.BlockIds)
                 cells.Add(new(BackendItems.HostStartPermitted, block),
                     authority.ClaimCell<bool>(new(BackendItems.HostStartPermitted, block)));
+        if (hostedRunFailures ?? hostPermits)
+            foreach (var block in native.Graph.BlockIds)
+                cells.Add(new(BackendItems.HostedRunEnded, block),
+                    authority.ClaimCell<bool>(new(BackendItems.HostedRunEnded, block)));
     }
     internal IEnumerable<StateItemKey> Keys => cells.Keys;
     internal StateCell<bool> this[StateItemKey key] => cells[key];
     internal async Task InitializeAsync(bool facts = false)
     {
         foreach (var (key, cell) in cells)
-            await cell.PublishAsync(key.ItemUid is BackendItems.HostStartPermitted or BackendItems.FanCoreAvailable || facts, BusinessBlockTestSupport.Reason());
+            await cell.PublishAsync(key.ItemUid != BackendItems.HostedRunEnded
+                && (key.ItemUid is BackendItems.HostStartPermitted or BackendItems.FanCoreAvailable
+                    or BackendItems.PortableAttributionCatalogAvailable || facts), BusinessBlockTestSupport.Reason());
     }
     internal Task PublishAsync(int uid, bool value)
         => cells[new(uid)].PublishAsync(value, BusinessBlockTestSupport.Reason());

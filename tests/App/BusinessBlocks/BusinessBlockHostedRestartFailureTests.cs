@@ -15,7 +15,7 @@ public sealed class BusinessBlockHostedRestartFailureTests
         "hosted-restart-test", "subscription-activity", 0);
 
     [Fact]
-    public async Task AliasObservesOriginalExecutionFailureAfterFactDrivenStopAndRestart()
+    public async Task RestartedWorkerFailureIsReportedWithoutStoppingItsHostAlias()
     {
         var service = new RestartableService();
         var resultLog = new FailureResultLogger(service.Failure);
@@ -23,8 +23,6 @@ public sealed class BusinessBlockHostedRestartFailureTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.Configure<HostOptions>(options =>
-                    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
                 services.AddBusinessBlockHostedService<RestartableService>(BackendUids.ControlActualStateReader, _ => service);
                 services.AddSingleton<ILogger<BusinessBlockDiagnosticsRegistry>>(resultLog);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
@@ -61,12 +59,17 @@ public sealed class BusinessBlockHostedRestartFailureTests
             Assert.False(service.SecondStartupToken.IsCancellationRequested);
             Assert.NotEqual(service.FirstStartupToken, service.SecondStartupToken);
             service.FailSecondRun.TrySetResult();
-            var failure = await Assert.ThrowsAsync<IOException>(() => alias.ExecuteTask.WaitAsync(Timeout));
-            Assert.Same(service.Failure, failure);
             var failed = await resultLog.Failed.Task.WaitAsync(Timeout);
             Assert.Equal(BusinessBlockOutcome.Failed, failed!.Outcome);
             Assert.Equal(BusinessBlockFailureStage.Run, failed.FailureStage);
-            Assert.True(service.StopCount >= 2);
+            await Until(() => scheduler.ReadState(BackendUids.ControlActualStateReader) == BusinessBlockState.Stopped);
+            Assert.Equal(2, service.StopCount);
+            Assert.Equal(2, service.StartCount);
+            Assert.False(alias.ExecuteTask.IsCompleted);
+            Assert.False(host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
+            Assert.True(scheduler.Authority.Read<bool>(new(BackendItems.HostedRunEnded,
+                BackendUids.ControlActualStateReader)).Value);
+            Assert.Same(service.Failure, await Assert.ThrowsAsync<IOException>(() => service.ExecuteTask!));
         }
         finally { await host.StopAsync().WaitAsync(Timeout); }
     }

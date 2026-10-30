@@ -313,13 +313,44 @@ fn hostPermitted(input: *control.Input, child: ?d.BlockUid) anyerror!bool {
 }
 fn anyFact(input: *control.Input, child: d.BlockUid, comptime facts: []const d.ItemUid) anyerror!bool {
     if (!try hostPermitted(input, child)) return false;
+    if (legacyHostedWorker(child) and !try hostedRunAllowed(input, child)) return false;
     for (facts) |item| {
         if (try isTrue(input, item)) return true;
     }
     return false;
 }
 fn alwaysWanted(input: *control.Input) anyerror!bool {
-    return hostPermitted(input, input.block);
+    return try hostPermitted(input, input.block) and try hostedRunAllowed(input, input.block);
+}
+fn hostedRunAllowed(input: *control.Input, child: ?d.BlockUid) anyerror!bool {
+    return switch (try readBool(input, ItemUids.HostedRunEnded, child)) {
+        .value => |failed| !failed,
+        // No failure has been published in an inert/entry-only fixture.
+        .not_published => true,
+        .owner_stopped, .read_failed => false,
+    };
+}
+fn legacyHostedWorker(child: d.BlockUid) bool {
+    return switch (child) {
+        BlockUids.RuntimeSpecializationCoordinator,
+        BlockUids.HostManagerPublicServiceCoordinatorOwner,
+        BlockUids.HostManagerOperationCoordinatorOwner,
+        BlockUids.TrustedAccessRequestOwner,
+        BlockUids.FanCurveTemperatureFeed,
+        BlockUids.AutomaticProductUpdateService,
+        BlockUids.ControlDesiredStateReassertion,
+        BlockUids.ControlActualStateReader,
+        BlockUids.GpuPlacementProcessHistoryObserver,
+        BlockUids.JsonDebugDiagnosticLogWriter,
+        BlockUids.HostManagerReportCoordinatorOwner,
+        BlockUids.HostManagerSmartCoordinator,
+        BlockUids.PortableSoftwareDiscoveryService,
+        BlockUids.EtwPhysicalDiskIoAttributionReader,
+        BlockUids.EtwNetworkTcpIpAttributionReader,
+        BlockUids.TrustedAccessInvocationHostedService,
+        => true,
+        else => false,
+    };
 }
 fn nativeChild(input: *control.Input, child: d.BlockUid, field: d.ItemUid, available: d.ItemUid) anyerror!bool {
     if (!try hostPermitted(input, child) or !try isTrue(input, field) or !try isTrue(input, available)) return false;
@@ -395,10 +426,11 @@ fn fanCoreShouldRun(input: *control.Input) anyerror!bool {
         try anyFact(input, BlockUids.FanControlCoreLifetimeService, &.{ ItemUids.AppliedFanControlExists, ItemUids.FanCommandPending, ItemUids.FanReadingsInUse, ItemUids.SoftwareCurveRunNeeded });
 }
 fn fanTemperatureShouldRun(input: *control.Input) anyerror!bool {
-    return isTrue(input, ItemUids.SoftwareCurveRunNeeded);
+    return try hostedRunAllowed(input, BlockUids.FanCurveTemperatureFeed) and try isTrue(input, ItemUids.SoftwareCurveRunNeeded);
 }
 fn controlReassertionShouldRun(input: *control.Input) anyerror!bool {
     return try hostPermitted(input, BlockUids.ControlDesiredStateReassertion) and
+        try hostedRunAllowed(input, BlockUids.ControlDesiredStateReassertion) and
         try isTrue(input, ItemUids.ControlKeepAliveEnabled) and
         try isTrue(input, ItemUids.AppliedControlIntentsExist);
 }
@@ -415,7 +447,8 @@ fn backgroundReportsShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.HostManagerReportCoordinatorOwner, &.{ItemUids.BackgroundReportsEnabled});
 }
 fn portableDiscoveryShouldRun(input: *control.Input) anyerror!bool {
-    return anyFact(input, BlockUids.PortableSoftwareDiscoveryService, &.{ItemUids.PortableDiscoveryEnabled});
+    return try isTrue(input, ItemUids.PortableAttributionCatalogAvailable) and
+        try anyFact(input, BlockUids.PortableSoftwareDiscoveryService, &.{ItemUids.PortableDiscoveryEnabled});
 }
 fn trustedRequestsShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.TrustedAccessRequestOwner, &.{ItemUids.TrustedRequestsPending});
@@ -544,7 +577,7 @@ const RuleTestFacts = struct {
     child: d.BlockUid,
     fn get(self: *const @This(), item: d.ItemUid, block: ?d.BlockUid) control.Read {
         for (self.reads, 0..) |declared, index| {
-            const key_block = if (declared.item == ItemUids.HostStartPermitted) declared.block orelse self.child else declared.block;
+            const key_block = if (declared.item == ItemUids.HostStartPermitted or declared.item == ItemUids.HostedRunEnded) declared.block orelse self.child else declared.block;
             if (declared.item == item and key_block == block) return self.values[index];
         }
         return .not_published;
@@ -554,6 +587,13 @@ const RuleTestFacts = struct {
     }
     fn permit(self: *const @This(), child: d.BlockUid) bool {
         return self.get(ItemUids.HostStartPermitted, child).valueOr(false);
+    }
+    fn runAllowed(self: *const @This()) bool {
+        return switch (self.get(ItemUids.HostedRunEnded, self.child)) {
+            .value => |ended| !ended,
+            .not_published => true,
+            .owner_stopped, .read_failed => false,
+        };
     }
     fn present(self: *const @This()) bool {
         return self.permit(BlockUids.PresentFrameEtwSource) and self.truth(ItemUids.GraphicsApiObservationInUse) and
@@ -569,7 +609,7 @@ const RuleTestFacts = struct {
     fn read(context: *anyopaque, key: control.types.ItemKey) anyerror!control.Read {
         const self: *@This() = @ptrCast(@alignCast(context));
         for (self.reads) |declared| {
-            const block = if (declared.item == ItemUids.HostStartPermitted) declared.block orelse self.child else declared.block;
+            const block = if (declared.item == ItemUids.HostStartPermitted or declared.item == ItemUids.HostedRunEnded) declared.block orelse self.child else declared.block;
             if (declared.item == key.item and block == key.block) return self.get(key.item, key.block);
         }
         return error.UndeclaredTestRead;
@@ -585,6 +625,28 @@ const RuleTestFacts = struct {
     }
     fn expected(self: *const @This()) bool {
         if (self.child == BlockUids.KernelLeakObservation) return self.truth(ItemUids.KernelLeakObservationEnabled);
+        // Independent contract inventory; do not call the production classifier.
+        const result_gated = switch (self.child) {
+            BlockUids.RuntimeSpecializationCoordinator,
+            BlockUids.HostManagerPublicServiceCoordinatorOwner,
+            BlockUids.HostManagerOperationCoordinatorOwner,
+            BlockUids.TrustedAccessRequestOwner,
+            BlockUids.FanCurveTemperatureFeed,
+            BlockUids.AutomaticProductUpdateService,
+            BlockUids.ControlDesiredStateReassertion,
+            BlockUids.ControlActualStateReader,
+            BlockUids.GpuPlacementProcessHistoryObserver,
+            BlockUids.JsonDebugDiagnosticLogWriter,
+            BlockUids.HostManagerReportCoordinatorOwner,
+            BlockUids.HostManagerSmartCoordinator,
+            BlockUids.PortableSoftwareDiscoveryService,
+            BlockUids.EtwPhysicalDiskIoAttributionReader,
+            BlockUids.EtwNetworkTcpIpAttributionReader,
+            BlockUids.TrustedAccessInvocationHostedService,
+            => true,
+            else => false,
+        };
+        if (result_gated and !self.runAllowed()) return false;
         if (self.child == BlockUids.FanCurveTemperatureFeed) return self.truth(ItemUids.SoftwareCurveRunNeeded);
         if (!self.permit(self.child)) return false;
         const I = ItemUids;
@@ -615,11 +677,11 @@ const RuleTestFacts = struct {
             BlockUids.HostManagerSmartCoordinator => self.truth(I.OptimizationEnabled) or self.truth(I.ActiveCpuLeasesExist) or self.truth(I.SmartOwnedStatePending),
             BlockUids.GpuPlacementProcessHistoryObserver => self.truth(I.GpuApiHistoryEnabled),
             BlockUids.HostManagerReportCoordinatorOwner => self.truth(I.BackgroundReportsEnabled),
-            BlockUids.PortableSoftwareDiscoveryService => self.truth(I.PortableDiscoveryEnabled),
+            BlockUids.PortableSoftwareDiscoveryService => self.truth(I.PortableDiscoveryEnabled) and self.truth(I.PortableAttributionCatalogAvailable),
             BlockUids.TrustedAccessRequestOwner => self.truth(I.TrustedRequestsPending),
             BlockUids.HostManagerPublicServiceCoordinatorOwner => self.truth(I.PublicServiceEnabled) or self.truth(I.PublicServiceTasksPending),
             BlockUids.HostManagerOperationCoordinatorOwner => self.truth(I.OperationsPending),
-            else => true,
+            else => self.runAllowed(),
         };
     }
 };
@@ -656,6 +718,30 @@ test "every precise rule matches business oracle for all booleans and each no-va
     }
 }
 
+test "control keepalive and hosted result match oracle for every value and no-value combination" {
+    const std = @import("std");
+    const values = [_]control.Read{ .{ .value = false }, .{ .value = true }, .not_published, .owner_stopped, .read_failed };
+    var found = false;
+    for (all_registry.conditions) |condition| {
+        if (condition.uid != ConditionUids.ControlReassertionShouldRun) continue;
+        found = true;
+        var facts = RuleTestFacts{ .reads = condition.items, .child = BlockUids.ControlDesiredStateReassertion };
+        try std.testing.expectEqual(@as(usize, 4), condition.items.len);
+        var combinations: usize = 1;
+        for (condition.items) |_| combinations *= values.len;
+        var input = facts.input(false);
+        for (0..combinations) |combination| {
+            var remaining = combination;
+            for (condition.items, 0..) |_, index| {
+                facts.values[index] = values[remaining % values.len];
+                remaining /= values.len;
+            }
+            try std.testing.expectEqual(facts.expected(), try controlReassertionShouldRun(&input));
+        }
+    }
+    try std.testing.expect(found);
+}
+
 test "tray Smart default reports and memory protection run only their subscribed producers" {
     const std = @import("std");
     const enabled = [_]d.ItemUid{
@@ -667,6 +753,7 @@ test "tray Smart default reports and memory protection run only their subscribed
         ItemUids.MemoryProtectionNormalRunningPointExists, ItemUids.MemoryProtectionReserveBuilt,
         ItemUids.PresentNativeSessionAvailable,            ItemUids.GpuAllocationNativeSessionAvailable,
         ItemUids.VidMmNativeSessionAvailable,
+        ItemUids.PortableAttributionCatalogAvailable,
     };
     const running = [_]d.BlockUid{
         BlockUids.NativeEtwLifetimeService,           BlockUids.HostManagerSamplingSubscriptionOwner,

@@ -349,6 +349,65 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         fixture.Owner.Dispose();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WorkerPersistenceFaultRemainsTheRunResultAfterResourcesDrain(bool disposeDirectly)
+    {
+        var recording = new WorkspaceLifetimes();
+        await using var fixture = await Fixture.CreateUnstartedWithWorkspaceAsync(recording.Create);
+        var entered = NewSignal();
+        var release = NewSignal();
+        fixture.ComponentExecutor.OnExecute = async (_, _) =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+            return new(HostManagerOperationEffectOutcome.Succeeded, "done");
+        };
+        await fixture.Owner.StartAsync(CancellationToken.None);
+        var execution = fixture.Owner.ExecutionTask!;
+        var workers = OwnerField<Task[]>(fixture.Owner, "actionWorkers")!;
+        var planner = OwnerField<Task>(fixture.Owner, "plannerWorker")!;
+        try
+        {
+            _ = await fixture.SubmitComponentDownloadAsync();
+            await entered.Task.WaitAsync(TestBound);
+            File.WriteAllBytes(fixture.EnvelopePath, [0xA5]);
+            release.TrySetResult();
+            var original = await Assert.ThrowsAsync<IOException>(
+                () => execution.WaitAsync(TestBound));
+            Assert.Same(original, Assert.Single(execution.Exception!.InnerExceptions));
+            Assert.Contains(workers.Append(planner), worker => worker.Exception is { } failure
+                && failure.InnerExceptions.Any(error => ReferenceEquals(error, original)));
+            var before = fixture.Owner.GetHealth();
+            Assert.True(before.PersistenceFaulted);
+            Assert.False(before.Ready);
+            Assert.Equal("effect-completion-publication", before.FaultStage);
+            Assert.Equal(original.Message, before.FaultMessage);
+
+            if (disposeDirectly)
+                await fixture.Owner.DisposeAsync().AsTask().WaitAsync(TestBound);
+            else
+                await fixture.Owner.StopAsync(CancellationToken.None).WaitAsync(TestBound);
+
+            Assert.All(workers.Append(planner), worker => Assert.True(worker.IsCompleted));
+            Assert.Null(OwnerField<object>(fixture.Owner, "workspace"));
+            Assert.Null(OwnerField<object>(fixture.Owner, "workspaceHolder"));
+            Assert.Null(OwnerField<object>(fixture.Owner, "workerCancellation"));
+            Assert.Null(OwnerField<object>(fixture.Owner, "workspaceRunTask"));
+            Assert.Equal(1, Assert.Single(recording.Workspaces).CloseCount);
+            Assert.Same(execution, fixture.Owner.ExecutionTask);
+            Assert.Same(original, Assert.Single(execution.Exception!.InnerExceptions));
+            Assert.Equal(before, fixture.Owner.GetHealth());
+            await fixture.Owner.DisposeAsync().AsTask().WaitAsync(TestBound);
+            Assert.Null(OwnerField<object>(fixture.Owner, "store"));
+            Assert.Equal(before, fixture.Owner.GetHealth());
+            using var available = new FileStream(fixture.EnvelopePath + ".lock",
+                FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        }
+        finally { release.TrySetResult(); }
+    }
+
     [Fact]
     public void SettledAndDisposedAttemptCanReceiveLateStopSnapshot()
     {

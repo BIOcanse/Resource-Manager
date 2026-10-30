@@ -170,6 +170,9 @@ pub fn build(b: *std.Build) void {
     });
     const run_backend_rule_tests = b.addRunArtifact(backend_rule_tests);
     test_step.dependOn(&run_backend_rule_tests.step);
+    const control_test_step = b.step("test-control", "Run control ABI and backend decision oracle tests");
+    control_test_step.dependOn(&run_control_abi_tests.step);
+    control_test_step.dependOn(&run_backend_rule_tests.step);
     const kernel_etw_module = b.createModule(.{
         .root_source_file = b.path("src/kernel_etw_test_root.zig"),
         .target = target,

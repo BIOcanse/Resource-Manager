@@ -55,6 +55,7 @@ public sealed class TrustedAccessInvocationHostedService(
         catch (Exception error)
         {
             logger.LogError("Trusted Access invocation pipe stopped ({ErrorType}).", error.GetType().Name);
+            throw;
         }
     }
 

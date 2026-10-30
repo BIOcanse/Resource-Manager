@@ -29,6 +29,31 @@ internal sealed class BackendDecisionStateBindings(IServiceProvider services,
         if (initialized) return;
         initialized = true;
         var plans = services.GetRequiredService<RuntimePlanProvider>();
+        var failures = services.GetRequiredService<HostedRunResultFacts>();
+        var lastPlanVersion = plans.Current.Version;
+        void PlanInputsChanged(ResourceManager.App.Domain.RuntimeSpecialization.CompiledRuntimePlan plan)
+        {
+            lock (failures)
+            {
+                if (plan.Version <= lastPlanVersion) return;
+                lastPlanVersion = plan.Version;
+                failures.PlanChanged();
+            }
+        }
+        plans.Published += PlanInputsChanged;
+        detach.Add(() => plans.Published -= PlanInputsChanged);
+        if (services.GetService<ResourceManager.App.Application.ProcessAttribution.IRuntimeProcessAttributionCatalogProvider>()
+            is ResourceManager.App.Infrastructure.ProcessAttribution.RuntimeProcessAttributionCatalogProvider catalogs)
+        {
+            Bind(StateItemUids.PortableAttributionCatalogAvailable, () => catalogs.IsAvailable,
+                callback => catalogs.AvailabilityChanged += callback, callback => catalogs.AvailabilityChanged -= callback);
+            void CatalogRecovered()
+            {
+                if (catalogs.IsAvailable) failures.Reset(BlockUids.PortableSoftwareDiscoveryService);
+            }
+            catalogs.AvailabilityChanged += CatalogRecovered;
+            detach.Add(() => catalogs.AvailabilityChanged -= CatalogRecovered);
+        }
         Plan(StateItemUids.DebugLoggingEnabled, () => plans.DecisionFacts.DebugLoggingEnabled);
         Plan(StateItemUids.AutomaticUpdatesEnabled, () => plans.DecisionFacts.AutomaticUpdatesEnabled);
         Plan(StateItemUids.OptimizationEnabled, () => plans.DecisionFacts.OptimizationEnabled);

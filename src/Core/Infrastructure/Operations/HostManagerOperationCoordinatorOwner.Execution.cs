@@ -45,7 +45,12 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         catch (Exception error)
         {
             firstPlannerCycle.TrySetException(error);
-            await LatchWorkerFaultAsync(error, "planner-worker").ConfigureAwait(false);
+            try { await LatchWorkerFaultAsync(error, "planner-worker").ConfigureAwait(false); }
+            catch (Exception reportingError)
+            {
+                logger.LogError(reportingError, "Could not record the operation planner worker fault.");
+            }
+            throw;
         }
     }
 
@@ -165,7 +170,12 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         }
         catch (Exception error)
         {
-            await LatchWorkerFaultAsync(error, "action-worker").ConfigureAwait(false);
+            try { await LatchWorkerFaultAsync(error, "action-worker").ConfigureAwait(false); }
+            catch (Exception reportingError)
+            {
+                logger.LogError(reportingError, "Could not record the operation action worker fault.");
+            }
+            throw;
         }
     }
 

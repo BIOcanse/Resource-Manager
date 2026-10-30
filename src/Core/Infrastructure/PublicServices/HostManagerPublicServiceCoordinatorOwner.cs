@@ -6,6 +6,7 @@ using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Adaptation;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.PublicServices;
 
@@ -35,6 +36,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     private CancellationTokenSource? workerCancellation;
     private Task? modelWorker;
     private Task? taskWorker;
+    private Task? executionTask;
     private WorkspaceHolder? current;
     private WorkspaceHolder? pendingRetirement;
     private WorkspaceHolder? runHolder;
@@ -53,6 +55,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     private int modelRefreshQueued;
 
     internal bool HasPendingTasks => Volatile.Read(ref hasPendingTasks);
+    internal Task? ExecutionTask => Volatile.Read(ref executionTask);
     internal event Action? PendingTasksChanged;
 
     private void PublishPendingTasks()
@@ -155,6 +158,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
             if (started) return;
             if (workerCancellation is not null || modelWorker is not null || taskWorker is not null)
                 throw new InvalidOperationException("The prior Host Manager public-service stop has not completed.");
+            Volatile.Write(ref executionTask, null);
             runHolder = AcquireCurrentLocked();
             var cancellation = new CancellationTokenSource();
             workerCancellation = cancellation;
@@ -162,6 +166,17 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                 () => RunModelAcquisitionLoopAsync(cancellation.Token), CancellationToken.None);
             taskWorker = Task.Run(
                 () => RunTaskLoopAsync(cancellation.Token), CancellationToken.None);
+            var workers = new[] { modelWorker, taskWorker };
+            var firstWorker = Task.WhenAny(workers);
+            // This block owns its internal parallel work. Run its drain request
+            // off this start turn instead of invoking callbacks inline under the gate.
+            var ownerDrain = Task.Run(async () =>
+            {
+                await firstWorker.ConfigureAwait(false);
+                await cancellation.CancelAsync().ConfigureAwait(false);
+            }, CancellationToken.None);
+            Volatile.Write(ref executionTask,
+                HostedWorkerLifetime.JoinAsync(firstWorker, ownerDrain, cancellation.Token, workers));
             started = true;
             Signal(taskWake);
             if (Volatile.Read(ref modelRefreshQueued) != 0) Signal(modelWake);
@@ -172,43 +187,41 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         CancellationTokenSource? cancellation;
-        Task[] workers;
+        Task lifetime;
         gate.EnterWriteLock();
         try
         {
             if (workerCancellation is null && modelWorker is null && taskWorker is null) return;
             started = false;
             cancellation = workerCancellation;
-            workers = new[] { modelWorker, taskWorker }
-                .Where(static worker => worker is not null).Cast<Task>().ToArray();
+            lifetime = executionTask ?? Task.WhenAll(new[] { modelWorker, taskWorker }
+                .Where(static worker => worker is not null).Cast<Task>());
         }
         finally { gate.ExitWriteLock(); }
-        // Another Stop may already have joined and disposed this same source.
-        try { cancellation?.Cancel(); }
-        catch (ObjectDisposedException) { }
-        Signal(modelWake);
-        Signal(taskWake);
         // The caller may stop waiting, but the admitted Stop still joins the
         // actual workers and returns its run reference when they finally exit.
-        await DrainStoppedRunAsync(cancellation, workers).WaitAsync(cancellationToken)
+        await DrainStoppedRunAsync(cancellation, lifetime).WaitAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private async Task DrainStoppedRunAsync(CancellationTokenSource? cancellation, Task[] workers)
+    private async Task DrainStoppedRunAsync(CancellationTokenSource? cancellation, Task lifetime)
     {
         Exception? workerFailure = null;
+        // Another Stop may already have joined and disposed this same source.
+        try { if (cancellation is not null) await cancellation.CancelAsync().ConfigureAwait(false); }
+        catch (ObjectDisposedException) { }
+        catch (Exception error) { workerFailure = error; }
+        Signal(modelWake);
+        Signal(taskWake);
         try
         {
-            await Task.WhenAll(workers).ConfigureAwait(false);
+            await lifetime.ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (
             cancellation?.IsCancellationRequested == true)
         {
         }
-        catch (Exception failure)
-        {
-            workerFailure = failure;
-        }
+        catch (Exception) { /* The run failure remains on ExecutionTask. */ }
         gate.EnterWriteLock();
         try
         {
@@ -253,7 +266,9 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
             retiring = true;
         }
         finally { gate.ExitWriteLock(); }
-        await StopAsync(CancellationToken.None).ConfigureAwait(false);
+        Exception? workerFailure = null;
+        try { await StopAsync(CancellationToken.None).ConfigureAwait(false); }
+        catch (Exception error) { workerFailure = error; }
         Task drain;
         gate.EnterWriteLock();
         try
@@ -268,6 +283,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         gate.EnterWriteLock();
         try { CloseResourcesLocked(); }
         finally { gate.ExitWriteLock(); }
+        if (workerFailure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(workerFailure).Throw();
     }
 
     private void CloseResourcesLocked()

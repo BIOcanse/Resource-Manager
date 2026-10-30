@@ -10,4 +10,7 @@ public interface IRuntimeProcessAttributionCatalogProvider
     Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(string? windowsSid, CancellationToken cancellationToken);
 
     Task InvalidateSoftwareSnapshotAsync();
+
+    // The resource owner decides whether a reported failure makes its catalogs unavailable.
+    bool ReportFailure(Exception error) => false;
 }

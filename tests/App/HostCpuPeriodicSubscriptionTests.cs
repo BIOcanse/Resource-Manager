@@ -3,6 +3,7 @@ using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using ResourceManager.App.StateItems;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Information;
 using ResourceManager.Subscription;
@@ -36,7 +37,9 @@ public sealed class HostCpuPeriodicSubscriptionTests
             CapturedAt = captureTemplate.CapturedAt.AddSeconds(Interlocked.Increment(ref captureSequence))
         };
         await using var controller = await ProducerSubscriptionRestartHost<CpuTopologySnapshotProvider>
-            .StartAsync(fixture.Reader, static producer => producer.ExecuteTask, backend);
+            .StartAsync(fixture.Reader, static producer => producer.ExecuteTask,
+                BlockUids.CpuTopologySnapshotProvider, StateItemUids.SamplingCpuTopologyInUse,
+                () => fixture.Owner.Activity.HasInUseSubscriptions(CpuTopologySnapshotProvider.SamplingRoleId), backend);
         var firstRun = await controller.FirstRun;
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(
             () => firstRun.WaitAsync(Deadline));
@@ -66,7 +69,9 @@ public sealed class HostCpuPeriodicSubscriptionTests
             .GetAsyncEnumerator(timeout.Token);
         var pending = stream.MoveNextAsync().AsTask();
         await using var controller = await ProducerSubscriptionRestartHost<EtwCpuCoreResidencyReader>
-            .StartAsync(reader, static producer => producer.ExecuteTask, backend);
+            .StartAsync(reader, static producer => producer.ExecuteTask,
+                BlockUids.EtwCpuCoreResidencyReader, StateItemUids.SamplingCpuResidencyInUse,
+                () => sampling.Owner.Activity.HasInUseSubscriptions(6), backend);
         var firstRun = await controller.FirstRun;
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(
             () => firstRun.WaitAsync(Deadline));

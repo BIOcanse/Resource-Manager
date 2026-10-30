@@ -1,5 +1,6 @@
 using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Application.ProcessAttribution;
@@ -38,6 +39,13 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
     private IKernelEtwSubscription? processSubscription;
     private CancellationTokenSource? workerCts;
     private Task? workerTask;
+    internal Task? ExecutionTask => workerTask;
+    private Exception? handledCatalogFailure;
+    private Exception? workerCleanupFailure;
+    internal bool CatalogFailureHandled => Volatile.Read(ref handledCatalogFailure) is { } failure
+        && Volatile.Read(ref workerCleanupFailure) is null
+        && workerTask is { IsFaulted: true } task
+        && task.Exception!.InnerExceptions.Any(error => ReferenceEquals(error, failure));
     private int disposed;
     private KernelEtwSessionSnapshot? inventorySnapshot;
 
@@ -80,6 +88,8 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         if (workerTask is { IsCompleted: false })
             throw new InvalidOperationException("The preceding portable discovery run has not drained.");
         workerCts?.Dispose();
+        Volatile.Write(ref handledCatalogFailure, null);
+        Volatile.Write(ref workerCleanupFailure, null);
         var runStarts = processStarts = CreateProcessStarts();
         workerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var workerToken = workerCts.Token;
@@ -145,6 +155,9 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             {
                 try { await task.WaitAsync(cancellationToken); }
                 catch (OperationCanceledException) when (task.IsCompleted) { }
+                // The run result remains on ExecutionTask for its supervisor.
+                // Joining the worker is cleanup, not a second report of that result.
+                catch (Exception) when (task.IsFaulted) { }
                 finally
                 {
                     if (task.IsCompleted && ReferenceEquals(workerCts, cts))
@@ -155,6 +168,8 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 }
             }
         }
+        if (cts is not null && Volatile.Read(ref workerCleanupFailure) is { } cleanupFailure)
+            ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
     }
 
     public async Task ScanRunningProcessesAsync(CancellationToken cancellationToken)
@@ -184,6 +199,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
 
     private async Task RunWorkerAsync(Channel<PortableProcessCandidate> runStarts, CancellationToken cancellationToken)
     {
+        Exception? runFailure = null;
         try
         {
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
@@ -206,7 +222,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                     continue;
                 }
                 nextCandidate = runStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
-                using var catalog = await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken);
+                using var catalog = await AcquireWorkerCatalogAsync(cancellationToken);
                 await ObserveCandidateAsync(candidate, catalog.Catalog.Pipeline, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -215,14 +231,36 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         }
         catch (Exception ex)
         {
+            runFailure = ex;
             blockDiagnostics?.ReportFailure(BlockUids.PortableSoftwareDiscoveryService, ex, "portable-discovery-loop");
-            logger.LogError(ex, "Portable software process discovery worker stopped unexpectedly; discovery is unavailable for this service lifetime.");
+            logger.LogError(ex, "Portable software process discovery worker stopped unexpectedly.");
+            throw;
         }
         finally
         {
             // Process events are used only while this worker can consume them.
             // A failed or cancelled run releases its own hold even before StopAsync.
-            Interlocked.Exchange(ref processSubscription, null)?.Dispose();
+            try { Interlocked.Exchange(ref processSubscription, null)?.Dispose(); }
+            catch (Exception error)
+            {
+                Volatile.Write(ref workerCleanupFailure, error);
+                // A release failure has its own cleanup channel. It must not
+                // replace the original business failure observed by the parent.
+                if (runFailure is null) throw;
+            }
+        }
+    }
+
+    private async Task<RuntimeProcessAttributionCatalogLease> AcquireWorkerCatalogAsync(CancellationToken cancellationToken)
+    {
+        try { return await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        {
+            // Only the resource that failed is told about its failure. A broker,
+            // candidate or registry error cannot declare the catalog unavailable.
+            if (attributionCatalogProvider.ReportFailure(error)) Volatile.Write(ref handledCatalogFailure, error);
+            throw;
         }
     }
 

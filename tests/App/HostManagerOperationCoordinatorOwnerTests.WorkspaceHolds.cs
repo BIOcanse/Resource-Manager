@@ -314,8 +314,17 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
     private static async Task HoldWorkspaceForManualWorkersAsync(HostManagerOperationCoordinatorOwner owner)
     {
         var hold = await AcquireTestWorkspaceAsync(owner);
+        var cancellation = new CancellationTokenSource();
+        var lifetime = Task.Delay(Timeout.InfiniteTimeSpan, cancellation.Token);
+        var workspaceRun = (Task)typeof(HostManagerOperationCoordinatorOwner)
+            .GetMethod("ReleaseRunWorkspaceAsync", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [hold, lifetime])!;
         typeof(HostManagerOperationCoordinatorOwner)
-            .GetField("runWorkspaceHold", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, hold);
+            .GetField("workerCancellation", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, cancellation);
+        typeof(HostManagerOperationCoordinatorOwner)
+            .GetField("executionTask", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, lifetime);
+        typeof(HostManagerOperationCoordinatorOwner)
+            .GetField("workspaceRunTask", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, workspaceRun);
     }
 
     private sealed partial class Fixture

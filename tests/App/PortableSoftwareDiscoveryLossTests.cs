@@ -244,15 +244,18 @@ public sealed class PortableSoftwareDiscoveryLossTests
         using var service = new PortableSoftwareDiscoveryService(new Broker(), new CatalogProvider(catalog),
             new MatchingCatalog(), null!, logger, () => [new(Environment.ProcessId)]);
         await service.StartAsync(CancellationToken.None);
-        await Worker(service).WaitAsync(TimeSpan.FromSeconds(10));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => Worker(service).WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.Single(logger.Errors);
-        Assert.Contains("unavailable for this service lifetime", logger.Errors.Single());
+        Assert.Contains("worker stopped unexpectedly", logger.Errors.Single());
         Assert.Empty(logger.Warnings);
-        await service.StopAsync(CancellationToken.None);
+        var worker = service.ExecutionTask;
+        await service.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Same(worker, service.ExecutionTask);
+        Assert.True(worker!.IsFaulted);
     }
 
     [Fact]
-    public async Task TerminalWorkerFailureIsReportedWhileLegacyTaskCompletesSuccessfully()
+    public async Task TerminalWorkerFailureIsReportedAndFaultsItsExecutionTask()
     {
         var error = new InvalidOperationException("terminal catalog fixture");
         var diagnostics = new RecordingBlockDiagnostics();
@@ -269,17 +272,21 @@ public sealed class PortableSoftwareDiscoveryLossTests
             diagnostics);
 
         await service.StartAsync(CancellationToken.None);
+        var worker = service.ExecutionTask!;
         var reported = await diagnostics.FailureObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Worker(service).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Same(error, await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Worker(service).WaitAsync(TimeSpan.FromSeconds(5))));
         // The worker has returned: no process event consumer remains, even
         // though the hosted service has not yet received its StopAsync call.
         Assert.Equal(1, broker.ReleaseCount);
-        await service.StopAsync(CancellationToken.None);
+        await service.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Same(worker, service.ExecutionTask);
+        Assert.Same(error, await Assert.ThrowsAsync<InvalidOperationException>(() => worker));
 
         Assert.Equal(BackendUids.PortableSoftwareDiscoveryService, reported.BlockId);
         Assert.Same(error, reported.Error);
         Assert.Equal("portable-discovery-loop", reported.Operation);
-        Assert.True(Worker(service).IsCompletedSuccessfully);
+        Assert.True(Worker(service).IsFaulted);
         Assert.Single(logger.Errors);
         Assert.Contains("worker stopped unexpectedly", logger.Errors.Single());
         Assert.Equal(1, broker.ReleaseCount);
@@ -359,9 +366,40 @@ public sealed class PortableSoftwareDiscoveryLossTests
             => throw new ObjectDisposedException("NativeSoftwareIdentityResolutionSession");
     }
 
-    private sealed class FailingCatalogProvider(Exception error) : IRuntimeProcessAttributionCatalogProvider
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ResourceFailureGateAppliesOnlyToTheOriginalCatalogException(bool cleanupFails)
+    {
+        var original = new IOException("catalog acquisition fixture");
+        var broker = new Broker { FailRelease = cleanupFails };
+        using var service = new PortableSoftwareDiscoveryService(broker,
+            new FailingCatalogProvider(original, resourceFailureHandled: true),
+            new MatchingCatalog(), new RecordingRegistry(), new RecordingLogger(),
+            () => [new(Environment.ProcessId, 1)], ReadFixtureIdentity);
+        await service.StartAsync(default);
+        var worker = service.ExecutionTask!;
+        var actual = await Assert.ThrowsAsync<IOException>(() => worker.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Same(original, actual);
+        Assert.Equal(!cleanupFails, service.CatalogFailureHandled);
+        if (cleanupFails)
+        {
+            var cleanup = await Assert.ThrowsAsync<IOException>(() => service.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.NotSame(original, cleanup);
+            Assert.Equal("release fixture", cleanup.Message);
+        }
+        else await service.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(!cleanupFails, service.CatalogFailureHandled);
+        Assert.Same(worker, service.ExecutionTask);
+        Assert.Same(original, await Assert.ThrowsAsync<IOException>(() => worker));
+        Assert.Equal(1, broker.ReleaseCount);
+        await service.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    private sealed class FailingCatalogProvider(Exception error, bool resourceFailureHandled = false) : IRuntimeProcessAttributionCatalogProvider
     {
         public long SoftwareSnapshotGeneration => 0;
+        public bool ReportFailure(Exception failure) => resourceFailureHandled && ReferenceEquals(error, failure);
 
         public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(
             string? windowsSid,
@@ -504,6 +542,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
 
         await Assert.ThrowsAsync<IOException>(() => service.StopAsync(timeout.Token));
 
+        Assert.False(service.CatalogFailureHandled);
         Assert.True(((Task)typeof(PortableSoftwareDiscoveryService)
             .GetField("workerTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!).IsCompleted);
         Assert.Equal(1, broker.ReleaseCount);

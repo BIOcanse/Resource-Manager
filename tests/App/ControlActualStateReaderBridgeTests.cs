@@ -38,7 +38,8 @@ public sealed partial class ControlActualStateReaderTests
             { [BlockUids.FanControlCoreLifetimeService] = new FanLifetimeBlock(new FanControlCoreLifetimeService(fan)) });
         await fixture.InitializeHostPermitsAsync();
         using var services = new ServiceCollection().AddSingleton(new RuntimePlanProvider(new HostManagerDeploymentState()))
-            .AddSingleton(reader).AddSingleton(fan).BuildServiceProvider();
+            .AddSingleton(reader).AddSingleton(fan).AddSingleton(new HostedRunResultFacts(fixture.Authority, fixture.Native))
+            .BuildServiceProvider();
         await using var bindings = new BackendDecisionStateBindings(services, NullLogger<BackendDecisionStateBindings>.Instance);
         await bindings.InitializeAsync(fixture.Authority, default);
         Assert.False(bridge.Owner.ReadingsInUse);

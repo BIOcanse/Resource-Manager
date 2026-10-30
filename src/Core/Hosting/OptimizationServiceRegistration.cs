@@ -72,7 +72,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         });
         services.AddSingleton<JsonDebugDiagnosticLogWriter>();
         services.AddSingleton<IDebugDiagnosticLogWriter>(static provider => provider.GetRequiredService<JsonDebugDiagnosticLogWriter>());
-        services.AddHostedServiceAlias<JsonDebugDiagnosticLogWriter>(BlockUids.JsonDebugDiagnosticLogWriter);
+        services.AddHostedServiceAlias<JsonDebugDiagnosticLogWriter>(BlockUids.JsonDebugDiagnosticLogWriter, static service => service.ExecuteTask, forwardRunFailureToHost: false);
         services.AddSingleton<NativeReportCoordinatorPersistenceStore>();
         services.AddSingleton<INativeReportCoordinatorPersistenceStore>(static provider =>
             provider.GetRequiredService<NativeReportCoordinatorPersistenceStore>());
@@ -97,7 +97,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IOptimizationSoftwareIssueSignalSource>(static provider =>
             provider.GetRequiredService<HostManagerReportCoordinatorOwner>());
         services.AddSingleton<ISoftwareIssueSource, OptimizationReportSoftwareIssueSource>();
-        services.AddHostedServiceAlias<HostManagerReportCoordinatorOwner>(BlockUids.HostManagerReportCoordinatorOwner);
+        services.AddHostedServiceAlias<HostManagerReportCoordinatorOwner>(BlockUids.HostManagerReportCoordinatorOwner, static service => service.ExecuteTask, forwardRunFailureToHost: false);
 
         services.AddSingleton<IAutomaticMemoryCleanupPlanner, NativeAutomaticMemoryCleanupPlanner>();
         services.AddSingleton<IWindowsJobMembershipProbe, WindowsJobMembershipProbe>();
@@ -128,7 +128,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<HostManagerSmartCoordinator>());
         if (startHostedService)
         {
-            services.AddHostedServiceAlias<HostManagerSmartCoordinator>(BlockUids.HostManagerSmartCoordinator);
+            services.AddHostedServiceAlias<HostManagerSmartCoordinator>(BlockUids.HostManagerSmartCoordinator, static service => service.ExecuteTask, forwardRunFailureToHost: false);
         }
         return services;
     }

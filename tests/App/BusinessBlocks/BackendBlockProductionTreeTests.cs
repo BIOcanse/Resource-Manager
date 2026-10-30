@@ -171,7 +171,8 @@ public sealed class BackendBlockProductionTreeTests
         {
             foreach (var key in preciseFacts.Keys.Where(key => key.ItemUid != BackendItems.HostStartPermitted
                 && key.ItemUid != BackendItems.GraphicsApiObservationInUse && key.ItemUid != BackendItems.ProcessDedicatedGpuMemoryInUse
-                && key.ItemUid != BackendItems.VramResidualInUse)) await preciseFacts[key].PublishAsync(true, reason);
+                && key.ItemUid != BackendItems.VramResidualInUse))
+                await preciseFacts[key].PublishAsync(key.ItemUid != BackendItems.HostedRunEnded, reason);
             await BusinessBlockTestSupport.Until(() => hostedBlocks.All(id => scheduler.ReadState(id) == BusinessBlockState.Running));
             Assert.True(hostedBlocks.ToHashSet().SetEquals(scheduler.Read().History.Where(row => row.To == BusinessBlockState.Starting).Select(row => row.BlockId)));
             Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(BackendUids.NativeEtwLifetimeService));

@@ -212,6 +212,7 @@ public sealed class JsonDebugDiagnosticLogWriter(
         {
             blockDiagnostics?.ReportFailure(BlockUids.JsonDebugDiagnosticLogWriter, ex, "diagnostic-writer-loop");
             logger.LogDebug(ex, "Debug diagnostic log writer stopped unexpectedly.");
+            throw;
         }
     }
 

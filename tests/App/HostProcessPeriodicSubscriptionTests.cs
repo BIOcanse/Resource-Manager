@@ -8,6 +8,7 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.ReadWrite;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.StateItems;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.ProcessFields;
 using ResourceManager.ReadWrite.Windows.Processes;
@@ -37,7 +38,9 @@ public sealed class HostProcessPeriodicSubscriptionTests
             TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token);
         var pendingSnapshot = snapshots.MoveNextAsync().AsTask();
         await using var controller = await ProducerSubscriptionRestartHost<WindowsResourceBreakdownSampler>
-            .StartAsync(fixture.Sampler, static producer => producer.CaptureSamplingWorkerTask(), backend);
+            .StartAsync(fixture.Sampler, static producer => producer.CaptureSamplingWorkerTask(),
+                BlockUids.WindowsResourceBreakdownSampler, StateItemUids.SamplingResourceBreakdownInUse,
+                () => fixture.SamplingOwner.Activity.HasInUseSubscriptions(3), backend);
         var firstRun = await controller.FirstRun;
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(
             () => firstRun.WaitAsync(timeout.Token));

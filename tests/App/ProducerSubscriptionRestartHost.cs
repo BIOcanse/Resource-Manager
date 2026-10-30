@@ -19,18 +19,22 @@ internal sealed class ProducerSubscriptionRestartHost<TService> : IAsyncDisposab
     private readonly IHost host;
     private readonly FailureLogger log;
     private readonly BusinessBlockScheduler scheduler;
+    private readonly int producerUid;
+    private readonly int demandUid;
     private int runs;
 
     private ProducerSubscriptionRestartHost(TService producer, Func<TService, Task?> execution,
-        Action allowRecordedReads)
+        int producerUid, int demandUid, Action allowRecordedReads)
     {
+        this.producerUid = producerUid;
+        this.demandUid = demandUid;
         log = new(allowRecordedReads);
         host = Host.CreateDefaultBuilder().ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
                 services.AddSingleton(producer);
                 services.AddSingleton<ILogger<BusinessBlockDiagnosticsRegistry>>(log);
-                services.AddHostedServiceAlias<TService>(BackendUids.ControlActualStateReader, service =>
+                services.AddHostedServiceAlias<TService>(producerUid, service =>
                 {
                     var task = execution(service) ?? throw new InvalidOperationException("The actual producer has no execution task.");
                     if (Interlocked.Increment(ref runs) == 1) firstRun.TrySetResult(task);
@@ -41,23 +45,29 @@ internal sealed class ProducerSubscriptionRestartHost<TService> : IAsyncDisposab
             }).Build();
         scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
         log.ReadResult = () => host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>()
-            .Read(BackendUids.ControlActualStateReader).Result;
+            .Read(producerUid).Result;
     }
 
     internal Task<Task> FirstRun => firstRun.Task.WaitAsync(Deadline);
 
     internal static Task<ProducerSubscriptionRestartHost<TService>> StartAsync(TService producer,
-        Func<TService, Task?> execution, ProducerSubscriptionCurrentBackend backend)
-        => StartAsync(producer, execution, backend.AllowReads);
+        Func<TService, Task?> execution, int producerUid, int demandUid, Func<bool> readDemand,
+        ProducerSubscriptionCurrentBackend backend)
+        => StartAsync(producer, execution, producerUid, demandUid, readDemand, backend.AllowReads);
 
     internal static async Task<ProducerSubscriptionRestartHost<TService>> StartAsync(TService producer,
-        Func<TService, Task?> execution, Action allowRecordedReads)
+        Func<TService, Task?> execution, int producerUid, int demandUid, Func<bool> readDemand,
+        Action allowRecordedReads)
     {
-        var fixture = new ProducerSubscriptionRestartHost<TService>(producer, execution, allowRecordedReads);
+        var fixture = new ProducerSubscriptionRestartHost<TService>(producer, execution,
+            producerUid, demandUid, allowRecordedReads);
         try
         {
-            await fixture.scheduler.Authority.ClaimCell<bool>(BackendItems.ActualControlValuesInUse)
-                .PublishAsync(true, new(BusinessBlockRequestKind.User, "producer-subscription-test", "consumer-held", 0));
+            // These tests hold their subscriptions for the whole host turn. Read
+            // that original demand through the producer's production decision fact.
+            await fixture.scheduler.Authority.ClaimReadFunction<bool>(demandUid,
+                    () => StateRead<bool>.FromValue(readDemand()))
+                .NotifyChangedAsync(new(BusinessBlockRequestKind.User, "producer-subscription-test", "consumer-held", 0));
             await fixture.host.StartAsync().WaitAsync(Deadline);
             return fixture;
         }
@@ -72,10 +82,10 @@ internal sealed class ProducerSubscriptionRestartHost<TService> : IAsyncDisposab
         var next = await secondRun.Task.WaitAsync(Deadline);
         Assert.NotSame(await FirstRun, next);
         using var timeout = new CancellationTokenSource(Deadline);
-        while (scheduler.ReadState(BackendUids.ControlActualStateReader) != BusinessBlockState.Running)
+        while (scheduler.ReadState(producerUid) != BusinessBlockState.Running)
             await Task.Delay(1, timeout.Token);
         Assert.False(next.IsCompleted);
-        Assert.True(scheduler.Authority.Read<bool>(BackendItems.ActualControlValuesInUse).Value);
+        Assert.True(scheduler.Authority.Read<bool>(demandUid).Value);
         Assert.False(host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
     }
 

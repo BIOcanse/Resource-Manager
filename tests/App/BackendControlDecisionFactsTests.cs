@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Infrastructure.Control;
+using ResourceManager.App.Hosting;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.StateItems;
@@ -29,8 +30,12 @@ public sealed class BackendControlDecisionFactsTests
     {
         var plans = new RuntimePlanProvider(new HostManagerDeploymentState());
         using var reader = new ControlActualStateReader(new Catalog(), []);
-        using var services = new ServiceCollection().AddSingleton(plans).AddSingleton(reader).BuildServiceProvider();
-        var authority = new StateAuthority(StateRegistry.Items, StateRegistry.Blocks);
+        await using var native = NativeBackendBlockTestSupport.CreateControl(BackendExpectedProductionTree.Parents(1).Keys
+            .Select(id => new BusinessBlockRegistration(id,
+                _ => throw new InvalidOperationException("This binding fixture never starts a block."))));
+        var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
+        using var services = new ServiceCollection().AddSingleton(plans).AddSingleton(reader)
+            .AddSingleton(native).AddSingleton(authority).AddSingleton<HostedRunResultFacts>().BuildServiceProvider();
         var bindings = new BackendDecisionStateBindings(services, NullLogger<BackendDecisionStateBindings>.Instance);
         try
         {

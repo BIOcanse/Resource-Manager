@@ -2,7 +2,7 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 
 /// <summary>Shares concrete hosted wrappers between block factories and Generic Host adapters.</summary>
 internal sealed class HostedBusinessBlockRegistry(BusinessBlockDiagnosticsRegistry diagnostics,
-    IEnumerable<BusinessBlockRegistration> registrations)
+    IEnumerable<BusinessBlockRegistration> registrations, HostedRunResultFacts? failures = null)
 {
     private readonly Dictionary<int, HostedBusinessBlockExecution> executions = registrations
         .Where(registration => registration.HostedExecution is not null)
@@ -19,7 +19,7 @@ internal sealed class HostedBusinessBlockRegistry(BusinessBlockDiagnosticsRegist
         {
             if (!blocks.TryGetValue(id, out var block))
                 blocks.Add(id, block = new(id, resolve, this, diagnostics,
-                    executions.GetValueOrDefault(id) ?? HostedBusinessBlockExecution.GenericHost));
+                    executions.GetValueOrDefault(id) ?? HostedBusinessBlockExecution.EntryExitOrBackground, failures));
             return block;
         }
     }

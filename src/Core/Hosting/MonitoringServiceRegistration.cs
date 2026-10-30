@@ -197,11 +197,11 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 风扇由后端内的风扇控制核心处理，按控制通道分类而不按品牌；
         // 而且自带一条规矩：退出时把风扇交还固件。
         services.AddSingleton<FanControlCoreClient>();
-        services.AddBusinessBlockHostedService<FanControlCoreLifetimeService>(BlockUids.FanControlCoreLifetimeService);
+        services.AddBusinessBlockLifetime<FanControlCoreLifetimeService>(BlockUids.FanControlCoreLifetimeService);
         // Host starts aliases serially. The feed can become ready only after its parent core runs;
         // reverse host shutdown also gives the feed its stop turn before the core waits for it.
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
-            services.AddHostedServiceAlias<FanCurveTemperatureFeed>(constructService: true);
+            services.AddHostedServiceAlias<FanCurveTemperatureFeed>(static service => service.ExecuteTask, forwardRunFailureToHost: false);
         services.AddSingleton<IControlWriter, FanControlWriter>();
         // 控制对象目录：只读，从已有的监控快照里认对象，不新开采集。
         // 机箱形态读一次就够，所以做成单例 —— 见 WindowsChassisKindReader。
@@ -236,7 +236,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IPortableSoftwareDiscovery>(static provider => provider.GetRequiredService<PortableSoftwareDiscoveryService>());
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         {
-            services.AddHostedServiceAlias<PortableSoftwareDiscoveryService>(BlockUids.PortableSoftwareDiscoveryService);
+            services.AddHostedServiceAlias<PortableSoftwareDiscoveryService>(BlockUids.PortableSoftwareDiscoveryService,
+                static service => service.ExecutionTask, forwardRunFailureToHost: false,
+                resourceFailureHandled: static service => service.CatalogFailureHandled);
         }
         else
         {
@@ -270,7 +272,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<IPhysicalDiskIoAttributionReader>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
-        services.AddHostedServiceAlias<EtwPhysicalDiskIoAttributionReader>(BlockUids.EtwPhysicalDiskIoAttributionReader);
+        services.AddHostedServiceAlias<EtwPhysicalDiskIoAttributionReader>(BlockUids.EtwPhysicalDiskIoAttributionReader, static service => service.ExecuteTask, forwardRunFailureToHost: false);
 
         services.AddSingleton<DxgkrnlVidMmEtwTelemetryZone>();
         services.AddSingleton<PresentFrameEtwSource>();
@@ -284,7 +286,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<EtwNetworkTcpIpAttributionReader>();
         services.AddSingleton<IEtwNetworkAttributionReader>(static provider => provider.GetRequiredService<EtwNetworkTcpIpAttributionReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwNetworkTcpIpAttributionReader>());
-        services.AddHostedServiceAlias<EtwNetworkTcpIpAttributionReader>(BlockUids.EtwNetworkTcpIpAttributionReader);
+        services.AddHostedServiceAlias<EtwNetworkTcpIpAttributionReader>(BlockUids.EtwNetworkTcpIpAttributionReader, static service => service.ExecuteTask, forwardRunFailureToHost: false);
         services.AddSingleton<IpHelperNetworkAttributionReader>();
         services.AddSingleton<INetworkAttributionReader>(static provider => provider.GetRequiredService<IpHelperNetworkAttributionReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<IpHelperNetworkAttributionReader>());

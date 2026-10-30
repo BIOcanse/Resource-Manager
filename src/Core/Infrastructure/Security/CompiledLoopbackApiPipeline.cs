@@ -72,9 +72,9 @@ public static class LoopbackApiPipelineConfigurator
         services.TryAddSingleton<TrustedAccessRequestOwner>();
         services.TryAddSingleton<ITrustedAccessRequestOwner>(provider => provider.GetRequiredService<TrustedAccessRequestOwner>());
         Hosting.NonOwningHostedServiceRegistration.AddHostedServiceAlias<TrustedAccessRequestOwner>(services,
-            BlockUids.TrustedAccessRequestOwner);
+            BlockUids.TrustedAccessRequestOwner, static service => service.ExecutionTask, forwardRunFailureToHost: false);
         services.AddSingleton<ILoopbackApiAdministratorReader, WindowsLoopbackApiAdministratorReader>();
-        Hosting.ResourceManagerServiceCollectionExtensions.AddBusinessBlockHostedService<TrustedAccessInvocationHostedService>(services,
+        Hosting.ResourceManagerServiceCollectionExtensions.AddBusinessBlockWorker<TrustedAccessInvocationHostedService>(services,
             BlockUids.TrustedAccessInvocationHostedService);
     }
 

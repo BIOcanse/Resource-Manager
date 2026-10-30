@@ -9,7 +9,7 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.ProcessAttribution;
 
-public sealed class RuntimeProcessAttributionCatalogProvider(
+public sealed partial class RuntimeProcessAttributionCatalogProvider(
     ISoftwareRegistryView softwareRegistry,
     IAdapterSoftwareRegistry adapterRegistry,
     IControlledSoftwareRegistry controlledRegistry,
@@ -20,7 +20,8 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     ISoftwareIdentityCatalog softwareIdentityCatalog,
     HostManagerSoftwareIdentityOwner softwareIdentityOwner,
     IWindowsGameListSource windowsGameListSource,
-    IManagementInventoryRevisionOwner? inventoryRevisionOwner = null) : IRuntimeProcessAttributionCatalogProvider, IDisposable
+    IManagementInventoryRevisionOwner? inventoryRevisionOwner = null, TimeProvider? clock = null,
+    Microsoft.Extensions.Options.IOptions<RuntimeProcessAttributionCatalogAvailabilityOptions>? availabilityOptions = null) : IRuntimeProcessAttributionCatalogProvider, IDisposable
 {
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private readonly object lifecycleGate = new();
@@ -88,14 +89,17 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
         return result;
     }
 
-    public async Task InvalidateSoftwareSnapshotAsync()
+    public Task InvalidateSoftwareSnapshotAsync() => InvalidateSoftwareSnapshotAsync(CancellationToken.None);
+
+    private async Task InvalidateSoftwareSnapshotAsync(CancellationToken cancellationToken)
     {
-        await refreshGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        await refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             lock (lifecycleGate)
             {
                 ObjectDisposedException.ThrowIf(disposed, this);
+                cancellationToken.ThrowIfCancellationRequested();
                 foreach (var state in scopes.Values)
                 {
                     state.CachedSoftware = null;
@@ -112,6 +116,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
 
     public void Dispose()
     {
+        RuntimeProcessAttributionCatalogAvailability? availabilityToDispose;
         lock (lifecycleGate)
         {
             if (disposed)
@@ -119,8 +124,10 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 return;
             }
             disposed = true;
+            availabilityToDispose = availability;
             scopes.Clear();
         }
+        availabilityToDispose?.Dispose();
     }
 
     [ResourceManager.ReadWrite.RuntimeReadCache]

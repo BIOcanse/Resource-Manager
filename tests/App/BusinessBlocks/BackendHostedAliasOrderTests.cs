@@ -58,6 +58,7 @@ public sealed class BackendHostedAliasOrderTests
                 services.AddSingleton(new NativeEtwSessionAvailability(authority));
                 services.AddSingleton<BusinessBlockDiagnosticsRegistry>();
                 services.AddSingleton<HostedBusinessBlockRegistry>();
+                services.AddSingleton<HostedRunResultFacts>();
                 services.AddSingleton<BackendHostPermitFacts>();
                 services.AddSingleton<BusinessBlockScheduler>(provider =>
                 {
@@ -68,7 +69,14 @@ public sealed class BackendHostedAliasOrderTests
                 services.AddSingleton(core);
                 services.AddSingleton(feed);
                 foreach (var registration in production)
-                    services.AddSingleton(registration with
+                {
+                    var replacement = registration.Id switch
+                    {
+                        BlockUids.FanControlCoreLifetimeService => WithProbe<CoreProbe>(registration, static _ => null),
+                        BlockUids.FanCurveTemperatureFeed => WithProbe<FeedProbe>(registration, static service => service.ExecuteTask),
+                        _ => registration
+                    };
+                    services.AddSingleton(replacement with
                     {
                         Create = provider => registration.Id switch
                         {
@@ -79,6 +87,7 @@ public sealed class BackendHostedAliasOrderTests
                             _ => new BusinessBlockTestSupport.Probe()
                         }
                     });
+                }
                 // Copy the order selected by production, substituting only harmless underlying services.
                 foreach (var alias in fanOrder)
                 {
@@ -90,6 +99,8 @@ public sealed class BackendHostedAliasOrderTests
                 }
             }).Build();
         Task? stopping = null;
+        Exception? bodyFailure = null;
+        var phase = "host-start";
         try
         {
             var options = host.Services.GetRequiredService<IOptions<HostOptions>>().Value;
@@ -108,16 +119,19 @@ public sealed class BackendHostedAliasOrderTests
                 BusinessBlockTestSupport.Reason());
             using var startupLimit = new CancellationTokenSource(BusinessBlockTestSupport.TestTimeout);
             await host.StartAsync(startupLimit.Token).WaitAsync(BusinessBlockTestSupport.TestTimeout);
+            phase = "fan-pair-started";
             await Task.WhenAll(core.Started.Task, feed.Started.Task).WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(BlockUids.FanControlCoreLifetimeService));
             Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(BlockUids.FanCurveTemperatureFeed));
             stopping = host.StopAsync();
+            phase = "feed-stop-notified";
             await feed.StopNotified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.False(stopping.IsCompleted);
             Assert.False(feed.Returned.Task.IsCompleted);
             Assert.False(core.StopNotified.Task.IsCompleted);
             Assert.False(core.Returned.Task.IsCompleted);
             feed.ReleaseCleanup.TrySetResult();
+            phase = "host-stopped";
             await stopping.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.True(feed.Returned.Task.IsCompletedSuccessfully);
             Assert.True(core.Returned.Task.IsCompletedSuccessfully);
@@ -128,14 +142,36 @@ public sealed class BackendHostedAliasOrderTests
                 && row.To == BusinessBlockState.Stopping).Sequence;
             Assert.True(feedStopped < coreStopping, "FanCurveTemperatureFeed must return before FanControlCoreLifetimeService receives stop.");
         }
+        catch (Exception error)
+        {
+            var feedPermit = authority.Read<bool>(new(StateItemUids.HostStartPermitted, BlockUids.FanCurveTemperatureFeed));
+            var feedEnded = authority.Read<bool>(new(StateItemUids.HostedRunEnded, BlockUids.FanCurveTemperatureFeed));
+            bodyFailure = new InvalidOperationException($"Fan pair failed during {phase}; core started={core.Started.Task.IsCompleted}, feed started={feed.Started.Task.IsCompleted}, feed notified={feed.StopNotified.Task.IsCompleted}, core notified={core.StopNotified.Task.IsCompleted}; feed permit={feedPermit.GetValueOrDefault(false)}, feed ended={feedEnded.GetValueOrDefault(false)}.", error);
+            throw bodyFailure;
+        }
         finally
         {
             feed.ReleaseCleanup.TrySetResult();
             using var shutdownLimit = new CancellationTokenSource(BusinessBlockTestSupport.TestTimeout);
-            await (stopping ?? host.StopAsync(shutdownLimit.Token)).WaitAsync(BusinessBlockTestSupport.TestTimeout);
+            try { await (stopping ?? host.StopAsync(shutdownLimit.Token)).WaitAsync(BusinessBlockTestSupport.TestTimeout); }
+            catch (Exception cleanupFailure) when (bodyFailure is not null)
+            {
+                throw new AggregateException("Fan pair body and host cleanup both failed.", bodyFailure, cleanupFailure);
+            }
             await ((IAsyncDisposable)host).DisposeAsync();
         }
     }
+
+    private static BusinessBlockRegistration WithProbe<TService>(BusinessBlockRegistration registration,
+        Func<TService, Task?> execution) where TService : class, IHostedService
+        => registration with
+        {
+            HostedServiceType = typeof(TService),
+            HostedExecution = registration.HostedExecution! with
+            {
+                ReadTask = service => execution((TService)service)
+            }
+        };
 
     private static ServiceCollection ProductionServices(uint profile)
     {
