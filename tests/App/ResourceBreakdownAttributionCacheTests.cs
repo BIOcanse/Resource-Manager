@@ -73,7 +73,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
         var reads = 0;
         var services = new WindowsServiceIdentityResolver(() => { reads++; return entries; }, _ => 100, clock);
         using var provider = Provider(service: services, system: new WindowsSystemProcessClassifier());
-        var cache = new Cache();
+        using var cache = new Cache();
         var process = Child with { Name = "svchost", ExecutablePath = @"C:\Windows\System32\svchost.exe" };
         var first = await Capture(provider, cache, process);
         Assert.Equal("windows-service:svca", first.Id);
@@ -112,7 +112,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
         long? birth = 100;
         var services = new WindowsServiceIdentityResolver(() => entries, _ => birth, clock);
         using var provider = Provider(service: services);
-        var cache = new Cache();
+        using var cache = new Cache();
         Assert.Equal(RuntimeAttributionIds.Unattributed, (await Capture(provider, cache, Child)).Id);
         entries = [Service("SvcA", "A")];
         clock.Advance();
@@ -133,7 +133,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
     public async Task CommandLineAndAncestryRecoveryClearsTheOlderDirectMatch()
     {
         using var provider = Provider(root: new WindowsRuntimeRootIdentityResolver());
-        var cache = new Cache();
+        using var cache = new Cache();
         cache.Prepare(Child);
         Assert.Equal("runtime-root:d-tools-child", (await Capture(provider, cache, Child)).Id);
         Assert.NotNull(cache.Entry(Child).DirectMatch);
@@ -172,7 +172,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
     {
         _ = field;
         using var provider = Provider();
-        var cache = new Cache();
+        using var cache = new Cache();
         await Capture(provider, cache, Child);
         cache.Prepare(changed);
         Assert.Null(cache.Entry(changed).DirectMatch);
@@ -194,7 +194,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
             service: source == "service" ? mutable : null,
             root: source.StartsWith("root", StringComparison.Ordinal) ? mutable : null,
             system: source == "system" ? mutable : null);
-        var cache = new Cache();
+        using var cache = new Cache();
         var process = source == "root-app-data"
             ? Child with { ExecutablePath = @"C:\Users\Fixture\AppData\Local\Product\child.exe" }
             : Child;
@@ -230,7 +230,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
     {
         var mutable = new MutableResolver();
         using var provider = Provider(package: mutable);
-        var cache = new Cache();
+        using var cache = new Cache();
         await Capture(provider, cache, Child);
         mutable.Throw = true;
         var result = await RuntimeProcessAttributionCapture.CaptureAsync(provider, [Child], Scores, default,
@@ -246,7 +246,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
         IReadOnlyList<WindowsServiceRecord> entries = [Service("SvcA", "A")];
         var services = new WindowsServiceIdentityResolver(() => entries, _ => 100, clock);
         using var provider = Provider(service: services);
-        var cache = new Cache();
+        using var cache = new Cache();
         var result = await RuntimeProcessAttributionCapture.CaptureAsync(provider, [Child], Scores, default,
             cache.Get, (process, scope, catalog, match) =>
             {
@@ -267,7 +267,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
         try
         {
             using var provider = Provider(root: new WindowsRuntimeRootIdentityResolver());
-            var cache = new Cache();
+            using var cache = new Cache();
             var process = Child with { ExecutablePath = "%" + variable + @"%\child.exe" };
             Environment.SetEnvironmentVariable(variable, @"D:\Tools\First");
             Assert.Equal("runtime-root:d-tools-first", (await Capture(provider, cache, process)).Id);
@@ -289,7 +289,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
         var reads = 0;
         var services = new WindowsServiceIdentityResolver(() => { reads++; return [Service("SvcA", "A")]; }, _ => 100, clock);
         using var provider = Provider(service: services);
-        var cache = new Cache();
+        using var cache = new Cache();
         var first = await Capture(provider, cache, Child);
         var inputs = cache.Entry(Child).DirectMatch!.Value.ExternalInputs;
         clock.Advance();
@@ -321,7 +321,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
         var services = new WindowsServiceIdentityResolver(() => entries, _ => 100, clock);
         var package = new CallbackPackageResolver(() => { entries = [Service("SvcB", "B")]; clock.Advance(); });
         using var provider = Provider(package: package, service: services);
-        var cache = new Cache();
+        using var cache = new Cache();
         Assert.Equal("windows-service:svca", (await Capture(provider, cache, Child)).Id);
         Assert.Equal("windows-service:svca", cache.Entry(Child).DirectMatch!.Value.ExternalInputs!.Service.Attribution!.Id);
         Assert.Equal("windows-service:svcb", (await Capture(provider, cache, Child)).Id);
@@ -342,16 +342,19 @@ public sealed class ResourceBreakdownAttributionCacheTests
     {
         cache.Prepare(process);
         return (await RuntimeProcessAttributionCapture.CaptureAsync(provider, [process], Scores, default,
-            cache.Get, cache.Set, cache.GetFixedInputs)).Batch.SoftwareByProcessId[process.ProcessId];
+            cache.Get, cache.Set, cache.GetFixedInputs, cache.Catalogs)).Batch.SoftwareByProcessId[process.ProcessId];
     }
     private static async Task<RuntimeSoftwareAttribution> Uncached(RuntimeProcessAttributionCatalogProvider provider,
         RuntimeProcessIdentity process)
         => (await RuntimeProcessAttributionCapture.CaptureAsync(provider, [process], Scores, default))
             .Batch.SoftwareByProcessId[process.ProcessId];
 
-    private sealed class Cache
+    // Holds the catalog readers the way the sampling run does, for as long as the test uses the cache.
+    private sealed class Cache : IDisposable
     {
         private readonly ProcessInstanceCache<WindowsResourceBreakdownSampler.CachedProcessAttribution> entries = new();
+        internal Dictionary<string, RuntimeProcessAttributionCatalogLease> Catalogs { get; } = new(StringComparer.Ordinal);
+        public void Dispose() { foreach (var reader in Catalogs.Values) reader.Dispose(); Catalogs.Clear(); }
         internal void Prepare(RuntimeProcessIdentity process) => WindowsResourceBreakdownSampler.CacheRuntimeIdentity(entries, process);
         internal WindowsResourceBreakdownSampler.CachedProcessAttribution Entry(RuntimeProcessIdentity process)
             => entries.TryGet(new(process.ProcessId, process.StartKey!.Value), out var entry) ? entry! : throw new InvalidOperationException();
