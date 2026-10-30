@@ -47,11 +47,16 @@
     <!-- The Web SDK defaults to Server GC. This is a background service, so it uses Workstation GC, and
          ConserveMemory lets the GC compact a fragmented gen2/LOH. Measured on candidate .13 in the tray
          (2026-10-24, .local/wrapup-fixes-20261023/gc-mode-c13): private working set Server 436 MiB,
-         Workstation 376, Workstation + ConserveMemory 5 370. -->
+         Workstation 376, Workstation + ConserveMemory 5 370.
+         Gen0MaxBudget caps the gen0 allocation budget, which the GC otherwise sizes from the L3 cache.
+         Tray state on candidate 0.3.7-beta.20261030.2 (2026-10-30, tray-memory-20261030): live objects
+         28-35 MiB, GC committed 83-123 MiB. It is written to ResourceManager.runtimeconfig.json, where it
+         can be changed or removed; System.GC.Gen0Size is not read from that file. -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="4194304" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.48" />

@@ -12,6 +12,12 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <CopyOutputSymbolsToPublishDirectory Condition="'$(Configuration)' == 'Release'">false</CopyOutputSymbolsToPublishDirectory>
   </PropertyGroup>
+  <!-- Caps the gen0 allocation budget, which the GC otherwise sizes from the L3 cache. Tray state on
+       candidate 0.3.7-beta.20261030.2 (2026-10-30): live objects 1.9 MiB, GC committed 20 MiB. It is written
+       to ResourceManager.NativeUi.runtimeconfig.json, where it can be changed or removed. -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="2097152" />
+  </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
