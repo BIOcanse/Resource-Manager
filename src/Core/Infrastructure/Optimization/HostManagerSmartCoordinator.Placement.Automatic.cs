@@ -91,7 +91,11 @@ public sealed partial class HostManagerSmartCoordinator
             if (gpuPlacementEnabled)
             {
                 processes = await PrepareAutomaticGpuCandidatesAsync(
-                    processes, state.AppliedPlacements, firstUse, cancellationToken);
+                    processes, state.AppliedPlacements, candidates => HostManagerAutomaticPlacementPlanner.PlanGpu(
+                        sample.Hardware, desiredRuntime.RuntimePlan.HardwareScores, candidates,
+                        desiredRuntime.RuntimePlan.GpuPlacement.GlobalPreciseProviderEnabled,
+                        desiredRuntime.HostPlan.HotPublish.PlacementCoordinator.GpuOverflow),
+                    firstUse, cancellationToken);
             }
             var planned = HostManagerAutomaticPlacementPlanner.Plan(
                 topology,

@@ -13,36 +13,64 @@ public sealed partial class HostManagerSmartCoordinator
     private async Task<IReadOnlyList<HostManagerAutomaticPlacementProcess>> PrepareAutomaticGpuCandidatesAsync(
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
         IReadOnlyList<HostManagerAppliedPlacementReceipt> placements,
+        Func<IReadOnlyList<HostManagerAutomaticPlacementProcess>, IReadOnlyList<HostManagerAutomaticGpuPlacement>> planGpu,
         List<HostManagerAutomaticGpuPlacement>? firstUse, CancellationToken token)
     {
-        using var preparationReads = runningGpuPlacementActions.CreatePreparationReadCycle();
-        var result = new List<HostManagerAutomaticPlacementProcess>(processes.Count);
+        // observed[i] != 0 marks a process whose route may be read; ready[i] is null until read this cycle.
+        var observed = new ulong[processes.Count];
+        var ready = new bool?[processes.Count];
+        for (var index = 0; index < processes.Count; index++)
+        {
+            var process = processes[index];
+            if (!process.CanMigrateGpu || !WantsGpuShim(process) || process.CanonicalGpuScores.Count == 0) continue;
+            observed[index] = process.ObservedGpuUsagePercent.Keys.Concat(process.ObservedDedicatedMemoryBytes.Keys)
+                .Distinct().Where(key => key != 0)
+                .OrderByDescending(key => process.ObservedGpuUsagePercent.GetValueOrDefault(key))
+                .ThenByDescending(key => process.ObservedDedicatedMemoryBytes.GetValueOrDefault(key)).FirstOrDefault();
+        }
+        // A route is read only when this cycle's plan consumes it: a move, or a stay that decides an existing
+        // GPU receipt (CreateAutomaticPlacementDesiredAsync drops other stays before any preparation).
+        var held = GpuActionFacts.PlacementEffects(placements)
+            .Select(static placement => HostManagerPlacementReceiptKey.Create(placement)).ToHashSet();
+        var eligible = observed.Count(static key => key != 0);
+        IRunningGpuPlacementPreparationCycle? preparationReads = null;
         var unidentified = new List<HostManagerAutomaticGpuPlacement>();
         var attempted = 0;
-        foreach (var process in processes)
+        var passes = 0;
+        try
         {
-            token.ThrowIfCancellationRequested();
-            var ready = false;
-            if (process.CanMigrateGpu && WantsGpuShim(process) && process.CanonicalGpuScores.Count != 0)
+            // Unread routes count as ready; a rejection re-plans without it. Every continuing pass reads a new route.
+            while (eligible != 0 && passes <= eligible)
             {
-                var observed = process.ObservedGpuUsagePercent.Keys.Concat(process.ObservedDedicatedMemoryBytes.Keys)
-                    .Distinct().Where(key => key != 0)
-                    .OrderByDescending(key => process.ObservedGpuUsagePercent.GetValueOrDefault(key))
-                    .ThenByDescending(key => process.ObservedDedicatedMemoryBytes.GetValueOrDefault(key)).FirstOrDefault();
-                if (observed != 0)
+                passes++;
+                var candidates = processes.Select((process, index) => process with
+                    { CanMigrateGpu = observed[index] != 0 && ready[index] != false }).ToArray();
+                var consumed = planGpu(candidates)
+                    .Where(intent => intent.TargetAdapterKey != intent.ObservedAdapterKey
+                        || held.Contains(HostManagerPlacementReceiptKey.Create(OptimizationResourceKinds.Gpu, intent.Process.TargetId)))
+                    .Select(static intent => intent.Process.ProcessId).ToHashSet();
+                var reads = Enumerable.Range(0, processes.Count)
+                    .Where(index => observed[index] != 0 && ready[index] is null && consumed.Contains(processes[index].ProcessId))
+                    .ToArray();
+                if (reads.Length == 0) break;
+                preparationReads ??= runningGpuPlacementActions.CreatePreparationReadCycle();
+                foreach (var index in reads)
                 {
+                    token.ThrowIfCancellationRequested();
+                    var process = processes[index];
+                    ready[index] = false;
                     // This is only route preparation against the current adapter, never a move request.
                     var probe = new HostManagerAutomaticGpuPlacement(process, process.CanonicalGpuScores.Values.Max(),
-                        false, observed, "api-identification") { ObservedAdapterKey = observed };
+                        false, observed[index], "api-identification") { ObservedAdapterKey = observed[index] };
                     try
                     {
                         attempted++;
                         var preparation = await preparationReads.PrepareAsync(CreateAutomaticGpuActionRequest(probe), token);
-                        ready = preparation.Plan is not null;
-                        if (!ready)
+                        ready[index] = preparation.Plan is not null;
+                        if (ready[index] != true)
                             logger.LogDebug("GPU route preparation rejected process {ProcessId}: {Reason}",
                                 process.ProcessId, preparation.Message);
-                        if (!ready && preparation.ApiObservationProcesses.Any(identity => identity.ProcessId == process.ProcessId
+                        if (ready[index] != true && preparation.ApiObservationProcesses.Any(identity => identity.ProcessId == process.ProcessId
                             && identity.ProcessStartKey == process.ProcessStartKey)) unidentified.Add(probe);
                     }
                     catch (Exception error) when (error is System.ComponentModel.Win32Exception
@@ -51,11 +79,17 @@ public sealed partial class HostManagerSmartCoordinator
                         logger.LogDebug(error, "Cannot read GPU route for process {ProcessId}; continuing route inspection.", process.ProcessId);
                     }
                 }
+                if (reads.All(index => ready[index] == true)) break;
             }
-            result.Add(process with { CanMigrateGpu = ready });
         }
-        logger.LogDebug("GPU preflight inspected {ProcessCount} process facts: {Attempted} route preparations, {Qualified} qualified routes.",
-            processes.Count, attempted, result.Count(static process => process.CanMigrateGpu));
+        finally
+        {
+            preparationReads?.Dispose();
+        }
+        var result = processes.Select((process, index) => process with { CanMigrateGpu = ready[index] == true }).ToArray();
+        logger.LogDebug("GPU preflight inspected {ProcessCount} process facts: {Eligible} eligible routes, {Attempted} route preparations in {Passes} plan passes, {Qualified} qualified routes, {Unread} routes not read because this cycle's plan does not consume them.",
+            processes.Count, eligible, attempted, passes, result.Count(static process => process.CanMigrateGpu),
+            ready.Where((value, index) => observed[index] != 0 && value is null).Count());
         if (firstUse is not null && unidentified.Count != 0)
         {
             // Recognition has its own opportunity; it never consumes a movement candidate slot.

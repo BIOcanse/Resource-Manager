@@ -165,10 +165,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             ObservedGpuUsagePercent = new Dictionary<ulong, double> { [123] = 1 }
         };
         var pending = new List<HostManagerAutomaticGpuPlacement>();
-        var task = (Task<IReadOnlyList<HostManagerAutomaticPlacementProcess>>)typeof(HostManagerSmartCoordinator)
-            .GetMethod("PrepareAutomaticGpuCandidatesAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(fixture.Coordinator, [new[] { process }, Array.Empty<HostManagerAppliedPlacementReceipt>(), pending, CancellationToken.None])!;
-        var result = await task;
+        var result = await PrepareGpuRoutesAsync(fixture, [process], [], pending);
         Assert.Equal(admitted, Assert.Single(result).CanMigrateGpu);
         Assert.Equal(observations, pending.Count);
         Assert.All(pending, item => Assert.Equal(item.ObservedAdapterKey, item.TargetAdapterKey));
@@ -477,10 +474,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 new Dictionary<int, GpuGraphicsApi> { [id] = GpuGraphicsApi.D3D11 }), "fixture confirmed");
         };
         var pending = new List<HostManagerAutomaticGpuPlacement>();
-        var task = (Task<IReadOnlyList<HostManagerAutomaticPlacementProcess>>)typeof(HostManagerSmartCoordinator)
-            .GetMethod("PrepareAutomaticGpuCandidatesAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(fixture.Coordinator, [processes, Array.Empty<HostManagerAppliedPlacementReceipt>(), pending, CancellationToken.None])!;
-        var result = await task;
+        var result = await PrepareGpuRoutesAsync(fixture, processes, [], pending);
         Assert.Equal(processes.Select(process => process.ProcessId), visited);
         Assert.Equal(new[] { false, false, true }, result.Select(process => process.CanMigrateGpu));
         Assert.Equal(unreadable ? 0 : 2, pending.Count);
@@ -515,14 +509,131 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             return new(new(request, D3d11ProxyShimRuntime.CreateExactPolicyValue(request.TargetAdapterKey),
                 new Dictionary<int, GpuGraphicsApi> { [id] = GpuGraphicsApi.D3D11 }), "confirmed sibling");
         };
-        var task = (Task<IReadOnlyList<HostManagerAutomaticPlacementProcess>>)typeof(HostManagerSmartCoordinator)
-            .GetMethod("PrepareAutomaticGpuCandidatesAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(fixture.Coordinator, [processes, Array.Empty<HostManagerAppliedPlacementReceipt>(), null, CancellationToken.None])!;
-        var result = await task;
+        var result = await PrepareGpuRoutesAsync(fixture, processes, [], null);
         Assert.Equal(processes.Skip(1).Select(process => process.ProcessId), visited);
         Assert.Equal(new[] { false, false, true, true }, result.Select(process => process.CanMigrateGpu));
         Assert.Equal(0, actions.ApplyCalls);
     }
+
+    [Fact]
+    public async Task GpuRoutePreflightReadsOnlyRoutesThisCyclePlanConsumes()
+    {
+        var actions = new RecordingRunningGpuActions { Available = true };
+        await using var fixture = await CreateGpuActionFixture(actions);
+        var template = AutomaticGpuProcess() with { ObservedGpuUsagePercent = new Dictionary<ulong, double> { [123] = 1 } };
+        var processes = Enumerable.Range(0, 4).Select(index => template with
+        {
+            ProcessId = template.ProcessId + index,
+            TargetId = template.TargetId + index
+        }).ToArray();
+        var now = DateTimeOffset.UtcNow;
+        var held = new HostManagerAppliedPlacementReceipt(processes[2].TargetId, processes[2].SoftwareId,
+            OptimizationResourceKinds.Gpu, [GpuShimPolicyRecord.Create(processes[2].TargetId, null, [1])], now, now);
+        var visited = new List<int>();
+        actions.Prepare = request =>
+        {
+            visited.Add(Assert.Single(request.Processes).ProcessId);
+            return new(new(request, D3d11ProxyShimRuntime.CreateExactPolicyValue(request.TargetAdapterKey),
+                new Dictionary<int, GpuGraphicsApi> { [request.Processes[0].ProcessId] = GpuGraphicsApi.D3D11 }), "fixture confirmed");
+        };
+        var offered = new List<bool[]>();
+        // Only processes[1] moves; [0], [2] and [3] stay, and [2] stays on a held GPU receipt.
+        var result = await PrepareGpuRoutesAsync(fixture, processes, [held], null, candidates =>
+        {
+            offered.Add(candidates.Select(static process => process.CanMigrateGpu).ToArray());
+            return candidates.Where(static process => process.CanMigrateGpu).Select(process =>
+                new HostManagerAutomaticGpuPlacement(process, 1, false, process.ProcessId == processes[1].ProcessId ? 456UL : 123UL,
+                    "fixture-plan") { ObservedAdapterKey = 123 }).ToArray();
+        });
+        Assert.Equal(new[] { processes[1].ProcessId, processes[2].ProcessId }, visited);
+        Assert.Equal(new[] { false, true, true, false }, result.Select(process => process.CanMigrateGpu));
+        // Unread routes are offered as migratable, so the plan decides what is consumed.
+        Assert.Equal(new[] { true, true, true, true }, Assert.Single(offered));
+        Assert.Equal(1, actions.PreparationCycles);
+        Assert.Equal(0, actions.ApplyCalls);
+    }
+
+    [Fact]
+    public async Task GpuRoutePreflightOpensNoPreparationWhenThePlanConsumesNoRoute()
+    {
+        var actions = new RecordingRunningGpuActions { Available = true };
+        await using var fixture = await CreateGpuActionFixture(actions);
+        var template = AutomaticGpuProcess() with { ObservedGpuUsagePercent = new Dictionary<ulong, double> { [123] = 1 } };
+        var processes = Enumerable.Range(0, 3).Select(index => template with
+        {
+            ProcessId = template.ProcessId + index,
+            TargetId = template.TargetId + index
+        }).ToArray();
+        var plans = 0;
+        var result = await PrepareGpuRoutesAsync(fixture, processes, [], null, candidates =>
+        {
+            plans++;
+            return candidates.Where(static process => process.CanMigrateGpu).Select(static process =>
+                new HostManagerAutomaticGpuPlacement(process, 1, false, 123, "fixture-stay") { ObservedAdapterKey = 123 }).ToArray();
+        });
+        Assert.All(result, process => Assert.False(process.CanMigrateGpu));
+        Assert.Equal(1, plans);
+        Assert.Equal(0, actions.PrepareCalls);
+        Assert.Equal(0, actions.PreparationCycles);
+
+        // Without a readable route there is nothing to plan for.
+        var unobserved = processes.Select(process => process with { ObservedGpuUsagePercent = new Dictionary<ulong, double>() }).ToArray();
+        Assert.All(await PrepareGpuRoutesAsync(fixture, unobserved, [], null), process => Assert.False(process.CanMigrateGpu));
+        Assert.Equal(0, actions.PrepareCalls);
+        Assert.Equal(0, actions.PreparationCycles);
+    }
+
+    [Fact]
+    public async Task GpuRoutePreflightReplansAfterARejectedMoveAndReadsTheNextConsumer()
+    {
+        var actions = new RecordingRunningGpuActions { Available = true };
+        await using var fixture = await CreateGpuActionFixture(actions);
+        var template = AutomaticGpuProcess() with { ObservedGpuUsagePercent = new Dictionary<ulong, double> { [123] = 1 } };
+        var processes = Enumerable.Range(0, 3).Select(index => template with
+        {
+            ProcessId = template.ProcessId + index,
+            TargetId = template.TargetId + index
+        }).ToArray();
+        var visited = new List<int>();
+        actions.Prepare = request =>
+        {
+            var id = Assert.Single(request.Processes).ProcessId;
+            visited.Add(id);
+            if (id == processes[0].ProcessId) return new(null, "fixture rejected");
+            return new(new(request, D3d11ProxyShimRuntime.CreateExactPolicyValue(request.TargetAdapterKey),
+                new Dictionary<int, GpuGraphicsApi> { [id] = GpuGraphicsApi.D3D11 }), "fixture confirmed");
+        };
+        var plans = 0;
+        // One destination: the first migratable candidate moves and every other candidate stays.
+        var result = await PrepareGpuRoutesAsync(fixture, processes, [], null, candidates =>
+        {
+            plans++;
+            return candidates.Where(static process => process.CanMigrateGpu).Select((process, index) =>
+                new HostManagerAutomaticGpuPlacement(process, 1, false, index == 0 ? 456UL : 123UL, "fixture-plan")
+                    { ObservedAdapterKey = 123 }).ToArray();
+        });
+        Assert.Equal(new[] { processes[0].ProcessId, processes[1].ProcessId }, visited);
+        Assert.Equal(new[] { false, true, false }, result.Select(process => process.CanMigrateGpu));
+        Assert.Equal(2, plans);
+        Assert.Equal(1, actions.PreparationCycles);
+    }
+
+    private static Task<IReadOnlyList<HostManagerAutomaticPlacementProcess>> PrepareGpuRoutesAsync(
+        ScoreOnlyCoordinatorFixture fixture, IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
+        IReadOnlyList<HostManagerAppliedPlacementReceipt> placements, List<HostManagerAutomaticGpuPlacement>? firstUse,
+        Func<IReadOnlyList<HostManagerAutomaticPlacementProcess>, IReadOnlyList<HostManagerAutomaticGpuPlacement>>? planGpu = null)
+    {
+        planGpu ??= MoveEveryGpuCandidate;
+        return (Task<IReadOnlyList<HostManagerAutomaticPlacementProcess>>)typeof(HostManagerSmartCoordinator)
+            .GetMethod("PrepareAutomaticGpuCandidatesAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(fixture.Coordinator, [processes, placements, planGpu, firstUse, CancellationToken.None])!;
+    }
+
+    // Plan stand-in that moves every migratable candidate, so every readable route is consumed.
+    private static IReadOnlyList<HostManagerAutomaticGpuPlacement> MoveEveryGpuCandidate(
+        IReadOnlyList<HostManagerAutomaticPlacementProcess> candidates)
+        => candidates.Where(static process => process.CanMigrateGpu).Select(static process =>
+            new HostManagerAutomaticGpuPlacement(process, 1, false, 999, "fixture-move") { ObservedAdapterKey = 1 }).ToArray();
 
     private sealed class RecordingRunningGpuActions : IRunningGpuPlacementActionService
     {
@@ -541,6 +652,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         internal Func<RunningGpuPlacementActionRequest, RunningGpuApiObservationExecution, CancellationToken,
             Task<RunningGpuPlacementPreparation>>? FirstUse { get; set; }
         internal int PrepareCalls { get; private set; }
+        internal int PreparationCycles { get; private set; }
+        public IRunningGpuPlacementPreparationCycle CreatePreparationReadCycle()
+        {
+            PreparationCycles++;
+            return new DelegatingGpuPlacementPreparationCycle(this);
+        }
         internal Func<RunningGpuPlacementActionRequest, RunningGpuPlacementPreparation>? Prepare { get; set; }
         internal int ApplyCalls { get; private set; }
         internal Func<RunningGpuPlacementActionPlan, RunningGpuPlacementActionResult>? Apply { get; set; }

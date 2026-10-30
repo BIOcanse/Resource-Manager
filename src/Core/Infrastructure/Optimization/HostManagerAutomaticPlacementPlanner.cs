@@ -172,7 +172,8 @@ internal static partial class HostManagerAutomaticPlacementPlanner
         return result;
     }
 
-    private static IReadOnlyList<HostManagerAutomaticGpuPlacement> PlanGpu(
+    // Also called by the coordinator's GPU route preflight to learn which routes this plan would consume.
+    internal static IReadOnlyList<HostManagerAutomaticGpuPlacement> PlanGpu(
         HardwareMetricSnapshot hardware,
         CompiledHardwareScorePlan hardwareScores,
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,

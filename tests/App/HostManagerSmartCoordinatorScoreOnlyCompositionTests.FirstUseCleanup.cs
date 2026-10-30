@@ -19,11 +19,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     {
         var inventory = new WindowsGpuAdapterInventoryRead(SamplingObservationStatus.Current, 1,
             DateTimeOffset.UtcNow.UtcTicks, 2, 0, 0, 789,
-            [new(0, "Intel UHD Graphics", 0x8086, 1, 0, new AdapterLuid { LowPart = 123 }, false, 0, WindowsGpuAdapterKind.Integrated),
+            [new(0, "NVIDIA GeForce RTX 3060", 0x10de, 1, 0, new AdapterLuid { LowPart = 123 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated),
              new(1, "NVIDIA GeForce RTX 4090", 0x10de, 2, 0, new AdapterLuid { LowPart = 456 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated)]);
         var process = AutomaticGpuProcess();
         var identity = new GpuPlacementProcessInstance(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath!);
-        var facts = CreateNativeGpuCycleFacts(identity, process.SoftwareId, inventory, 1);
+        // Recognition runs only for a route the plan consumes, so the process starts on the weaker adapter.
+        var facts = CreateNativeGpuCycleFacts(identity, process.SoftwareId, inventory, 0, includeDedicatedMemory: true);
         var actions = new RecordingRunningGpuActions { Available = true, UnknownApi = true };
         var topology = CreateAutomaticPlacementTopology();
         var path = Path.Combine(GpuWindowLedgerTestData.NewRoot("first-use-cleanup-deadline"), "recovery.json");
@@ -36,7 +37,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             automaticPlacementTopology: topology, runningGpuActions: actions, rollbackStateStoreOverride: store,
             processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new(pid, DateTimeOffset.FromFileTime(checked((long)process.ProcessStartKey)))));
-        fixture.MetricSampler.SetSnapshot(CreateNativeGpuCycleHardware(inventory, 456));
+        fixture.MetricSampler.SetSnapshot(CreateNativeGpuCycleHardware(inventory, 123, includeDedicatedMemory: true));
         var plan = fixture.RuntimePlan;
         fixture.RuntimePlanProvider.Publish(plan with
         {

@@ -325,6 +325,30 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     }
 
     [Fact]
+    public void WithdrawingStayingGpuCandidatesLeavesEveryMoveUnchanged()
+    {
+        // The coordinator's route preflight relies on this: a route it does not read is a stay that cannot alter any move.
+        var hardware = CreateHardware();
+        hardware = hardware with { GpuInventory = hardware.GpuInventory with
+        { Adapters = [hardware.GpuInventory.Adapters[0], hardware.GpuInventory.Adapters[1] with { UsagePercent = 99 }] }};
+        HostManagerAutomaticPlacementProcess[] processes = [CreateProcess("one", 10, null, 10, AutoPolicy()),
+            CreateProcess("two", 20, null, 20, AutoPolicy()), CreateProcess("three", 30, null, 30, AutoPolicy())];
+        static string[] Moves(IReadOnlyList<HostManagerAutomaticGpuPlacement> plan) => plan
+            .Where(static item => item.TargetAdapterKey != item.ObservedAdapterKey)
+            .Select(static item => $"{item.Process.TargetId}:{item.ObservedAdapterKey}->{item.TargetAdapterKey}").ToArray();
+        var full = HostManagerAutomaticPlacementPlanner.PlanGpu(hardware, CreateHardwareScores(), processes, true, new(95, 85));
+        var stays = full.Where(static item => item.TargetAdapterKey == item.ObservedAdapterKey)
+            .Select(static item => item.Process.ProcessId).ToHashSet();
+        Assert.Equal(2, stays.Count);
+        var withdrawn = HostManagerAutomaticPlacementPlanner.PlanGpu(hardware, CreateHardwareScores(), processes
+            .Select(process => stays.Contains(process.ProcessId) ? process with { CanMigrateGpu = false } : process).ToArray(),
+            true, new(95, 85));
+        Assert.Equal(["one:22->11"], Moves(full));
+        Assert.Equal(Moves(full), Moves(withdrawn));
+        Assert.Single(withdrawn);
+    }
+
+    [Fact]
     public void GpuPreferenceIdentityGuardRequiresExactPidAndFileTime()
     {
         var startedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
