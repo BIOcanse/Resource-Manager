@@ -10,6 +10,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = .ReleaseSafe,
     });
+    const shared_section_module = b.createModule(.{
+        .root_source_file = b.path("../../Shared/SharedSection/src/root.zig"),
+        .target = target,
+        .optimize = .ReleaseSafe,
+    });
 
     const powershell = b.option([]const u8, "powershell", "PowerShell executable used to generate state-item declarations") orelse "pwsh";
     const state_names = b.option(bool, "state-names", "Include development-only names in generated state-item declarations") orelse true;
@@ -93,6 +98,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     native_core_module.addImport("rm_control", control_module);
+    native_core_module.addImport("rm_shared_section", shared_section_module);
     native_core_module.addImport("backend_tree", backend_tree_module);
     native_core_module.linkSystemLibrary("pdh", .{});
     native_core_module.linkSystemLibrary("iphlpapi", .{});
@@ -113,6 +119,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     test_module.addImport("rm_control", control_module);
+    test_module.addImport("rm_shared_section", shared_section_module);
     test_module.addImport("backend_tree", backend_tree_module);
     test_module.linkSystemLibrary("pdh", .{});
     test_module.linkSystemLibrary("iphlpapi", .{});
@@ -146,6 +153,17 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run NativeCore tests");
     test_step.dependOn(&run_tests.step);
+
+    const data_area_test_module = b.createModule(.{
+        .root_source_file = b.path("src/data_area_test_root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    data_area_test_module.addImport("rm_shared_section", shared_section_module);
+    const data_area_tests = b.addTest(.{ .use_llvm = test_llvm, .root_module = data_area_test_module });
+    const run_data_area_tests = b.addRunArtifact(data_area_tests);
+    b.step("test-data-area", "Run the data area region owner tests").dependOn(&run_data_area_tests.step);
+    test_step.dependOn(&run_data_area_tests.step);
 
     const control_abi_test_module = b.createModule(.{
         .root_source_file = b.path("src/control_abi_test_root.zig"),

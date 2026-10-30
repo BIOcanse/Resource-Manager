@@ -1,4 +1,16 @@
 const std = @import("std");
+const data_area_abi = @import("data_area/exports.zig");
+comptime {
+    _ = data_area_abi.rm_data_area_abi_version;
+    _ = data_area_abi.rm_data_area_create;
+    _ = data_area_abi.rm_data_area_apply;
+    _ = data_area_abi.rm_data_area_binding;
+    _ = data_area_abi.rm_data_area_read_view;
+    _ = data_area_abi.rm_data_area_acquire;
+    _ = data_area_abi.rm_data_area_release;
+    _ = data_area_abi.rm_data_area_stop;
+    _ = data_area_abi.rm_data_area_destroy;
+}
 const kernel_etw_abi = @import("telemetry/kernel_etw/abi.zig");
 const kernel_etw_trace_abi = @import("telemetry/kernel_etw/trace_abi.zig");
 const kernel_etw_interrupt_abi = @import("telemetry/kernel_etw/interrupt_abi.zig");
