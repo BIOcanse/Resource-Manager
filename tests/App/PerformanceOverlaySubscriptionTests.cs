@@ -282,8 +282,6 @@ public sealed class PerformanceOverlaySubscriptionTests
     [Theory]
     [InlineData("not-json")]
     [InlineData("""[]""")]
-    [InlineData("""[{"kind":"metric","id":"nope"}]""")]
-    [InlineData("""[{"kind":"metric","id":"cpu.usage","source":"load@cpu9"}]""")]
     [InlineData("""[{"kind":"metric","id":"cpu.usage","intervalMs":50}]""")]
     [InlineData("""[{"kind":"metric","id":"cpu.usage","syncPrecision":"ultra"}]""")]
     [InlineData("""[{"kind":"frames","id":"frames.present","intervalMs":500}]""")]
@@ -318,7 +316,7 @@ public sealed class PerformanceOverlaySubscriptionTests
     [Theory]
     [InlineData("""null""")]
     [InlineData("""{"kind":"metric","id":"cpu.usage"}""")]
-    [InlineData("""[{"kind":"metric","id":"nope"}]""")]
+    [InlineData("""[{"kind":"metric","id":"cpu.usage","syncPrecision":"ultra"}]""")]
     public async Task OverlayRejectsBodyItemsTheRecordingContractRejects(string items)
     {
         await using var rig = await OverlayItemRig.StartAsync();
@@ -327,6 +325,58 @@ public sealed class PerformanceOverlaySubscriptionTests
         using var response = await rig.SubscribeAsync("intervalMs=100&softwareId=game", body.RootElement, timeout.Token);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0, rig.Resources.IdentityActiveCount);
+    }
+
+    // A device that left takes its catalog entries with it; the overlay keeps its other items.
+    [Theory]
+    [InlineData("""[{"kind":"metric","id":"nope"},{"kind":"metric","id":"cpu.usage"}]""")]
+    [InlineData("""[{"kind":"metric","id":"cpu.usage","source":"load@cpu9"},{"kind":"software","id":"cpu.usage"}]""")]
+    public async Task OverlayAnswersItemsTheCatalogNoLongerHasAsUnknownAndKeepsTheRest(string items)
+    {
+        await using var rig = await OverlayItemRig.StartAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var response = await rig.SubscribeAsync(
+            "intervalMs=100&softwareId=game&items=" + Uri.EscapeDataString(items), timeout.Token);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+        rig.Processes.Current = Snapshot(Process(10, 100));
+        var values = await ReadItemsAsync(reader, timeout.Token);
+        Assert.Equal(2, values.Length);
+        Assert.Equal("unavailable", values[0].GetProperty("state").GetString());
+        Assert.Equal("unknown-metric", values[0].GetProperty("reason").GetString());
+        Assert.NotEqual("unknown-metric", values[1].GetProperty("reason").GetString());
+        await timeout.CancelAsync();
+    }
+
+    [Fact]
+    public void GpuTotalsSumThePerGpuBarsAndAreListedForRecordingAndTheOverlay()
+    {
+        IReadOnlyList<TargetedRecordingCatalogItem> catalog =
+        [
+            new(TargetedRecordingItemKinds.Software, "gpu.0.usage", "%", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Software, "gpu.1.usage", "%", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Software, "gpu.0.vram", "B", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null, TargetedRecordingItemUses.Both)
+        ];
+        Assert.Equal(new[] { "gpu.0.usage", "gpu.1.usage" },
+            TargetedRecordingItemCatalogRules.TotalParts(TargetedRecordingItemCatalogRules.GpuUsageTotalId, catalog));
+        Assert.Equal(new[] { "gpu.0.vram" },
+            TargetedRecordingItemCatalogRules.TotalParts(TargetedRecordingItemCatalogRules.GpuVramTotalId, catalog));
+        Assert.Null(TargetedRecordingItemCatalogRules.TotalParts("gpu.0.usage", catalog));
+        var request = TargetedRecordingItemReader.SoftwareRequest(
+            new TargetedRecordingItem(TargetedRecordingItemKinds.Software, TargetedRecordingItemCatalogRules.GpuUsageTotalId), catalog);
+        Assert.Equal(new[] { "gpu.0.usage", "gpu.1.usage" }, request.MetricIds);
+
+        static ResourceBreakdownBar Bar(string id, string unit, double value) => new(id, unit, "capacity", 100, 100, 100,
+            [new ResourceSoftwareSegment("game", "Game", "game", "game", value, value, 1, [])]);
+        var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.UtcNow,
+            [Bar("gpu.0.usage", "%", 70), Bar("gpu.1.usage", "%", 50), Bar("gpu.0.vram", "B", 1e9), Bar("gpu.1.vram", "B", 2e9)]);
+        var ids = new HashSet<string>(["game"], StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(100, TargetedRecordingItemReader.ReadSoftware(snapshot,
+            new TargetedRecordingItem(TargetedRecordingItemKinds.Software, TargetedRecordingItemCatalogRules.GpuUsageTotalId),
+            ids, static (_, _) => false).Value);
+        Assert.Equal(3e9, TargetedRecordingItemReader.ReadSoftware(snapshot,
+            new TargetedRecordingItem(TargetedRecordingItemKinds.Software, TargetedRecordingItemCatalogRules.GpuVramTotalId),
+            ids, static (_, _) => false).Value);
     }
 
     [Fact]

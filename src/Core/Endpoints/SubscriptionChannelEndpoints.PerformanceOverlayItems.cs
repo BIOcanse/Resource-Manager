@@ -23,6 +23,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     internal const string PerformanceOverlayProcessCpuUnavailable = "process-cpu-unavailable";
     internal const string PerformanceOverlayProcessMetricUnavailable = "process-metric-unavailable";
     internal const string PerformanceOverlayMetricUnavailable = "metric-unavailable";
+    internal const string PerformanceOverlayUnknownMetric = "unknown-metric";
 
     internal sealed class PerformanceOverlayItemPlan(TargetedRecordingItem item, TargetedRecordingCatalogItem? entry,
         int intervalMs, string intervalOrigin)
@@ -35,6 +36,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         public DateTimeOffset NextDue { get; set; } = DateTimeOffset.MinValue;
         public DateTimeOffset? LastObservedAt { get; set; }
         public PerformanceOverlayItemValue? Last { get; set; }
+        /// <summary>The item is no longer in the catalog (its device left); it answers unknown-metric and holds nothing.</summary>
+        public bool Unknown { get; init; }
+        public ResourceBreakdownSampleRequest? BreakdownRequest { get; init; }
 
         public PerformanceOverlayItemValue Value(double? value, string? actualSource, string? unit,
             DateTimeOffset? observedAt, string? reason)
@@ -42,8 +46,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 Item.SyncPrecision, value, value is null ? "unavailable" : "current", value is null ? reason : null, observedAt);
     }
 
-    /// <summary>Parses and validates the items query. No items query means no items (the single-interval
-    /// request is unchanged). A malformed or invalid list rejects the subscription with the reason code.</summary>
+    /// <summary>Parses and validates the items. No items means no items (the single-interval request is
+    /// unchanged). A malformed list (shape, interval, duplicates, count) rejects the subscription with the reason
+    /// code; an item the catalog no longer has stays in the list and answers unknown-metric.</summary>
     private static IReadOnlyList<PerformanceOverlayItemPlan> ParsePerformanceOverlayItems(
         ParsedFrontendSubscription subscription, IServiceProvider services, TimeSpan interval)
     {
@@ -68,15 +73,20 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             throw new ArgumentException("targeted-recording-item-invalid-kind");
         }
         var catalog = services.GetRequiredService<ITargetedRecordingItemCatalog>().ReadCurrent();
-        if (TargetedRecordingItemReader.ValidateList(items, catalog, TargetedRecordingItemReader.MaximumOverlayItems,
-                TargetedRecordingItemUses.Overlay) is { } reason)
+        if (TargetedRecordingItemReader.ValidateShape(items, TargetedRecordingItemReader.MaximumOverlayItems) is { } reason)
             throw new ArgumentException(reason);
         var defaultMs = (int)Math.Round(interval.TotalMilliseconds);
         return items.Select(item =>
         {
-            var entry = TargetedRecordingItemCatalogRules.Find(catalog, item.Kind, item.Id);
+            var unknown = TargetedRecordingItemCatalogRules.Validate(item, catalog, TargetedRecordingItemUses.Overlay) is not null;
+            var entry = unknown ? null : TargetedRecordingItemCatalogRules.Find(catalog, item.Kind, item.Id);
             var (intervalMs, origin) = TargetedRecordingItemReader.Interval(item, entry, defaultMs);
-            return new PerformanceOverlayItemPlan(item, entry, intervalMs, origin);
+            return new PerformanceOverlayItemPlan(item, entry, intervalMs, origin)
+            {
+                Unknown = unknown,
+                BreakdownRequest = item.Kind == TargetedRecordingItemKinds.Software && !unknown
+                    ? TargetedRecordingItemReader.SoftwareRequest(item, catalog) : null
+            };
         }).ToArray();
     }
 
@@ -100,6 +110,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             var plan = plans[index];
             var item = plan.Item;
+            if (plan.Unknown)
+            {
+                if (plan.Last is null) due = true;
+                values[index] = plan.Last ??= plan.Value(null, null, null, null, PerformanceOverlayUnknownMetric);
+                continue;
+            }
             if (!hasTargets)
             {
                 if (plan.Lease is not null || plan.Last?.Reason != PerformanceOverlayTargetNotRunning) due = true;
@@ -118,7 +134,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 TargetedRecordingItemKinds.Metric => (IDisposable?)metrics.AcquireSubscription(holder,
                     TargetedRecordingItemReader.MetricRequest(item), period),
                 TargetedRecordingItemKinds.Software => (IDisposable?)breakdown.AcquireSubscription(holder,
-                    TargetedRecordingItemReader.SoftwareRequest(item), period),
+                    plan.BreakdownRequest!, period),
                 _ => (IDisposable?)frames.AcquireSubscription()
             };
             if (plan.Last is not null && now + slack < plan.NextDue)
@@ -142,7 +158,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 case TargetedRecordingItemKinds.Software:
                 {
                     var reading = TargetedRecordingItemReader.ReadSoftware(
-                        breakdown.ReadLatest(TargetedRecordingItemReader.SoftwareRequest(item)), item, softwareIds,
+                        breakdown.ReadLatest(plan.BreakdownRequest!), item, softwareIds,
                         (processId, startKey) => targetKeys.Contains((processId, startKey)));
                     plan.Last = plan.Value(reading.Value, reading.ActualSource, reading.Unit, reading.ObservedAt,
                         string.Equals(item.Id, ResourceBreakdownMetricIds.CpuUsage, StringComparison.OrdinalIgnoreCase)

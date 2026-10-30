@@ -44,6 +44,9 @@ public static class TargetedRecordingItemCatalogRules
     public const string ResourceBreakdownSource = "resource-breakdown";
     public const string FramesUnit = "ms";
     public const string FramesRateUnit = "FPS";
+    // The target's total across every GPU: the sum of the per-GPU bars, usage capped at 100 %.
+    public const string GpuUsageTotalId = "gpu.usage";
+    public const string GpuVramTotalId = "gpu.vram";
 
     private static readonly (string Id, string Unit)[] BreakdownMetrics =
     [
@@ -97,10 +100,27 @@ public static class TargetedRecordingItemCatalogRules
             else if (metric.Id.EndsWith(".vram", StringComparison.OrdinalIgnoreCase) && ResourceBreakdownMetricIds.IsSupported(metric.Id))
                 Add(items, seen, metric.Id, "B", ResourceBreakdownSource);
         }
+        if (items.Any(static item => IsGpuPart(item, ".usage"))) Add(items, seen, GpuUsageTotalId, "%", ResourceBreakdownSource);
+        if (items.Any(static item => IsGpuPart(item, ".vram"))) Add(items, seen, GpuVramTotalId, "B", ResourceBreakdownSource);
         foreach (var field in fields)
             Add(items, seen, field.Name, field.Unit, field.SourceId);
         return items;
     }
+
+    /// <summary>The per-GPU breakdown ids a GPU total sums, or null when the id is not a GPU total.</summary>
+    public static IReadOnlyList<string>? TotalParts(string id, IReadOnlyList<TargetedRecordingCatalogItem> catalog)
+    {
+        var suffix = string.Equals(id, GpuUsageTotalId, StringComparison.OrdinalIgnoreCase) ? ".usage"
+            : string.Equals(id, GpuVramTotalId, StringComparison.OrdinalIgnoreCase) ? ".vram" : null;
+        return suffix is null ? null
+            : catalog.Where(item => IsGpuPart(item, suffix)).Select(static item => item.Id).ToArray();
+    }
+
+    private static bool IsGpuPart(TargetedRecordingCatalogItem item, string suffix)
+        => item.Kind == TargetedRecordingItemKinds.Software
+            && item.Id.StartsWith(ResourceBreakdownMetricIds.GpuPrefix, StringComparison.OrdinalIgnoreCase)
+            && item.Id.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+            && ResourceBreakdownMetricIds.IsSupported(item.Id);
 
     /// <summary>Shape, catalog membership for the given use (recording or overlay) and source ownership of one item.</summary>
     public static string? Validate(TargetedRecordingItem item, IReadOnlyList<TargetedRecordingCatalogItem> catalog,

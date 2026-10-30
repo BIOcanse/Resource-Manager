@@ -260,7 +260,11 @@ public sealed class TargetedRecordingService(
             return new ItemPlan(item, entry, entry?.Unit ?? TargetedRecordingItemCatalogRules.FramesUnit, null,
                 TargetedRecordingIntervalOrigins.PerPresent);
         var (interval, origin) = TargetedRecordingItemReader.Interval(item, entry, profileDefaultIntervalMs);
-        return new ItemPlan(item, entry, entry?.Unit ?? string.Empty, interval, origin);
+        return new ItemPlan(item, entry, entry?.Unit ?? string.Empty, interval, origin)
+        {
+            BreakdownRequest = item.Kind == TargetedRecordingItemKinds.Software
+                ? TargetedRecordingItemReader.SoftwareRequest(item, liveCatalog) : null
+        };
     }
 
     private async Task RunAsync(ActiveRecording current)
@@ -297,7 +301,6 @@ public sealed class TargetedRecordingService(
                 }
                 else
                 {
-                    plan.BreakdownRequest = TargetedRecordingItemReader.SoftwareRequest(plan.Item);
                     leases.Add(breakdown.AcquireSubscription($"targeted-recording:{id}:software:{plan.Item.Id}",
                         plan.BreakdownRequest, interval));
                 }

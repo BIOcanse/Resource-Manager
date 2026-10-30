@@ -28,8 +28,10 @@ public static class TargetedRecordingItemReader
 
     /// <summary>The software item's breakdown request: the breakdown metric, or the process field, with
     /// process detail so field values can be matched to the target's processes.</summary>
-    public static ResourceBreakdownSampleRequest SoftwareRequest(TargetedRecordingItem item)
-        => new([item.Id], new Dictionary<string, string>(), ProcessSampleDetailLevel.ResourceTableFull);
+    public static ResourceBreakdownSampleRequest SoftwareRequest(TargetedRecordingItem item,
+        IReadOnlyList<TargetedRecordingCatalogItem> catalog)
+        => new(TargetedRecordingItemCatalogRules.TotalParts(item.Id, catalog) ?? [item.Id],
+            new Dictionary<string, string>(), ProcessSampleDetailLevel.ResourceTableFull);
 
     /// <summary>The item interval: its own, else the source's natural interval, else the caller's default.</summary>
     public static (int IntervalMs, string Origin) Interval(TargetedRecordingItem item,
@@ -58,6 +60,25 @@ public static class TargetedRecordingItemReader
     public static TargetedRecordingItemReading ReadSoftware(ResourceBreakdownSnapshot? snapshot,
         TargetedRecordingItem item, IReadOnlySet<string> softwareIds, Func<int, long, bool> isTargetProcess)
     {
+        var usageTotal = string.Equals(item.Id, TargetedRecordingItemCatalogRules.GpuUsageTotalId, StringComparison.OrdinalIgnoreCase);
+        if (usageTotal || string.Equals(item.Id, TargetedRecordingItemCatalogRules.GpuVramTotalId, StringComparison.OrdinalIgnoreCase))
+        {
+            // The request holds exactly the per-GPU bars this total sums.
+            var suffix = usageTotal ? ".usage" : ".vram";
+            double? gpuTotal = null;
+            string? totalUnit = null;
+            foreach (var bar in snapshot?.Bars ?? [])
+            {
+                if (!bar.MetricId.StartsWith(ResourceBreakdownMetricIds.GpuPrefix, StringComparison.OrdinalIgnoreCase)
+                    || !bar.MetricId.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) continue;
+                if (TargetedRecordingTargets.Value(snapshot, bar.MetricId, softwareIds, out var unit) is not { } part) continue;
+                gpuTotal = (gpuTotal ?? 0) + part;
+                totalUnit ??= unit;
+            }
+            return gpuTotal is null ? new(null, null, null, null)
+                : new(usageTotal ? Math.Min(100, gpuTotal.Value) : gpuTotal, TargetedRecordingItemCatalogRules.ResourceBreakdownSource,
+                    totalUnit, snapshot!.CapturedAt);
+        }
         if (ResourceBreakdownMetricIds.IsSupported(item.Id))
         {
             var value = TargetedRecordingTargets.Value(snapshot, item.Id, softwareIds, out var unit);
@@ -91,14 +112,21 @@ public static class TargetedRecordingItemReader
         IReadOnlyList<TargetedRecordingCatalogItem> catalog, int maximumItems = TargetedRecordingProfileDefaults.MaximumItems,
         string use = TargetedRecordingItemUses.Recording)
     {
-        if (items.Count > maximumItems) return "targeted-recording-profile-items-too-many";
-        var candidate = new TargetedRecordingProfile("request", "request", TargetedRecordingProfileDefaults.DefaultIntervalMs, items);
-        if (TargetedRecordingProfileShape.ValidateProfile(candidate) is { } shape) return shape;
+        if (ValidateShape(items, maximumItems) is { } shape) return shape;
         foreach (var item in items)
         {
             if (TargetedRecordingItemCatalogRules.Validate(item, catalog, use) is { } reason) return reason;
         }
         return null;
+    }
+
+    /// <summary>Count, shape and duplicates of a request's own item list, without the catalog.</summary>
+    public static string? ValidateShape(IReadOnlyList<TargetedRecordingItem> items,
+        int maximumItems = TargetedRecordingProfileDefaults.MaximumItems)
+    {
+        if (items.Count > maximumItems) return "targeted-recording-profile-items-too-many";
+        var candidate = new TargetedRecordingProfile("request", "request", TargetedRecordingProfileDefaults.DefaultIntervalMs, items);
+        return TargetedRecordingProfileShape.ValidateProfile(candidate);
     }
 
     /// <summary>Parses a JSON array of recording items ({kind, id, source?, intervalMs?, syncPrecision?}),
