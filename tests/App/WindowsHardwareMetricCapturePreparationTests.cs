@@ -76,30 +76,6 @@ public sealed class WindowsHardwareMetricCapturePreparationTests
         Assert.Empty(minimal.Datasets);
     }
 
-    [Fact]
-    public void PreEnrichmentFrameReuseRequiresAllMeaningfulHeaderFieldsToMatch()
-    {
-        var before = Header(configurationGeneration: 4, catalogGeneration: 9, committedGeneration: 12);
-        before.StateRevision = 27;
-        before.LastOperationEpoch = 31;
-        before.LastPlanEpoch = 19;
-        before.CapturedAtMilliseconds = 1234;
-
-        Assert.True(WindowsHardwareMetricCapture.CanReusePreEnrichmentFrame(before, before));
-
-        var planAdvanced = before;
-        planAdvanced.LastPlanEpoch++;
-        Assert.False(WindowsHardwareMetricCapture.CanReusePreEnrichmentFrame(before, planAdvanced));
-
-        var revisionAdvanced = before;
-        revisionAdvanced.StateRevision++;
-        Assert.False(WindowsHardwareMetricCapture.CanReusePreEnrichmentFrame(before, revisionAdvanced));
-
-        var completionAdvanced = before;
-        completionAdvanced.CommittedGeneration++;
-        Assert.False(WindowsHardwareMetricCapture.CanReusePreEnrichmentFrame(before, completionAdvanced));
-    }
-
     private static NativeMetricSnapshotSnapshotHeader Header(
         ulong configurationGeneration, ulong catalogGeneration, ulong committedGeneration)
         => new()

@@ -19,6 +19,15 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
     private ulong planEpoch;
     private ulong persistedCatalogGeneration;
     private bool disposed;
+    // Per-operation scratch owned by gate. Plan outputs are copied to exact-size
+    // arrays before PlanCollection returns; committed rows are visible only to
+    // the projection running inside ReadCommitted(state, project). Nothing that
+    // leaves the gate points at these buffers.
+    private NativeMetricSnapshotSourcePlanOutput[] planSourceBuffer = [];
+    private NativeMetricSnapshotMetricPlanOutput[] planMetricBuffer = [];
+    private NativeMetricSnapshotSourceOutput[] readSourceBuffer = [];
+    private NativeMetricSnapshotMetricOutput[] readMetricBuffer = [];
+    private NativeMetricSnapshotGpuInventoryOutput[] readGpuInventoryBuffer = [];
 
     public NativeMetricSnapshotWorkspace(
         NativeMetricSnapshotConfiguration configuration,
@@ -200,60 +209,53 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
                 ?? throw new InvalidOperationException(
                     "The metric-snapshot catalog is not ready.");
             var header = QueryHeader();
-            var metricHandles = requestedMetricHandles
-                .Order()
-                .ToArray();
+            var capacity = session.Capacity;
+            var metricHandles = requestedMetricHandles.ToArray();
+            Array.Sort(metricHandles);
             if (metricHandles.Length == 0 && !includeGpuInventory
                 || metricHandles.Length
-                    > session.Capacity.PlanMetricCapacity
-                || metricHandles.Distinct().Count()
-                    != metricHandles.Length
-                || metricHandles.Any(handle =>
-                    !projection.MetricIds.ContainsKey(handle)))
+                    > capacity.PlanMetricCapacity
+                || !AreValidMetricHandles(metricHandles, projection))
             {
                 throw new ArgumentException(
                     "The requested metric handles are invalid.",
                     nameof(requestedMetricHandles));
             }
-            var modes = sourceModes
-                .OrderBy(static mode => mode.SourceHandle)
-                .ToArray();
+            var modes = sourceModes.ToArray();
+            Array.Sort(modes, static (left, right) => left.SourceHandle.CompareTo(right.SourceHandle));
             if (modes.Length != projection.Sources.Length
-                || modes.Select(static mode => mode.SourceHandle)
-                    .Distinct()
-                    .Count() != modes.Length
-                || modes.Any(mode =>
-                    mode.CapabilityGeneration == 0
-                    || !projection.SourceIds.ContainsKey(
-                        mode.SourceHandle)))
+                || !AreValidSourceModes(modes, projection))
             {
                 throw new ArgumentException(
                     "The source modes do not cover the active catalog exactly.",
                     nameof(sourceModes));
             }
-            var requested = metricHandles
-                .Select(static handle =>
-                    new NativeMetricSnapshotPlanMetricInput
-                    {
-                        StructSize =
-                            SizeOf<NativeMetricSnapshotPlanMetricInput>(),
-                        Flags = 0,
-                        MetricHandle = handle
-                    })
-                .ToArray();
-            var nativeModes = modes
-                .Select(static mode =>
-                    new NativeMetricSnapshotSourceStateInput
-                    {
-                        StructSize =
-                            SizeOf<NativeMetricSnapshotSourceStateInput>(),
-                        Flags = 0,
-                        SourceHandle = mode.SourceHandle,
-                        CapabilityGeneration =
-                            mode.CapabilityGeneration,
-                        Availability = (uint)mode.Availability
-                    })
-                .ToArray();
+            var requested = new NativeMetricSnapshotPlanMetricInput[metricHandles.Length];
+            for (var index = 0; index < metricHandles.Length; index++)
+            {
+                requested[index] = new NativeMetricSnapshotPlanMetricInput
+                {
+                    StructSize =
+                        SizeOf<NativeMetricSnapshotPlanMetricInput>(),
+                    Flags = 0,
+                    MetricHandle = metricHandles[index]
+                };
+            }
+            var nativeModes = new NativeMetricSnapshotSourceStateInput[modes.Length];
+            for (var index = 0; index < modes.Length; index++)
+            {
+                var mode = modes[index];
+                nativeModes[index] = new NativeMetricSnapshotSourceStateInput
+                {
+                    StructSize =
+                        SizeOf<NativeMetricSnapshotSourceStateInput>(),
+                    Flags = 0,
+                    SourceHandle = mode.SourceHandle,
+                    CapabilityGeneration =
+                        mode.CapabilityGeneration,
+                    Availability = (uint)mode.Availability
+                };
+            }
             var input = new NativeMetricSnapshotPlanInput
             {
                 AbiVersion = NativeMetricSnapshotAbi.Version,
@@ -266,19 +268,17 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
                 CommandAtMilliseconds = Timestamp(commandAt),
                 RequestedMetricCount = checked((uint)requested.Length),
                 SourceModeCount = checked((uint)nativeModes.Length),
-                SourcePlanCapacity = session.Capacity.SourcePlanCapacity,
-                MetricPlanCapacity = session.Capacity.MetricPlanCapacity,
+                SourcePlanCapacity = capacity.SourcePlanCapacity,
+                MetricPlanCapacity = capacity.MetricPlanCapacity,
                 Flags = includeGpuInventory
                     ? (ulong)NativeMetricSnapshotPlanFlags
                         .IncludeGpuInventory
                     : 0UL
             };
-            var sourcePlans =
-                new NativeMetricSnapshotSourcePlanOutput[
-                    checked((int)session.Capacity.SourcePlanCapacity)];
-            var metricPlans =
-                new NativeMetricSnapshotMetricPlanOutput[
-                    checked((int)session.Capacity.MetricPlanCapacity)];
+            // Capacity-sized native outputs are scratch; the plan keeps only
+            // exact-size copies because it outlives this gate (source awaits).
+            var sourcePlans = Scratch(ref planSourceBuffer, capacity.SourcePlanCapacity);
+            var metricPlans = Scratch(ref planMetricBuffer, capacity.MetricPlanCapacity);
             RequireOk(
                 session.Plan(
                     in input,
@@ -291,18 +291,53 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
             ValidatePlanOutput(in input, in output);
             return new NativeMetricSnapshotCollectionPlan(
                 output,
-                sourcePlans.AsSpan(
-                        0,
-                        checked((int)output.SourcePlanCount))
-                    .ToArray()
-                    .ToImmutableArray(),
-                metricPlans.AsSpan(
-                        0,
-                        checked((int)output.MetricPlanCount))
-                    .ToArray()
-                    .ToImmutableArray(),
+                ImmutableCollectionsMarshal.AsImmutableArray(
+                    sourcePlans.AsSpan(
+                            0,
+                            checked((int)output.SourcePlanCount))
+                        .ToArray()),
+                ImmutableCollectionsMarshal.AsImmutableArray(
+                    metricPlans.AsSpan(
+                            0,
+                            checked((int)output.MetricPlanCount))
+                        .ToArray()),
                 projection);
         }
+    }
+
+    private static bool AreValidMetricHandles(
+        ulong[] sortedHandles,
+        NativeMetricSnapshotCatalogProjection projection)
+    {
+        for (var index = 0; index < sortedHandles.Length; index++)
+        {
+            if (index != 0 && sortedHandles[index] == sortedHandles[index - 1]
+                || !projection.MetricIds.ContainsKey(sortedHandles[index]))
+                return false;
+        }
+        return true;
+    }
+
+    private static bool AreValidSourceModes(
+        NativeMetricSnapshotSourceRuntimeState[] sortedModes,
+        NativeMetricSnapshotCatalogProjection projection)
+    {
+        for (var index = 0; index < sortedModes.Length; index++)
+        {
+            var mode = sortedModes[index];
+            if (index != 0 && mode.SourceHandle == sortedModes[index - 1].SourceHandle
+                || mode.CapabilityGeneration == 0
+                || !projection.SourceIds.ContainsKey(mode.SourceHandle))
+                return false;
+        }
+        return true;
+    }
+
+    private static T[] Scratch<T>(ref T[] buffer, uint count)
+    {
+        var length = checked((int)count);
+        if (buffer.Length != length) buffer = new T[length];
+        return buffer;
     }
 
     public NativeMetricSnapshotSnapshotHeader CompleteSource(
@@ -497,6 +532,47 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
                 ImmutableCollectionsMarshal.AsImmutableArray(gpuInventory),
                 ImmutableCollectionsMarshal.AsImmutableArray(rules),
                 projection);
+        }
+    }
+
+    /// <summary>Reads the committed rows into this workspace's scratch and runs
+    /// <paramref name="project"/> on them inside the gate. The frame's arrays are
+    /// that scratch: it is valid only during the call, and the projection must
+    /// copy whatever it keeps or publishes. Rule states are not read, so
+    /// <see cref="NativeMetricSnapshotCommittedFrame.Rules"/> is empty.</summary>
+    internal TResult ReadCommitted<TState, TResult>(
+        TState state,
+        Func<NativeMetricSnapshotCommittedFrame, TState, TResult> project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            var projection = activeProjection
+                ?? throw new InvalidOperationException(
+                    "The metric-snapshot catalog is not ready.");
+            var header = QueryHeader();
+            var read = CreateReadInput(header);
+            var sources = Scratch(ref readSourceBuffer, header.SourceCount);
+            var metrics = Scratch(ref readMetricBuffer, header.MetricCount);
+            var gpuInventory = Scratch(ref readGpuInventoryBuffer, header.GpuAdapterCount);
+            RequireOk(
+                session.Read(
+                    in read,
+                    sources,
+                    metrics,
+                    gpuInventory,
+                    Span<NativeMetricSnapshotRuleStateOutput>.Empty),
+                "read committed snapshot");
+            return project(
+                new NativeMetricSnapshotCommittedFrame(
+                    header,
+                    ImmutableCollectionsMarshal.AsImmutableArray(sources),
+                    ImmutableCollectionsMarshal.AsImmutableArray(metrics),
+                    ImmutableCollectionsMarshal.AsImmutableArray(gpuInventory),
+                    ImmutableArray<NativeMetricSnapshotRuleStateOutput>.Empty,
+                    projection),
+                state);
         }
     }
 

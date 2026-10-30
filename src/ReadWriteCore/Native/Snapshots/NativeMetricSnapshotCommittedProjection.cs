@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+using System.Runtime.InteropServices;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.ReadWrite.Native;
@@ -12,9 +14,13 @@ public static class NativeMetricSnapshotCommittedProjection
         ulong workspaceIdentity)
         => Create(frame: frame, workspaceIdentity: workspaceIdentity, sourceSelection: null);
 
+    /// <param name="previous">The caller's previous projection of this
+    /// workspace. Unchanged items and bindings reuse its immutable objects;
+    /// every changed value is new. The frame may be workspace scratch: no
+    /// published or retained value references its rows.</param>
     internal static HardwareMetricSnapshot Create(
         NativeMetricSnapshotCommittedFrame frame, ulong workspaceIdentity,
-        MetricReadingSelection? sourceSelection)
+        MetricReadingSelection? sourceSelection, Reuse? previous = null)
     {
         ArgumentNullException.ThrowIfNull(frame);
         if (workspaceIdentity == 0)
@@ -22,20 +28,46 @@ public static class NativeMetricSnapshotCommittedProjection
             throw new ArgumentOutOfRangeException(
                 nameof(workspaceIdentity));
         }
+        previous?.Begin(frame.Catalog);
         var selectedLegacy = sourceSelection?.LegacyHandles ?? frame.Catalog.LegacyMetricHandles;
-        var requestAliases = selectedLegacy.GroupBy(static pair => pair.Value)
-            .ToDictionary(static group => group.Key, static group => group.Select(static pair => pair.Key).ToArray());
-        var readings = frame.Metrics.ToDictionary(
-            metric => frame.Catalog.MetricIds[metric.MetricHandle],
-            metric => new Reading(
-                metric,
-                Decode(metric.ValueKind, metric.ValueBits)),
-            StringComparer.OrdinalIgnoreCase);
-        foreach (var (address, handle) in selectedLegacy)
+        var requestAliases = previous is not null && ReferenceEquals(previous.LegacyHandles, selectedLegacy)
+            && previous.RequestAliases is { } knownAliases
+                ? knownAliases
+                : selectedLegacy.GroupBy(static pair => pair.Value)
+                    .ToDictionary(static group => group.Key, static group => group.Select(static pair => pair.Key).ToArray());
+        var rows = ImmutableCollectionsMarshal.AsArray(frame.Metrics) ?? [];
+        var readings = previous?.Readings
+            ?? new Dictionary<string, Reading>(rows.Length + selectedLegacy.Count, StringComparer.OrdinalIgnoreCase);
+        try
         {
-            if (readings.TryGetValue(frame.Catalog.MetricIds[handle], out var reading))
-                readings[address] = reading;
+            readings.EnsureCapacity(rows.Length + selectedLegacy.Count);
+            for (var index = 0; index < rows.Length; index++)
+            {
+                ref readonly var metric = ref rows[index];
+                readings.Add(frame.Catalog.MetricIds[metric.MetricHandle],
+                    new Reading(rows, index, Decode(metric.ValueKind, metric.ValueBits)));
+            }
+            foreach (var (address, handle) in selectedLegacy)
+            {
+                if (readings.TryGetValue(frame.Catalog.MetricIds[handle], out var reading))
+                    readings[address] = reading;
+            }
+            var snapshot = Project(frame, workspaceIdentity, sourceSelection, readings, requestAliases, previous);
+            previous?.Commit(sourceSelection, selectedLegacy, requestAliases, snapshot);
+            return snapshot;
         }
+        finally
+        {
+            // A reused reading table must not keep the workspace scratch rows.
+            if (previous is not null) readings.Clear();
+        }
+    }
+
+    private static HardwareMetricSnapshot Project(
+        NativeMetricSnapshotCommittedFrame frame, ulong workspaceIdentity,
+        MetricReadingSelection? sourceSelection, Dictionary<string, Reading> readings,
+        Dictionary<ulong, string[]> requestAliases, Reuse? previous)
+    {
         var cpuUsage = Get(readings, "cpu.usage");
         var cpuFrequency = Get(readings, "cpu.frequency");
         var cpuFrequencyPercent =
@@ -79,7 +111,7 @@ public static class NativeMetricSnapshotCommittedProjection
         };
         var gpus = CreateGpus(frame, readings);
         var inventory = CreateGpuInventory(frame, readings);
-        var items = CreateItems(frame, readings);
+        var items = CreateItems(frame, readings, previous?.Items);
         var datasets = CreateDatasetObservations(
             frame,
             readings,
@@ -95,24 +127,7 @@ public static class NativeMetricSnapshotCommittedProjection
             inventory,
             items)
         {
-            FieldBindings = frame.Catalog.MetricBindings.Values
-                .Where(static binding => binding.Field is not null)
-                .ToDictionary(static binding => binding.MetricId,
-                    binding => new MetricDeviceFieldBinding(binding.DeviceIdentity,
-                        WithReading(binding.Field!, sourceSelection?.Fields.GetValueOrDefault(binding.MetricHandle)),
-                        binding.MetricId, binding.SourceId)
-                    {
-                        NpuEngine = binding.NpuEngine,
-                        Device = binding.Device,
-                        SelectedRequestAliases = sourceSelection is null ? []
-                            : requestAliases.GetValueOrDefault(binding.MetricHandle) ?? [],
-                        RequestAliases = (requestAliases.GetValueOrDefault(binding.MetricHandle) ?? [])
-                            .Append(MetricReadingSourceTracker.LegacyAddress(binding))
-                            .Where(static alias => alias.Length != 0)
-                            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                        AdapterKey = frame.Catalog.GpuScopeBindings.TryGetValue(binding.ScopeHandle, out var gpuBinding)
-                            ? gpuBinding.AdapterLuid : null
-                    }, StringComparer.Ordinal),
+            FieldBindings = CreateFieldBindings(frame, sourceSelection, requestAliases, previous),
             Datasets = datasets,
             WorkspaceIdentity = workspaceIdentity,
             ConfigurationGeneration =
@@ -124,6 +139,101 @@ public static class NativeMetricSnapshotCommittedProjection
 
     private static MetricFieldDefinition WithReading(MetricFieldDefinition field, MetricReadingSource? reading)
         => field.Reading == reading ? field : field with { Reading = reading };
+
+    private static IReadOnlyDictionary<string, MetricDeviceFieldBinding> CreateFieldBindings(
+        NativeMetricSnapshotCommittedFrame frame,
+        MetricReadingSelection? sourceSelection,
+        Dictionary<ulong, string[]> requestAliases,
+        Reuse? previous)
+    {
+        // Every binding is a function of the catalog, the selection and the
+        // request aliases. The same three inputs give the same published table.
+        // Only a table built from a selection is comparable to one being built.
+        var known = sourceSelection is not null && previous?.Selection is not null
+            ? previous.FieldBindings : null;
+        if (known is not null && ReferenceEquals(previous!.Selection, sourceSelection)
+            && ReferenceEquals(previous.RequestAliases, requestAliases))
+            return known;
+        var result = new Dictionary<string, MetricDeviceFieldBinding>(
+            frame.Catalog.MetricBindings.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var binding in frame.Catalog.MetricBindings.Values)
+        {
+            if (binding.Field is null) continue;
+            var reading = sourceSelection?.Fields.GetValueOrDefault(binding.MetricHandle);
+            var aliases = requestAliases.GetValueOrDefault(binding.MetricHandle) ?? [];
+            if (known is not null && known.TryGetValue(binding.MetricId, out var prior)
+                && Equals(prior.Field.Reading, reading)
+                && SameAliases(prior.SelectedRequestAliases, aliases))
+            {
+                result.Add(binding.MetricId, prior);
+                continue;
+            }
+            result.Add(binding.MetricId, new MetricDeviceFieldBinding(binding.DeviceIdentity,
+                WithReading(binding.Field, reading),
+                binding.MetricId, binding.SourceId)
+            {
+                NpuEngine = binding.NpuEngine,
+                Device = binding.Device,
+                SelectedRequestAliases = sourceSelection is null ? [] : aliases,
+                RequestAliases = aliases
+                    .Append(MetricReadingSourceTracker.LegacyAddress(binding))
+                    .Where(static alias => alias.Length != 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                AdapterKey = frame.Catalog.GpuScopeBindings.TryGetValue(binding.ScopeHandle, out var gpuBinding)
+                    ? gpuBinding.AdapterLuid : null
+            });
+        }
+        return result;
+    }
+
+    private static bool SameAliases(IReadOnlyList<string> known, string[] aliases)
+    {
+        if (known.Count != aliases.Length) return false;
+        for (var index = 0; index < aliases.Length; index++)
+        {
+            if (!string.Equals(known[index], aliases[index], StringComparison.Ordinal)) return false;
+        }
+        return true;
+    }
+
+    /// <summary>One owner's previous committed projection of one workspace
+    /// catalog: immutable published objects only, plus a reading table that is
+    /// empty between projections. Not thread-safe; the capture uses it only
+    /// under its SampleGate.</summary>
+    internal sealed class Reuse
+    {
+        private NativeMetricSnapshotCatalogProjection? catalog;
+
+        internal MetricReadingSelection? Selection { get; private set; }
+        internal IReadOnlyDictionary<string, ulong>? LegacyHandles { get; private set; }
+        internal Dictionary<ulong, string[]>? RequestAliases { get; private set; }
+        internal IReadOnlyDictionary<string, MetricDeviceFieldBinding>? FieldBindings { get; private set; }
+        internal IReadOnlyDictionary<string, MetricReadingValue>? Items { get; private set; }
+        internal Dictionary<string, Reading> Readings { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        internal void Begin(NativeMetricSnapshotCatalogProjection current)
+        {
+            if (ReferenceEquals(catalog, current)) return;
+            catalog = current;
+            Selection = null;
+            LegacyHandles = null;
+            RequestAliases = null;
+            FieldBindings = null;
+            Items = null;
+            Readings.Clear();
+            Readings.TrimExcess();
+        }
+
+        internal void Commit(MetricReadingSelection? selection, IReadOnlyDictionary<string, ulong> legacyHandles,
+            Dictionary<ulong, string[]> requestAliases, HardwareMetricSnapshot snapshot)
+        {
+            Selection = selection;
+            LegacyHandles = legacyHandles;
+            RequestAliases = requestAliases;
+            FieldBindings = snapshot.FieldBindings;
+            Items = snapshot.Items;
+        }
+    }
 
     private static string NormalizeDatasetId(string metricId)
     {
@@ -139,7 +249,7 @@ public static class NativeMetricSnapshotCommittedProjection
             ulong workspaceIdentity)
     {
         var result = new Dictionary<string, HardwareMetricDatasetObservation>(
-            StringComparer.OrdinalIgnoreCase);
+            readings.Count + 1, StringComparer.OrdinalIgnoreCase);
         var attemptedAtUtcTicks = DateTimeOffset.FromUnixTimeMilliseconds(
                 checked((long)frame.Header.CapturedAtMilliseconds))
             .UtcTicks;
@@ -463,16 +573,18 @@ public static class NativeMetricSnapshotCommittedProjection
 
     private static IReadOnlyDictionary<string, MetricReadingValue> CreateItems(
         NativeMetricSnapshotCommittedFrame frame,
-        IReadOnlyDictionary<string, Reading> readings)
+        IReadOnlyDictionary<string, Reading> readings,
+        IReadOnlyDictionary<string, MetricReadingValue>? previous)
     {
         var items = new Dictionary<string, MetricReadingValue>(
-            StringComparer.OrdinalIgnoreCase);
+            readings.Count, StringComparer.OrdinalIgnoreCase);
         foreach (var (id, reading) in readings)
         {
             var binding = frame.Catalog.MetricBindings.GetValueOrDefault(reading.Output.MetricHandle);
             if (id != binding.MetricId && binding.FieldCode is MetricFieldCode.MemoryTotal
                 or MetricFieldCode.CommitLimit or MetricFieldCode.GpuMemoryTotal) continue;
             var field = binding.Field;
+            ref readonly var output = ref reading.Output;
             var valueAvailable = reading.IsAvailable;
             var capacityId = binding.FieldCode switch
             {
@@ -481,36 +593,76 @@ public static class NativeMetricSnapshotCommittedProjection
                 MetricFieldCode.GpuMemoryUsed => $"gpu.{binding.DisplayIndex}.vramTotal",
                 _ => string.Empty
             };
+            double? numericValue = valueAvailable && output.ValueKind == (uint)NativeMetricSnapshotValueKind.Float64
+                ? reading.Value : null;
+            var unit = field?.Unit ?? string.Empty;
+            var total = valueAvailable ? ValueOrNull(readings, capacityId) : null;
+            var sourceId = SourceId(frame, output.SourceHandle);
+            ulong? sampleDuration = valueAvailable && output.SampleDurationMilliseconds > 0
+                ? output.SampleDurationMilliseconds : null;
+            MetricInteger? integerValue = valueAvailable ? (NativeMetricSnapshotValueKind)output.ValueKind switch
+            {
+                NativeMetricSnapshotValueKind.Signed64 => MetricInteger.FromSigned64(unchecked((long)output.ValueBits)),
+                NativeMetricSnapshotValueKind.Unsigned64 => new MetricInteger(output.ValueBits),
+                NativeMetricSnapshotValueKind.Unsigned128 => new MetricInteger(output.ValueBits, output.ValueHighBits),
+                _ => null
+            } : null;
+            bool? booleanValue = valueAvailable && output.ValueKind == (uint)NativeMetricSnapshotValueKind.Boolean
+                ? output.ValueBits == 1 : null;
+            var status = Status(reading.Status);
+            DateTimeOffset? observedAt = output.ObservedAtMilliseconds == 0 ? null
+                : DateTimeOffset.FromUnixTimeMilliseconds(checked((long)output.ObservedAtMilliseconds));
+            var hasBytes = valueAvailable && output.ValueKind == (uint)NativeMetricSnapshotValueKind.Bytes;
+            // An unchanged reading keeps the previous projection's immutable item.
+            if (!hasBytes && previous is not null && previous.TryGetValue(id, out var known)
+                && string.Equals(known.Id, id, StringComparison.Ordinal)
+                && SameValue(known.NumericValue, numericValue)
+                && string.Equals(known.Unit, unit, StringComparison.Ordinal)
+                && known.Percent is null
+                && SameValue(known.Total, total)
+                && known.FieldCode == binding.FieldCode
+                && string.Equals(known.FieldName, field?.Name, StringComparison.Ordinal)
+                && string.Equals(known.DeviceIdentity, binding.DeviceIdentity, StringComparison.Ordinal)
+                && string.Equals(known.SourceId, sourceId, StringComparison.Ordinal)
+                && string.Equals(known.ValueKind, field?.ValueKind, StringComparison.Ordinal)
+                && known.SampleDurationMilliseconds == sampleDuration
+                && known.IntegerValue == integerValue
+                && known.BooleanValue == booleanValue
+                && known.Status == status
+                && SameInstant(known.ObservedAt, observedAt)
+                && known.BytesValue is null)
+            {
+                items[id] = known;
+                continue;
+            }
             items[id] = new MetricReadingValue(Id: id,
-                NumericValue: valueAvailable && reading.Output.ValueKind == (uint)NativeMetricSnapshotValueKind.Float64
-                    ? reading.Value : null,
-                Unit: field?.Unit ?? string.Empty,
-                Total: valueAvailable ? ValueOrNull(readings, capacityId) : null)
+                NumericValue: numericValue,
+                Unit: unit,
+                Total: total)
             {
                 FieldCode = binding.FieldCode,
                 FieldName = field?.Name,
                 DeviceIdentity = binding.DeviceIdentity,
-                SourceId = SourceId(frame, reading.Output.SourceHandle),
+                SourceId = sourceId,
                 ValueKind = field?.ValueKind,
-                SampleDurationMilliseconds = valueAvailable && reading.Output.SampleDurationMilliseconds > 0
-                    ? reading.Output.SampleDurationMilliseconds : null,
-                IntegerValue = valueAvailable ? (NativeMetricSnapshotValueKind)reading.Output.ValueKind switch
-                {
-                    NativeMetricSnapshotValueKind.Signed64 => MetricInteger.FromSigned64(unchecked((long)reading.Output.ValueBits)),
-                    NativeMetricSnapshotValueKind.Unsigned64 => new MetricInteger(reading.Output.ValueBits),
-                    NativeMetricSnapshotValueKind.Unsigned128 => new MetricInteger(reading.Output.ValueBits, reading.Output.ValueHighBits),
-                    _ => null
-                } : null,
-                BytesValue = DecodeBytes(reading),
-                BooleanValue = valueAvailable && reading.Output.ValueKind == (uint)NativeMetricSnapshotValueKind.Boolean
-                    ? reading.Output.ValueBits == 1 : null,
-                Status = Status(reading.Status),
-                ObservedAt = reading.Output.ObservedAtMilliseconds == 0 ? null
-                    : DateTimeOffset.FromUnixTimeMilliseconds(checked((long)reading.Output.ObservedAtMilliseconds))
+                SampleDurationMilliseconds = sampleDuration,
+                IntegerValue = integerValue,
+                BytesValue = hasBytes ? DecodeBytes(reading) : null,
+                BooleanValue = booleanValue,
+                Status = status,
+                ObservedAt = observedAt
             };
         }
         return items;
     }
+
+    private static bool SameValue(double? left, double? right)
+        => left.HasValue == right.HasValue
+            && (!left.HasValue || BitConverter.DoubleToInt64Bits(left.Value) == BitConverter.DoubleToInt64Bits(right!.Value));
+
+    private static bool SameInstant(DateTimeOffset? left, DateTimeOffset? right)
+        => left.HasValue == right.HasValue
+            && (!left.HasValue || left.Value.UtcTicks == right!.Value.UtcTicks && left.Value.Offset == right.Value.Offset);
 
     private static CpuSensorMetrics CreateCpuSensors(
         NativeMetricSnapshotCommittedFrame frame,
@@ -743,10 +895,32 @@ public static class NativeMetricSnapshotCommittedProjection
         };
     }
 
-    private readonly record struct Reading(
-        NativeMetricSnapshotMetricOutput Output,
-        double Value)
+    // A position in the frame's metric rows, not a copy of the 648-byte row.
+    // Readings live only while one projection runs.
+    internal readonly struct Reading
     {
+        private static readonly NativeMetricSnapshotMetricOutput[] Missing = new NativeMetricSnapshotMetricOutput[1];
+        private readonly NativeMetricSnapshotMetricOutput[]? rows;
+        private readonly int index;
+
+        public Reading(NativeMetricSnapshotMetricOutput[] rows, int index, double value)
+        {
+            this.rows = rows;
+            this.index = index;
+            Value = value;
+        }
+
+        public double Value { get; }
+
+        public ref readonly NativeMetricSnapshotMetricOutput Output
+        {
+            get
+            {
+                if (rows is null) return ref Missing[0];
+                return ref rows[index];
+            }
+        }
+
         public NativeMetricSnapshotMetricStatus Status =>
             (NativeMetricSnapshotMetricStatus)Output.Status;
 

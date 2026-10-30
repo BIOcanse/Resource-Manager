@@ -24,6 +24,9 @@ internal sealed partial class WindowsHardwareMetricCapture
     private readonly WindowsHardwareMetricResources resources;
     private readonly NativeMetricSnapshotSourceRuntimeFacts sourceRuntimeFacts;
     private readonly MetricReadingSourceTracker readingSources = new();
+    // Immutable values of this capture's previous committed projection; read and
+    // replaced only inside the committed read, which runs under SampleGate.
+    private readonly NativeMetricSnapshotCommittedProjection.Reuse projectionReuse = new();
     private readonly AmdIntegratedGpuSensorRoute integratedGpuSensorRoute;
     private readonly TopologyRefreshRequestTracker topologyRefreshRequests;
     private ulong activeWorkspaceIdentity;
@@ -119,7 +122,6 @@ internal sealed partial class WindowsHardwareMetricCapture
         }
         cancellationToken.ThrowIfCancellationRequested();
         HardwareMetricSnapshot? prepared = null;
-        NativeMetricSnapshotCommittedFrame? preEnrichmentFrame = null;
         if (enrichBeforeCommit is not null)
         {
             // Managed settings share this original SampleGate and the same final
@@ -136,8 +138,11 @@ internal sealed partial class WindowsHardwareMetricCapture
             }
             else
             {
-                preEnrichmentFrame = workspace.ReadCommitted();
-                prepared = NativeMetricSnapshotCommittedProjection.Create(frame: preEnrichmentFrame, workspaceIdentity: workspaceIdentity);
+                // The projection copies every value it keeps; the frame's rows are
+                // workspace scratch and do not survive this call.
+                prepared = workspace.ReadCommitted(workspaceIdentity,
+                    static (frame, identity) => NativeMetricSnapshotCommittedProjection.Create(
+                        frame: frame, workspaceIdentity: identity));
             }
             if (request.IncludesCatalog) prepared = AddCatalogObservations(prepared, topology, commandAt);
             prepared = await enrichBeforeCommit(prepared, request, cancellationToken,
@@ -167,14 +172,18 @@ internal sealed partial class WindowsHardwareMetricCapture
                         pdhGpuEngineUsage = engineUsage;
                 }
                 checkpoint?.Invoke(workspace);
-                var committed = preEnrichmentFrame is not null && completions.Count == 0
-                    && CanReusePreEnrichmentFrame(preEnrichmentFrame.Header, workspace.ReadHeader())
-                        ? preEnrichmentFrame
-                        : workspace.ReadCommitted();
-                readingSources.Observe(committed, workspaceIdentity, committedCompletions);
-                var sourceSelection = readingSources.Select(committed, workspaceIdentity);
-                var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: committed,
-                    workspaceIdentity: workspaceIdentity, sourceSelection: sourceSelection);
+                // Observe and Select copy the rows they keep; the projection reuses
+                // only immutable values of this capture's previous publication.
+                var snapshot = workspace.ReadCommitted(
+                    (Capture: this, WorkspaceIdentity: workspaceIdentity, Completions: committedCompletions),
+                    static (committed, state) =>
+                    {
+                        state.Capture.readingSources.Observe(committed, state.WorkspaceIdentity, state.Completions);
+                        var sourceSelection = state.Capture.readingSources.Select(committed, state.WorkspaceIdentity);
+                        return NativeMetricSnapshotCommittedProjection.Create(frame: committed,
+                            workspaceIdentity: state.WorkspaceIdentity, sourceSelection: sourceSelection,
+                            previous: state.Capture.projectionReuse);
+                    });
                 if (request.IncludesCatalog) snapshot = AddCatalogObservations(snapshot, topology, commandAt);
                 if (prepared is not null) snapshot = WindowsMetricControlFields.ApplyPreparedFields(snapshot, prepared);
                 snapshot = ProjectGpuEngineFields(snapshot, request, fieldCatalog, pdhGpuEngineUsage);
@@ -256,34 +265,6 @@ internal sealed partial class WindowsHardwareMetricCapture
             Items = EmptyMetricItems,
             Datasets = EmptyDatasetObservations
         };
-
-    internal static bool CanReusePreEnrichmentFrame(
-        NativeMetricSnapshotSnapshotHeader before,
-        NativeMetricSnapshotSnapshotHeader after)
-        // A plan can advance native state even when it produced no source
-        // completions. Reuse only when every meaningful header field is unchanged.
-        => before.AbiVersion == after.AbiVersion
-            && before.StructSize == after.StructSize
-            && before.ConfigurationGeneration == after.ConfigurationGeneration
-            && before.CatalogGeneration == after.CatalogGeneration
-            && before.CatalogFingerprint == after.CatalogFingerprint
-            && before.StateRevision == after.StateRevision
-            && before.CommittedGeneration == after.CommittedGeneration
-            && before.LastOperationEpoch == after.LastOperationEpoch
-            && before.LastPlanEpoch == after.LastPlanEpoch
-            && before.LastCommandAtMilliseconds == after.LastCommandAtMilliseconds
-            && before.CapturedAtMilliseconds == after.CapturedAtMilliseconds
-            && before.SourceCount == after.SourceCount
-            && before.MetricCount == after.MetricCount
-            && before.RuleCount == after.RuleCount
-            && before.GpuAdapterCount == after.GpuAdapterCount
-            && before.CurrentMetricCount == after.CurrentMetricCount
-            && before.UnavailableMetricCount == after.UnavailableMetricCount
-            && before.UnsupportedMetricCount == after.UnsupportedMetricCount
-            && before.SkippedMetricCount == after.SkippedMetricCount
-            && before.Flags == after.Flags
-            && before.Phase == after.Phase
-            && before.SemanticFingerprint == after.SemanticFingerprint;
 
     private NativeMetricSnapshotSourceCompletion CompleteSource(NativeMetricSnapshotWorkspace workspace,
         NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourceCompletion completion, DateTimeOffset completedAt)

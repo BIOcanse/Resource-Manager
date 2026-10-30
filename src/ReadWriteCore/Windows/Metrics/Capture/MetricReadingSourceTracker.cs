@@ -26,6 +26,14 @@ internal sealed class MetricReadingSourceTracker
     private readonly Dictionary<string, LegacyChoice> legacyCandidates = new(StringComparer.OrdinalIgnoreCase);
     private SelectionDefinition[] selectionDefinitions = [];
     private bool selectionDefinitionsValid;
+    // The previous selection is returned again, or its sources reused, when the
+    // values are equal; the projection then reuses its bindings by identity.
+    private MetricReadingSelection? lastSelection;
+    private SelectionDefinition[]? lastSelectionDefinitions;
+    private MetricReadingSource?[] selectedSources = [];
+    private readonly Dictionary<string, ulong> legacyScratch = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (MetricDeviceFieldBinding Source, MetricDeviceFieldBinding Projected)> projectedBindings =
+        new(StringComparer.OrdinalIgnoreCase);
     private ulong workspace;
     private ulong configuration;
     private ulong catalogGeneration;
@@ -108,7 +116,10 @@ internal sealed class MetricReadingSourceTracker
             void SetCapability(ulong handle, string availability)
             {
                 if (frame.Catalog.MetricBindings.TryGetValue(handle, out var binding)
-                    && binding.SourceHandle == completion.SourceHandle)
+                    && binding.SourceHandle == completion.SourceHandle
+                    && !(capabilities.TryGetValue(handle, out var existing)
+                        && existing.Epoch == source.CapabilityGeneration
+                        && string.Equals(existing.Availability, availability, StringComparison.Ordinal)))
                     capabilities[handle] = new(source.CapabilityGeneration, availability);
             }
         }
@@ -162,7 +173,10 @@ internal sealed class MetricReadingSourceTracker
             }
         }
 
-        var fields = new Dictionary<ulong, MetricReadingSource>(selectionDefinitions.Length);
+        var known = ReferenceEquals(lastSelectionDefinitions, selectionDefinitions) ? lastSelection : null;
+        if (selectedSources.Length != selectionDefinitions.Length)
+            selectedSources = new MetricReadingSource?[selectionDefinitions.Length];
+        var fieldsReused = known is not null;
         for (var i = 0; i < selectionDefinitions.Length; i++)
         {
             var definition = selectionDefinitions[i];
@@ -172,12 +186,21 @@ internal sealed class MetricReadingSourceTracker
                 ? preferredCandidates.TryGetValue(candidate.ReadingId, out bestIndex)
                 : candidate.Availability == "available";
             var best = hasPreferred ? selectionDefinitions[bestIndex] : default;
-            fields.Add(definition.Binding.MetricHandle,
-                new MetricReadingSource(candidate.ReadingId, candidate.Quantity, definition.SourceRank,
-                    candidate.Availability,
-                    hasPreferred && best.Binding.MetricHandle == definition.Binding.MetricHandle,
-                    hasPreferred ? best.Binding.DeviceIdentity : null,
-                    hasPreferred ? best.Binding.Field!.Name : null));
+            var isPreferred = hasPreferred && best.Binding.MetricHandle == definition.Binding.MetricHandle;
+            var preferredDevice = hasPreferred ? best.Binding.DeviceIdentity : null;
+            var preferredField = hasPreferred ? best.Binding.Field!.Name : null;
+            if (known is not null && known.Fields.TryGetValue(definition.Binding.MetricHandle, out var prior)
+                && IsSource(prior, candidate.ReadingId, candidate.Quantity, definition.SourceRank,
+                    candidate.Availability, isPreferred, preferredDevice, preferredField))
+            {
+                selectedSources[i] = prior;
+            }
+            else
+            {
+                selectedSources[i] = new MetricReadingSource(candidate.ReadingId, candidate.Quantity,
+                    definition.SourceRank, candidate.Availability, isPreferred, preferredDevice, preferredField);
+                fieldsReused = false;
+            }
 
             if (definition.LegacyAddress.Length == 0) continue;
             if (!legacyCandidates.TryGetValue(definition.LegacyAddress, out var choice))
@@ -192,41 +215,139 @@ internal sealed class MetricReadingSourceTracker
             }
         }
 
-        var legacy = new Dictionary<string, ulong>(catalog.LegacyMetricHandles.Count,
-            StringComparer.OrdinalIgnoreCase);
+        legacyScratch.Clear();
+        legacyScratch.EnsureCapacity(catalog.LegacyMetricHandles.Count);
         foreach (var (address, handle) in catalog.LegacyMetricHandles)
-            legacy.Add(address, handle);
+            legacyScratch.Add(address, handle);
         foreach (var (address, choice) in legacyCandidates)
         {
-            if (!choice.HasPreferred) legacy.Remove(address);
-            else legacy[address] = selectionDefinitions[choice.CandidateIndex].Binding.MetricHandle;
+            if (!choice.HasPreferred) legacyScratch.Remove(address);
+            else legacyScratch[address] = selectionDefinitions[choice.CandidateIndex].Binding.MetricHandle;
         }
-        return new(fields, legacy);
+        var legacyReused = known?.LegacyHandles is Dictionary<string, ulong> knownLegacy
+            && SameLegacy(knownLegacy, legacyScratch);
+        try
+        {
+            if (fieldsReused && legacyReused) return known!;
+            IReadOnlyDictionary<ulong, MetricReadingSource> fields;
+            if (fieldsReused)
+            {
+                fields = known!.Fields;
+            }
+            else
+            {
+                var created = new Dictionary<ulong, MetricReadingSource>(selectionDefinitions.Length);
+                for (var i = 0; i < selectionDefinitions.Length; i++)
+                    created.Add(selectionDefinitions[i].Binding.MetricHandle, selectedSources[i]!);
+                fields = created;
+            }
+            var legacy = legacyReused ? known!.LegacyHandles
+                : new Dictionary<string, ulong>(legacyScratch, StringComparer.OrdinalIgnoreCase);
+            lastSelection = new(fields, legacy);
+            lastSelectionDefinitions = selectionDefinitions;
+            return lastSelection;
+        }
+        finally
+        {
+            Array.Clear(selectedSources);
+        }
+    }
+
+    private static bool IsSource(MetricReadingSource source, string id, string quantity, int sourceRank,
+        string availability, bool isPreferred, string? preferredDevice, string? preferredField)
+        => string.Equals(source.Id, id, StringComparison.Ordinal)
+            && string.Equals(source.Quantity, quantity, StringComparison.Ordinal)
+            && source.SourceRank == sourceRank
+            && string.Equals(source.SourceAvailability, availability, StringComparison.Ordinal)
+            && source.IsPreferredSource == isPreferred
+            && string.Equals(source.PreferredDeviceIdentity, preferredDevice, StringComparison.Ordinal)
+            && string.Equals(source.PreferredFieldName, preferredField, StringComparison.Ordinal);
+
+    // Same pairs in the same order: the published dictionary's enumeration
+    // order is part of what a reused selection must reproduce.
+    private static bool SameLegacy(Dictionary<string, ulong> known, Dictionary<string, ulong> current)
+    {
+        if (known.Count != current.Count) return false;
+        var left = known.GetEnumerator();
+        var right = current.GetEnumerator();
+        while (left.MoveNext())
+        {
+            if (!right.MoveNext()) return false;
+            if (!string.Equals(left.Current.Key, right.Current.Key, StringComparison.Ordinal)
+                || left.Current.Value != right.Current.Value) return false;
+        }
+        return !right.MoveNext();
     }
 
     public HardwareMetricSnapshot ApplyProjectedFields(HardwareMetricSnapshot snapshot)
     {
-        var bindings = new Dictionary<string, MetricDeviceFieldBinding>(snapshot.FieldBindings, StringComparer.OrdinalIgnoreCase);
-        foreach (var key in projectedCapabilities.Keys.Where(key => !bindings.ContainsKey(key)).ToArray()) projectedCapabilities.Remove(key);
-        foreach (var (address, binding) in snapshot.FieldBindings)
+        var source = snapshot.FieldBindings;
+        // The published table is case-insensitive. Copy only to change a binding
+        // or the comparer; otherwise the incoming immutable table is published.
+        var bindings = IsOrdinalIgnoreCase(source) ? null
+            : new Dictionary<string, MetricDeviceFieldBinding>(source, StringComparer.OrdinalIgnoreCase);
+        RemoveStaleProjections(bindings ?? source);
+        foreach (var (address, binding) in source)
         {
             if (binding.ControlTarget is not null || (binding.Field.Reading is not null
                 && binding.Field.Code != MetricFieldCode.NpuDeviceEngineBusyPercent)) continue;
             var epoch = sourceCapabilityEpochs.GetValueOrDefault(binding.SourceId);
             if (projectedCapabilities.GetValueOrDefault(address)?.Epoch != epoch) projectedCapabilities.Remove(address);
             var status = snapshot.Datasets.GetValueOrDefault(address)?.Status;
-            if (status == SamplingObservationStatus.Current) projectedCapabilities[address] = new(epoch, "available");
+            if (status == SamplingObservationStatus.Current) SetProjectedCapability(address, epoch, "available");
             else if (status == SamplingObservationStatus.Unsupported || binding.Field.Reading?.SourceAvailability == "unsupported")
-                projectedCapabilities[address] = new(epoch, "unsupported");
+                SetProjectedCapability(address, epoch, "unsupported");
             var availability = projectedCapabilities.GetValueOrDefault(address)?.Availability ?? "unverified";
             var rule = MetricFieldRegistry.ReadingRule(binding.Field, binding.SourceId, nvmeDevice: false);
-            var id = ReadingId(binding.DeviceIdentity, rule.Quantity);
-            bindings[address] = binding with { Field = binding.Field with { Reading = new(id, rule.Quantity,
-                rule.SourceRank, availability, availability == "available",
-                availability == "available" ? binding.DeviceIdentity : null,
-                availability == "available" ? binding.Field.Name : null) } };
+            var id = GetReadingId(binding.DeviceIdentity, rule.Quantity);
+            var isPreferred = availability == "available";
+            var preferredDevice = isPreferred ? binding.DeviceIdentity : null;
+            var preferredField = isPreferred ? binding.Field.Name : null;
+            var projected = projectedBindings.TryGetValue(address, out var prior)
+                && ReferenceEquals(prior.Source, binding)
+                && prior.Projected.Field.Reading is { } priorReading
+                && IsSource(priorReading, id, rule.Quantity, rule.SourceRank, availability, isPreferred,
+                    preferredDevice, preferredField)
+                    ? prior.Projected
+                    : binding with { Field = binding.Field with { Reading = new(id, rule.Quantity,
+                        rule.SourceRank, availability, isPreferred, preferredDevice, preferredField) } };
+            projectedBindings[address] = (binding, projected);
+            bindings ??= new Dictionary<string, MetricDeviceFieldBinding>(source, StringComparer.OrdinalIgnoreCase);
+            bindings[address] = projected;
         }
-        return snapshot with { FieldBindings = bindings };
+        return bindings is null ? snapshot : snapshot with { FieldBindings = bindings };
+    }
+
+    private void SetProjectedCapability(string address, ulong epoch, string availability)
+    {
+        if (projectedCapabilities.TryGetValue(address, out var current)
+            && current.Epoch == epoch && current.Availability == availability) return;
+        projectedCapabilities[address] = new(epoch, availability);
+    }
+
+    private static bool IsOrdinalIgnoreCase(IReadOnlyDictionary<string, MetricDeviceFieldBinding> bindings)
+        => bindings switch
+        {
+            Dictionary<string, MetricDeviceFieldBinding> dictionary =>
+                ReferenceEquals(dictionary.Comparer, StringComparer.OrdinalIgnoreCase),
+            ImmutableDictionary<string, MetricDeviceFieldBinding> immutable =>
+                ReferenceEquals(immutable.KeyComparer, StringComparer.OrdinalIgnoreCase),
+            _ => false
+        };
+
+    private void RemoveStaleProjections(IReadOnlyDictionary<string, MetricDeviceFieldBinding> bindings)
+    {
+        List<string>? stale = null;
+        foreach (var key in projectedCapabilities.Keys)
+            if (!bindings.ContainsKey(key)) (stale ??= []).Add(key);
+        foreach (var key in projectedBindings.Keys)
+            if (!bindings.ContainsKey(key)) (stale ??= []).Add(key);
+        if (stale is null) return;
+        foreach (var key in stale)
+        {
+            projectedCapabilities.Remove(key);
+            projectedBindings.Remove(key);
+        }
     }
 
     public MetricSampleRequest ExpandLegacyRequest(MetricSampleRequest request,
@@ -282,6 +403,13 @@ internal sealed class MetricReadingSourceTracker
         legacyCandidates.Clear();
         preferredCandidates.TrimExcess();
         legacyCandidates.TrimExcess();
+        lastSelection = null;
+        lastSelectionDefinitions = null;
+        selectedSources = [];
+        legacyScratch.Clear();
+        legacyScratch.TrimExcess();
+        projectedBindings.Clear();
+        projectedBindings.TrimExcess();
     }
 
     private void LoadSourceRows(IReadOnlyList<NativeMetricSnapshotSourceOutput> sources)
