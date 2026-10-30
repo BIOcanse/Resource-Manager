@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "647DB8CC16CA467F5871A9247594027CCC0713DC1B5066B410BF4B52AF948CF7",
+  "contractFingerprint": "CC10BF1D0C5732C820F3F2295A44EEE1570FF16C8F53246C4330DD5706F52963",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -155,8 +155,8 @@
     {
       "key": "resource-manager/backend/memory_cpu_tiers",
       "parent": "resource-manager/backend",
-      "name": "内存与 CPU 取舍",
-      "description": "Five tiers from lowest memory pressure (1) to lowest CPU pressure (5). Each point holds one option's five tier cells; the stop buffer and service identity cache cells stay in the monitoring group. The settings owner resolves tier plus user overrides into the effective values.",
+      "name": "\u5185\u5B58\u4E0E CPU \u53D6\u820D",
+      "description": "Five tiers from lowest memory pressure (1) to lowest CPU pressure (5). Each point holds one option\u0027s five tier cells; the stop buffer and service identity cache cells stay in the monitoring group. The settings owner resolves tier plus user overrides into the effective values.",
       "order": 7,
       "points": [
         "0001000200350000",
