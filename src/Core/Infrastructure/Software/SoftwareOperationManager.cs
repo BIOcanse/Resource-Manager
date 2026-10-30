@@ -86,6 +86,8 @@ public sealed class SoftwareOperationManager(
             }
 
             Directory.Delete(installDirectory, recursive: true);
+            // The removed root is no longer what the held dependency probe described.
+            dependencyManager.InvalidateStatuses();
         }
 
         var after = await fileChangeTracker.CaptureAsync(scope, cancellationToken);

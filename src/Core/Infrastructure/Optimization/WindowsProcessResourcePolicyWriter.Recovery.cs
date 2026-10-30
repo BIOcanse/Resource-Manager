@@ -50,7 +50,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
             var nativeErrorCode = Marshal.GetLastWin32Error();
             return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(
                 nativeErrorCode,
-                new Win32Exception(nativeErrorCode).Message);
+                Win32ErrorText.Get(nativeErrorCode));
         }
         if (exitCode != StillActive)
         {
@@ -63,7 +63,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
             var nativeErrorCode = Marshal.GetLastWin32Error();
             return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(
                 nativeErrorCode,
-                new Win32Exception(nativeErrorCode).Message);
+                Win32ErrorText.Get(nativeErrorCode));
         }
 
         // STILL_ACTIVE is also a possible exit code; use the same handle's exit time.
@@ -335,7 +335,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
     {
         const int errorInvalidParameter = 87;
         const int errorNotFound = 1168;
-        var message = new Win32Exception(nativeErrorCode).Message;
+        var message = Win32ErrorText.Get(nativeErrorCode);
         return nativeErrorCode is errorInvalidParameter or errorNotFound
             ? RecoveryReadResult<T>.NotFoundOrExited(nativeErrorCode, message, absenceReason)
             : RecoveryReadResult<T>.Unavailable(nativeErrorCode, message);

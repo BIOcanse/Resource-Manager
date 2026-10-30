@@ -136,7 +136,7 @@ public sealed partial class WindowsGpuPlacementInjector(
         {
             var error = Marshal.GetLastWin32Error();
             processHandle.Dispose();
-            return new(target, Failed(processId, "open-process-failed", new Win32Exception(error).Message, error), execute);
+            return new(target, Failed(processId, "open-process-failed", Win32ErrorText.Get(error), error), execute);
         }
         try
         {

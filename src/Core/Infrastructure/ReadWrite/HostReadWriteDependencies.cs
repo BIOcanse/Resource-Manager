@@ -16,7 +16,8 @@ internal static class HostReadWriteDependencies
 {
     internal static DependencyActions Create(HttpClient client, IProviderRuntimeProbe providers, string packageRoot,
         HardwareBridgeClient hardwareBridge, IManagementInventoryRevisionOwner inventoryRevisionOwner,
-        Func<string, DependencyStatus>? nativeProbe = null, DependencyPackageInstaller? installer = null)
+        Func<string, DependencyStatus>? nativeProbe = null, DependencyPackageInstaller? installer = null,
+        Action? componentFilesChanged = null)
     {
         var resolvedPackageRoot = Path.GetFullPath(packageRoot);
         nativeProbe ??= ReadWriteNativeDependencyProbe.Query;
@@ -54,9 +55,20 @@ internal static class HostReadWriteDependencies
             var definition = OptionalDependencyCatalog.Find(component);
             var directory = Path.Combine(resolvedPackageRoot, "Dependencies", component);
             bindings.Add(new(source, () => QueryProvider(source, component, directory, providers, definition),
-                definition is null ? null : (package, cancellationToken) => InstallSelectedPackageAsync(
-                    package, component, definition, resolvedPackageRoot, directory,
-                    hardwareBridge, inventoryRevisionOwner, installer, cancellationToken)));
+                definition is null ? null : async (package, cancellationToken) =>
+                {
+                    try
+                    {
+                        return await InstallSelectedPackageAsync(
+                            package, component, definition, resolvedPackageRoot, directory,
+                            hardwareBridge, inventoryRevisionOwner, installer, cancellationToken).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        // The held dependency probe results describe these files.
+                        componentFilesChanged?.Invoke();
+                    }
+                }));
         }
         return new(client, bindings);
     }

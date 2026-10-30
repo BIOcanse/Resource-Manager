@@ -5,6 +5,7 @@ using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.App.Infrastructure.ServiceHosting;
 using ResourceManager.App.Infrastructure.Control.Writers;
+using ResourceManager.ReadWrite;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
 
@@ -18,6 +19,7 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
     private readonly string packageRoot;
     private readonly HardwareBridgeClient hardwareBridge;
     private readonly ILogger<OptionalDependencyManager>? logger;
+    private readonly OptionalDependencyProbeResults probeResults;
 
     public OptionalDependencyManager(
         HttpClient httpClient,
@@ -27,8 +29,12 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
         IDependencyInstallerSourceResolver installerSourceResolver,
         HardwareBridgeClient hardwareBridge,
         IInteractiveUserSessionBroker? sessionBroker = null,
-        ILogger<OptionalDependencyManager>? logger = null)
+        ILogger<OptionalDependencyManager>? logger = null,
+        OptionalDependencyProbeResults? probeResults = null)
     {
+        // The host shares one holder across the per-request managers; a manager built
+        // without one holds its own results for its lifetime.
+        this.probeResults = probeResults ?? new OptionalDependencyProbeResults();
         this.httpClient = httpClient;
         this.fileChangeTracker = fileChangeTracker;
         this.installedSoftwareInventory = installedSoftwareInventory;
@@ -46,17 +52,18 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
     public async Task<IReadOnlyList<OptionalDependencyStatus>> GetStatusesAsync(CancellationToken cancellationToken)
         => await GetStatusesAsync(windowsSid: null, cancellationToken: cancellationToken);
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Optional dependency installed, downloaded, removed, repaired, verified or refresh requested")]
     public async Task<IReadOnlyList<OptionalDependencyStatus>> GetStatusesAsync(
         string? windowsSid,
         CancellationToken cancellationToken)
     {
         var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(windowsSid, cancellationToken);
-        IReadOnlyList<OptionalDependencyStatus> statuses = OptionalDependencyCatalog.Definitions
+        return probeResults.GetStatuses(windowsSid, installedSoftware, () => OptionalDependencyCatalog.Definitions
             .Select(definition => BuildStatus(definition, installedSoftware))
-            .ToArray();
-
-        return statuses;
+            .ToArray());
     }
+
+    public void InvalidateStatuses() => probeResults.Invalidate();
 
     public async Task<OptionalDependencyStatus?> GetStatusAsync(string id, CancellationToken cancellationToken)
         => await GetStatusAsync(id, windowsSid: null, cancellationToken: cancellationToken);
@@ -72,8 +79,8 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
             return null;
         }
 
-        var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(windowsSid, cancellationToken);
-        return BuildStatus(definition, installedSoftware);
+        var statuses = await GetStatusesAsync(windowsSid, cancellationToken);
+        return statuses.FirstOrDefault(status => status.Definition.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase));
     }
 
     public Task<DependencyVersionOptions> GetVersionOptionsAsync(string id, CancellationToken cancellationToken)

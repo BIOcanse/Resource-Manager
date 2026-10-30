@@ -19,6 +19,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
     private static IServiceCollection AddResourceManagerDependencies(this IServiceCollection services)
     {
         services.AddHttpClient<IDependencyInstallerSourceResolver, DependencyInstallerSourceResolver>();
+        // Held probe results shared by the per-request dependency managers and the provider probe.
+        services.AddSingleton<OptionalDependencyProbeResults>();
         services.AddHttpClient<IOptionalDependencyManager, OptionalDependencyManager>();
         return services;
     }

@@ -17,6 +17,24 @@ public sealed partial class OptionalDependencyManager
         CancellationToken cancellationToken,
         IProgress<DependencyDownloadProgress>? progress = null)
     {
+        try
+        {
+            return await DownloadCoreAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, progress);
+        }
+        finally
+        {
+            // A completed or partly completed download changes the cached installer files.
+            probeResults.Invalidate();
+        }
+    }
+
+    private async Task<OptionalDependencyDownloadResult> DownloadCoreAsync(
+        string id,
+        bool acknowledgeExternalTerms,
+        string? versionChoice,
+        CancellationToken cancellationToken,
+        IProgress<DependencyDownloadProgress>? progress)
+    {
         var definition = OptionalDependencyCatalog.Find(id)
             ?? throw new InvalidOperationException($"Unknown dependency: {id}");
 

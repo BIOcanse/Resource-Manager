@@ -137,12 +137,61 @@ public sealed partial class ControlHelperPayloadTests
             // A real system installation may be reused, but this module-only folder must not own that receipt.
             Assert.NotEqual("ManagedDependencies", (await manager.GetStatusAsync(id, default))!.DetectionSource);
             File.WriteAllText(Path.Combine(directory, "PawnIOLib.dll"), "runtime marker, never loaded");
+            // A file placed outside an install flow is seen after an explicit refresh.
+            manager.InvalidateStatuses();
             var status = await manager.GetStatusAsync(id, default);
             Assert.True(status!.Installed);
             Assert.Equal("ManagedDependencies", status.DetectionSource);
             Assert.Equal(directory, status.EffectiveInstallDirectory);
         }
         finally { DeleteOwnedPackage(root, id, files, definition.InstallerFileName); }
+    }
+
+    [Fact]
+    public async Task HeldDependencyProbeIsReusedUntilAFlowOrARefreshDropsIt()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rm-dependency-probe-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var client = new HttpClient(new ArchiveHandler([]));
+            var environment = new TestEnvironment(root);
+            using var bridge = new HardwareBridgeClient(environment);
+            var held = new OptionalDependencyProbeResults();
+            OptionalDependencyManager Manager() => new(client, environment, new FileSystemChangeTracker(), new EmptyInventory(),
+                new DependencyInstallerSourceResolver(client, NullLogger<DependencyInstallerSourceResolver>.Instance), bridge,
+                probeResults: held);
+
+            // Per-request managers share the held result instead of probing the files again.
+            var first = await Manager().GetStatusesAsync(default);
+            Assert.Same(first, await Manager().GetStatusesAsync(default));
+            Assert.NotNull(await Manager().GetStatusAsync("amd-smu-pawnio-provider", default));
+            Assert.Equal(1, held.StatusProbeCount);
+
+            Manager().InvalidateStatuses();
+            await Manager().GetStatusesAsync(default);
+            Assert.Equal(2, held.StatusProbeCount);
+
+            // A download or install flow drops the held result even when it fails.
+            await Assert.ThrowsAsync<InvalidOperationException>(() => Manager().DownloadAsync("no-such-dependency", false, null, default));
+            await Manager().GetStatusesAsync(default);
+            Assert.Equal(3, held.StatusProbeCount);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void HeldProviderProbeIsReusedUntilInvalidated()
+    {
+        var held = new OptionalDependencyProbeResults();
+        var probes = 0;
+        ComponentProviderRuntimeProbeResult Probe() { probes++; return new(true, true, ComponentProviderStates.RuntimeAvailable, "probe " + probes, null); }
+
+        Assert.Same(held.GetProvider("amd-smu-pawnio-provider", Probe), held.GetProvider("AMD-SMU-PAWNIO-PROVIDER", Probe));
+        Assert.Equal(1, probes);
+        held.Invalidate();
+        held.GetProvider("amd-smu-pawnio-provider", Probe);
+        Assert.Equal(2, probes);
+        Assert.Equal(2, held.ProviderProbeCount);
     }
 
     private static void DeleteOwnedPackage(string root, string id, string[] files, string installer)

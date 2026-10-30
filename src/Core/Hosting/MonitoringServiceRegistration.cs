@@ -143,7 +143,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 provider.GetRequiredService<Application.Components.IProviderRuntimeProbe>(),
                 Infrastructure.Paths.PackagePathResolver.ResolvePackageRoot(provider.GetRequiredService<IHostEnvironment>().ContentRootPath),
                 provider.GetRequiredService<HardwareBridgeClient>(),
-                provider.GetRequiredService<Application.Management.IManagementInventoryRevisionOwner>()));
+                provider.GetRequiredService<Application.Management.IManagementInventoryRevisionOwner>(),
+                componentFilesChanged: provider.GetRequiredService<Infrastructure.Dependencies.OptionalDependencyProbeResults>().Invalidate));
         services.AddSingleton<ResourceManager.ReadWrite.ReadWriteCore>(provider => new(
             provider.GetRequiredService<Infrastructure.ReadWrite.HostFieldBackends>().Reads,
             provider.GetRequiredService<ResourceManager.ReadWrite.Dependencies.IReadWriteDependencies>()));

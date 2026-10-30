@@ -79,6 +79,8 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         records.AddRange(await GetAdaptedSoftwareAsync(cancellationToken));
         records.AddRange(GetControlledRegistrationRecords());
 
+        // An explicit software refresh also re-probes the dependency files.
+        if (refreshPortableRegistrations) dependencyManager.InvalidateStatuses();
         var dependencies = await dependencyManager.GetStatusesAsync(windowsSid, cancellationToken);
         records.AddRange(dependencies.Select(ToDependencyRecord));
 

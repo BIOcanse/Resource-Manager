@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Configuration;
 using ResourceManager.NativeUi.Localization;
 using System.Text.Json;
 
@@ -5,40 +6,27 @@ namespace ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
 
 internal sealed class ForceTerminateHotkeyController : IDisposable
 {
-    private const int SettingsPollIntervalMs = 2000;
     private const string ActionId = "force-terminate-unresponsive-and-foreground";
 
-    private readonly string settingsPath;
     private readonly Action<int?> shortcutPressed;
     private readonly Action<string, ToolTipIcon> statusReporter;
-    private readonly System.Windows.Forms.Timer settingsPollTimer;
     private EditableHotkeyDefinition? appliedDefinition;
     private EditableHotkeyHook? hook;
     private bool appliedEnabled;
     private bool disposed;
 
     public ForceTerminateHotkeyController(
-        string settingsPath,
         Action<int?> shortcutPressed,
         Action<string, ToolTipIcon> statusReporter)
     {
-        this.settingsPath = settingsPath;
         this.shortcutPressed = shortcutPressed;
         this.statusReporter = statusReporter;
-        settingsPollTimer = new System.Windows.Forms.Timer { Interval = SettingsPollIntervalMs };
-        settingsPollTimer.Tick += (_, _) => Reload();
     }
 
-    public void Start()
+    /// <summary>Applies one read of app-settings.json (startup, a file change or an explicit reload).</summary>
+    public void Apply(AppSettingsFileRead settings)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
-        Reload();
-        settingsPollTimer.Start();
-    }
-
-    public void Reload()
-    {
-        if (disposed || !TryReadSettings(out var enabled, out var definition))
+        if (disposed || !TryReadSettings(settings, out var enabled, out var definition))
         {
             return;
         }
@@ -94,61 +82,57 @@ internal sealed class ForceTerminateHotkeyController : IDisposable
         }
 
         disposed = true;
-        settingsPollTimer.Stop();
-        settingsPollTimer.Dispose();
         hook?.Dispose();
     }
 
-    private bool TryReadSettings(out bool enabled, out EditableHotkeyDefinition definition)
+    // A missing file means no hotkey; an unreadable one keeps the applied hotkey, as before.
+    internal static bool TryReadSettings(AppSettingsFileRead settings, out bool enabled, out EditableHotkeyDefinition definition)
     {
         enabled = false;
         definition = EditableHotkeyDefinition.Create([]);
-        if (!File.Exists(settingsPath))
+        if (settings.State == AppSettingsFileReadState.Missing)
         {
             return true;
         }
 
-        try
-        {
-            using var stream = Configuration.SettingsFileReader.Open(settingsPath);
-            using var document = JsonDocument.Parse(stream);
-            if (document.RootElement.ValueKind != JsonValueKind.Object
-                || !document.RootElement.TryGetProperty("systemIntegration", out var systemIntegration)
-                || systemIntegration.ValueKind != JsonValueKind.Object
-                || !systemIntegration.TryGetProperty("hotkeys", out var hotkeys)
-                || hotkeys.ValueKind != JsonValueKind.Array)
-            {
-                return true;
-            }
-
-            foreach (var hotkey in hotkeys.EnumerateArray())
-            {
-                if (hotkey.ValueKind != JsonValueKind.Object
-                    || !hotkey.TryGetProperty("actionId", out var actionId)
-                    || actionId.ValueKind != JsonValueKind.String
-                    || !string.Equals(actionId.GetString(), ActionId, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                enabled = hotkey.TryGetProperty("enabled", out var enabledValue)
-                    && enabledValue.ValueKind == JsonValueKind.True;
-                definition = EditableHotkeyDefinition.Create(
-                    hotkey.TryGetProperty("encoding", out var encoding)
-                    && encoding.ValueKind == JsonValueKind.Array
-                        ? encoding.EnumerateArray()
-                            .Where(static item => item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out _))
-                            .Select(static item => item.GetInt32())
-                        : []);
-                enabled &= !definition.IsEmpty;
-                return true;
-            }
-
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        if (settings.State == AppSettingsFileReadState.Unreadable)
         {
             return false;
         }
+
+        var root = settings.Root;
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("systemIntegration", out var systemIntegration)
+            || systemIntegration.ValueKind != JsonValueKind.Object
+            || !systemIntegration.TryGetProperty("hotkeys", out var hotkeys)
+            || hotkeys.ValueKind != JsonValueKind.Array)
+        {
+            return true;
+        }
+
+        foreach (var hotkey in hotkeys.EnumerateArray())
+        {
+            if (hotkey.ValueKind != JsonValueKind.Object
+                || !hotkey.TryGetProperty("actionId", out var actionId)
+                || actionId.ValueKind != JsonValueKind.String
+                || !string.Equals(actionId.GetString(), ActionId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            enabled = hotkey.TryGetProperty("enabled", out var enabledValue)
+                && enabledValue.ValueKind == JsonValueKind.True;
+            definition = EditableHotkeyDefinition.Create(
+                hotkey.TryGetProperty("encoding", out var encoding)
+                && encoding.ValueKind == JsonValueKind.Array
+                    ? encoding.EnumerateArray()
+                        .Where(static item => item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out _))
+                        .Select(static item => item.GetInt32())
+                    : []);
+            enabled &= !definition.IsEmpty;
+            return true;
+        }
+
+        return true;
     }
 }

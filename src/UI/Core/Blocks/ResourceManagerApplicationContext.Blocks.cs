@@ -48,8 +48,8 @@ public sealed partial class ResourceManagerApplicationContext
         NativeUiText.Changed += LanguageChanged;
         try
         {
-            // Preference polling stays inside these owners for this pilot. Their rule migration
-            // needs an authoritative preference change source (see the UI tree report).
+            // The hotkey owners read app-settings.json once here and again only when the file
+            // changes (one shared watcher) or the frontend asks for a reload.
             hotkeys.Start();
             context.ReportRunning();
             await UntilStoppedAsync(context.StopNotification);

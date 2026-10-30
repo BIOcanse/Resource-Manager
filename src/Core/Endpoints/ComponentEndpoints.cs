@@ -36,13 +36,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         this IEndpointRouteBuilder app,
         StartupCapabilitySet startupCapabilities)
     {
+        // Statuses come from the held dependency probe; ?refresh=true probes the files again.
         app.MapGet("/api/components", async (
             HttpContext context,
+            bool? refresh,
             IComponentManager componentManager,
+            IOptionalDependencyManager dependencyManager,
             CancellationToken cancellationToken) =>
         {
             if (!TryReadInteractiveCaller(context, out var caller))
                 return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
+            if (refresh == true) dependencyManager.InvalidateStatuses();
             return Results.Ok(await componentManager.GetStatusesAsync(caller.WindowsSid, cancellationToken));
         }).AllowAnonymous();
 

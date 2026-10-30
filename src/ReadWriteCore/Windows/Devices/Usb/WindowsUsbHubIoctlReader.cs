@@ -36,7 +36,7 @@ public static partial class WindowsUsbHubIoctlReader
             using var hub = OpenHub(hubPath);
             if (hub.IsInvalid)
             {
-                firstError ??= $"Opening the USB hub failed: {new Win32Exception(Marshal.GetLastWin32Error()).Message}";
+                firstError ??= $"Opening the USB hub failed: {global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(Marshal.GetLastWin32Error())}";
                 continue;
             }
 
@@ -72,7 +72,7 @@ public static partial class WindowsUsbHubIoctlReader
             DigcfPresent | DigcfDeviceInterface);
         if (deviceInfoSet == new nint(-1))
         {
-            error = new Win32Exception(Marshal.GetLastWin32Error()).Message;
+            error = global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(Marshal.GetLastWin32Error());
             return [];
         }
 
@@ -94,7 +94,7 @@ public static partial class WindowsUsbHubIoctlReader
                         break;
                     }
 
-                    error ??= new Win32Exception(lastError).Message;
+                    error ??= global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(lastError);
                     break;
                 }
 
@@ -130,7 +130,7 @@ public static partial class WindowsUsbHubIoctlReader
         var lastError = Marshal.GetLastWin32Error();
         if (lastError != ErrorInsufficientBuffer || requiredSize == 0)
         {
-            error ??= new Win32Exception(lastError).Message;
+            error ??= global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(lastError);
             return null;
         }
 
@@ -146,7 +146,7 @@ public static partial class WindowsUsbHubIoctlReader
                     out _,
                     nint.Zero))
             {
-                error ??= new Win32Exception(Marshal.GetLastWin32Error()).Message;
+                error ??= global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(Marshal.GetLastWin32Error());
                 return null;
             }
 

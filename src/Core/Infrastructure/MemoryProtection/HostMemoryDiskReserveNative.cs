@@ -10,7 +10,7 @@ internal static class HostMemoryDiskReserveNative
     private const uint BackupSemantics = 0x02000000;
 
     internal static IOException Error(string operation) =>
-        new($"{operation}: {new Win32Exception(Marshal.GetLastWin32Error()).Message}");
+        new($"{operation}: {Win32ErrorText.Get(Marshal.GetLastWin32Error())}");
 
     internal static FileStream OpenFile(string path, FileMode mode, FileShare share, FileAccess access = FileAccess.ReadWrite)
     {

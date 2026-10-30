@@ -493,7 +493,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
     {
         return error == 0
             ? "Windows 未返回具体错误。"
-            : new Win32Exception(unchecked((int)error)).Message;
+            : Win32ErrorText.Get(unchecked((int)error));
     }
 
     private static ProcessResourcePolicyBatchFields ToPublicField(NativeProcessPolicyFields field)

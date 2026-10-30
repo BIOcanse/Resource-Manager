@@ -1,19 +1,30 @@
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.Components;
+using ResourceManager.App.Infrastructure.Dependencies;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.ReadWrite;
 using ResourceManager.Shared.BrowserRuntimes;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
 public sealed class ProviderRuntimeProbe(
     IRuntimePlanProvider runtimePlanProvider,
-    IHostEnvironment environment) : IProviderRuntimeProbe
+    IHostEnvironment environment,
+    OptionalDependencyProbeResults? probeResults = null) : IProviderRuntimeProbe
 {
     public ComponentProviderRuntimeProbeResult Probe(string componentId)
         => Probe(componentId, deepVerify: false);
 
+    /// <summary>The plain probe returns the held result until a dependency install, removal, repair,
+    /// verify or refresh invalidates it; a deep verification always probes.</summary>
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Optional dependency installed, downloaded, removed, repaired, verified or refresh requested")]
     public ComponentProviderRuntimeProbeResult Probe(string componentId, bool deepVerify)
+        => deepVerify || probeResults is null
+            ? ProbeNow(componentId, deepVerify)
+            : probeResults.GetProvider(componentId, () => ProbeNow(componentId, deepVerify: false));
+
+    private ComponentProviderRuntimeProbeResult ProbeNow(string componentId, bool deepVerify)
     {
         if (componentId.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase))
         {

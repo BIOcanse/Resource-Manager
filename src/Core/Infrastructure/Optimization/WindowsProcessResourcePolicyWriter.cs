@@ -294,7 +294,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
             processId);
         if (handle == IntPtr.Zero)
         {
-            return new ProcessResourcePolicyWriteResult(false, new Win32Exception(Marshal.GetLastWin32Error()).Message);
+            return new ProcessResourcePolicyWriteResult(false, Win32ErrorText.Get(Marshal.GetLastWin32Error()));
         }
 
         IntPtr buffer = IntPtr.Zero;
@@ -311,7 +311,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
 
             if (!NativeMethods.SetProcessDefaultCpuSets(handle, buffer, (uint)cleanIds.Length))
             {
-                return new ProcessResourcePolicyWriteResult(false, new Win32Exception(Marshal.GetLastWin32Error()).Message);
+                return new ProcessResourcePolicyWriteResult(false, Win32ErrorText.Get(Marshal.GetLastWin32Error()));
             }
 
             return new ProcessResourcePolicyWriteResult(
@@ -411,7 +411,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
             (uint)threadId);
         if (handle == IntPtr.Zero)
         {
-            return new ProcessResourcePolicyWriteResult(false, new Win32Exception(Marshal.GetLastWin32Error()).Message);
+            return new ProcessResourcePolicyWriteResult(false, Win32ErrorText.Get(Marshal.GetLastWin32Error()));
         }
 
         IntPtr buffer = IntPtr.Zero;
@@ -435,7 +435,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
 
             if (!NativeMethods.SetThreadSelectedCpuSets(handle, buffer, (uint)cleanIds.Length))
             {
-                return new ProcessResourcePolicyWriteResult(false, new Win32Exception(Marshal.GetLastWin32Error()).Message);
+                return new ProcessResourcePolicyWriteResult(false, Win32ErrorText.Get(Marshal.GetLastWin32Error()));
             }
 
             return new ProcessResourcePolicyWriteResult(
@@ -557,7 +557,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
 
     private static string LastWin32ErrorMessage()
     {
-        return new Win32Exception(Marshal.GetLastWin32Error()).Message;
+        return Win32ErrorText.Get(Marshal.GetLastWin32Error());
     }
 
     private static bool IsExpectedProcessException(Exception ex)

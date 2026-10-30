@@ -143,7 +143,7 @@ public sealed partial class WindowsGpuPlacementInjector
         }
 
         status = "process-mitigation-query-failed";
-        message = $"读取{queryName}失败：{new Win32Exception(error).Message}";
+        message = $"读取{queryName}失败：{Win32ErrorText.Get(error)}";
         win32Error = error;
         return true;
     }

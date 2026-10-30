@@ -38,6 +38,8 @@ public sealed partial class ComponentManager
         IProgress<DependencyDownloadProgress>? progress = null)
     {
         EnsureOptionalDependency(id);
+        // An install request decides from the files as they are now, not from the held probe.
+        dependencyManager.InvalidateStatuses();
         var statusBeforeInstall = await dependencyManager.GetStatusAsync(id, caller?.WindowsSid, cancellationToken)
             ?? throw new InvalidOperationException($"Unknown component: {id}");
         if (statusBeforeInstall.Installed && !statusBeforeInstall.UpdateAvailable)
@@ -124,6 +126,8 @@ public sealed partial class ComponentManager
     {
         var definition = OptionalDependencyCatalog.Find(id);
         var changed = false;
+        // Verify is the explicit re-probe: it never answers from the held probe result.
+        dependencyManager.InvalidateStatuses();
         using var change = inventoryRevisionOwner?.BeginComponentChange(id);
         if (definition is not null)
         {

@@ -34,8 +34,10 @@ internal sealed partial class FrontendPreferencesOwner
     private bool overlayChoicesInitialized;
     private readonly FrontendPreferences pointValues = new();
     private long revision;
+    // This process's owner is the cache's only writer (the resident host only reads it on its
+    // preferences-changed event), so the cache is read from disk once and every Save or Reset
+    // replaces this copy; later reads never stat or reopen the file.
     private FrontendPreferences? cached;
-    private (long Ticks, long Length)? version;
 
     internal FrontendPreferencesOwner(string cachePath, string? legacyAppPath = null, string? legacyOverlayPath = null,
         string? legacyDashboardPath = null)
@@ -48,30 +50,27 @@ internal sealed partial class FrontendPreferencesOwner
         dashboardImportMarkerPath = this.cachePath + ".dashboard-imported-v1";
     }
 
+    [System.ComponentModel.Description("RuntimeRead: EventDriven(\"Frontend preferences saved or reset by this owner\")")]
     internal FrontendPreferences Read()
     {
         lock (gate)
         {
+            if (cached is not null) return cached;
             MigrateCacheFields();
             InitializeImport();
             ImportLegacyOverlayChoices();
             InitializeDashboardImport();
-            var file = new FileInfo(cachePath);
-            if (!file.Exists)
+            if (!File.Exists(cachePath))
             {
-                if (!ReferenceEquals(cached, pointValues)) revision++;
+                revision++;
                 cached = pointValues;
-                version = null;
                 return pointValues; // No cached user choice: use this build's generated points.
             }
-            var currentVersion = (file.LastWriteTimeUtc.Ticks, file.Length);
-            if (cached is not null && version == currentVersion) return cached;
             using var stream = Configuration.SettingsFileReader.Open(cachePath);
             var value = JsonSerializer.Deserialize<FrontendPreferences>(stream, Json)
                 ?? throw new InvalidDataException("Frontend preferences cache is empty.");
             value.Validate();
             cached = value;
-            version = currentVersion;
             revision++;
             return value;
         }
@@ -90,8 +89,6 @@ internal sealed partial class FrontendPreferencesOwner
             overlayChoicesInitialized = true;
             initialized = true;
             cached = value;
-            var file = new FileInfo(cachePath);
-            version = (file.LastWriteTimeUtc.Ticks, file.Length);
             revision++;
             return value;
         }
@@ -134,7 +131,6 @@ internal sealed partial class FrontendPreferencesOwner
             File.Delete(cachePath);
             initialized = overlayChoicesInitialized = true;
             cached = pointValues;
-            version = null;
             revision++;
             return pointValues;
         }

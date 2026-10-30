@@ -20,6 +20,12 @@ public interface IOptionalDependencyManager
         CancellationToken cancellationToken)
         => GetStatusAsync(id, cancellationToken);
 
+    /// <summary>
+    /// Drops the held probe result so the next status read probes the files again. Called when an
+    /// install, download, removal, repair or verify completes, or a caller asks for a refresh.
+    /// </summary>
+    void InvalidateStatuses() { }
+
     Task<DependencyVersionOptions> GetVersionOptionsAsync(string id, CancellationToken cancellationToken);
 
     Task<OptionalDependencyDownloadResult> DownloadAsync(

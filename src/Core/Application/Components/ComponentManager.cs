@@ -80,6 +80,8 @@ public sealed partial class ComponentManager : IComponentManager
         {
             // Once bytes are committed, cancellation cannot abandon their revision publication.
             var readToken = contentChanged ? CancellationToken.None : cancellationToken;
+            // Committed bytes replace whatever the held dependency probe described.
+            if (contentChanged) dependencyManager.InvalidateStatuses();
             var dependencyStatuses = await dependencyManager.GetStatusesAsync(windowsSid, readToken);
             var snapshot = await metricSampler.GetSnapshotAsync(MetricSampleRequest.CatalogProbe, readToken);
             status = BuildStatus(definition, dependencyStatuses, snapshot);

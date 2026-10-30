@@ -4,6 +4,7 @@ using System.Text.Json;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.ReadWrite;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
@@ -17,6 +18,9 @@ public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment
     }).Options;
 
     private readonly SemaphoreSlim gate = new(1, 1);
+    // This store is the file's only writer: the file is read once, then every successful
+    // commit replaces this copy. A failed read or commit leaves it unset or unchanged.
+    private GpuPlacementProcessHistoryDocument? loaded;
     private readonly string storagePath = Path.Combine(
         PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
         "UserData",
@@ -187,11 +191,17 @@ public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment
                 .ToArray(),
             history.UpdatedAt), cancellationToken);
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "GPU placement process history committed by this store")]
     private async Task<GpuPlacementProcessHistoryDocument> LoadCoreAsync(CancellationToken cancellationToken)
     {
+        if (loaded is { } current)
+        {
+            return current;
+        }
+
         if (!File.Exists(storagePath))
         {
-            return GpuPlacementProcessHistoryDocument.Empty;
+            return loaded = GpuPlacementProcessHistoryDocument.Empty;
         }
 
         try
@@ -201,9 +211,9 @@ public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment
                 stream,
                 JsonOptions,
                 cancellationToken);
-            return NormalizeDocument(document);
+            return loaded = NormalizeDocument(document);
         }
-        catch (FileNotFoundException) { return GpuPlacementProcessHistoryDocument.Empty; }
+        catch (FileNotFoundException) { return loaded = GpuPlacementProcessHistoryDocument.Empty; }
     }
 
     private async Task SaveCoreAsync(
@@ -217,14 +227,16 @@ public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment
         }
 
         var temporaryPath = $"{storagePath}.{Guid.NewGuid():N}.tmp";
+        var normalized = NormalizeDocument(document);
         await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         {
-            await JsonSerializer.SerializeAsync(stream, NormalizeDocument(document), JsonOptions, cancellationToken);
+            await JsonSerializer.SerializeAsync(stream, normalized, JsonOptions, cancellationToken);
             await stream.FlushAsync(cancellationToken);
             stream.Flush(flushToDisk: true);
         }
         cancellationToken.ThrowIfCancellationRequested();
         NativeCore.WindowsNativeAtomicFileCommitter.CommitReplace(temporaryPath, storagePath);
+        loaded = normalized;
     }
 
     private static GpuPlacementProcessHistoryDocument NormalizeDocument(

@@ -48,7 +48,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
             || (expected.AllowedMask & (1UL << desired.Number)) == 0)
             return new(false, "Ideal processor is outside the observed thread group affinity.");
         var thread = idealApi.OpenThread(expected.ThreadId, write: true);
-        if (thread == IntPtr.Zero) return new(false, new Win32Exception(idealApi.LastError).Message);
+        if (thread == IntPtr.Zero) return new(false, Win32ErrorText.Get(idealApi.LastError));
         try
         {
             var current = ReadIdealOnHandle(thread, expected.ProcessId, expected.ProcessStartKey, expected.ThreadId);
@@ -58,7 +58,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
                 || !actual.SelectedCpuSetIds.SequenceEqual(expected.SelectedCpuSetIds))
                 return new(false, "Thread identity, allowed range or ideal processor changed before the write.");
             if (!idealApi.TrySetIdeal(thread, desired))
-                return new(false, new Win32Exception(idealApi.LastError).Message);
+                return new(false, Win32ErrorText.Get(idealApi.LastError));
             return new(true, "Thread ideal processor hint applied; affinity and CPU Sets are unchanged.");
         }
         finally { idealApi.CloseThread(thread); }
@@ -115,8 +115,8 @@ public sealed partial class WindowsProcessResourcePolicyWriter
     internal static RecoveryReadResult<ThreadIdealProcessorPolicySnapshot> IdealReadFailure(int error,
         RecoveryReadAbsenceReason absenceReason = RecoveryReadAbsenceReason.Unspecified)
         => error is 87 or 1168
-            ? RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.NotFoundOrExited(error, new Win32Exception(error).Message, absenceReason)
-            : RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Unavailable(error, new Win32Exception(error).Message);
+            ? RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.NotFoundOrExited(error, Win32ErrorText.Get(error), absenceReason)
+            : RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Unavailable(error, Win32ErrorText.Get(error));
 
     [StructLayout(LayoutKind.Sequential)]
     private struct IdealProcessorNumber { internal ushort Group; internal byte Number; internal byte Reserved; }

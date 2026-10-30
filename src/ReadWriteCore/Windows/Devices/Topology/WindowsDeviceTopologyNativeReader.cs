@@ -31,7 +31,7 @@ public static partial class WindowsDeviceTopologyNativeReader
         {
             return new DeviceTopologyNativeSnapshot(
                 new Dictionary<string, DeviceTopologyNativeDevice>(StringComparer.OrdinalIgnoreCase),
-                new Win32Exception(Marshal.GetLastWin32Error()).Message);
+                global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(Marshal.GetLastWin32Error()));
         }
 
         try
@@ -51,7 +51,7 @@ public static partial class WindowsDeviceTopologyNativeReader
                         break;
                     }
 
-                    return new DeviceTopologyNativeSnapshot(devices, new Win32Exception(error).Message);
+                    return new DeviceTopologyNativeSnapshot(devices, global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(error));
                 }
 
                 var deviceId = ReadDeviceInstanceId(deviceInfoSet, ref info);

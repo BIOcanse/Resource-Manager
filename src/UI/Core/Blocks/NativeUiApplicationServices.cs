@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Configuration;
 using ResourceManager.NativeUi.Preferences;
 using ResourceManager.NativeUi.SystemIntegration;
 using ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
@@ -34,19 +35,24 @@ internal interface INativeUiHotkeys : IDisposable
     void ReloadForceTerminate();
 }
 
+// Both hotkey owners consume the same app-settings.json read: one watcher, one read per change.
 internal sealed class NativeUiHotkeys(
+    AppSettingsFileObserver settings,
     TaskManagerShortcutReplacementController taskManager,
     ForceTerminateHotkeyController forceTerminate) : INativeUiHotkeys
 {
     public void Start()
     {
-        taskManager.Start();
-        forceTerminate.Start();
+        settings.Subscribe(taskManager.Apply);
+        settings.Subscribe(forceTerminate.Apply);
+        settings.Start();
     }
     public void SetTaskManagerEnabled(bool enabled) => taskManager.SetEnabledFromUi(enabled);
-    public void ReloadForceTerminate() => forceTerminate.Reload();
+    // The frontend asks after saving a hotkey; read even if the watcher already saw the save.
+    public void ReloadForceTerminate() => settings.RequestRead(force: true);
     public void Dispose()
     {
+        settings.Dispose();
         taskManager.Dispose();
         forceTerminate.Dispose();
     }

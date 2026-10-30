@@ -54,7 +54,7 @@ public sealed class WindowsWheaHistoryReader
         finally { _ = EvtClose(query); }
     }
 
-    private static WindowsWheaHistoryCapture Failure(int error) => new(false, [], false, new Win32Exception(error).Message);
+    private static WindowsWheaHistoryCapture Failure(int error) => new(false, [], false, global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(error));
     private static string? Render(IntPtr handle, int maximumBytes)
     {
         if (EvtRender(IntPtr.Zero, handle, 1, 0, IntPtr.Zero, out var required, out _) || Marshal.GetLastWin32Error() != 122

@@ -176,6 +176,32 @@ public sealed class GpuGraphicsApiIdentificationTests
     }
 
     [Fact]
+    public async Task HistoryIsReadFromDiskOnceAndFollowsThisStoresWrites()
+    {
+        using var files = new Fixture();
+        await new JsonGpuPlacementProcessHistoryStore(files)
+            .SaveFirstGraphicsApiAsync("software", "Software", files.Instance(), GpuGraphicsApi.D3D11, default);
+        var store = new JsonGpuPlacementProcessHistoryStore(files);
+        Assert.Equal(GpuGraphicsApi.D3D11, Assert.Single((await store
+            .GetSoftwareHistoryAsync("software", "Software", default)).Processes).GraphicsApi);
+
+        // Only the store writes this file; after its first read the file is not read again.
+        await File.WriteAllTextAsync(files.HistoryPath, "{broken");
+        Assert.Equal(GpuGraphicsApi.D3D11, Assert.Single((await store
+            .GetSoftwareHistoryAsync("software", "Software", default)).Processes).GraphicsApi);
+
+        // A write updates the held copy and the file together.
+        await store.SaveFirstGraphicsApiAsync("other", "Other", files.Instance(), GpuGraphicsApi.Vulkan, default);
+        Assert.Equal(GpuGraphicsApi.Vulkan, Assert.Single((await store
+            .GetSoftwareHistoryAsync("other", "Other", default)).Processes).GraphicsApi);
+        var reloaded = new JsonGpuPlacementProcessHistoryStore(files);
+        Assert.Equal(GpuGraphicsApi.D3D11, Assert.Single((await reloaded
+            .GetSoftwareHistoryAsync("software", "Software", default)).Processes).GraphicsApi);
+        Assert.Equal(GpuGraphicsApi.Vulkan, Assert.Single((await reloaded
+            .GetSoftwareHistoryAsync("other", "Other", default)).Processes).GraphicsApi);
+    }
+
+    [Fact]
     public async Task CorruptSoftwareInformationIsNotReplacedByAnEmptyHistory()
     {
         using var files = new Fixture();

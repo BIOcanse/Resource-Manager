@@ -64,9 +64,11 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
             new NativeUiTraceLogger<BusinessBlockController>());
 
         hotkeys = this.services.Hotkeys ?? new NativeUiHotkeys(
-            new TaskManagerShortcutReplacementController(NativeUiPaths.AppSettingsPath,
+            new Configuration.AppSettingsFileObserver(NativeUiPaths.AppSettingsPath,
+                action => uiDispatcher.BeginInvoke(action)),
+            new TaskManagerShortcutReplacementController(
                 OnTaskManagerShortcutPressed, ShowTaskManagerShortcutReplacementStatus),
-            new ForceTerminateHotkeyController(NativeUiPaths.AppSettingsPath,
+            new ForceTerminateHotkeyController(
                 OnForceTerminateHotkeyPressed, ShowForceTerminateHotkeyStatus));
 
         Microsoft.Win32.SystemEvents.SessionEnded += OnSessionEnded;

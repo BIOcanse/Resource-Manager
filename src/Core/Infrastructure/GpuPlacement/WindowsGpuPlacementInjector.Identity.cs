@@ -15,7 +15,7 @@ public sealed partial class WindowsGpuPlacementInjector
         if (!NativeMethods.GetProcessTimes(handle, out var creation, out _, out _, out _))
         {
             var error = Marshal.GetLastWin32Error();
-            return Failed(target.ProcessId, "process-identity-unavailable", new Win32Exception(error).Message, error);
+            return Failed(target.ProcessId, "process-identity-unavailable", Win32ErrorText.Get(error), error);
         }
         if (creation != target.ProcessStartKey)
             return Failed(target.ProcessId, "process-identity-mismatch", "目标 PID 已不是计划中的进程实例。");
@@ -23,7 +23,7 @@ public sealed partial class WindowsGpuPlacementInjector
         if (!TryReadExecutablePath(handle, out var executablePath))
         {
             var error = Marshal.GetLastWin32Error();
-            return Failed(target.ProcessId, "process-image-unavailable", new Win32Exception(error).Message, error);
+            return Failed(target.ProcessId, "process-image-unavailable", Win32ErrorText.Get(error), error);
         }
         return PathsMatch(executablePath, target.ExecutablePath)
             ? null

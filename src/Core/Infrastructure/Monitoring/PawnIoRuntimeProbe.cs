@@ -126,7 +126,7 @@ internal static class PawnIoRuntimeProbe
                 return true;
             }
 
-            error = new Win32Exception(Marshal.GetLastWin32Error()).Message;
+            error = Win32ErrorText.Get(Marshal.GetLastWin32Error());
             return false;
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or Win32Exception)

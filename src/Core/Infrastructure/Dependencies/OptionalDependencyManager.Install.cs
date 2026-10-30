@@ -20,6 +20,24 @@ public sealed partial class OptionalDependencyManager
         CancellationToken cancellationToken,
         SoftwareOperationCaller? caller = null)
     {
+        try
+        {
+            return await LaunchInstallerCoreAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, caller);
+        }
+        finally
+        {
+            // Installed, extracted or interrupted: the dependency files may have changed.
+            probeResults.Invalidate();
+        }
+    }
+
+    private async Task<OptionalDependencyLaunchResult> LaunchInstallerCoreAsync(
+        string id,
+        bool acknowledgeExternalTerms,
+        string? versionChoice,
+        CancellationToken cancellationToken,
+        SoftwareOperationCaller? caller)
+    {
         var definition = OptionalDependencyCatalog.Find(id)
             ?? throw new InvalidOperationException($"Unknown dependency: {id}");
 
