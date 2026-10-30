@@ -7,12 +7,15 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 internal sealed class NativeFileQueryWorkspace : INativeFileQueryLeaseSource, IDisposable
 {
     private readonly NativeFileQueryPool pool;
+    // The plan's query_session_count is the pool capacity; the shape (memory/CPU tier options
+    // file_query_sessions_max / file_query_sessions_prebuilt / file_query_idle_sessions) says how many
+    // sessions live, are created up front and stay idle. Without a shape every session is created up front.
     internal NativeFileQueryWorkspace(CompiledHostManagerFileQueryPlan plan,
-        Func<ulong, uint, INativeFileQueryScratch> createScratch)
-        : this(CreateConfiguration(plan), plan.Recreate.QuerySessionCount, checked((ulong)plan.HotPublish.TotalResidentByteBudget), createScratch) { }
+        Func<ulong, uint, INativeFileQueryScratch> createScratch, Func<NativeFileQueryPoolShape>? shape = null)
+        : this(CreateConfiguration(plan), plan.Recreate.QuerySessionCount, checked((ulong)plan.HotPublish.TotalResidentByteBudget), createScratch, shape) { }
     internal NativeFileQueryWorkspace(in NativeFileQueryConfiguration configuration, int sessionCount, ulong totalResidentByteBudget,
-        Func<ulong, uint, INativeFileQueryScratch> createScratch)
-        => pool = new(in configuration, sessionCount, totalResidentByteBudget, createScratch);
+        Func<ulong, uint, INativeFileQueryScratch> createScratch, Func<NativeFileQueryPoolShape>? shape = null)
+        => pool = new(in configuration, sessionCount, totalResidentByteBudget, createScratch, shape);
     public ValueTask<NativeFileQueryLease> AcquireAsync(CancellationToken token) => pool.AcquireAsync(token);
     public ulong NextEpoch() => pool.NextEpoch();
     public void Dispose() => pool.Dispose();

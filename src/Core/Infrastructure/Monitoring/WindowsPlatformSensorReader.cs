@@ -7,9 +7,9 @@ namespace ResourceManager.App.Infrastructure.Monitoring;
 internal sealed partial class WindowsPlatformSensorReader(
     WindowsStorageSensorsMonitoringZone storageZone,
     HardwareMonitorWmiMonitoringZone hardwareMonitorZone,
-    NotebookOemFanMonitoringZone notebookOemFanZone)
+    NotebookOemFanMonitoringZone notebookOemFanZone,
+    ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null)
 {
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(5);
     private readonly object gate = new();
     private WindowsPlatformSensorSnapshot? cachedSnapshot;
     private DateTimeOffset cachedAt;
@@ -19,7 +19,9 @@ internal sealed partial class WindowsPlatformSensorReader(
         var now = DateTimeOffset.UtcNow;
         lock (gate)
         {
-            if (cachedSnapshot is not null && now - cachedAt < CacheDuration)
+            // Memory/CPU tier option platform_sensor_cache_seconds; 0 re-reads every time.
+            if (cachedSnapshot is not null
+                && now - cachedAt < ResourceManager.App.Infrastructure.Settings.MemoryCpuTierState.Read(authority).PlatformSensorSnapshot)
             {
                 return cachedSnapshot;
             }

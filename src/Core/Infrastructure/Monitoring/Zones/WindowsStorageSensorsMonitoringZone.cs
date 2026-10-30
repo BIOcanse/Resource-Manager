@@ -12,7 +12,11 @@ namespace ResourceManager.App.Infrastructure.Monitoring;
 public sealed partial class WindowsStorageSensorsMonitoringZone
 {
     // One factual reader; no host SMART, identity, or capability cache.
-    private readonly WindowsStorageOwner owner = CreateOwner();
+    private readonly WindowsStorageOwner owner;
+
+    public WindowsStorageSensorsMonitoringZone(ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null)
+        => owner = CreateOwner(authority: authority);
+
     internal WindowsStorageSensorsMonitoringZone(Func<string, string, QueryResult> query,
         Func<int, string, string?, int?, NvmeHealthRead?> readNvme,
         Func<int, string, AtaSmartPages, string?, int?, AtaSmartRead?>? readAta = null,
@@ -22,8 +26,9 @@ public sealed partial class WindowsStorageSensorsMonitoringZone
     private static WindowsStorageOwner CreateOwner(Func<string, string, QueryResult>? query = null,
         Func<int, string, string?, int?, NvmeHealthRead?>? readNvme = null,
         Func<int, string, AtaSmartPages, string?, int?, AtaSmartRead?>? readAta = null,
-        Func<int, StorageIdentifyProtocol, string, string?, int?, StorageIdentifyRead?>? readIdentify = null)
-        => new(TimeSpan.FromSeconds(15), TimeProvider.System,
+        Func<int, StorageIdentifyProtocol, string, string?, int?, StorageIdentifyRead?>? readIdentify = null,
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null)
+        => new(TimeSpan.Zero, TimeProvider.System,
             hasMsft => BackendMessage.Create(BackendMessageDomains.DeviceTopology, hasMsft
                 ? BackendMessageCodes.DeviceTopology.SourceMsftDiskAssociations : BackendMessageCodes.DeviceTopology.SourceWin32DiskAssociations),
             query: query is null ? null : (path, command) => { var result = query(path, command); return new SdkQuery(result.Rows, result.Error); },
@@ -36,7 +41,11 @@ public sealed partial class WindowsStorageSensorsMonitoringZone
                 StorageOwnerMessage.Active => "已读取磁盘温度。",
                 StorageOwnerMessage.NoValues => "驱动或权限未返回磁盘温度。",
                 _ => throw new ArgumentOutOfRangeException(nameof(code))
-            });
+            })
+        {
+            // Memory/CPU tier option storage_capability_cache_seconds, read at each snapshot request; 0 re-reads.
+            CacheLifetimeSource = () => ResourceManager.App.Infrastructure.Settings.MemoryCpuTierState.Read(authority).StorageSnapshot
+        };
 
     internal static NativeMetricSnapshotOrdinalTopologyRead ReadIdentities(ulong generation,
         Func<string, string, QueryResult>? query = null)

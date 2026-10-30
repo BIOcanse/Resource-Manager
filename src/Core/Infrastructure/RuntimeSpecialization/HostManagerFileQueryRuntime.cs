@@ -66,6 +66,7 @@ public sealed class HostManagerFileQueryOwner :
     private readonly Func<ulong, uint, INativeFileQueryScratch> createScratch;
     private readonly HostManagerFileQueryRuntime deployment;
     private readonly ILogger<HostManagerFileQueryOwner> logger;
+    private readonly Func<NativeFileQueryPoolShape> poolShape;
     private WorkspaceHolder? current;
     private readonly List<WorkspaceHolder> pendingRetirements = [];
     private CompiledHostManagerFileQueryPlan? appliedPlan;
@@ -79,20 +80,28 @@ public sealed class HostManagerFileQueryOwner :
         RuntimePlanProvider planProvider,
         HostManagerFileQueryRuntime deployment,
         ILogger<HostManagerFileQueryOwner> logger,
-        ResourceManagerLedgerOwner memoryOwner)
+        ResourceManagerLedgerOwner memoryOwner,
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null)
         : this(planProvider, deployment, logger,
-            (length, alignment) => FileQueryScratch.Create(memoryOwner.CreateScratch, length, alignment)) { }
+            (length, alignment) => FileQueryScratch.Create(memoryOwner.CreateScratch, length, alignment), authority) { }
 
     internal HostManagerFileQueryOwner(
         RuntimePlanProvider planProvider,
         HostManagerFileQueryRuntime deployment,
         ILogger<HostManagerFileQueryOwner> logger,
-        Func<ulong, uint, INativeFileQueryScratch> createScratch)
+        Func<ulong, uint, INativeFileQueryScratch> createScratch,
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null)
     {
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.logger = logger;
         this.createScratch = createScratch;
+        poolShape = () =>
+        {
+            var values = ResourceManager.App.Infrastructure.Settings.MemoryCpuTierState.Read(authority);
+            return new NativeFileQueryPoolShape(values.FileQuerySessionsMax, values.FileQuerySessionsPrebuilt,
+                values.FileQueryCloseIdleSessions);
+        };
     }
 
     public async ValueTask<NativeFileQueryLease> AcquireAsync(
@@ -235,7 +244,7 @@ public sealed class HostManagerFileQueryOwner :
             WorkspaceHolder? next = null;
             try
             {
-                replacement = new NativeFileQueryWorkspace(desired, createScratch);
+                replacement = new NativeFileQueryWorkspace(desired, createScratch, poolShape);
                 next = new WorkspaceHolder(replacement);
                 replacement = null;
                 deployment.CompleteSucceeded(token);

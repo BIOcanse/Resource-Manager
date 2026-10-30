@@ -216,6 +216,21 @@
       "comment": "Produces graphics API history for processes, used for GPU placement."
     },
     {
+      "uid": 26,
+      "kind": "item",
+      "process": "backend",
+      "name": "MemoryCpuTierEffective",
+      "comment": "The settings owner's memory/CPU tier resolution: each option's effective value, category, source and apply mode; initially published from AppSettingsCurrent and republished only when the resolution changes. Option owners read it on their next use.",
+      "storage": "reference",
+      "type": "ResourceManager.App.Domain.Settings.MemoryCpuTierResolution",
+      "owner": {
+        "component": "JsonAppSettingsStore"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "JsonAppSettingsStore initial AppSettingsCurrent publication or memoryCpuTier change"
+    },
+    {
       "uid": 27,
       "kind": "block",
       "process": "backend",

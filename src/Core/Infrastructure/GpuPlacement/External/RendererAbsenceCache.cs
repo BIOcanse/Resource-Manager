@@ -7,7 +7,6 @@ namespace ResourceManager.App.Infrastructure.GpuPlacement.External;
 /// <summary>Caches only complete negative renderer qualifications for one process incarnation.</summary>
 internal sealed class RendererAbsenceCache : IDisposable
 {
-    internal const int MaximumCachedEntries = 4096;
     private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.Process
         | KernelTraceEventParser.Keywords.ImageLoad;
 
@@ -15,6 +14,7 @@ internal sealed class RendererAbsenceCache : IDisposable
     private readonly object lifetimeGate = new();
     private readonly IKernelEtwSessionBroker broker;
     private readonly Func<KernelEtwEventSource, int, KernelEtwNativeRendererHistory.Revision?> readRevision;
+    private readonly ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority;
     private readonly Dictionary<CacheKey, CacheEntry> entries = new(CacheKeyComparer.Instance);
     private readonly string subscriptionId = $"renderer-absence-cache:{Guid.NewGuid():N}";
     private IKernelEtwSubscription? lease;
@@ -25,14 +25,17 @@ internal sealed class RendererAbsenceCache : IDisposable
     private int holders;
     private bool disposed;
 
-    public RendererAbsenceCache(IKernelEtwSessionBroker broker)
-        : this(broker, KernelEtwNativeRendererHistory.Read) { }
+    public RendererAbsenceCache(IKernelEtwSessionBroker broker,
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null)
+        : this(broker, KernelEtwNativeRendererHistory.Read, authority) { }
 
     internal RendererAbsenceCache(IKernelEtwSessionBroker broker,
-        Func<KernelEtwEventSource, int, KernelEtwNativeRendererHistory.Revision?> readRevision)
+        Func<KernelEtwEventSource, int, KernelEtwNativeRendererHistory.Revision?> readRevision,
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null)
     {
         this.broker = broker ?? throw new ArgumentNullException(nameof(broker));
         this.readRevision = readRevision;
+        this.authority = authority;
     }
 
     internal readonly record struct Observation(bool IsAbsent, object? Stamp)
@@ -91,7 +94,8 @@ internal sealed class RendererAbsenceCache : IDisposable
                 && existing.Revision == stamp.Revision)
                 return;
 
-            if (entries.Count >= MaximumCachedEntries)
+            // Memory/CPU tier option renderer_absence_cache_entries, read at each insert.
+            if (entries.Count >= ResourceManager.App.Infrastructure.Settings.MemoryCpuTierState.Read(authority).RendererAbsenceEntries)
             {
                 // Overflow flushes the bounded cache and invalidates outstanding publication stamps.
                 ClearCacheLocked();

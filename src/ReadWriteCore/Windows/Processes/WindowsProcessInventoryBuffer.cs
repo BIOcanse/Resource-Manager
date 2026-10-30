@@ -9,6 +9,16 @@ internal interface IWindowsProcessInventoryBufferApi
     void Free(IntPtr buffer);
 }
 
+/// <summary>When a process-inventory workspace is returned: <see cref="ReleaseAfterUse"/> frees it after each
+/// parse; otherwise it shrinks after <see cref="ShrinkAfterLowReads"/> consecutive low-use reads (each using at
+/// most a quarter), and zero there never shrinks and reserves the previous peak after a release.</summary>
+internal readonly record struct WindowsProcessInventoryBufferReturn(bool ReleaseAfterUse, int ShrinkAfterLowReads)
+{
+    /// <summary>The workspace's own default: shrink after 8 low-use reads (memory/CPU tier 3).</summary>
+    internal static WindowsProcessInventoryBufferReturn Default => new(false, 8);
+    internal bool KeepPeak => !ReleaseAfterUse && ShrinkAfterLowReads <= 0;
+}
+
 /// <summary>One capture owner's kernel-table workspace. Borrowed spans last until
 /// the next read/release; the owner's capture gate covers both query and parsing.</summary>
 internal sealed class WindowsProcessInventoryBuffer : IDisposable
@@ -18,10 +28,16 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
     private readonly TimeProvider clock;
     private IntPtr buffer;
     private bool disposed;
-    internal const int LowUsageReadsBeforeShrink = 8;
     private int lowUsageReads;
+    private int peakBytes;
     private int lowUsageMaximumBytes;
     internal int CapacityBytes { get; private set; }
+
+    /// <summary>The return policy, read at every borrow and every <see cref="ReturnAfterUse"/>; a change
+    /// applies from the next read. The owner sets it from the memory/CPU tier option bufferReturn.</summary>
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven,
+        "Memory/CPU tier option bufferReturn, read at the next borrow")]
+    internal Func<WindowsProcessInventoryBufferReturn> ReturnPolicy { get; set; } = static () => WindowsProcessInventoryBufferReturn.Default;
 
     internal WindowsProcessInventoryBuffer(WindowsProcessDetailsOptions? options = null,
         IWindowsProcessInventoryBufferApi? api = null, TimeProvider? clock = null)
@@ -42,9 +58,12 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
         queryTiming = null;
         // Resize before querying: the kernel table contains absolute pointers, so
         // moving a successful table would invalidate its embedded string pointers.
-        if (lowUsageReads >= LowUsageReadsBeforeShrink)
+        var policy = ReturnPolicy();
+        if (policy.ShrinkAfterLowReads > 0 && lowUsageReads >= policy.ShrinkAfterLowReads)
             Resize(Math.Max(options.InitialSystemInformationBufferBytes, checked(lowUsageMaximumBytes * 2)));
-        if (CapacityBytes == 0) Resize(options.InitialSystemInformationBufferBytes);
+        if (CapacityBytes == 0)
+            Resize(policy.KeepPeak ? Math.Max(options.InitialSystemInformationBufferBytes, peakBytes)
+                : options.InitialSystemInformationBufferBytes);
         for (var attempt = 0; attempt < options.MaximumSystemInformationAttempts; attempt++)
         {
             var frequency = clock.TimestampFrequency;
@@ -85,6 +104,7 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
         if (next == IntPtr.Zero) throw new OutOfMemoryException("Cannot allocate the process inventory workspace.");
         buffer = next;
         CapacityBytes = bytes;
+        peakBytes = Math.Max(peakBytes, bytes);
         ResetLowUsage();
     }
 
@@ -96,6 +116,13 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
         buffer = IntPtr.Zero;
         CapacityBytes = 0;
         ResetLowUsage();
+    }
+
+    /// <summary>Called by the owner once a read's data is parsed: frees the workspace when the return
+    /// policy says release after use, and otherwise keeps it for the next read.</summary>
+    internal void ReturnAfterUse()
+    {
+        if (ReturnPolicy().ReleaseAfterUse) Release();
     }
 
     public void Dispose()

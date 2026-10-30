@@ -103,6 +103,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
     {
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
             services.AddSingleton<LegacyDashboardFileMigration>();
+        services.AddSingleton<ResourceManager.App.Infrastructure.Settings.RuntimeConfigWriter>();
         services.AddSingleton<IAppSettingsStore, JsonAppSettingsStore>();
         services.AddSingleton<IAppSettingsSubscriptionSource>(provider =>
             (JsonAppSettingsStore)provider.GetRequiredService<IAppSettingsStore>());

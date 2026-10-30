@@ -49,4 +49,16 @@ internal static class BackendFreedomPointPositions
     public const ulong FanCurveFeed = 0x00010002002D0001UL;
     public const ulong UniwillEcChannel = 0x00010002002D0002UL;
     public const ulong ObservationGrowthLimit = 0x0001000200300000UL;
+    public const ulong GcGen0MaxBudget = 0x0001000200350000UL;
+    public const ulong GcConserveMemory = 0x0001000200350001UL;
+    public const ulong LedgerMemoryModeFloor = 0x0001000200350002UL;
+    public const ulong BufferReturn = 0x0001000200350003UL;
+    public const ulong NativeWorkareaGrowth = 0x0001000200350004UL;
+    public const ulong BrowserRuntimeSnapshotSeconds = 0x0001000200350005UL;
+    public const ulong PlatformSensorSnapshotSeconds = 0x0001000200350006UL;
+    public const ulong StorageSnapshotSeconds = 0x0001000200350007UL;
+    public const ulong RendererAbsenceEntries = 0x0001000200350008UL;
+    public const ulong FileQuerySessionsMax = 0x0001000200350009UL;
+    public const ulong FileQuerySessionsPrebuilt = 0x000100020035000AUL;
+    public const ulong FileQueryIdleSessions = 0x000100020035000BUL;
 }

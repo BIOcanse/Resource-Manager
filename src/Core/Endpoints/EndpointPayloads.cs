@@ -153,4 +153,55 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private sealed record EndpointErrorCodePayload(
         string errorCode);
 
+    // GET /api/settings/memory-cpu-tier (design memory_cpu_tiers_2026-10-30 section 5).
+    private sealed record MemoryCpuTierPayload(
+        int Tier,
+        global::System.Collections.Generic.IReadOnlyList<MemoryCpuTierOptionPayload> Options,
+        MemoryCpuTierRuntimeConfigPayload RuntimeConfig,
+        global::System.Collections.Generic.IReadOnlyList<MemoryCpuTierIgnoredPayload> Ignored);
+
+    private sealed record MemoryCpuTierOptionPayload(
+        string Name,
+        global::System.Text.Json.JsonElement Value,
+        string? Unit,
+        MemoryCpuTierRangePayload Range,
+        global::System.Collections.Generic.IReadOnlyList<MemoryCpuTierCellPayload> Tiers,
+        string Category,
+        string Source,
+        string Apply,
+        [property: global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        global::System.Text.Json.JsonElement? RunningValue,
+        [property: global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        bool? PendingRestart);
+
+    private sealed record MemoryCpuTierRangePayload(
+        string Kind,
+        [property: global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        long? Min,
+        [property: global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        long? Max,
+        [property: global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        bool? Unset,
+        [property: global::System.Text.Json.Serialization.JsonIgnore(Condition = global::System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        global::System.Collections.Generic.IReadOnlyList<string>? Choices);
+
+    private sealed record MemoryCpuTierCellPayload(
+        global::System.Text.Json.JsonElement Value,
+        string Category);
+
+    private sealed record MemoryCpuTierRuntimeConfigPayload(
+        bool Writable,
+        string? Reason,
+        global::System.Collections.Generic.IReadOnlyList<MemoryCpuTierRuntimeConfigFilePayload> Files,
+        string NativeUiRunningValue,
+        string? LastFailure);
+
+    private sealed record MemoryCpuTierRuntimeConfigFilePayload(
+        string Process,
+        string Path);
+
+    private sealed record MemoryCpuTierIgnoredPayload(
+        string Code,
+        string Path);
+
 }

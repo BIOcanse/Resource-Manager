@@ -325,7 +325,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             ledgerOwner: provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>(),
             logger: provider.GetService<ILogger<WindowsResourceBreakdownSampler>>(),
             gpuAllocations: provider.GetService<GpuAllocationCollector>(),
-            interactiveDesktops: provider.GetService<InteractiveDesktopObservationStore>()));
+            interactiveDesktops: provider.GetService<InteractiveDesktopObservationStore>(),
+            stateAuthority: provider.GetService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>()));
         services.AddSingleton<GpuAllocationCollector>();
         services.AddSingleton<IResourceBreakdownSampler>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<IResourceBreakdownObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());

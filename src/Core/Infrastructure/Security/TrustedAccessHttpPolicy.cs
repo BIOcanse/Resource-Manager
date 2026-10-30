@@ -263,6 +263,7 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/startup-modules/software/{softwareId}",
             "GET /api/settings/app",
             "GET /api/settings/dashboard",
+            "GET /api/settings/memory-cpu-tier",
             "GET /api/settings/report-rules",
             "GET /api/software",
             "GET /api/software/manual",

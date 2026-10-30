@@ -27,8 +27,15 @@ public static class AppSettingsNormalizer
             new AppReportSettings(settings.Reports?.RuleOverrides ?? []),
             (settings.MemoryProtection ?? new HostMemoryProtectionSettings()) with
                 { Reserves = settings.MemoryProtection?.Reserves?.ToArray() ?? [],
-                    ProtectedProcesses = settings.MemoryProtection is { } protection ? protection.ProtectedProcesses?.ToArray()! : ["explorer.exe"] });
+                    ProtectedProcesses = settings.MemoryProtection is { } protection ? protection.ProtectedProcesses?.ToArray()! : ["explorer.exe"] },
+            // Tier and override values are validated against the tier table by the settings write gate, not rewritten here.
+            NormalizeMemoryCpuTier(settings.MemoryCpuTier));
     }
+
+    private static MemoryCpuTierSettings NormalizeMemoryCpuTier(MemoryCpuTierSettings? tier)
+        => new(tier?.Tier ?? MemoryCpuTierSettings.DefaultTier,
+            new Dictionary<string, System.Text.Json.JsonElement>(
+                tier?.Overrides ?? new Dictionary<string, System.Text.Json.JsonElement>(), StringComparer.Ordinal));
 
     private static AppPerformanceSettings NormalizePerformance(AppPerformanceSettings? performance)
     {

@@ -48,7 +48,7 @@ public sealed class NativeFileQueryLedgerScratchTests
         second.Dispose(); second.Dispose();
         Assert.All(resources, scratch => Assert.True(scratch.Closed));
         using var reopened = await owner.AcquireAsync(CancellationToken.None);
-        Assert.Equal(4, resources.Count);
+        Assert.Equal(3, resources.Count); // Tier 3 builds sessions on demand: the reopened pool built one.
     }
 
     [Fact]
@@ -366,12 +366,12 @@ public sealed class NativeFileQueryLedgerScratchTests
         var current = await owner.AcquireAsync(CancellationToken.None);
         current.MarkReusable();
         Publish(3);
-        Assert.Equal(3, resources.Count); // Every active borrower retains its own retired pool.
+        Assert.Equal(2, resources.Count); // Every active borrower retains its own retired pool; tier 3 prebuilds none.
         Assert.False(resources[0].Closed);
         first.Dispose();
         Assert.True(resources[0].Closed);
         Publish(4);
-        Assert.Equal(4, resources.Count);
+        Assert.Equal(2, resources.Count);
         owner.Dispose(); // The prior current is still leased.
         Assert.False(resources[1].Closed);
         current.Dispose();
@@ -402,6 +402,70 @@ public sealed class NativeFileQueryLedgerScratchTests
         Assert.False(scratch!.Closed);
         workspace.Dispose();
         Assert.True(scratch.Closed);
+    }
+
+    // Memory/CPU tier options fileQuerySessionsMax / fileQuerySessionsPrebuilt / fileQueryIdleSessions:
+    // the pool reads its shape at each acquisition and return.
+    [Fact]
+    public async Task PoolShapeIsReadAtTheNextAcquisitionAndReturn()
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        var created = 0;
+        var shape = new NativeFileQueryPoolShape(1, 0, true); // Tier 1: on demand, one, closed after use.
+        var plan = HostManagerTestPlanFactory.CreatePlan().FileQuery;
+        using var workspace = new NativeFileQueryWorkspace(plan, (length, alignment) =>
+        {
+            created++;
+            return FileQueryScratch.Create(owner.CreateScratch, length, alignment);
+        }, () => shape);
+        Assert.Equal(0, created);
+
+        var held = await workspace.AcquireAsync(CancellationToken.None);
+        var waiting = workspace.AcquireAsync(CancellationToken.None).AsTask();
+        Assert.False(waiting.IsCompleted); // The limit is one live session.
+        var heldSession = held.Session;
+        held.MarkReusable();
+        held.Dispose();
+        using (var handedOver = await waiting.WaitAsync(TimeSpan.FromSeconds(10)))
+        {
+            Assert.Same(heldSession, handedOver.Session); // A waiter always takes the returned session.
+            handedOver.MarkReusable();
+        }
+        Assert.Equal(1, created);
+
+        using (var reopened = await workspace.AcquireAsync(CancellationToken.None))
+            reopened.MarkReusable();
+        Assert.Equal(2, created); // The idle session was closed, so the next query built a new one.
+
+        shape = new NativeFileQueryPoolShape(8, 0, false); // Tier 3: on demand up to eight, kept.
+        NativeFileQuerySession kept;
+        using (var first = await workspace.AcquireAsync(CancellationToken.None))
+        {
+            kept = first.Session;
+            first.MarkReusable();
+        }
+        using (var second = await workspace.AcquireAsync(CancellationToken.None))
+        {
+            Assert.Same(kept, second.Session);
+            second.MarkReusable();
+        }
+        Assert.Equal(3, created);
+
+        var prebuiltCreated = 0;
+        using var prebuilt = new NativeFileQueryWorkspace(plan, (length, alignment) =>
+        {
+            prebuiltCreated++;
+            return FileQueryScratch.Create(owner.CreateScratch, length, alignment);
+        }, () => new NativeFileQueryPoolShape(8, 2, false)); // Tier 4: two built with the pool.
+        Assert.Equal(2, prebuiltCreated);
+        using (var a = await prebuilt.AcquireAsync(CancellationToken.None))
+        using (var b = await prebuilt.AcquireAsync(CancellationToken.None))
+        {
+            Assert.NotSame(a.Session, b.Session);
+            a.MarkReusable();
+            b.MarkReusable();
+        }
+        Assert.Equal(2, prebuiltCreated);
     }
 
     private sealed class FaultingScratch(INativeFileQueryScratch inner) : INativeFileQueryScratch

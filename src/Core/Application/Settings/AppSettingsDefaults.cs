@@ -61,7 +61,8 @@ public static class AppSettingsDefaults
             new AppUpdateSettings(),
             new AppHardwareControlSettings(),
             new AppReportSettings([]),
-            new HostMemoryProtectionSettings(Reserves: []));
+            new HostMemoryProtectionSettings(Reserves: []),
+            new MemoryCpuTierSettings(MemoryCpuTierSettings.DefaultTier, new Dictionary<string, System.Text.Json.JsonElement>()));
     }
 
 }

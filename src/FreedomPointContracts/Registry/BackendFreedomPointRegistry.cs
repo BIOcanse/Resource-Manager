@@ -8,6 +8,11 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints
 
 internal sealed class BackendFreedomPointRegistry
 {
+    /// <summary>Simple value type of a five-value memory/CPU tier point: tier 1 first, each cell
+    /// {"value": nonnegative int32, "category": "proportional" | "aggressive"}.</summary>
+    internal const string TierCellsType = "nonnegative_int32_tiers";
+    internal const int TierCellCount = 5;
+
     internal static JsonSerializerOptions CreateDeclarationSerializerOptions() => new()
     {
         PropertyNameCaseInsensitive = false,
@@ -101,8 +106,8 @@ internal sealed class BackendFreedomPointRegistry
                 throw new InvalidDataException($"'{path}' needs unique ids and dense explicit local indices.");
             }
             var address = $"{path}/{index}";
-            if (point.ValueType is not ("positive_int32" or "nonnegative_int32" or "number" or "boolean" or "object" or "array")
-                || simple != (point.ValueType is "positive_int32" or "nonnegative_int32" or "number" or "boolean"))
+            if (point.ValueType is not ("positive_int32" or "nonnegative_int32" or "number" or "boolean" or TierCellsType or "object" or "array")
+                || simple != (point.ValueType is "positive_int32" or "nonnegative_int32" or "number" or "boolean" or TierCellsType))
             {
                 throw new InvalidDataException($"'{address}' has the wrong value type for its table.");
             }
@@ -169,9 +174,25 @@ internal sealed class BackendFreedomPointRegistry
             "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
             "object" => value.ValueKind == JsonValueKind.Object,
             "array" => value.ValueKind == JsonValueKind.Array,
+            TierCellsType => IsTierCells(value),
             _ => false
         };
         if (!valid) throw new InvalidDataException($"'{address}' does not contain a {type} value.");
+    }
+
+    private static bool IsTierCells(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() != TierCellCount) return false;
+        foreach (var cell in value.EnumerateArray())
+        {
+            if (cell.ValueKind != JsonValueKind.Object || cell.EnumerateObject().Count() != 2
+                || !cell.TryGetProperty("value", out var number) || number.ValueKind != JsonValueKind.Number
+                || !number.TryGetInt32(out var integer) || integer < 0
+                || !cell.TryGetProperty("category", out var category)
+                || category.ValueKind != JsonValueKind.String || category.GetString() is not ("proportional" or "aggressive"))
+                return false;
+        }
+        return true;
     }
 
     private static void RequireChildren(FreedomPointTableDeclaration[] children)

@@ -66,7 +66,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
     PdhProcessGpuReader processGpuReader,
     ILogger<WindowsResourceBreakdownSampler>? logger = null,
     GpuAllocationCollector? gpuAllocations = null,
-    InteractiveDesktopObservationStore? interactiveDesktops = null) :
+    InteractiveDesktopObservationStore? interactiveDesktops = null,
+    ResourceManager.Shared.BusinessBlocks.State.StateAuthority? stateAuthority = null) :
     IResourceBreakdownSampler,
     IResourceBreakdownObservationSource,
     IResourceBreakdownPushSource,
@@ -90,7 +91,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
     private readonly SemaphoreSlim demandSignal = new(0, 1);
     private IWindowsProcessInventoryReader processInventoryReader { get => processFieldOwner.Inventory; set => processFieldOwner.Inventory = value; }
     private WindowsProcessBasicMetricReader processBasicMetricReader { get => processFieldOwner.BasicReader; set => processFieldOwner.BasicReader = value; }
-    private readonly HostedResourcePublicationState hostedPublicationState = new(processGpuReader?.SnapshotSource);
+    private readonly HostedResourcePublicationState hostedPublicationState = new(processGpuReader?.SnapshotSource, stateAuthority);
     private readonly ResourceBreakdownSnapshotState directSnapshotState = new();
     private ResourceBreakdownSnapshotState snapshotState =>
         hostedPublicationState.Resource;
@@ -153,10 +154,11 @@ public sealed partial class WindowsResourceBreakdownSampler(
         ResourceManagerLedgerOwner ledgerOwner,
         ILogger<WindowsResourceBreakdownSampler>? logger = null,
         GpuAllocationCollector? gpuAllocations = null,
-        InteractiveDesktopObservationStore? interactiveDesktops = null)
+        InteractiveDesktopObservationStore? interactiveDesktops = null,
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? stateAuthority = null)
         : this(metricSampler, processAttributionCatalogProvider, residualBreakdownProvider,
             physicalDiskIoAttributionReader, networkAttributionReader, runtimePlanProvider,
-            samplingSubscriptionOwner, processGpuReader, logger, gpuAllocations, interactiveDesktops)
+            samplingSubscriptionOwner, processGpuReader, logger, gpuAllocations, interactiveDesktops, stateAuthority)
     {
         ArgumentNullException.ThrowIfNull(ledgerOwner);
         subscriptions = CreateSubscriptions(samplingSubscriptionOwner,

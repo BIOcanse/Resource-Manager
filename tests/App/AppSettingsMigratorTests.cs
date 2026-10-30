@@ -563,6 +563,25 @@ public sealed class AppSettingsMigratorTests
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
     }
 
+    [Fact]
+    public void FileWithoutTheMemoryCpuTierSectionReadsAsTierThreeWithoutOverrides()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!;
+        root.AsObject().Remove("memoryCpuTier");
+        using var old = JsonDocument.Parse(root.ToJsonString());
+        var tier = AppSettingsMigrator.MigrateForRead(old.RootElement).MemoryCpuTier;
+        Assert.NotNull(tier);
+        Assert.Equal(MemoryCpuTierSettings.DefaultTier, tier.Tier);
+        Assert.True(tier.Overrides is null or { Count: 0 });
+
+        root["memoryCpuTier"] = JsonNode.Parse("""{"tier":5,"overrides":{"gcGen0MaxBudget":null,"singleRequestStopBufferMs":30000}}""");
+        using var current = JsonDocument.Parse(root.ToJsonString());
+        var stored = AppSettingsMigrator.MigrateForRead(current.RootElement).MemoryCpuTier!;
+        Assert.Equal(5, stored.Tier);
+        Assert.Equal(JsonValueKind.Null, stored.Overrides!["gcGen0MaxBudget"].ValueKind);
+        Assert.Equal(30000, stored.Overrides["singleRequestStopBufferMs"].GetInt32());
+    }
+
     private const string CurrentShapeJson =
         """
         {

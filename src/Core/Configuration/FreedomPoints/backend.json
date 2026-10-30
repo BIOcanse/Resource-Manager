@@ -13,24 +13,24 @@
               {
                 "index": 0,
                 "id": "single_request_stop_buffer_ms",
-                "description": "Shared subscription-source stop buffer after a single request ends. Zero disables the buffer; keeping a source in use never schedules sampling.",
-                "value_type": "nonnegative_int32",
+                "description": "Shared subscription-source stop buffer after a single request ends, one cell per memory/CPU tier (tier 1 first; tier 3 is the former single value). Zero disables the buffer; keeping a source in use never schedules sampling.",
+                "value_type": "nonnegative_int32_tiers",
                 "update_class": "rebuild_backend",
                 "status": "active",
                 "value_source": "registry",
-                "value": 10000,
-                "consumers": ["SubscriptionSourceSettings.CompileStopBuffer"]
+                "value": [ { "value": 0, "category": "aggressive" }, { "value": 5000, "category": "proportional" }, { "value": 10000, "category": "proportional" }, { "value": 30000, "category": "proportional" }, { "value": 60000, "category": "aggressive" } ],
+                "consumers": ["MemoryCpuTierTable.Compile"]
               },
               {
                 "index": 1,
                 "id": "service_identity_cache_ms",
-                "description": "How long the Windows service identity resolver reuses one service-to-process snapshot. Zero re-reads the service list on every resolution.",
-                "value_type": "nonnegative_int32",
+                "description": "How long the Windows service identity resolver reuses one service-to-process snapshot, one cell per memory/CPU tier (tier 1 first; tier 3 is the former single value). Zero re-reads the service list on every resolution.",
+                "value_type": "nonnegative_int32_tiers",
                 "update_class": "rebuild_backend",
                 "status": "active",
                 "value_source": "registry",
-                "value": 5000,
-                "consumers": ["MonitoringSettings.Compile"]
+                "value": [ { "value": 0, "category": "aggressive" }, { "value": 2000, "category": "proportional" }, { "value": 5000, "category": "proportional" }, { "value": 15000, "category": "proportional" }, { "value": 60000, "category": "aggressive" } ],
+                "consumers": ["MemoryCpuTierTable.Compile"]
               },
               {
                 "index": 2,
@@ -714,6 +714,423 @@
                 "value_source": "registry",
                 "value": 16384,
                 "consumers": [ "HostManagerPlanCompiler.Compile" ]
+              }
+            ]
+          },
+          "children": []
+        },
+        {
+          "id": "memory_cpu_tiers",
+          "description": "内存与 CPU 取舍: five cells per option, tier 1 (least memory, most CPU) to tier 5 (least CPU, most memory). Each cell is {value, category}; aggressive cells appear only in tiers 1 and 5. The stop buffer and service identity cache options are the five-value points monitoring/build/simple/0 and /1. The settings owner resolves the user's tier and per-option values; option owners read the effective value on their next use.",
+          "build": {
+            "complex": [
+              {
+                "index": 0,
+                "id": "gc_gen0_max_budget",
+                "description": "System.GC.Gen0MaxBudget in bytes, written into the installed service and NativeUi runtimeconfig files; takes effect after the process restarts. Null removes the key (not set: the runtime sizes gen0 from the L3 cache).",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": 1048576,
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": 2097152,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 4194304,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 8388608,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": null,
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 1,
+                "id": "gc_conserve_memory",
+                "description": "System.GC.ConserveMemory (0-9), written into the installed service and NativeUi runtimeconfig files; takes effect after the process restarts.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": 9,
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": 7,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 5,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 3,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 0,
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 2,
+                "id": "ledger_memory_mode_floor",
+                "description": "Lowest memory mode the program's own Ledger tables may use: optimize returns unused Ledger memory at every check; autoThrifty, auto and autoGenerous choose from free memory with saving, current and retaining thresholds; unrestricted never returns it proactively. Declared and resolved; the Ledger owner reads it from step 2 of the memory/CPU tier design.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": "optimize",
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": "autoThrifty",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "auto",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "autoGenerous",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "unrestricted",
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 3,
+                "id": "buffer_return",
+                "description": "When the process-inventory kernel-table workspace is returned: releaseAfterUse frees it after every parse; shrinkAfterNLowReads shrinks it after N consecutive reads that use at most a quarter; keepPeak never shrinks and reserves the previous peak after a release. Read at the next borrow.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": "releaseAfterUse",
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": "shrinkAfter2LowReads",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "shrinkAfter8LowReads",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "shrinkAfter32LowReads",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "keepPeak",
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 4,
+                "id": "native_workarea_growth",
+                "description": "How native work areas grow: exactRows sizes them to the actual rows and shrinks them after use; rows125, rows150 and rows200 grow to that percentage of the actual rows and shrink on low use; reserveCapacity reserves the capacity limit at once. Declared and resolved; the native owners read it from step 2 of the memory/CPU tier design.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": "exactRows",
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": "rows125",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "rows150",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "rows200",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "reserveCapacity",
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 5,
+                "id": "browser_runtime_snapshot_seconds",
+                "description": "How long the browser runtime catalog reuses one snapshot. Zero re-reads on every request. Read at the next request.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": 0,
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": 2,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 5,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 10,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 20,
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 6,
+                "id": "platform_sensor_snapshot_seconds",
+                "description": "How long the platform sensor reader reuses one sensor snapshot. Zero re-reads on every request. Read at the next request.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": 0,
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": 2,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 5,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 10,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 20,
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 7,
+                "id": "storage_snapshot_seconds",
+                "description": "How long the storage owner reuses one storage capability snapshot. Zero re-reads on every request. Read at the next request.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": 0,
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": 7,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 15,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 30,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 60,
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 8,
+                "id": "renderer_absence_entries",
+                "description": "Entries the GPU renderer absence cache holds before it clears the whole table. Read at the next insertion.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": 256,
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": 1024,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 4096,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 8192,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 16384,
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 9,
+                "id": "file_query_sessions_max",
+                "description": "Most native file-query sessions open at once; sessions are built on demand up to this limit and the published query_session_count and resident budget. Read at the next acquisition.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": 1,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 2,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 8,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 8,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 8,
+                    "category": "proportional"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 10,
+                "id": "file_query_sessions_prebuilt",
+                "description": "File-query sessions built when the pool is created, at most file_query_sessions_max. Read when the next pool is created.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": 0,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 0,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 0,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 2,
+                    "category": "proportional"
+                  },
+                  {
+                    "value": 8,
+                    "category": "aggressive"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
+              },
+              {
+                "index": 11,
+                "id": "file_query_idle_sessions",
+                "description": "What happens to a returned file-query session that no waiter takes: close closes it, keep keeps it for the next query. Read at the next return.",
+                "value_type": "array",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": [
+                  {
+                    "value": "close",
+                    "category": "aggressive"
+                  },
+                  {
+                    "value": "keep",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "keep",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "keep",
+                    "category": "proportional"
+                  },
+                  {
+                    "value": "keep",
+                    "category": "proportional"
+                  }
+                ],
+                "consumers": [
+                  "MemoryCpuTierTable.Compile"
+                ]
               }
             ]
           },

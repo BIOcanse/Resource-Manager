@@ -101,7 +101,8 @@ public static class AppSettingsMigrator
                 ReadInt32(root, "control", "reassertionIntervalSeconds", 120),
                 ReadBoolean(root, "control", "keepAlive", false)),
             ReadReports(root),
-            ReadMemoryProtection(root));
+            ReadMemoryProtection(root),
+            ReadMemoryCpuTier(root));
 
         return AppSettingsNormalizer.Normalize(settings);
     }
@@ -117,6 +118,13 @@ public static class AppSettingsMigrator
         // unconfigured rather than reserving disk space the user did not request.
         return settings with { Reserves = settings.Reserves ?? [] };
     }
+
+    // A file written before the memory/CPU tier section reads as tier 3 with no overrides.
+    private static MemoryCpuTierSettings ReadMemoryCpuTier(JsonElement root)
+        => root.TryGetProperty("memoryCpuTier", out var tier)
+            ? tier.Deserialize<MemoryCpuTierSettings>(WebJsonOptions)
+                ?? throw new JsonException("memoryCpuTier must be an object.")
+            : new();
 
     // A malformed override list is a malformed settings file (JsonException), not a reason to drop entries.
     private static AppReportSettings ReadReports(JsonElement root)

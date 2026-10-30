@@ -48,6 +48,22 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapGet("/api/settings/report-rules", (IRuntimePlanProvider plans) =>
             Results.Ok(new EditableReportRulesPayload(plans.Current.HostManager.ReportCoordinator.RuleSettings.Select(static rule => new EditableReportRulePayload(rule.Name, HostManagerReportPresentation.ReportType(rule.FactKind), rule.Comparison == 1 ? "atOrAbove" : "atOrBelow", rule.DisplayUnit, rule.Scale, rule.Step, rule.ThresholdMinimum, rule.ThresholdMaximum, rule.CountMaximum, rule.ZeroActivityMaximum, rule.EditableFields, rule.Defaults))))).AllowAnonymous();
 
+        // 「内存与 CPU 取舍」: the published tier resolution (what option owners use) with the GC runtimeconfig state.
+        app.MapGet("/api/settings/memory-cpu-tier", async (
+            HttpContext context,
+            IAppSettingsStore settingsStore,
+            CancellationToken cancellationToken) =>
+        {
+            var services = context.RequestServices;
+            var authority = services.GetService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>();
+            var published = authority?.Read<MemoryCpuTierResolution>(ResourceManager.App.StateItems.StateItemUids.MemoryCpuTierEffective);
+            var resolution = published is { HasValue: true } ? published.Value.Value : MemoryCpuTierResolver.Resolve(
+                ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.Product,
+                (await settingsStore.LoadReadOnlyAsync(cancellationToken)).Settings.MemoryCpuTier);
+            var writer = services.GetService<ResourceManager.App.Infrastructure.Settings.RuntimeConfigWriter>();
+            return Results.Ok(MemoryCpuTierProjection(resolution, writer?.Read()));
+        }).AllowAnonymous();
+
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPut("/api/settings/app", async (
             AppSettings settings,

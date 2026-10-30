@@ -30,5 +30,6 @@ public sealed partial class HostManagerPlanCompiler
     [JsonSerializable(typeof(FanCurveFeedTiming))]
     [JsonSerializable(typeof(UniwillEcChannelOptions))]
     [JsonSerializable(typeof(TargetedRecordingOptions))]
+    [JsonSerializable(typeof(CompiledMemoryCpuTierCell[]))]
     private partial class FreedomPointJsonContext : JsonSerializerContext;
 }

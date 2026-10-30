@@ -2,16 +2,17 @@ using ResourceManager.App.Application.BrowserRuntimes;
 using ResourceManager.App.Application.Management;
 using ResourceManager.App.Domain.BrowserRuntimes;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.App.Infrastructure.Settings;
 using ResourceManager.Shared.BrowserRuntimes;
 
 namespace ResourceManager.App.Infrastructure.BrowserRuntimes;
 
 public sealed class WindowsBrowserRuntimeCatalog(
     IHostEnvironment environment,
-    IManagementInventoryRevisionOwner? inventoryRevisionOwner = null) : IBrowserRuntimeCatalog
+    IManagementInventoryRevisionOwner? inventoryRevisionOwner = null,
+    ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null) : IBrowserRuntimeCatalog
 {
     public const string InstallComponentId = BrowserRuntimeCatalogIds.InstallComponentId;
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(5);
     private readonly object sync = new();
     private readonly string packageRoot = PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath);
     private BrowserRuntimeSnapshot? cached;
@@ -25,7 +26,8 @@ public sealed class WindowsBrowserRuntimeCatalog(
         {
             if (!forceRefresh
                 && cached is not null
-                && DateTimeOffset.UtcNow - cached.CapturedAt < CacheDuration)
+                // Memory/CPU tier option browser_runtime_catalog_cache_seconds; 0 re-reads every time.
+                && DateTimeOffset.UtcNow - cached.CapturedAt < MemoryCpuTierState.Read(authority).BrowserRuntimeSnapshot)
             {
                 return Task.FromResult(cached);
             }

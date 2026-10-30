@@ -46,6 +46,22 @@ public static class AppSettingsPatchApplier
         }
     }
 
+    private const string MemoryCpuTierPath = "$.memoryCpuTier";
+
+    private static JsonObject MemoryCpuTierSection(JsonNode? value)
+    {
+        if (value is not JsonObject section)
+            throw new AppSettingsPatchException("invalid-settings-value-type", MemoryCpuTierPath);
+        foreach (var property in section)
+            if (property.Key is not ("tier" or "overrides"))
+                throw new AppSettingsPatchException("invalid-settings-value-type", $"{MemoryCpuTierPath}.{property.Key}");
+        if (section["tier"] is not JsonValue)
+            throw new AppSettingsPatchException("invalid-settings-value-type", $"{MemoryCpuTierPath}.tier");
+        if (section["overrides"] is not JsonObject)
+            throw new AppSettingsPatchException("invalid-settings-value-type", $"{MemoryCpuTierPath}.overrides");
+        return (JsonObject)section.DeepClone();
+    }
+
     private static void ApplyObjectPatch(
         JsonObject target,
         JsonObject patch)
@@ -68,6 +84,15 @@ public static class AppSettingsPatchApplier
                 {
                     throw new AppSettingsPatchException(
                         "invalid-settings-value-type", propertyPath);
+                }
+
+                // The memory/CPU tier section is replaced whole, not merged by key: the patch states the tier
+                // and the complete overrides map, so removing an option's key clears that override. Inside
+                // the map a null value means "not set"; the write gate accepts it only where the option allows it.
+                if (propertyPath == MemoryCpuTierPath)
+                {
+                    item.Target[property.Key] = MemoryCpuTierSection(property.Value);
+                    continue;
                 }
 
                 if (property.Value is JsonObject patchObject)

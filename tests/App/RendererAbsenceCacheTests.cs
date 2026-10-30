@@ -312,7 +312,7 @@ public sealed class RendererAbsenceCacheTests
         using var observationRun = cache.Acquire();
         var first = Process(10_000, 10_000, @"C:\Apps\renderer.exe");
 
-        for (var index = 0; index < RendererAbsenceCache.MaximumCachedEntries; index++)
+        for (var index = 0; index < ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.ProductDefault.Values.RendererAbsenceEntries; index++)
         {
             var identity = first with { ProcessId = first.ProcessId + index, ProcessStartKey = (ulong)(first.ProcessStartKey + (uint)index) };
             cache.PublishAbsent(identity, cache.Read(identity));
@@ -321,8 +321,8 @@ public sealed class RendererAbsenceCacheTests
         Assert.True(cache.Read(first).IsAbsent);
         var overflowIdentity = first with
         {
-            ProcessId = first.ProcessId + RendererAbsenceCache.MaximumCachedEntries,
-            ProcessStartKey = (ulong)(first.ProcessStartKey + RendererAbsenceCache.MaximumCachedEntries)
+            ProcessId = first.ProcessId + ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.ProductDefault.Values.RendererAbsenceEntries,
+            ProcessStartKey = (ulong)(first.ProcessStartKey + ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.ProductDefault.Values.RendererAbsenceEntries)
         };
         cache.PublishAbsent(overflowIdentity, cache.Read(overflowIdentity));
 
@@ -346,7 +346,7 @@ public sealed class RendererAbsenceCacheTests
         Assert.False(broker.Source.IsActive);
     }
 
-    private static GpuPlacementProcessInstance Process(int processId, ulong startKey, string path)
+    internal static GpuPlacementProcessInstance Process(int processId, ulong startKey, string path)
         => new(processId, startKey, "renderer.exe", path);
 
 }

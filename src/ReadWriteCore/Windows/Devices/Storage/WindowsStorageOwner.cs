@@ -31,7 +31,7 @@ public sealed partial class WindowsStorageOwner
         Func<int, string, string?, int?, uint?, bool?>? readTrim = null)
     {
         if (cacheLifetime < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(cacheLifetime));
-        CacheLifetime = cacheLifetime;
+        this.cacheLifetime = () => cacheLifetime;
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
         this.sourceMessage = sourceMessage ?? throw new ArgumentNullException(nameof(sourceMessage));
         this.capabilityQuery = capabilityQuery ?? DeviceTopologyWmiUtilities.QueryObjects;

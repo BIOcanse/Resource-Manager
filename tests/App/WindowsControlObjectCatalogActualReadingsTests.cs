@@ -93,20 +93,22 @@ public sealed class WindowsControlObjectCatalogActualReadingsTests
     [Theory]
     [InlineData(0)]
     [InlineData(3500)]
-    public void SharedStopBufferDefaultAndOverridesAreCompiledAndExported(int milliseconds)
+    public void SharedStopBufferTierCellsAreCompiledAndExported(int milliseconds)
     {
-        Assert.Equal(TimeSpan.FromSeconds(10), SubscriptionSourceSettings.ProductStopBuffer);
+        // The stop buffer stays the point monitoring/build/simple/0 with five tier cells; tier 3 is the former 10 s.
+        Assert.Equal(TimeSpan.FromSeconds(10),
+            ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.ProductDefault.Values.SingleRequestStopBuffer);
         var baseline = HostManagerTestPlanFactory.CreatePlan();
         var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
-            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.SingleRequestStopBuffer)["value"] = milliseconds);
-        Assert.Equal(TimeSpan.FromSeconds(10), baseline.SingleRequestStopBuffer);
-        Assert.Equal(TimeSpan.FromMilliseconds(milliseconds), changed.SingleRequestStopBuffer);
+            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.SingleRequestStopBuffer)["value"]![2]!["value"] = milliseconds);
+        Assert.Equal(10_000, baseline.MemoryCpuTiers!.SingleRequestStopBufferMs[2].Value!.Value.GetInt32());
+        Assert.Equal(milliseconds, changed.MemoryCpuTiers!.SingleRequestStopBufferMs[2].Value!.Value.GetInt32());
         Assert.NotEqual(baseline.BuildSha256, changed.BuildSha256);
         var point = Assert.Single(changed.FreedomPoints.EnumeratePoints(),
             point => point.Address == BackendFreedomPointPaths.SingleRequestStopBuffer);
         Assert.Equal("single_request_stop_buffer_ms", point.Id);
-        Assert.Equal(milliseconds, point.Value!.Value.GetInt32());
-        Assert.Equal("SubscriptionSourceSettings.CompileStopBuffer", Assert.Single(point.Consumers));
+        Assert.Equal(milliseconds, point.Value!.Value[2].GetProperty("value").GetInt32());
+        Assert.Equal("MemoryCpuTierTable.Compile", Assert.Single(point.Consumers));
     }
 
     private static WindowsControlObjectCatalog Catalog(HardwareMetricCatalogState state, Metrics source,

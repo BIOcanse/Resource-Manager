@@ -113,6 +113,11 @@ internal sealed class FreedomPointSdkAdapter
                 "nonnegative_int32" => PointValueSet.Simple(PointValue.FromInteger(value.GetInt32())),
                 "number" => PointValueSet.Simple(PointValue.FromDecimal(value.GetDouble())),
                 "boolean" => PointValueSet.Simple(PointValue.FromChoices(value.GetBoolean() ? 2UL : 1UL)),
+                BackendFreedomPointRegistry.TierCellsType => PointValueSet.Simple([.. value.EnumerateArray().SelectMany(static cell => new[]
+                {
+                    PointValue.FromInteger(cell.GetProperty("value").GetInt32()),
+                    PointValue.FromChoices(cell.GetProperty("category").GetString() == "aggressive" ? 2UL : 1UL)
+                })]),
                 _ => PointValueSet.ComplexValue(value)
             };
         }
@@ -127,6 +132,7 @@ internal sealed class FreedomPointSdkAdapter
             "nonnegative_int32" => JsonSerializer.SerializeToElement(fact.Value.Slots[0].Integer),
             "number" => JsonSerializer.SerializeToElement(fact.Value.Slots[0].Decimal),
             "boolean" => JsonSerializer.SerializeToElement(fact.Value.Slots[0].Choices == 2UL),
+            BackendFreedomPointRegistry.TierCellsType => TierCellsAsJson(fact.Value.Slots),
             _ => fact.Value.Complex!.Value
         };
     }
@@ -151,8 +157,20 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.RequestLifetimeMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "TrustedAccessRequestLifetimeMilliseconds"),
             BackendFreedomPointPositions.AvailabilityCheckIntervalMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "HardwareBridgeAvailabilityCheckInterval"),
             BackendFreedomPointPositions.ObservationGrowthLimit => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerReportCoordinatorBuildPlan", "ObservationGrowthLimit"),
-            BackendFreedomPointPositions.SingleRequestStopBufferMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "SingleRequestStopBuffer"),
-            BackendFreedomPointPositions.ServiceIdentityCacheMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "ServiceIdentityCacheLifetime"),
+            BackendFreedomPointPositions.GcGen0MaxBudget => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "GcGen0MaxBudget"),
+            BackendFreedomPointPositions.GcConserveMemory => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "GcConserveMemory"),
+            BackendFreedomPointPositions.LedgerMemoryModeFloor => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "LedgerMemoryModeFloor"),
+            BackendFreedomPointPositions.BufferReturn => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "BufferReturn"),
+            BackendFreedomPointPositions.NativeWorkareaGrowth => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "NativeWorkareaGrowth"),
+            BackendFreedomPointPositions.SingleRequestStopBufferMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "SingleRequestStopBufferMs"),
+            BackendFreedomPointPositions.ServiceIdentityCacheMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "ServiceIdentityCacheMs"),
+            BackendFreedomPointPositions.BrowserRuntimeSnapshotSeconds => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "BrowserRuntimeSnapshotSeconds"),
+            BackendFreedomPointPositions.PlatformSensorSnapshotSeconds => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "PlatformSensorSnapshotSeconds"),
+            BackendFreedomPointPositions.StorageSnapshotSeconds => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "StorageSnapshotSeconds"),
+            BackendFreedomPointPositions.RendererAbsenceEntries => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "RendererAbsenceEntries"),
+            BackendFreedomPointPositions.FileQuerySessionsMax => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "FileQuerySessionsMax"),
+            BackendFreedomPointPositions.FileQuerySessionsPrebuilt => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "FileQuerySessionsPrebuilt"),
+            BackendFreedomPointPositions.FileQueryIdleSessions => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierTable", "FileQueryIdleSessions"),
             BackendFreedomPointPositions.OverlayFrameWindowMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "OverlayFrameWindow"),
             BackendFreedomPointPositions.TargetedRecording => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "TargetedRecording"),
             BackendFreedomPointPositions.HelperRequestTimeoutMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHardwareControlSettings", "HelperRequestTimeout"),
@@ -195,6 +213,34 @@ internal sealed class FreedomPointSdkAdapter
             : [host];
     }
 
+    // A five-value simple point: per memory/CPU tier (tier 1 first) one millisecond integer slot and one
+    // category choice slot (proportional, aggressive), so the cells keep the tier table's {value, category} shape.
+    private static readonly ImmutableArray<SlotContract> TierCellSlots = [.. Enumerable.Range(0, BackendFreedomPointRegistry.TierCellCount)
+        .SelectMany(static _ => new[]
+        {
+            new SlotContract { Kind = ValueKind.Integer, Unit = "milliseconds", IntegerMinimum = 0, IntegerMaximum = int.MaxValue },
+            new SlotContract { Kind = ValueKind.Choose, Options = ["proportional", "aggressive"], RequiredSelectionCount = 1 }
+        })];
+
+    private static JsonElement TierCellsAsJson(ImmutableArray<PointValue> slots)
+    {
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartArray();
+            for (var index = 0; index + 1 < slots.Length; index += 2)
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("value", slots[index].Integer);
+                writer.WriteString("category", slots[index + 1].Choices == 2UL ? "aggressive" : "proportional");
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+        }
+        using var document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.Clone();
+    }
+
     private static PointDeclaration ToDeclaration(CompiledFreedomPoint point, ImmutableArray<GenerationTarget> targets) => new()
     {
         Path = point.Path, Name = point.Id, Description = point.Description,
@@ -207,11 +253,11 @@ internal sealed class FreedomPointSdkAdapter
             _ => throw new InvalidDataException($"Unknown update class '{point.UpdateClass}'.")
         },
         ComplexContract = point.Path.Kind == PointKind.Complex ? point.ValueType : null,
-        Slots = point.Path.Kind == PointKind.Complex ? [] : [point.ValueType switch
+        Slots = point.Path.Kind == PointKind.Complex ? [] : point.ValueType == BackendFreedomPointRegistry.TierCellsType
+            ? TierCellSlots
+            : [point.ValueType switch
         {
             "positive_int32" => new SlotContract { Kind = ValueKind.Integer, IntegerMinimum = 1, IntegerMaximum = int.MaxValue },
-            "nonnegative_int32" when point.Path.Raw == BackendFreedomPointPositions.SingleRequestStopBufferMs
-                => new SlotContract { Kind = ValueKind.Integer, Unit = "milliseconds", IntegerMinimum = 0, IntegerMaximum = int.MaxValue },
             "nonnegative_int32" => new SlotContract { Kind = ValueKind.Integer, IntegerMinimum = 0, IntegerMaximum = int.MaxValue },
             "number" => new SlotContract { Kind = ValueKind.Decimal },
             "boolean" => new SlotContract { Kind = ValueKind.Choose, Options = ["false", "true"], RequiredSelectionCount = 1 },

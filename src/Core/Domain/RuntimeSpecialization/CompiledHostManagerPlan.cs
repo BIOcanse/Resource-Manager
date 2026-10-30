@@ -56,8 +56,8 @@ public sealed record CompiledHostManagerPlan(
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.AvailabilityCheckIntervalMs)]
     public TimeSpan HardwareBridgeAvailabilityCheckInterval { get; init; }
 
-    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SingleRequestStopBufferMs)]
-    public TimeSpan SingleRequestStopBuffer { get; init; }
+    /// <summary>The memory/CPU tier table (freedom-point table memory_cpu_tiers); the settings owner resolves it.</summary>
+    public CompiledMemoryCpuTierTable? MemoryCpuTiers { get; init; }
 
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.CrashCounterResetSeconds)]
     public int ServiceRecoveryResetPeriodSeconds { get; init; }

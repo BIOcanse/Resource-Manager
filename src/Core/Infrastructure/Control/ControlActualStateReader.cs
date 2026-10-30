@@ -1,6 +1,8 @@
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Infrastructure.Control.Writers;
+using ResourceManager.App.Infrastructure.Settings;
+using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
@@ -15,12 +17,15 @@ public sealed class ControlActualStateReader(
     IControlObjectCatalog catalog,
     IEnumerable<IControlWriter> writers,
     ILogger<ControlActualStateReader>? logger = null,
-    HardwareBridgeClient? bridge = null)
+    HardwareBridgeClient? bridge = null,
+    StateAuthority? authority = null)
     : BackgroundService, IControlActualStateOwner
 {
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
     private readonly TimeProvider clock = TimeProvider.System;
-    private readonly TimeSpan stopBuffer = SubscriptionSourceSettings.ProductStopBuffer;
+    // The stop buffer is the memory/CPU tier option singleRequestStopBufferMs (point monitoring/build/simple/0), read when a
+    // single request ends; a change applies to the next request's buffer, not to one already running.
+    private readonly Func<TimeSpan> stopBuffer = () => MemoryCpuTierState.Read(authority).SingleRequestStopBuffer;
     private readonly object subscriptionGate = new();
     private readonly HashSet<SubscriptionLease> subscriptions = [];
     private readonly HashSet<SingleRequest> requests = [];
@@ -36,12 +41,13 @@ public sealed class ControlActualStateReader(
     private volatile ControlActualState current = ControlActualState.Empty;
 
     internal ControlActualStateReader(IControlObjectCatalog catalog, IEnumerable<IControlWriter> writers,
-        TimeProvider clock, HardwareBridgeClient? bridge = null, TimeSpan? stopBuffer = null)
-        : this(catalog, writers, bridge: bridge)
+        TimeProvider clock, HardwareBridgeClient? bridge = null, TimeSpan? stopBuffer = null,
+        StateAuthority? authority = null)
+        : this(catalog, writers, bridge: bridge, authority: authority)
     {
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
         if (stopBuffer < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(stopBuffer));
-        this.stopBuffer = stopBuffer ?? this.stopBuffer;
+        if (stopBuffer is { } fixedBuffer) this.stopBuffer = () => fixedBuffer;
     }
 
     public ControlActualState Current => current;
@@ -71,12 +77,13 @@ public sealed class ControlActualStateReader(
             lock (subscriptionGate)
             {
                 requests.Remove(request);
-                if (Volatile.Read(ref disposed) == 0 && stopBuffer > TimeSpan.Zero)
+                var buffer = stopBuffer();
+                if (Volatile.Read(ref disposed) == 0 && buffer > TimeSpan.Zero)
                 {
-                    bufferUntil = clock.GetUtcNow() + stopBuffer;
+                    bufferUntil = clock.GetUtcNow() + buffer;
                     bufferTimer ??= clock.CreateTimer(_ => ExpireBuffer(), null,
                         Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-                    bufferTimer.Change(stopBuffer, Timeout.InfiniteTimeSpan);
+                    bufferTimer.Change(buffer, Timeout.InfiniteTimeSpan);
                 }
                 changes = RefreshUsageLocked();
             }

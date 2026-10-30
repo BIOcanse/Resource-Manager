@@ -67,7 +67,7 @@ public sealed class ProcessInventoryBufferTests(ITestOutputHelper output)
         Assert.True(buffer.TryRead(out _, out _));
         Assert.Equal(4096, buffer.CapacityBytes);
         var resizes = api.Resizes;
-        for (var i = 0; i < WindowsProcessInventoryBuffer.LowUsageReadsBeforeShrink; i++)
+        for (var i = 0; i < WindowsProcessInventoryBufferReturn.Default.ShrinkAfterLowReads; i++)
         {
             api.RequiredBytes = i == 0 ? 600 : 400;
             Assert.True(buffer.TryRead(out var data, out _));
@@ -101,14 +101,14 @@ public sealed class ProcessInventoryBufferTests(ITestOutputHelper output)
             maximumSystemInformationBufferBytes: 8192), api);
         Assert.True(buffer.TryRead(out _, out _));
         api.RequiredBytes = 128;
-        for (var i = 0; i < WindowsProcessInventoryBuffer.LowUsageReadsBeforeShrink - 1; i++)
+        for (var i = 0; i < WindowsProcessInventoryBufferReturn.Default.ShrinkAfterLowReads - 1; i++)
             Assert.True(buffer.TryRead(out _, out _));
         api.RequiredBytes = failQuery ? 128 : 2048;
         api.Failure = failQuery ? "denied" : null;
         Assert.Equal(!failQuery, buffer.TryRead(out _, out _));
         api.Failure = null;
         api.RequiredBytes = 128;
-        for (var i = 0; i < WindowsProcessInventoryBuffer.LowUsageReadsBeforeShrink; i++)
+        for (var i = 0; i < WindowsProcessInventoryBufferReturn.Default.ShrinkAfterLowReads; i++)
         {
             Assert.True(buffer.TryRead(out _, out _));
             Assert.Equal(4096, buffer.CapacityBytes);
@@ -209,6 +209,48 @@ public sealed class ProcessInventoryBufferTests(ITestOutputHelper output)
             Assert.Equal(0, queryBytes);
         }
         finally { foreach (var process in processes) process.Dispose(); }
+    }
+
+    [Fact]
+    public void ReturnPolicyIsReadAtTheNextBorrow()
+    {
+        var api = new BufferApi { RequiredBytes = 4096 };
+        var policy = WindowsProcessInventoryBufferReturn.Default;
+        using var buffer = new WindowsProcessInventoryBuffer(new(initialSystemInformationBufferBytes: 256,
+            maximumSystemInformationBufferBytes: 8192), api) { ReturnPolicy = () => policy };
+        Assert.True(buffer.TryRead(out _, out _));
+        api.RequiredBytes = 400;
+        Assert.True(buffer.TryRead(out _, out _));
+        Assert.True(buffer.TryRead(out _, out _));
+        Assert.True(buffer.TryRead(out _, out _));
+        Assert.Equal(4096, buffer.CapacityBytes); // Default: eight low reads before shrinking.
+
+        policy = new(false, 2); // shrinkAfter2LowReads, published between reads.
+        Assert.True(buffer.TryRead(out _, out _));
+        Assert.Equal(800, buffer.CapacityBytes);
+
+        policy = new(false, 0); // keepPeak: never shrinks, and a release reserves the previous peak.
+        api.RequiredBytes = 4096;
+        Assert.True(buffer.TryRead(out _, out _));
+        api.RequiredBytes = 128;
+        for (var i = 0; i < 40; i++) Assert.True(buffer.TryRead(out _, out _));
+        Assert.Equal(4096, buffer.CapacityBytes);
+        buffer.ReturnAfterUse();
+        Assert.Equal(4096, buffer.CapacityBytes);
+        buffer.Release();
+        var resizes = api.Resizes;
+        Assert.True(buffer.TryRead(out _, out _));
+        Assert.Equal(4096, buffer.CapacityBytes);
+        Assert.Equal(resizes + 1, api.Resizes);
+
+        policy = new(true, 0); // releaseAfterUse.
+        var frees = api.Frees;
+        buffer.ReturnAfterUse();
+        Assert.Equal(0, buffer.CapacityBytes);
+        Assert.Equal(frees + 1, api.Frees);
+        Assert.True(buffer.TryRead(out var data, out _));
+        Assert.Equal(128, data.Length);
+        Assert.Equal(256, buffer.CapacityBytes);
     }
 
     private sealed class BufferApi : IWindowsProcessInventoryBufferApi

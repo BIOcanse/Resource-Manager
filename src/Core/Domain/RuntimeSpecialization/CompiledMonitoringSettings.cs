@@ -5,8 +5,6 @@ namespace ResourceManager.App.Domain.RuntimeSpecialization;
 
 /// <summary>Build-time monitoring choices from the monitoring freedom-point table.</summary>
 public sealed record CompiledMonitoringSettings(
-    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.ServiceIdentityCacheMs)]
-    TimeSpan ServiceIdentityCacheLifetime,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.OverlayFrameWindowMs)]
     TimeSpan OverlayFrameWindow,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.TargetedRecording)]

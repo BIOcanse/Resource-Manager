@@ -1,5 +1,4 @@
 using ResourceManager.ReadWrite.Native;
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 namespace ResourceManager.App.Infrastructure.NativeCore;
@@ -42,22 +41,46 @@ public sealed class NativeFileQueryLease : IDisposable
     }
 }
 
+/// <summary>How a file-query pool holds sessions: at most <see cref="SessionLimit"/> live sessions (never more
+/// than the pool's capacity), <see cref="PrebuiltSessions"/> created with the pool (at most the limit), and
+/// whether a returned session that no waiter takes is closed (<see cref="CloseIdleSessions"/>) or kept.</summary>
+public readonly record struct NativeFileQueryPoolShape(int SessionLimit, int PrebuiltSessions, bool CloseIdleSessions);
+
 public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposable
 {
-    private readonly ConcurrentQueue<NativeFileQuerySession> available = new();
-    private readonly SemaphoreSlim signal;
+    private readonly Queue<NativeFileQuerySession> available = new();
+    private readonly Queue<TaskCompletionSource> waiters = new();
     private readonly object lifecycleGate = new();
+    private readonly NativeFileQueryConfiguration configuration;
+    private readonly Func<ulong, uint, INativeFileQueryScratch> createScratch;
+    private readonly Func<NativeFileQueryPoolShape> shape;
+    private readonly int capacity;
+    private readonly ulong totalResidentByteBudget;
+    private ulong resident;
+    private int live;
     private long nextEpoch;
     private int disposed;
 
+    /// <summary>Creates all <paramref name="sessionCount"/> sessions now and keeps returned sessions.</summary>
     public NativeFileQueryPool(
         in NativeFileQueryConfiguration configuration,
         int sessionCount,
         ulong totalResidentByteBudget)
         : this(in configuration, sessionCount, totalResidentByteBudget, NativeFileQueryScratch.CreateOrdinary) { }
 
+    /// <summary>Holds sessions as <paramref name="shape"/> says. The shape is read at each acquisition and
+    /// return, so a change applies to later uses; <paramref name="sessionCount"/> stays the hard capacity.</summary>
+    public NativeFileQueryPool(
+        in NativeFileQueryConfiguration configuration,
+        int sessionCount,
+        ulong totalResidentByteBudget,
+        Func<NativeFileQueryPoolShape> shape)
+        : this(in configuration, sessionCount, totalResidentByteBudget, NativeFileQueryScratch.CreateOrdinary,
+            shape ?? throw new ArgumentNullException(nameof(shape))) { }
+
     internal NativeFileQueryPool(in NativeFileQueryConfiguration configuration, int sessionCount,
-        ulong totalResidentByteBudget, Func<ulong, uint, INativeFileQueryScratch> createScratch)
+        ulong totalResidentByteBudget, Func<ulong, uint, INativeFileQueryScratch> createScratch,
+        Func<NativeFileQueryPoolShape>? shape = null)
     {
         if (sessionCount <= 0 || totalResidentByteBudget == 0)
         {
@@ -65,35 +88,28 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
                 "The native file-query workspace shape is not published.");
         }
 
-        signal = new SemaphoreSlim(0, sessionCount);
-        var sessions = new List<NativeFileQuerySession>(sessionCount);
+        this.configuration = configuration;
+        this.createScratch = createScratch ?? throw new ArgumentNullException(nameof(createScratch));
+        capacity = sessionCount;
+        this.totalResidentByteBudget = totalResidentByteBudget;
+        this.shape = shape ?? (() => new NativeFileQueryPoolShape(sessionCount, sessionCount, false));
+        var initial = this.shape();
+        var prebuilt = Math.Min(Math.Max(initial.PrebuiltSessions, 0), LimitOf(initial));
         try
         {
-            ulong resident = 0;
-            for (var index = 0; index < sessionCount; index++)
+            for (var index = 0; index < prebuilt; index++)
             {
-                var session = new NativeFileQuerySession(in configuration, createScratch);
-                sessions.Add(session);
-                resident = checked(resident + session.Capacity.ResidentByteCount);
-            }
-            if (resident > totalResidentByteBudget)
-            {
-                throw new InvalidOperationException(
-                    "The native file-query session pool exceeds its explicit total resident budget.");
-            }
-            foreach (var session in sessions)
-            {
+                var session = CreateSession();
                 available.Enqueue(session);
-                signal.Release();
+                live++;
             }
         }
         catch
         {
-            foreach (var session in sessions)
+            while (available.TryDequeue(out var session))
             {
                 session.Dispose();
             }
-            signal.Dispose();
             throw;
         }
     }
@@ -101,21 +117,59 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
     public async ValueTask<NativeFileQueryLease> AcquireAsync(
         CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
-        lock (lifecycleGate)
+        // Cancellation is checked once before waiting; a waiter woken for a session takes it.
+        cancellationToken.ThrowIfCancellationRequested();
+        while (true)
         {
-            if (Volatile.Read(ref disposed) != 0 || !available.TryDequeue(out var session))
-                throw new ObjectDisposedException(nameof(NativeFileQueryPool));
-            try
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+            NativeFileQuerySession? session = null;
+            TaskCompletionSource? waiter = null;
+            lock (lifecycleGate)
             {
-                // A failed prior acquisition may still own a use whose return
-                // failed. Retry that explicit return before borrowing again.
-                session.EndQuery(false);
-                session.BeginQuery();
+                if (Volatile.Read(ref disposed) != 0)
+                    throw new ObjectDisposedException(nameof(NativeFileQueryPool));
+                if (available.TryDequeue(out var idle)) session = idle;
+                else if (live < LimitOf(shape())) live++;
+                else
+                {
+                    waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    waiters.Enqueue(waiter);
+                }
             }
-            catch { available.Enqueue(session); signal.Release(); throw; }
-            return new NativeFileQueryLease(session, Release);
+            if (waiter is not null)
+            {
+                await using (cancellationToken.Register(static state => ((TaskCompletionSource)state!).TrySetCanceled(), waiter))
+                    await waiter.Task.ConfigureAwait(false);
+                continue;
+            }
+            if (session is null)
+            {
+                // The live slot is reserved above; the session itself is created on demand outside the gate.
+                try { session = CreateSession(); }
+                catch
+                {
+                    lock (lifecycleGate) { live--; WakeOneLocked(); }
+                    throw;
+                }
+            }
+            lock (lifecycleGate)
+            {
+                if (Volatile.Read(ref disposed) != 0)
+                {
+                    // Pool disposal retries closing whatever the queue still owns.
+                    available.Enqueue(session);
+                    throw new ObjectDisposedException(nameof(NativeFileQueryPool));
+                }
+                try
+                {
+                    // A failed prior acquisition may still own a use whose return
+                    // failed. Retry that explicit return before borrowing again.
+                    session.EndQuery(false);
+                    session.BeginQuery();
+                }
+                catch { available.Enqueue(session); WakeOneLocked(); throw; }
+                return new NativeFileQueryLease(session, Release);
+            }
         }
     }
 
@@ -137,12 +191,34 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
             // Leave a failed close owned by the queue for the next Dispose.
             while (available.TryPeek(out var session))
             {
-                session.Dispose();
-                available.TryDequeue(out _);
+                CloseLocked(session);
+                available.Dequeue();
             }
-            signal.Dispose();
+            while (waiters.TryDequeue(out var waiter))
+            {
+                waiter.TrySetException(new ObjectDisposedException(nameof(NativeFileQueryPool)));
+            }
             Volatile.Write(ref disposed, 2);
         }
+    }
+
+    private int LimitOf(NativeFileQueryPoolShape current) => Math.Clamp(current.SessionLimit, 1, capacity);
+
+    private NativeFileQuerySession CreateSession()
+    {
+        var session = new NativeFileQuerySession(in configuration, createScratch);
+        lock (lifecycleGate)
+        {
+            var next = checked(resident + session.Capacity.ResidentByteCount);
+            if (next <= totalResidentByteBudget)
+            {
+                resident = next;
+                return session;
+            }
+        }
+        session.Dispose();
+        throw new InvalidOperationException(
+            "The native file-query session pool exceeds its explicit total resident budget.");
     }
 
     private void Release(NativeFileQuerySession session, bool reusable)
@@ -152,23 +228,48 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
             try
             {
                 session.EndQuery(reusable);
-                if (reusable && Volatile.Read(ref disposed) == 0)
+                var current = shape();
+                // A waiting query always takes a returned session; otherwise the shape decides whether
+                // the session stays for the next query or closes (also when the limit was lowered).
+                if (reusable && Volatile.Read(ref disposed) == 0
+                    && (HasWaiterLocked() || (!current.CloseIdleSessions && live <= LimitOf(current))))
                 {
                     available.Enqueue(session);
-                    signal.Release();
+                    WakeOneLocked();
                     return;
                 }
-                session.Dispose();
+                CloseLocked(session);
+                WakeOneLocked();
             }
             catch
             {
                 // Acquisition retries EndQuery; pool disposal retries closing.
                 // Both paths must retain this session after a failed return.
                 available.Enqueue(session);
-                if (Volatile.Read(ref disposed) == 0) signal.Release();
+                if (Volatile.Read(ref disposed) == 0) WakeOneLocked();
                 else Volatile.Write(ref disposed, 1);
                 throw;
             }
         }
+    }
+
+    private void CloseLocked(NativeFileQuerySession session)
+    {
+        var bytes = session.Capacity.ResidentByteCount;
+        session.Dispose();
+        resident -= Math.Min(resident, bytes);
+        live--;
+    }
+
+    private bool HasWaiterLocked()
+    {
+        while (waiters.TryPeek(out var waiter) && waiter.Task.IsCompleted) waiters.Dequeue();
+        return waiters.Count > 0;
+    }
+
+    private void WakeOneLocked()
+    {
+        while (waiters.TryDequeue(out var waiter))
+            if (waiter.TrySetResult()) return;
     }
 }

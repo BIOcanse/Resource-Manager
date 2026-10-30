@@ -30,15 +30,27 @@ internal sealed class HostedResourcePublicationState
     private HostedResourcePublicationOwnerToken activeOwnerToken;
     private bool ownerOpen;
 
-    public HostedResourcePublicationState(ResourceManager.ReadWrite.Native.Pdh.INativePdhSnapshotSource? gpuSource = null)
+    public HostedResourcePublicationState(ResourceManager.ReadWrite.Native.Pdh.INativePdhSnapshotSource? gpuSource = null,
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null)
     {
         Resource = new ResourceBreakdownSnapshotState(gate);
         Scheduling = new SchedulingProcessFactSnapshotState(gate);
-        ProcessOwner = new(Resource.ProcessFieldState);
+        ProcessOwner = new(Resource.ProcessFieldState)
+        {
+            // Memory/CPU tier option bufferReturn, read by the inventory workspace at its next borrow.
+            InventoryBufferReturn = () => InventoryBufferReturn(authority),
+        };
         if (gpuSource is not null) ProcessOwner.BindGpuSource(gpuSource);
     }
 
     internal WindowsProcessFieldOwner ProcessOwner { get; }
+
+    internal static ResourceManager.ReadWrite.Windows.Processes.WindowsProcessInventoryBufferReturn InventoryBufferReturn(
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority)
+    {
+        var policy = ResourceManager.App.Infrastructure.Settings.MemoryCpuTierState.Read(authority).BufferReturn;
+        return new(policy.ReleaseAfterUse, policy.ShrinkAfterLowReads);
+    }
 
     public ResourceBreakdownSnapshotState Resource { get; }
 

@@ -26,12 +26,15 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
     private AppSettingsSourceMetadata? cachedSource;
     private readonly StateCell<AppSettings> current;
     private readonly StateCell<bool> controlKeepAliveEnabled;
+    private readonly StateCell<MemoryCpuTierResolution> memoryCpuTier;
+    private readonly RuntimeConfigWriter? runtimeConfig;
     private readonly StateAuthority authority;
 
     public JsonAppSettingsStore(
         StateAuthority authority,
         IHostEnvironment environment,
-        ILogger<JsonAppSettingsStore>? logger = null)
+        ILogger<JsonAppSettingsStore>? logger = null,
+        RuntimeConfigWriter? runtimeConfig = null)
     {
         settingsPath = ResolveSettingsPath(environment.ContentRootPath);
         lastKnownGoodPath = ResolveLastKnownGoodPath(settingsPath);
@@ -39,6 +42,8 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
         this.authority = authority;
         current = authority.ClaimCell<AppSettings>(StateItemUids.AppSettingsCurrent);
         controlKeepAliveEnabled = authority.ClaimCell<bool>(StateItemUids.ControlKeepAliveEnabled);
+        memoryCpuTier = authority.ClaimCell<MemoryCpuTierResolution>(StateItemUids.MemoryCpuTierEffective);
+        this.runtimeConfig = runtimeConfig;
     }
 
     public async Task<AppSettingsUpdateResult> LoadAsync(CancellationToken cancellationToken)
@@ -179,7 +184,21 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
         var published = authority.Read<bool>(StateItemUids.ControlKeepAliveEnabled);
         if (!published.HasValue || published.Value != keepAlive)
             await controlKeepAliveEnabled.PublishAsync(keepAlive, SettingsChanged);
+        await PublishMemoryCpuTierAsync(settings);
         return settings;
+    }
+
+    // Event: the tier table is resolved once per settings publication and published only when the tier,
+    // an effective value or a source changed; option owners read it on their next use.
+    private async Task PublishMemoryCpuTierAsync(AppSettings settings)
+    {
+        var resolution = MemoryCpuTierResolver.Resolve(MemoryCpuTierTable.Product, settings.MemoryCpuTier);
+        var published = authority.Read<MemoryCpuTierResolution>(StateItemUids.MemoryCpuTierEffective);
+        if (published.HasValue && published.Value.SameAs(resolution)) return;
+        foreach (var ignored in resolution.Ignored)
+            logger?.LogWarning("The stored memory/CPU tier entry {Path} is not applied ({Code}).", ignored.Path, ignored.Code);
+        await memoryCpuTier.PublishAsync(resolution, SettingsChanged);
+        runtimeConfig?.Apply(new(resolution.Values.GcGen0MaxBudget, resolution.Values.GcConserveMemory), logger);
     }
 
     private static AppSettings OwnSettings(AppSettings settings) => settings with
@@ -193,7 +212,12 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
             ? reports with { RuleOverrides = Array.AsReadOnly(reports.RuleOverrides.ToArray()) } : null,
         MemoryProtection = settings.MemoryProtection is { } protection
             ? protection with { Reserves = Array.AsReadOnly((protection.Reserves ?? []).ToArray()),
-                ProtectedProcesses = protection.ProtectedProcesses is null ? null! : Array.AsReadOnly(protection.ProtectedProcesses.ToArray()) } : null
+                ProtectedProcesses = protection.ProtectedProcesses is null ? null! : Array.AsReadOnly(protection.ProtectedProcesses.ToArray()) } : null,
+        MemoryCpuTier = settings.MemoryCpuTier is { } tier
+            ? tier with { Overrides = new System.Collections.ObjectModel.ReadOnlyDictionary<string, JsonElement>(
+                (tier.Overrides ?? new Dictionary<string, JsonElement>()).ToDictionary(
+                    static entry => entry.Key, static entry => entry.Value.Clone(), StringComparer.Ordinal)) }
+            : null
     };
 
     public async IAsyncEnumerable<AppSettings> SubscribeAsync(string holder,

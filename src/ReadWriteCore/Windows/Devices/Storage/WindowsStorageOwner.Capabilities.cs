@@ -10,7 +10,11 @@ namespace ResourceManager.ReadWrite.Windows.Devices;
 public sealed partial class WindowsStorageOwner
 {
     private readonly object Gate = new();
-    private readonly TimeSpan CacheLifetime;
+    private readonly Func<TimeSpan> cacheLifetime;
+
+    /// <summary>Reads the capability snapshot lifetime at each request instead of the constructor's fixed
+    /// lifetime; a change applies from the next request. A negative lifetime is treated as an error.</summary>
+    internal Func<TimeSpan> CacheLifetimeSource { init => cacheLifetime = value ?? throw new ArgumentNullException(nameof(value)); }
     private readonly TimeProvider clock;
     private readonly Func<bool, BackendMessage> sourceMessage;
     private readonly Func<string, string, DeviceTopologyWmiQueryResult> capabilityQuery;
@@ -30,7 +34,9 @@ public sealed partial class WindowsStorageOwner
 
         lock (Gate)
         {
-            if (cachedSnapshot is not null && clock.GetUtcNow() - cachedAt < CacheLifetime)
+            var lifetime = cacheLifetime();
+            if (lifetime < TimeSpan.Zero) throw new InvalidOperationException("The storage capability cache lifetime is negative.");
+            if (cachedSnapshot is not null && clock.GetUtcNow() - cachedAt < lifetime)
             {
                 return cachedSnapshot;
             }

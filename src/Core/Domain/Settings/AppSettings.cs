@@ -35,7 +35,21 @@ public sealed record AppSettings(
     AppUpdateSettings? Update = null,
     AppHardwareControlSettings? Control = null,
     AppReportSettings? Reports = null,
-    HostMemoryProtectionSettings? MemoryProtection = null);
+    HostMemoryProtectionSettings? MemoryProtection = null,
+    MemoryCpuTierSettings? MemoryCpuTier = null);
+
+/// <summary>内存与 CPU 取舍: the chosen tier (1 = least memory, most CPU; 5 = least CPU, most memory)
+/// and the user's per-option values by option name. An option without an entry takes the tier's value;
+/// removing an entry returns that option to the tier. Changing the tier keeps the entries. A null entry
+/// value means "not set" and is accepted only for options whose range allows that.</summary>
+public sealed record MemoryCpuTierSettings(
+    int Tier = MemoryCpuTierSettings.DefaultTier,
+    IReadOnlyDictionary<string, System.Text.Json.JsonElement>? Overrides = null)
+{
+    public const int MinimumTier = 1;
+    public const int DefaultTier = 3;
+    public const int MaximumTier = 5;
+}
 
 public sealed record HostMemoryProtectionSettings(
     bool Enabled = false,

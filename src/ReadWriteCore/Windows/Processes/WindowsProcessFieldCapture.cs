@@ -19,6 +19,12 @@ public sealed partial class WindowsProcessFieldOwner
 {
     private readonly WindowsProcessInventoryBuffer inventoryBuffer = new();
     internal int InventoryBufferCapacityBytes => inventoryBuffer.CapacityBytes;
+    /// <summary>The inventory workspace's return policy (memory/CPU tier option bufferReturn).</summary>
+    internal Func<WindowsProcessInventoryBufferReturn> InventoryBufferReturn
+    {
+        get => inventoryBuffer.ReturnPolicy;
+        set => inventoryBuffer.ReturnPolicy = value ?? throw new ArgumentNullException(nameof(value));
+    }
     internal async Task ReleaseProcessInventoryBufferAsync(CancellationToken cancellationToken)
     {
         await CaptureGate.WaitAsync(cancellationToken);
@@ -42,8 +48,10 @@ public sealed partial class WindowsProcessFieldOwner
         var live = new HashSet<ProcessInstanceKey>();
         WindowsProcessInventoryCapture inventory;
         try { inventory = Inventory.Capture(inventoryBuffer); }
-        catch { return new(SamplingObservationStatus.Unavailable, 0, 0, 0, [], now, new(now, null, new Dictionary<ProcessInstanceKey, double>())); }
+        catch { inventoryBuffer.ReturnAfterUse(); return new(SamplingObservationStatus.Unavailable, 0, 0, 0, [], now, new(now, null, new Dictionary<ProcessInstanceKey, double>())); }
         using var inventoryLease = inventory;
+        // Capture parsed the kernel table into the inventory, so the workspace can be returned now.
+        inventoryBuffer.ReturnAfterUse();
         var processes = inventory.Processes;
         if (processes.Length > maximumProcessCount)
         {

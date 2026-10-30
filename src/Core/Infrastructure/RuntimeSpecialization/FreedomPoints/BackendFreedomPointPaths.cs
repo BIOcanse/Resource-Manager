@@ -42,4 +42,16 @@ internal static class BackendFreedomPointPaths
     public const string BusinessBlockReaderBytes = "resource-manager/backend/business_blocks/build/simple/4";
     public const string BusinessBlockWorkerArenaBytes = "resource-manager/backend/business_blocks/build/simple/5";
     public const string BusinessBlockReasonTextCapacity = "resource-manager/backend/business_blocks/build/simple/6";
+    public const string MemoryCpuTierGcGen0MaxBudget = "resource-manager/backend/memory_cpu_tiers/build/complex/0";
+    public const string MemoryCpuTierGcConserveMemory = "resource-manager/backend/memory_cpu_tiers/build/complex/1";
+    public const string MemoryCpuTierLedgerMemoryModeFloor = "resource-manager/backend/memory_cpu_tiers/build/complex/2";
+    public const string MemoryCpuTierBufferReturn = "resource-manager/backend/memory_cpu_tiers/build/complex/3";
+    public const string MemoryCpuTierNativeWorkareaGrowth = "resource-manager/backend/memory_cpu_tiers/build/complex/4";
+    public const string MemoryCpuTierBrowserRuntimeSnapshotSeconds = "resource-manager/backend/memory_cpu_tiers/build/complex/5";
+    public const string MemoryCpuTierPlatformSensorSnapshotSeconds = "resource-manager/backend/memory_cpu_tiers/build/complex/6";
+    public const string MemoryCpuTierStorageSnapshotSeconds = "resource-manager/backend/memory_cpu_tiers/build/complex/7";
+    public const string MemoryCpuTierRendererAbsenceEntries = "resource-manager/backend/memory_cpu_tiers/build/complex/8";
+    public const string MemoryCpuTierFileQuerySessionsMax = "resource-manager/backend/memory_cpu_tiers/build/complex/9";
+    public const string MemoryCpuTierFileQuerySessionsPrebuilt = "resource-manager/backend/memory_cpu_tiers/build/complex/10";
+    public const string MemoryCpuTierFileQueryIdleSessions = "resource-manager/backend/memory_cpu_tiers/build/complex/11";
 }

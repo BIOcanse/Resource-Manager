@@ -98,6 +98,42 @@ public sealed class FreedomPointRegistryTests
         Assert.Throws<InvalidDataException>(() => Parse(root => Point(root)["value"] = JsonNode.Parse(literal)));
     }
 
+    private const string TierCells = """
+        [{"value":0,"category":"aggressive"},{"value":2000,"category":"proportional"},
+         {"value":5000,"category":"proportional"},{"value":15000,"category":"proportional"},
+         {"value":60000,"category":"aggressive"}]
+        """;
+
+    [Fact]
+    public void SimpleTierCellsPointKeepsItsFiveValuesAndCategories()
+    {
+        var registry = Parse(root =>
+        {
+            Point(root)["value_type"] = "nonnegative_int32_tiers";
+            Point(root)["value"] = JsonNode.Parse(TierCells);
+        });
+        var compilation = registry.BeginCompilation(Profile());
+        var cells = compilation.Consume<ResourceManager.App.Domain.RuntimeSpecialization.CompiledMemoryCpuTierCell[]>(Address, "consumer");
+        Assert.Equal([0, 2000, 5000, 15000, 60000], cells.Select(cell => cell.Value!.Value.GetInt32()));
+        Assert.Equal(["aggressive", "proportional", "proportional", "proportional", "aggressive"], cells.Select(cell => cell.Category));
+    }
+
+    [Theory]
+    [InlineData("5")]
+    [InlineData("[]")]
+    [InlineData("[{\"value\":0,\"category\":\"aggressive\"}]")]
+    [InlineData("[{\"value\":-1,\"category\":\"aggressive\"},{\"value\":1,\"category\":\"proportional\"},{\"value\":2,\"category\":\"proportional\"},{\"value\":3,\"category\":\"proportional\"},{\"value\":4,\"category\":\"aggressive\"}]")]
+    [InlineData("[{\"value\":0,\"category\":\"other\"},{\"value\":1,\"category\":\"proportional\"},{\"value\":2,\"category\":\"proportional\"},{\"value\":3,\"category\":\"proportional\"},{\"value\":4,\"category\":\"aggressive\"}]")]
+    [InlineData("[{\"value\":0,\"category\":1},{\"value\":1,\"category\":\"proportional\"},{\"value\":2,\"category\":\"proportional\"},{\"value\":3,\"category\":\"proportional\"},{\"value\":4,\"category\":\"aggressive\"}]")]
+    public void SimpleTierCellsMustBeFiveNonnegativeCategorisedCells(string literal)
+    {
+        Assert.Throws<InvalidDataException>(() => Parse(root =>
+        {
+            Point(root)["value_type"] = "nonnegative_int32_tiers";
+            Point(root)["value"] = JsonNode.Parse(literal);
+        }));
+    }
+
     [Theory]
     [InlineData("index", "2")]
     [InlineData("id", "\"with/slash\"")]

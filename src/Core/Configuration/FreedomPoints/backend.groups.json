@@ -151,6 +151,27 @@
         "00010002002D0001",
         "00010002002D0002"
       ]
+    },
+    {
+      "key": "resource-manager/backend/memory_cpu_tiers",
+      "parent": "resource-manager/backend",
+      "name": "内存与 CPU 取舍",
+      "description": "Five tiers from lowest memory pressure (1) to lowest CPU pressure (5). Each point holds one option's five tier cells; the stop buffer and service identity cache cells stay in the monitoring group. The settings owner resolves tier plus user overrides into the effective values.",
+      "order": 7,
+      "points": [
+        "0001000200350000",
+        "0001000200350001",
+        "0001000200350002",
+        "0001000200350003",
+        "0001000200350004",
+        "0001000200350005",
+        "0001000200350006",
+        "0001000200350007",
+        "0001000200350008",
+        "0001000200350009",
+        "000100020035000A",
+        "000100020035000B"
+      ]
     }
   ]
 }

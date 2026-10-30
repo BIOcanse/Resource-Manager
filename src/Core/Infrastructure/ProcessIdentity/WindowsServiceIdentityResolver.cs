@@ -3,29 +3,32 @@ using ResourceManager.ReadWrite.Windows.Services;
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Infrastructure.Settings;
+using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace ResourceManager.App.Infrastructure.ProcessIdentity;
 
 public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityResolver
 {
-    private static readonly TimeSpan CacheLifetime = ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.ServiceIdentityCacheLifetime;
     private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
     private readonly object gate = new();
     private readonly Func<IReadOnlyList<WindowsServiceRecord>?> readServices;
     private readonly Func<int, long?> readProcessStartKey;
     private readonly TimeProvider clock;
+    private readonly StateAuthority? authority;
     private ServiceSnapshot cachedSnapshot = ServiceSnapshot.Unavailable;
     private DateTimeOffset cachedAt;
 
-    public WindowsServiceIdentityResolver()
-        : this(ReadServiceEntries, TryReadProcessStartKey, TimeProvider.System) { }
+    public WindowsServiceIdentityResolver(StateAuthority? authority = null)
+        : this(ReadServiceEntries, TryReadProcessStartKey, TimeProvider.System, authority) { }
 
     internal WindowsServiceIdentityResolver(Func<IReadOnlyList<WindowsServiceRecord>?> readServices,
-        Func<int, long?> readProcessStartKey, TimeProvider clock)
+        Func<int, long?> readProcessStartKey, TimeProvider clock, StateAuthority? authority = null)
     {
         this.readServices = readServices;
         this.readProcessStartKey = readProcessStartKey;
         this.clock = clock;
+        this.authority = authority;
     }
 
     // The service owner publishes one immutable membership/name snapshot. Its
@@ -99,7 +102,8 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
         var now = clock.GetUtcNow();
         lock (gate)
         {
-            if (now - cachedAt < CacheLifetime)
+            // Memory/CPU tier option serviceIdentityCacheMs (point monitoring/build/simple/1), read at this one use; 0 re-reads every time.
+            if (now - cachedAt < MemoryCpuTierState.Read(authority).ServiceIdentityCacheLifetime)
             {
                 return cachedSnapshot;
             }
