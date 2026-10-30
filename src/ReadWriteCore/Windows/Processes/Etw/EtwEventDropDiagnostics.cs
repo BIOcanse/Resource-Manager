@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Microsoft.Diagnostics.Tracing;
 using ResourceManager.ReadWrite;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -61,13 +60,6 @@ public sealed class EtwEventDropSession
         var key = (provider, id, opcode);
         if (dynamicKinds.TryGetValue(key, out var counter)) return counter;
         return dynamicKinds.GetOrAdd(key, static value => new($"{value.Provider:D}/{value.Id}/{value.Opcode}"));
-    }
-
-    public void RecordUnhandled(TraceEvent data)
-    {
-        var counter = Kind(data.ProviderGuid, (int)data.ID, (int)data.Opcode);
-        counter.Receive();
-        counter.Drop();
     }
 
     // Consumer counters are separate from physical delivery totals. Stable holder/event
