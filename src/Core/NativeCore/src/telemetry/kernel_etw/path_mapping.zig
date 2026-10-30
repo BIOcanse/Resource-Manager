@@ -276,7 +276,7 @@ test "container-like path segments follow shipped TraceEvent ordinary prefix map
     try paths.addSystemPathsUtf16Le(&.{}, std.mem.sliceAsBytes(wide("Z:\\Windows\\")));
     try std.testing.expectEqualSlices(u16, wide("X:\\Files\\Windows\\driver.sys"), try paths.map(round.allocator(), original, 256));
     try std.testing.expectEqualSlices(u16, wide("X:\\oS\\wINDows\\driver.sys"), try paths.map(round.allocator(), wide("\\host\\oS\\wINDows\\driver.sys"), 256));
-    const source_path = wide("D:\\Code\\CommonAssets\\Tools\\Zig\\zig-0.16.0\\lib\\std\\os\\windows\\tls.zig");
+    const source_path = wide("D:\\Tools\\zig\\lib\\std\\os\\windows\\tls.zig");
     try std.testing.expectEqualSlices(u16, source_path, try paths.map(round.allocator(), source_path, 256));
     try std.testing.expectError(error.CapacityExceeded, paths.map(round.allocator(), original, 2));
 }

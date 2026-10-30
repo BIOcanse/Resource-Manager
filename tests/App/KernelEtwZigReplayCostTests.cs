@@ -169,11 +169,10 @@ public sealed class KernelEtwZigReplayCostTests
         var root = FindRepositoryRoot(Directory.GetCurrentDirectory())
             ?? FindRepositoryRoot(AppContext.BaseDirectory)
             ?? throw new DirectoryNotFoundException("Could not find the Resource Manager worktree root.");
-        var inputs = new[]
-        {
-            Path.Combine(root, ".local", "etw-capture", "kernel-cpu-interrupt.etl"),
-            @"F:\code\Resource-Manager-Development\footprint-c034\tray-1\tray-cpu.etl"
-        };
+        // RESOURCE_MANAGER_ETW_TRAY_INPUT optionally adds a tray-state CPU capture after the repository's interrupt capture.
+        var interruptInput = Path.Combine(root, ".local", "etw-capture", "kernel-cpu-interrupt.etl");
+        var trayInput = Environment.GetEnvironmentVariable("RESOURCE_MANAGER_ETW_TRAY_INPUT");
+        var inputs = string.IsNullOrWhiteSpace(trayInput) ? new[] { interruptInput } : new[] { interruptInput, trayInput };
 
         foreach (var path in inputs)
         {
