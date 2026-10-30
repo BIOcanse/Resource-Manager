@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.Components;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Metrics;
@@ -83,7 +84,8 @@ public sealed partial class MetricCatalogPushTests
         var revision = catalog.Revision;
         var source = new ProbeCatalogSource(snapshot);
         var components = new MutableComponents();
-        await using var fixture = await Fixture.StartAsync(catalog, source, components);
+        var revisions = new ManagementInventoryRevisionOwner();
+        await using var fixture = await Fixture.StartAsync(catalog, source, components, revisions);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var response = await fixture.SubscribeAsync(timeout.Token);
         using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
@@ -94,7 +96,7 @@ public sealed partial class MetricCatalogPushTests
         Assert.Equal(BackendMessageCodes.Metric.NeedsComponent, missing.GetProperty("disabledReason").GetProperty("code").GetByte());
 
         components.Installed = true;
-        await source.TickAsync();
+        revisions.ObserveComponentContentChanged();
         var refreshed = await ReadAsync(reader, timeout.Token);
         var installed = Assert.Single(refreshed.GetProperty("metrics").EnumerateArray(),
             metric => metric.GetProperty("id").GetString() == metricId);
@@ -124,6 +126,40 @@ public sealed partial class MetricCatalogPushTests
         Assert.True(Assert.Single(source.Requests).IsCatalogProbe);
         Assert.Equal(0, fixture.Sampler.Reads);
         Assert.Equal(0, fixture.Sampler.Captures);
+        await timeout.CancelAsync();
+    }
+
+    [Fact]
+    public async Task CatalogProbesReuseInstalledComponentsUntilAComponentRevisionIsPublished()
+    {
+        const string metricId = "system.motherboardTemperature";
+        var catalog = new HardwareMetricCatalogState();
+        var snapshot = Snapshot("unverified", selected: false);
+        catalog.PublishCatalogProbe(snapshot);
+        var source = new ProbeCatalogSource(snapshot);
+        var components = new MutableComponents();
+        var revisions = new ManagementInventoryRevisionOwner();
+        await using var fixture = await Fixture.StartAsync(catalog, source, components, revisions);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var response = await fixture.SubscribeAsync(timeout.Token);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+        var first = await ReadAsync(reader, timeout.Token);
+        Assert.NotEqual(JsonValueKind.Null, Assert.Single(first.GetProperty("metrics").EnumerateArray(),
+            metric => metric.GetProperty("id").GetString() == metricId).GetProperty("requiredComponentId").ValueKind);
+        Assert.Equal(1, components.StatusReads);
+
+        for (var index = 0; index < 10; index++) await source.TickAsync();
+        Assert.Equal(1, components.StatusReads);
+
+        components.Installed = true;
+        revisions.ObserveComponentContentChanged();
+        var refreshed = await ReadAsync(reader, timeout.Token);
+        Assert.Equal(JsonValueKind.Null, Assert.Single(refreshed.GetProperty("metrics").EnumerateArray(),
+            metric => metric.GetProperty("id").GetString() == metricId).GetProperty("requiredComponentId").ValueKind);
+        Assert.Equal(2, components.StatusReads);
+
+        for (var index = 0; index < 10; index++) await source.TickAsync();
+        Assert.Equal(2, components.StatusReads);
         await timeout.CancelAsync();
     }
 
@@ -324,11 +360,16 @@ public sealed partial class MetricCatalogPushTests
     private sealed class MutableComponents : IComponentManager
     {
         private readonly IComponentManager empty = new NoInstalledComponentManager();
+        private int statusReads;
         public bool Installed { get; set; }
+        public int StatusReads => Volatile.Read(ref statusReads);
         public Task<IReadOnlyList<ComponentStatus>> GetStatusesAsync(CancellationToken token)
-            => Task.FromResult<IReadOnlyList<ComponentStatus>>([new(
+        {
+            Interlocked.Increment(ref statusReads);
+            return Task.FromResult<IReadOnlyList<ComponentStatus>>([new(
                 ComponentCatalog.Definitions.Single(definition => definition.Id == "hardware-sensors-pawnio-provider"),
                 "fixture", "", "", null, false, Installed, false, false, false, false, [], new BackendMessage(0, 0, []))]);
+        }
         public Task<ComponentStatus?> GetStatusAsync(string id, CancellationToken token) => empty.GetStatusAsync(id, token);
         public Task<ComponentActionResult> DownloadAsync(string id, bool acknowledgeExternalTerms, string? versionChoice,
             CancellationToken token, IProgress<DependencyDownloadProgress>? progress = null)
@@ -342,7 +383,7 @@ public sealed partial class MetricCatalogPushTests
     private sealed record Fixture(WebApplication App, HttpClient Client, NoIoSampler Sampler) : IAsyncDisposable
     {
         public static async Task<Fixture> StartAsync(HardwareMetricCatalogState catalog, IMetricSnapshotPushSource source,
-            IComponentManager? components = null)
+            IComponentManager? components = null, IManagementInventoryRevisionOwner? revisions = null)
         {
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -355,6 +396,7 @@ public sealed partial class MetricCatalogPushTests
             builder.Services.AddSingleton<IMetricSnapshotPushSource>(source);
             builder.Services.AddSingleton<IMetricSampler>(sampler);
             builder.Services.AddSingleton<IComponentManager>(components ?? new NoInstalledComponentManager());
+            if (revisions is not null) builder.Services.AddSingleton(revisions);
             builder.Services.AddSingleton<ReadWriteCore>(_ => throw new InvalidOperationException("Unused capability route."));
             builder.Services.AddSingleton<IGpuTelemetryPushSource>(_ => throw new InvalidOperationException("Catalog routes must not resolve a GPU subscription source."));
             var app = TrustedAccessEndpointTestAuthentication.Build(builder);

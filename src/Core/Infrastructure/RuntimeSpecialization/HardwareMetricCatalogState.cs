@@ -152,6 +152,8 @@ public sealed partial class HardwareMetricCatalogState
         }
     }
     // Discovery owns refreshing these external facts. Transport only reads the commit.
+    // Component files changed outside RM publish no revision; the next subscription start or GET reads them.
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Catalog subscription started, catalog GET, or component revision published")]
     public async Task RefreshCompositionAsync(IComponentManager components,
         IDeviceTopologySnapshotProvider? topology, CancellationToken token)
     {
@@ -160,17 +162,30 @@ public sealed partial class HardwareMetricCatalogState
         {
             var installed = (await components.GetStatusesAsync(token)).Where(static status => status.Installed)
                 .Select(static status => status.Definition.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var topologyPorts = topology?.ReadState().Snapshot?.Ports;
-            Action? changed;
-            lock (gate)
-            {
-                installedComponents = installed;
-                ports = topologyPorts;
-                changed = CommitContent() ? Changed : null;
-            }
-            changed?.Invoke();
+            CommitComposition(installed, topology);
         }
         finally { compositionGate.Release(); }
+    }
+
+    // Recommits the current snapshot and topology ports with the installed set already held.
+    public async Task RecommitCompositionAsync(IDeviceTopologySnapshotProvider? topology, CancellationToken token)
+    {
+        await compositionGate.WaitAsync(token);
+        try { CommitComposition(installed: null, topology); }
+        finally { compositionGate.Release(); }
+    }
+
+    private void CommitComposition(IReadOnlySet<string>? installed, IDeviceTopologySnapshotProvider? topology)
+    {
+        var topologyPorts = topology?.ReadState().Snapshot?.Ports;
+        Action? changed;
+        lock (gate)
+        {
+            if (installed is not null) installedComponents = installed;
+            ports = topologyPorts;
+            changed = CommitContent() ? Changed : null;
+        }
+        changed?.Invoke();
     }
 
     private bool CommitContent()
