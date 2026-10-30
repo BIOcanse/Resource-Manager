@@ -36,23 +36,24 @@ public sealed class HardwareBridgeClient : HardwareBridgeProcessClient
     }
     internal HardwareBridgeClient(IHostEnvironment environment, Func<ProcessStartInfo, Process?> startFactory)
         : base(() => ResolveExecutablePath(environment), ProductOptions, startFactory: startFactory) { }
-    private static HardwareBridgeProcessOptions ProductOptions { get; } =
-        new(TimeSpan.FromSeconds(90), TimeSpan.FromSeconds(1), ControlHelperErrorOutput.ProductOptions)
+    private static HardwareBridgeProcessOptions ProductOptions { get; } = CreateProductOptions(HardwareControlSettings.ProductDefaults);
+
+    private static HardwareBridgeProcessOptions CreateProductOptions(CompiledHardwareControlSettings settings)
+        => new(settings.HelperRequestTimeout,
+            TimeSpan.FromMilliseconds(settings.HelperProcessTiming.DiagnosticDrainTimeoutMilliseconds),
+            ControlHelperErrorOutput.ProductOptions)
         {
+            StopTimeout = TimeSpan.FromMilliseconds(settings.HelperProcessTiming.StopTimeoutMilliseconds),
+            ReadingInterval = TimeSpan.FromMilliseconds(settings.HelperProcessTiming.ReadingIntervalMilliseconds),
             AvailabilityCheckInterval = ReadAvailabilityCheckInterval(),
             IsRuntimeAvailable = IsRuntimeAvailable
         };
 
     // The client is constructed before the first runtime plan publication. Compile the same
     // embedded declaration as the typed plan, as the backend control owner does at startup.
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private static TimeSpan ReadAvailabilityCheckInterval()
-    {
-        var registry = FreedomPointRegistry.LoadEmbedded();
-        var profile = StrictHostManagerProfileLoader.LoadBytes(
-            StrictHostManagerProfileLoader.ReadExpandedDefaultBytes(), "embedded/HostManager.default.json").Profile;
-        return HostManagerPlanCompiler.CompileHardwareBridgeAvailabilityCheckInterval(
-            registry.BeginCompilation(profile, new CompiledCpuScoringPlan(1d, CompiledCpuCoreWeights.Empty)));
-    }
+        => HostManagerPlanCompiler.CompileHardwareBridgeAvailabilityCheckInterval(EmbeddedFreedomPointDefaults.Begin());
 
     private static bool IsRuntimeAvailable()
     {

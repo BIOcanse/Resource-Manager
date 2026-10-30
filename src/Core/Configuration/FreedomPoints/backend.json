@@ -20,6 +20,28 @@
                 "value_source": "registry",
                 "value": 10000,
                 "consumers": ["SubscriptionSourceSettings.CompileStopBuffer"]
+              },
+              {
+                "index": 1,
+                "id": "service_identity_cache_ms",
+                "description": "How long the Windows service identity resolver reuses one service-to-process snapshot. Zero re-reads the service list on every resolution.",
+                "value_type": "nonnegative_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 5000,
+                "consumers": ["MonitoringSettings.Compile"]
+              },
+              {
+                "index": 2,
+                "id": "overlay_frame_window_ms",
+                "description": "Frame-time window the performance overlay channel summarizes in each delivery.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 1000,
+                "consumers": ["MonitoringSettings.Compile"]
               }
             ],
             "complex": [
@@ -73,6 +95,23 @@
                 "value_type": "object",
                 "value": {
                   "record_capacity": 4096
+                },
+                "status": "active",
+                "update_class": "rebuild_backend"
+              },
+              {
+                "value_source": "registry",
+                "index": 3,
+                "consumers": [
+                  "MonitoringSettings.Compile"
+                ],
+                "description": "Targeted recording. default_maximum_duration_seconds applies when a request names no duration; maximum_duration_limit_seconds is the largest accepted duration; sample_interval_ms is the metric and breakdown subscription interval while recording.",
+                "id": "targeted_recording",
+                "value_type": "object",
+                "value": {
+                  "default_maximum_duration_seconds": 600,
+                  "maximum_duration_limit_seconds": 3600,
+                  "sample_interval_ms": 1000
                 },
                 "status": "active",
                 "update_class": "rebuild_backend"
@@ -532,7 +571,7 @@
         },
         {
           "id": "hardware_bridge",
-          "description": "Optional hardware helper availability; checks never start the helper.",
+          "description": "Optional hardware helpers and control writers: availability, request and stop timing, fan curve feed, EC channel. Availability checks never start a helper.",
           "build": {
             "simple": [
               {
@@ -545,6 +584,69 @@
                 "value_source": "registry",
                 "value": 30000,
                 "consumers": ["HostManagerPlanCompiler.CompileHardwareBridgeAvailabilityCheckInterval"]
+              },
+              {
+                "index": 1,
+                "id": "helper_request_timeout_ms",
+                "description": "Longest wait for one hardware helper request: hardware bridge requests and command-queue entries, and Fan Control Core inventory discovery. A timed-out request keeps its resource until the helper completes.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 90000,
+                "consumers": ["HardwareControlSettings.Compile"]
+              }
+            ],
+            "complex": [
+              {
+                "value_source": "registry",
+                "index": 0,
+                "consumers": [
+                  "HardwareControlSettings.Compile"
+                ],
+                "description": "Hardware bridge helper process timing. diagnostic_drain_timeout_ms bounds the wait for diagnostic output when the helper exits (zero does not wait); stop_timeout_ms bounds each stop step (gate, end of input, kill); reading_interval_ms is the helper's readings section interval.",
+                "id": "helper_process_timing",
+                "value_type": "object",
+                "value": {
+                  "diagnostic_drain_timeout_ms": 1000,
+                  "stop_timeout_ms": 2000,
+                  "reading_interval_ms": 1000
+                },
+                "status": "active",
+                "update_class": "rebuild_backend"
+              },
+              {
+                "value_source": "registry",
+                "index": 1,
+                "consumers": [
+                  "HardwareControlSettings.Compile"
+                ],
+                "description": "Fan curve temperature feed. interval_ms is both the temperature subscription interval and the push interval to Fan Control Core; it must stay short because the firmware hands the fans back after a few seconds without input. maximum_sample_age_ms is the oldest temperature sample still forwarded; older samples are dropped, never replayed.",
+                "id": "fan_curve_feed",
+                "value_type": "object",
+                "value": {
+                  "interval_ms": 100,
+                  "maximum_sample_age_ms": 3000
+                },
+                "status": "active",
+                "update_class": "rebuild_backend"
+              },
+              {
+                "value_source": "registry",
+                "index": 2,
+                "consumers": [
+                  "HardwareControlSettings.Compile"
+                ],
+                "description": "Uniwill ACPI-WMI EC channel. lock_wait_ms bounds the wait for the cross-process EC channel lock; a timeout skips the transaction. A register read counts only after agreeing_reads identical values within read_attempts reads; otherwise it reports no value.",
+                "id": "uniwill_ec_channel",
+                "value_type": "object",
+                "value": {
+                  "lock_wait_ms": 5000,
+                  "read_attempts": 6,
+                  "agreeing_reads": 3
+                },
+                "status": "active",
+                "update_class": "rebuild_backend"
               }
             ]
           }

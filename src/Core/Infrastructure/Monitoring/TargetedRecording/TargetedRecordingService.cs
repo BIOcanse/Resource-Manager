@@ -16,9 +16,12 @@ public sealed class TargetedRecordingService(
     IMetricSnapshotObservationSource metrics,
     ILogger<TargetedRecordingService> logger) : IHostedService
 {
-    public const int DefaultMaximumDurationSeconds = 600;
-    public const int MaximumDurationLimitSeconds = 3600;
-    private static readonly TimeSpan SampleInterval = TimeSpan.FromSeconds(1);
+    public static readonly int DefaultMaximumDurationSeconds =
+        MonitoringSettings.ProductDefaults.TargetedRecording.DefaultMaximumDurationSeconds;
+    public static readonly int MaximumDurationLimitSeconds =
+        MonitoringSettings.ProductDefaults.TargetedRecording.MaximumDurationLimitSeconds;
+    private static readonly TimeSpan SampleInterval =
+        TimeSpan.FromMilliseconds(MonitoringSettings.ProductDefaults.TargetedRecording.SampleIntervalMilliseconds);
     private static readonly MetricSampleRequest MetricRequest = MetricSampleRequest.All;
     private static readonly string[] BaseBreakdownMetrics =
     [
@@ -65,7 +68,7 @@ public sealed class TargetedRecordingService(
         {
             throw new ArgumentException("Software ID is required.", nameof(softwareId));
         }
-        if (maximumDurationSeconds is < 1 or > MaximumDurationLimitSeconds)
+        if (maximumDurationSeconds < 1 || maximumDurationSeconds > MaximumDurationLimitSeconds)
         {
             throw new ArgumentOutOfRangeException(nameof(maximumDurationSeconds));
         }

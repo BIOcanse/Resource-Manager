@@ -18,7 +18,7 @@ public sealed partial class FanControlCoreClient(
     IHostEnvironment environment,
     ILogger<FanControlCoreClient>? logger = null) : IDisposable, IAsyncDisposable, IControlDetectionCache
 {
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(90);
+    private static readonly TimeSpan RequestTimeout = HardwareControlSettings.ProductDefaults.HelperRequestTimeout;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly SemaphoreSlim temperatureGate = new(1, 1);
     private readonly object sessionSync = new();

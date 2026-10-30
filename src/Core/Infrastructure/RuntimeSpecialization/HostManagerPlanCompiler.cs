@@ -63,6 +63,8 @@ public sealed partial class HostManagerPlanCompiler
         var hardwareBridgeAvailabilityCheckInterval = CompileHardwareBridgeAvailabilityCheckInterval(freedom);
         var singleRequestStopBuffer = ResourceManager.App.Infrastructure.Control.SubscriptionSourceSettings.CompileStopBuffer(freedom);
         var backendControlSettings = BackendControlSettings.Compile(freedom);
+        var hardwareControlSettings = ResourceManager.App.Infrastructure.Control.HardwareControlSettings.Compile(freedom);
+        var monitoringSettings = ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.Compile(freedom);
 
         var buildSpecialize = CompileBuildSpecialize(
             profile.BuildSpecialize ?? throw Missing("build_specialize"));
@@ -547,6 +549,8 @@ public sealed partial class HostManagerPlanCompiler
             ServiceRecoveryResetPeriodSeconds = serviceRecoveryReset,
             TrustedAccessRequestLifetimeMilliseconds = trustedAccessRequestLifetime,
             BackendControlSettings = backendControlSettings,
+            HardwareControl = hardwareControlSettings,
+            Monitoring = monitoringSettings,
             FreedomPoints = freedomPoints
         };
     }

@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "267C2CC81404B8CC6DB53A7ECFFCED1EFBE8BFCDB2E37AB21BA93A9BA51E2C51",
+  "contractFingerprint": "2149BDB701BB82D34A3B8493E61A999C329E48F19BCA30DD04FAF698F7E79487",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -16,9 +16,12 @@
       "description": "Backend subscriptions publish current values; readers do not sample.",
       "order": 0,
       "points": [
+        "0001000200040001",
+        "0001000200040002",
         "0001000200050000",
         "0001000200050001",
-        "0001000200050002"
+        "0001000200050002",
+        "0001000200050003"
       ]
     },
     {
@@ -138,10 +141,14 @@
       "key": "resource-manager/backend/hardware_bridge",
       "parent": "resource-manager/backend",
       "name": "hardware_bridge",
-      "description": "Optional hardware helper availability; checks never start the helper.",
+      "description": "Optional hardware helpers and control writers: availability, request and stop timing, fan curve feed, EC channel. Availability checks never start a helper.",
       "order": 6,
       "points": [
-        "00010002002C0000"
+        "00010002002C0000",
+        "00010002002C0001",
+        "00010002002D0000",
+        "00010002002D0001",
+        "00010002002D0002"
       ]
     }
   ]

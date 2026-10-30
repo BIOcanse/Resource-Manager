@@ -41,6 +41,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var resourceSource = services.GetRequiredService<IResourceBreakdownObservationSource>();
         var metricSource = services.GetRequiredService<IMetricSnapshotObservationSource>();
         var frameSource = services.GetRequiredService<IFrameTimingObservationSource>();
+        var frameWindow = ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.OverlayFrameWindow;
         return subscription.Compile(async (writer, cancellationToken) =>
         {
             IDisposable? identityLease = null, processLease = null, resourceLease = null, metricLease = null, frameLease = null;
@@ -101,7 +102,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     var breakdown = resourceLease is null ? null : resourceSource.ReadLatest(resourceRequest);
                     if (hasTargets && needsFrames && frameLease is null) frameLease = frameSource.AcquireSubscription();
                     else if (!hasTargets || !needsFrames) { frameLease?.Dispose(); frameLease = null; }
-                    var frames = frameLease is null ? null : frameSource.Read(TimeSpan.FromSeconds(1));
+                    var frames = frameLease is null ? null : frameSource.Read(frameWindow);
                     var snapshot = PerformanceOverlayProjection.Create(
                         [softwareId], ids, processes, breakdown, hardware, frames, DateTimeOffset.UtcNow);
                     if (hasTargets && useFields && hardware is not null)

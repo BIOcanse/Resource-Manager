@@ -25,7 +25,8 @@ internal sealed class EcChannelLock : IDisposable
     /// 等一把锁最多多久。一次 EC 事务是毫秒级的，等到这个数说明对方卡死了；
     /// 无限等会把采样线程挂住，那比这次读不到更糟。
     /// </summary>
-    private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan WaitTimeout =
+        TimeSpan.FromMilliseconds(HardwareControlSettings.ProductDefaults.UniwillEcChannel.LockWaitMilliseconds);
 
     private readonly Mutex mutex;
     private bool disposed;

@@ -20,7 +20,8 @@ public sealed class HardwareCommandQueue : IDisposable
         TimeSpan? requestTimeout = null)
     {
         this.bridge = bridge;
-        this.requestTimeout = requestTimeout ?? bridge?.RequestTimeout ?? TimeSpan.FromSeconds(90);
+        // The bridge carries the helper_request_timeout_ms point; without a bridge the queue reads the same point.
+        this.requestTimeout = requestTimeout ?? bridge?.RequestTimeout ?? HardwareControlSettings.ProductDefaults.HelperRequestTimeout;
         if (this.requestTimeout <= TimeSpan.Zero || this.requestTimeout.TotalMilliseconds > uint.MaxValue - 1L)
             throw new ArgumentOutOfRangeException(nameof(requestTimeout));
         pendingCell = authority?.ClaimCell<bool>(StateItemUids.HardwareCommandPending);

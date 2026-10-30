@@ -35,11 +35,13 @@ public sealed class FanCurveTemperatureFeed(
     /// <summary>
     /// 订阅与推送的间隔。**这个必须小**，理由见类上那段。
     /// </summary>
-    internal static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(100);
+    internal static readonly TimeSpan Interval =
+        TimeSpan.FromMilliseconds(HardwareControlSettings.ProductDefaults.FanCurveFeed.IntervalMilliseconds);
 
     private const string SubscriptionId = "control.fan-curve.temperature";
     private static readonly string[] CpuTemperatureMetricIds = ["cpu.temperature"];
-    internal static readonly TimeSpan MaximumSampleAge = TimeSpan.FromSeconds(3);
+    internal static readonly TimeSpan MaximumSampleAge =
+        TimeSpan.FromMilliseconds(HardwareControlSettings.ProductDefaults.FanCurveFeed.MaximumSampleAgeMilliseconds);
     private readonly object subscriptionGate = new();
     private IDisposable? lease;
     private MetricSampleRequest? request;

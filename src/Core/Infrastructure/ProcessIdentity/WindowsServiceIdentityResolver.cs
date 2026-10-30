@@ -8,7 +8,7 @@ namespace ResourceManager.App.Infrastructure.ProcessIdentity;
 
 public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityResolver
 {
-    private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan CacheLifetime = ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.ServiceIdentityCacheLifetime;
     private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
     private readonly object gate = new();
     private readonly Func<IReadOnlyList<WindowsServiceRecord>?> readServices;

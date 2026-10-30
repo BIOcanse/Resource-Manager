@@ -18,7 +18,8 @@ public sealed class PdhHelperLibraryIntegrationTests
     {
         var starts = 0; var paths = 0;
         using var helper = new HardwareBridgeProcessClient(() => { paths++; return null; },
-            new(TimeSpan.FromSeconds(2), TimeSpan.Zero, new(16, 32, 64, "runtime", "version", "missing", "failed")),
+            new(TimeSpan.FromSeconds(2), TimeSpan.Zero, new(16, 32, 64, "runtime", "version", "missing", "failed"))
+            { StopTimeout = TimeSpan.FromSeconds(2), ReadingInterval = TimeSpan.FromSeconds(1) },
             startFactory: _ => { starts++; throw new InvalidOperationException(); });
         // Availability initialization resolves once; a path query resolves once
         // more. Neither operation may invoke this client's start factory.

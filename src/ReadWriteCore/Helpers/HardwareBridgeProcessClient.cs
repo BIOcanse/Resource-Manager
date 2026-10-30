@@ -21,11 +21,12 @@ public class HardwareBridgeProcessClient : IHardwareBridgeProcessClient
     public void Dispose() => Owner.Dispose();
 }
 
+/// <summary>The product passes every timing from its hardware_bridge freedom points; this library holds no second default.</summary>
 public sealed record HardwareBridgeProcessOptions(TimeSpan RequestTimeout,
     TimeSpan DiagnosticDrainTimeout, HelperErrorOutputOptions ErrorOutput)
 {
-    public TimeSpan StopTimeout { get; init; } = TimeSpan.FromSeconds(2);
+    public required TimeSpan StopTimeout { get; init; }
     public TimeSpan AvailabilityCheckInterval { get; init; } = TimeSpan.Zero;
     public Func<bool>? IsRuntimeAvailable { get; init; }
-    public TimeSpan ReadingInterval { get; init; } = TimeSpan.FromSeconds(1);
+    public required TimeSpan ReadingInterval { get; init; }
 }

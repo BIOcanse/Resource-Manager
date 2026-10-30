@@ -85,7 +85,8 @@ internal static class PdhHelperConsumer
             return process;
         }
         using var client = new HardwareBridgeProcessClient(() => Path.Combine(Environment.SystemDirectory, "cmd.exe"),
-            new(TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1), stderr), startFactory: Start);
+            new(TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1), stderr)
+            { StopTimeout = TimeSpan.FromSeconds(2), ReadingInterval = TimeSpan.FromSeconds(1) }, startFactory: Start);
         try
         {
             Require(starts == 0 && client.IsInstalled && starts == 0, "construction and path query do not start helpers");

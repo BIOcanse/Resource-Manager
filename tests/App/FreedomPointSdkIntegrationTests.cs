@@ -20,7 +20,8 @@ public sealed class FreedomPointSdkIntegrationTests
         // The frontend generator refuses a stale grouping contract, so the declaration owner keeps it current.
         Assert.Equal(registry.ContractFingerprint, groups["contractFingerprint"]!.GetValue<string>());
         var monitoring = groups["groups"]!.AsArray().Single(group => group!["key"]!.GetValue<string>() == "resource-manager/backend/monitoring");
-        Assert.Equal(["0001000200050000", "0001000200050001", "0001000200050002"],
+        Assert.Equal(["0001000200040001", "0001000200040002", "0001000200050000", "0001000200050001", "0001000200050002",
+                "0001000200050003"],
             monitoring!["points"]!.AsArray().Select(point => point!.GetValue<string>()));
     }
 
@@ -37,8 +38,8 @@ public sealed class FreedomPointSdkIntegrationTests
             .SelectMany(static type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
             .SelectMany(static member => member.GetCustomAttributes<FreedomPointBindingAttribute>().Select(attribute => (Member: member, Path: PointPath.FromRaw(attribute.Path))))
             .ToArray();
-        Assert.Equal(32, members.Length);
-        Assert.Equal(32, members.Select(static m => m.Path).Distinct().Count());
+        Assert.Equal(39, members.Length);
+        Assert.Equal(39, members.Select(static m => m.Path).Distinct().Count());
         Assert.All(registry.Points, point =>
         {
             if (point.Status == DeclarationStatus.Active)
@@ -85,7 +86,7 @@ public sealed class FreedomPointSdkIntegrationTests
         var host = FreedomPointRegistry.LoadEmbedded();
         var cpu = new CompiledCpuScoringPlan(1.25, CompiledCpuCoreWeights.Empty);
         var compilation = host.BeginCompilation(Profile(), cpu);
-        Assert.Equal(32, compilation.Facts.Items.Length);
+        Assert.Equal(39, compilation.Facts.Items.Length);
         var ratio = host.Sdk.RequirePath(BackendFreedomPointPaths.CpuBaselineRatio);
         Assert.Equal(1.25, compilation.Facts.Require(ratio).Value.Slots[0].Decimal);
         Assert.Equal(1.25, compilation.Consume<double>(BackendFreedomPointPaths.CpuBaselineRatio, "HostManagerPlanCompiler.CompileCpuScoring"));

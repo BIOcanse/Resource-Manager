@@ -55,8 +55,13 @@ internal static class EffectBoundaries
         // Bind the original availability facts; do not rely on missing files.
         services.Replace(ServiceDescriptor.Singleton<HardwareBridgeClient>(provider => new(
             static () => null,
+            // No executable path: the helper never starts, so these timings are never used.
             new ResourceManager.ReadWrite.Helpers.HardwareBridgeProcessOptions(
-                TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), ControlHelperErrorOutput.ProductOptions),
+                TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), ControlHelperErrorOutput.ProductOptions)
+            {
+                StopTimeout = TimeSpan.FromSeconds(2),
+                ReadingInterval = TimeSpan.FromSeconds(1)
+            },
             provider.GetRequiredService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>(),
             provider.GetRequiredService<ILogger<HardwareBridgeClient>>())));
         services.Replace(ServiceDescriptor.Singleton<IControlWriteLayer, DeniedControlWrites>());

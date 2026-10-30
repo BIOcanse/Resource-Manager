@@ -40,8 +40,8 @@ internal sealed class UniwillEcBridge : IDisposable
     /// 实测两轮采样里三十多个寄存器都出现过单次掉零又弹回。
     /// 所以读到一致才算读到，否则宁可报读不到。
     /// </summary>
-    private const int AgreeingReads = 3;
-    private const int ReadAttempts = 6;
+    private static readonly int AgreeingReads = HardwareControlSettings.ProductDefaults.UniwillEcChannel.AgreeingReads;
+    private static readonly int ReadAttempts = HardwareControlSettings.ProductDefaults.UniwillEcChannel.ReadAttempts;
 
     private readonly ILogger<UniwillEcBridge>? logger;
     private readonly Func<IUniwillEcWmiSession?> openSession;

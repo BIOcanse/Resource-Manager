@@ -7,7 +7,11 @@ public sealed class HardwareBridgeSessionTests
 {
     internal static string Fixture => Path.Combine(AppContext.BaseDirectory, "HardwareBridgeProcessFixture", "HardwareBridgeProcessFixture.exe");
     internal static HardwareBridgeProcessOptions Options => new(TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1),
-        new(128, 1024, 1024, ".NET", "10", "missing", "failed")) { StopTimeout = TimeSpan.FromMilliseconds(500) };
+        new(128, 1024, 1024, ".NET", "10", "missing", "failed"))
+        {
+            StopTimeout = TimeSpan.FromMilliseconds(500),
+            ReadingInterval = TimeSpan.FromSeconds(1)
+        };
 
     public static IEnumerable<object[]> InvalidOptions()
     {

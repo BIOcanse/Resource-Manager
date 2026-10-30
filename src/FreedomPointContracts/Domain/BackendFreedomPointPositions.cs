@@ -4,9 +4,12 @@ namespace ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
 internal static class BackendFreedomPointPositions
 {
     public const ulong SingleRequestStopBufferMs = 0x0001000200040000UL;
+    public const ulong ServiceIdentityCacheMs = 0x0001000200040001UL;
+    public const ulong OverlayFrameWindowMs = 0x0001000200040002UL;
     public const ulong KernelLeakObservation = 0x0001000200050000UL;
     public const ulong Notifications = 0x0001000200050001UL;
     public const ulong MemoryProtection = 0x0001000200050002UL;
+    public const ulong TargetedRecording = 0x0001000200050003UL;
     public const ulong ObservationWindowMs = 0x0001000200080000UL;
     public const ulong ExecutionTimeSource = 0x0001000200090000UL;
     public const ulong SubscriptionIntervalMs = 0x00010002000C0000UL;
@@ -40,5 +43,9 @@ internal static class BackendFreedomPointPositions
     public const ulong WorkerArenaBytes = 0x0001000200280005UL;
     public const ulong ReasonTextCapacity = 0x0001000200280006UL;
     public const ulong AvailabilityCheckIntervalMs = 0x00010002002C0000UL;
+    public const ulong HelperRequestTimeoutMs = 0x00010002002C0001UL;
+    public const ulong HelperProcessTiming = 0x00010002002D0000UL;
+    public const ulong FanCurveFeed = 0x00010002002D0001UL;
+    public const ulong UniwillEcChannel = 0x00010002002D0002UL;
     public const ulong ObservationGrowthLimit = 0x0001000200300000UL;
 }

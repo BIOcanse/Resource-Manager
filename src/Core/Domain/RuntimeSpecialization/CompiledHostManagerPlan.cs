@@ -46,6 +46,8 @@ public sealed record CompiledHostManagerPlan(
     public CompiledCpuCoreResidencyPlan CpuCoreResidency { get; init; } = CompiledCpuCoreResidencyPlan.Unpublished;
     public CompiledCpuScoringPlan? CpuScoring { get; init; }
     public CompiledBackendControlSettings BackendControlSettings { get; init; } = CompiledBackendControlSettings.Unpublished;
+    public CompiledHardwareControlSettings? HardwareControl { get; init; }
+    public CompiledMonitoringSettings? Monitoring { get; init; }
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SubscriptionIntervalMs)]
     public TimeSpan SchedulerSamplingInterval { get; init; }
 
@@ -76,6 +78,8 @@ public sealed record CompiledHostManagerPlan(
         && !FreedomPoints.Children.IsDefaultOrEmpty
         && CpuCoreResidency.IsPublished
         && BackendControlSettings.IsPublished
+        && HardwareControl is not null
+        && Monitoring is not null
         && CpuScoring is not null
         && SchedulerSamplingInterval > TimeSpan.Zero
         && HardwareBridgeAvailabilityCheckInterval >= TimeSpan.Zero
