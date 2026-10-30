@@ -127,6 +127,11 @@ public sealed class SamplingOutputLedgerProvidersTests
         var residency = provider.GetRequiredService<EtwCpuCoreResidencyReader>();
         var topology = provider.GetRequiredService<CpuTopologySnapshotProvider>();
 
+        // A role holds its Native session only while a lease uses it. An idle worker
+        // plans with no source and no item, so its session closes as soon as the
+        // worker's lease returns and a later read would build a fresh, unplanned one.
+        // The test is one more user of every role while it observes the plans.
+        using var observers = new RoleObservers(sampling, [1, 2, 4, 5, 6, 7]);
         await metric.StartAsync(CancellationToken.None);
         await device.StartAsync(CancellationToken.None);
         await gpu.StartAsync(CancellationToken.None);
@@ -150,8 +155,8 @@ public sealed class SamplingOutputLedgerProvidersTests
             {
                 await BusinessBlockTestSupport.Until(() => topologyEntered.IsSet);
                 await BusinessBlockTestSupport.Until(() => workers.Keys.Where(role => role != 1)
-                    .All(role => ReadPlanSnapshot(sampling, role).LastPlanEpoch != 0));
-                Assert.Equal(0UL, ReadPlanSnapshot(sampling, 1).LastPlanEpoch);
+                    .All(role => observers.Read(role).LastPlanEpoch != 0));
+                Assert.Equal(0UL, observers.Read(1).LastPlanEpoch);
                 Assert.Equal(1, Volatile.Read(ref catalogTopologyDiscoveries));
                 var stopping = metric.StopAsync(CancellationToken.None);
                 Assert.False(stopping.IsCompleted); // Finite preparation owns the entry until it returns.
@@ -172,7 +177,7 @@ public sealed class SamplingOutputLedgerProvidersTests
                     // unplanned role and losing the phase that actually stalled.
                     foreach (var role in workers.Keys)
                     {
-                        observations[role] = ReadPlanSnapshot(sampling, role);
+                        observations[role] = observers.Read(role);
                         if (workers[role]() is { IsFaulted: true } failed) await failed;
                     }
                     if (observations.Values.All(observation => observation.LastPlanEpoch != 0)) break;
@@ -202,6 +207,14 @@ public sealed class SamplingOutputLedgerProvidersTests
         await interrupts.StopAsync(CancellationToken.None);
         await residency.StopAsync(CancellationToken.None);
         await topology.StopAsync(CancellationToken.None);
+        observers.Dispose();
+        foreach (var role in workers.Keys)
+        {
+            // The role's last lease returned with no source and no item: its session
+            // closed, so the next read builds a fresh one that has never planned.
+            using var fresh = sampling.Owner.Acquire(role);
+            Assert.Equal(0UL, ReadPlanSnapshot(fresh).LastPlanEpoch);
+        }
         Assert.Equal(expectedBytes, ledger.ReadTable().RegisteredBytes);
         Assert.Equal(blockFirstTopology ? 2 : 1, Volatile.Read(ref catalogTopologyDiscoveries));
         Assert.Equal(0, cpuSampler.CaptureCount);
@@ -314,9 +327,38 @@ public sealed class SamplingOutputLedgerProvidersTests
         }
     }
 
-    private static NativeSamplingSubscriptionSnapshotHeader ReadPlanSnapshot(HostManagerSamplingSubscriptionTestFixture sampling, int roleId)
+    private sealed class RoleObservers : IDisposable
     {
-        using var role = sampling.Owner.Acquire(roleId);
+        private readonly Dictionary<int, HostManagerSamplingSubscriptionOwner.SessionLease> leases = [];
+
+        internal RoleObservers(HostManagerSamplingSubscriptionTestFixture sampling, int[] roles)
+        {
+            try
+            {
+                foreach (var role in roles)
+                {
+                    var lease = sampling.Owner.Acquire(role);
+                    leases.Add(role, lease);
+                    _ = lease.Session; // Builds the role's session before any worker plans.
+                }
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
+        }
+
+        internal NativeSamplingSubscriptionSnapshotHeader Read(int role) => ReadPlanSnapshot(leases[role]);
+
+        public void Dispose()
+        {
+            foreach (var lease in leases.Values) lease.Dispose();
+        }
+    }
+
+    private static NativeSamplingSubscriptionSnapshotHeader ReadPlanSnapshot(HostManagerSamplingSubscriptionOwner.SessionLease role)
+    {
         var cap = role.Session.Capacity;
         var header = new NativeSamplingSubscriptionSnapshotHeader
         {
