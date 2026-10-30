@@ -17,7 +17,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$version = '0.1.0-dev.2'
+$version = '0.1.0-dev.5'
 $utf8 = [Text.UTF8Encoding]::new($false)
 
 function Write-Json([string]$Path, $Value) {
@@ -129,7 +129,7 @@ $zig = (Get-Command $ZigPath -CommandType Application -ErrorAction Stop).Source
 $manifestPath = Join-Path $sdk "manifest.$version.json"
 $release = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($release.schema -cne 'resource-manager/ledger-sdk-local-release/v1' -or $release.version -cne $version -or
-    $release.status -cne 'accepted-package-consumer' -or $release.target -cne 'win-x64') { throw 'A formally accepted Windows x64 Ledger dev.2 SDK is required.' }
+    $release.status -cne 'accepted-package-consumer' -or $release.target -cne 'win-x64') { throw "A formally accepted Windows x64 Ledger $version SDK is required." }
 foreach ($row in @($release.packages)) { Assert-Row $row (Join-Path $sdk ([string]$row.file)) }
 foreach ($row in @($release.freedomPointDependencies)) {
     Assert-Row $row (Join-Path $FreedomPointFeed ([IO.Path]::GetFileName([string]$row.feedPath)))

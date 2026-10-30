@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "resourcemanager.ledger.build": {
+      "version": "0.1.0-dev.5",
+      "commands": [
+        "ledger-build"
+      ]
+    },
+    "resourcemanager.ledger.configuration": {
+      "version": "0.1.0-dev.5",
+      "commands": [
+        "ledger-configuration"
+      ]
+    }
+  }
+}

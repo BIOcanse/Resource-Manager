@@ -50,7 +50,7 @@ try
     sessions.Add(new("private-resource-ledger", AdapterPrivateResourceLedgerProtocol.Version, true, true));
 
     // This covers the third ABI exported by the multi-ABI DLL. It does not
-    // replace or exercise the independently migrated Ledger dev.2 product owner.
+    // replace or exercise the independently migrated Ledger SDK product owner.
     using (var local = new NativeLocalResourceManagerSession(LocalResourceManagerConfiguration.CreateDefault(1, 1)))
     {
         if (local.StartsBackgroundWorker || local.ResidentBytes == 0)

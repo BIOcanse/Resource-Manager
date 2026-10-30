@@ -9,7 +9,7 @@ fingerprint checks: Scheduler12, Private3 and Local10 at present.
 All capacities are one and every session owns private memory. The probe does not
 register a capability/table, start a worker, submit a scheduler target/plan/action,
 or call an external PID. It does not use hardware, SCM, installation, IFEO, the
-Core host, or the independently migrated Ledger dev.2 owner. Local10 checks the
+Core host, or the independently migrated Ledger SDK owner. Local10 checks the
 third export module only; it does not select a different product ledger.
 
 The executable has a 20-second watchdog and must also be run inside the validation
