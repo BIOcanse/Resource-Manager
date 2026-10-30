@@ -244,6 +244,32 @@ test "missing path is removed only by exact persisted feedback and its slot is r
     try std.testing.expectEqual(@as(u32, 1), after_commit.output.path_count);
 }
 
+test "workspace rows report the live rows one plan or snapshot page needs" {
+    var config = explicitConfig();
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var rows = session.workspaceRows();
+    try std.testing.expectEqual(@as(u32, @sizeOf(protocol.WorkspaceRows)), rows.struct_size);
+    try std.testing.expectEqual(@as(u32, 0), rows.registration_count);
+    try std.testing.expectEqual(@as(u32, 0), rows.path_count);
+    try std.testing.expectEqual(@as(u32, 0), rows.dirty_path_count);
+    try std.testing.expect(rows.resident_byte_count != 0);
+
+    try expectObserve(session, &config, 1, 10, 100, 1_000, 1_001, 1, 101, 201, "c:/portable/tool/a.exe", "c:/portable/tool", 100, 0, .ok);
+    rows = session.workspaceRows();
+    try std.testing.expectEqual(@as(u32, 1), rows.registration_count);
+    try std.testing.expectEqual(@as(u32, 1), rows.path_count);
+    try std.testing.expectEqual(@as(u32, 1), rows.dirty_path_count);
+    const plan = try capturePlan(session, &config, 1, rows.dirty_path_count);
+    try std.testing.expectEqual(rows.dirty_path_count, plan.output.operation_count);
+    try commitOperations(session, &config, 1, plan.operations[0..1]);
+    rows = session.workspaceRows();
+    try std.testing.expectEqual(@as(u32, 0), rows.dirty_path_count);
+    const snapshot = try captureSnapshot(session, &config, 1);
+    try std.testing.expectEqual(rows.registration_count, snapshot.output.registration_count);
+    try std.testing.expectEqual(rows.path_count, snapshot.output.path_count);
+}
+
 test "plan output limit partial feedback and paging remain explicit" {
     var config = explicitConfig();
     config.maximum_persistence_operation_count = 2;

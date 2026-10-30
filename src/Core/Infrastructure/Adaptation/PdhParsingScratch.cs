@@ -3,7 +3,9 @@ using ResourceManager.ReadWrite.Native.Pdh;
 
 namespace ResourceManager.App.Infrastructure.Adaptation;
 
-// The enclosing session serializes calls. No parser address leaves a sample.
+// The enclosing session serializes calls. No parser address leaves a sample,
+// and no scratch outlives one: EndSample returns and closes it, and the next
+// sample creates it again at the size PDH reports then.
 internal sealed class PdhParsingScratch(Func<ulong, IComputeScratch> createScratch, ulong pageSize)
     : NativePdhScratch
 {
@@ -38,7 +40,11 @@ internal sealed class PdhParsingScratch(Func<ulong, IComputeScratch> createScrat
                 resource = null;
                 closePending = false;
             }
-            resource ??= createScratch(length);
+            if (resource is null)
+            {
+                resource = createScratch(length);
+                ComputeScratchNames.Name(resource, "pdh-parsing", $"bytes={length}/live={requiredBytes}");
+            }
             use ??= resource.Acquire();
             pin = use.GetMemoryChunk(0, 1).Pin();
             pinned = true;
@@ -60,11 +66,21 @@ internal sealed class PdhParsingScratch(Func<ulong, IComputeScratch> createScrat
     {
         if (!active) throw new InvalidOperationException("No PDH sample is active.");
         active = false;
+        closePending = true; // Nothing is held between samples.
         // A failed callback already owns the original failure. Do not silently
         // retry its return/close inside the same call's finally block.
         if (blocked) return;
-        try { ReturnUse(); }
+        try { ReturnAndClose(); }
         catch { blocked = true; throw; }
+    }
+
+    private void ReturnAndClose()
+    {
+        ReturnUse();
+        if (!closePending) return;
+        resource?.Dispose();
+        resource = null;
+        closePending = false;
     }
 
     private void ReturnUse()
@@ -87,13 +103,7 @@ internal sealed class PdhParsingScratch(Func<ulong, IComputeScratch> createScrat
         if (active) throw new InvalidOperationException("PDH scratch is still in use.");
         try
         {
-            ReturnUse();
-            if (closePending)
-            {
-                resource?.Dispose();
-                resource = null;
-                closePending = false;
-            }
+            ReturnAndClose();
             blocked = false;
         }
         catch { blocked = true; throw; }

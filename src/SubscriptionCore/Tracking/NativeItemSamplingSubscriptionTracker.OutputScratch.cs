@@ -76,6 +76,12 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                     ?? throw new InvalidOperationException("The sampling output factory returned no resource.");
                 if (candidate.Length != layout.StorageLength)
                     throw new InvalidOperationException("The sampling output factory returned a different layout length.");
+                // Every live source can expire in one plan, so sources are the live expired rows.
+                candidate.Describe($"sampling-output-role{roleId}",
+                    $"due={rows.DueItemCapacity}/live={itemIds.Count}, " +
+                    $"sources={rows.SourceViewCapacity}/live={sourcePayloads.Count}, " +
+                    $"expired={rows.ExpiredSourceCapacity}/live={sourcePayloads.Count}, " +
+                    $"triggers={rows.TriggerCapacity}/live={memberships}");
                 resource = candidate;
             }
             outputUse = resource.Acquire();

@@ -1,5 +1,4 @@
 using ResourceManager.App.Infrastructure.Adaptation;
-using ResourceManager.Ledger;
 using System.Runtime.InteropServices;
 
 namespace Resource_Manager_APP.Tests;
@@ -7,36 +6,38 @@ namespace Resource_Manager_APP.Tests;
 public sealed class PdhParsingScratchTests
 {
     [Fact]
-    public void SampleUsesOneRealLeaseAndIdleReclaimRefillsTheSameIdentity()
+    public void EachSampleCreatesNamedScratchAndEndSampleClosesIt()
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        ResourceManagerLedgerOwner.ComputeScratch? resource = null;
-        var factories = 0;
-        using var scratch = new PdhParsingScratch(length => { factories++; return resource = ledger.CreateScratch(length); }, ledger.NativePageSize);
+        var resources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+        using var scratch = new PdhParsingScratch(length => { var item = ledger.CreateScratch(length); resources.Add(item); return item; }, ledger.NativePageSize);
+        Assert.Empty(resources);
         scratch.BeginSample();
         var first = scratch.Supply(8192);
-        var uid = resource!.Uid;
+        var resource = Assert.Single(resources);
         Assert.Equal(0UL, (ulong)first.Address.ToInt64() % 8);
         Assert.True(first.Length >= 8192);
         Assert.Equal(1, resource.Active);
         Marshal.WriteInt64(first.Address, 0x12345678);
         Assert.Equal(first.Address, scratch.Supply(4096).Address);
-        Assert.Equal(1, resource.Active);
-        Assert.Equal(0UL, ledger.Tick().Released);
-        scratch.EndSample();
-        Assert.Equal(0, resource.Active);
-        scratch.BeginSample();
-        Assert.Equal(0x12345678, Marshal.ReadInt64(scratch.Supply(8192).Address));
-        scratch.EndSample();
-        ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released);
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
-        scratch.BeginSample();
-        scratch.Supply(8192);
-        Assert.Equal(uid, resource.Uid);
-        Assert.Equal(1, factories);
+        Assert.Single(resources);
+        Assert.Equal("pdh-parsing", resource.WorkArea);
+        Assert.Equal($"bytes={resource.Length}/live=8192", resource.Rows);
+        var row = Assert.Single(ledger.ReadWorkspaceCapacities());
+        Assert.Equal(("pdh-parsing", resource.Length), (row.WorkArea, row.Bytes));
         Assert.Equal(resource.Length, ledger.ReadTable().RegisteredBytes);
         scratch.EndSample();
+        Assert.True(resource.Closed);
+        Assert.Empty(ledger.ReadWorkspaceCapacities());
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes); // Nothing is held between samples.
+        scratch.BeginSample();
+        scratch.Supply(8192);
+        Assert.Equal(2, resources.Count);
+        Assert.NotEqual(resource.Uid, resources[1].Uid);
+        Assert.Equal(resources[1].Length, ledger.ReadTable().RegisteredBytes);
+        scratch.EndSample();
+        Assert.True(resources[1].Closed);
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
     }
 
     [Fact]
@@ -57,35 +58,41 @@ public sealed class PdhParsingScratchTests
         Assert.Equal(0UL, resources[1].Length % ledger.NativePageSize);
         Assert.Equal(resources[1].Length, ledger.ReadTable().RegisteredBytes);
         scratch.EndSample();
-        scratch.Dispose();
         Assert.True(resources[1].Closed);
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+        scratch.Dispose();
+        Assert.Equal(2, resources.Count);
     }
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void ReturnFailureRetainsTheRealLeaseUntilExplicitRetry(bool failComplete)
+    public void ReturnFailureRetainsTheRealLeaseUntilExplicitRetryClosesIt(bool failComplete)
     {
         using var ledger = new ResourceManagerLedgerOwner();
         var resource = ledger.CreateScratch(12288);
         var recorded = new RecordedResource(resource);
-        using var scratch = new PdhParsingScratch(_ => recorded, ledger.NativePageSize);
+        var factories = 0;
+        using var scratch = new PdhParsingScratch(length => ++factories == 1 ? recorded : ledger.CreateScratch(length), ledger.NativePageSize);
         scratch.BeginSample(); scratch.Supply(8192);
         recorded.FailComplete = failComplete;
         recorded.FailEnd = !failComplete;
         Assert.Throws<IOException>(() => scratch.EndSample());
         Assert.Equal(1, resource.Active);
         Assert.Equal(0, recorded.Ends);
+        Assert.Equal(0, recorded.CloseAttempts);
         Assert.Equal(0UL, ledger.Tick().Released);
         Assert.Throws<InvalidOperationException>(() => scratch.BeginSample());
         scratch.RetryReturn();
         Assert.Equal(0, resource.Active);
         Assert.Equal(1, recorded.Ends);
+        Assert.Equal(1, recorded.CloseAttempts);
+        Assert.True(resource.Closed);
         scratch.RetryReturn();
-        Assert.Equal(1, recorded.Ends);
+        Assert.Equal((1, 1), (recorded.Ends, recorded.CloseAttempts));
         scratch.BeginSample(); scratch.Supply(8192); scratch.EndSample();
-        Assert.Equal(2, recorded.Ends);
+        Assert.Equal(2, factories);
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
     }
 
     [Fact]

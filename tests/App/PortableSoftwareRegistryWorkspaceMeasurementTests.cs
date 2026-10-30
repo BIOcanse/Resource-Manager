@@ -70,7 +70,7 @@ public sealed class PortableSoftwareRegistryWorkspaceMeasurementTests(ITestOutpu
         var heapDelta = GC.GetTotalMemory(forceFullCollection: true) - heapBefore;
         try
         {
-            // Scratch creation is identity-only. The first real snapshot allocates its backing.
+            // Output rows are created per snapshot call at the live rows and closed when it returns.
             var firstReadAllocatedBefore = GC.GetAllocatedBytesForCurrentThread();
             var firstReadStart = Stopwatch.GetTimestamp();
             var firstCount = ReadCount(registry);
@@ -81,11 +81,11 @@ public sealed class PortableSoftwareRegistryWorkspaceMeasurementTests(ITestOutpu
             var context = PrivateField(registry, "context");
             var workspace = (NativePortableSoftwareRegistryWorkspace)context.GetType().GetProperty("Workspace")!.GetValue(context)!;
             var capacity = workspace.Session.Capacity;
-            var scratch = (IComputeScratch)PrivateField(workspace, "scratch");
-            var expectedScratch = checked((ulong)workspace.OperationCapacity * (ulong)Unsafe.SizeOf<NativePortableSoftwarePersistenceOperation>()
-                + (ulong)workspace.RegistrationCapacity * (ulong)Unsafe.SizeOf<NativePortableSoftwareRegistrationSnapshot>()
-                + (ulong)workspace.PathCapacity * (ulong)Unsafe.SizeOf<NativePortableSoftwarePathSnapshot>());
-            Assert.Equal(expectedScratch, scratch.Length);
+            var live = workspace.Session.WorkspaceRows;
+            var snapshotScratchBytes = checked((ulong)Math.Max(1U, live.RegistrationCount) * (ulong)Unsafe.SizeOf<NativePortableSoftwareRegistrationSnapshot>()
+                + (ulong)Math.Max(1U, live.PathCount) * (ulong)Unsafe.SizeOf<NativePortableSoftwarePathSnapshot>());
+            Assert.DoesNotContain(ledgerOwner.ReadWorkspaceCapacities(),
+                row => row.WorkArea == NativePortableSoftwareRegistryWorkspace.ScratchWorkArea);
             var catalog = (NativePortableSoftwareRegistryPayloadCatalog)context.GetType().GetProperty("Payloads")!.GetValue(context)!;
             var payloads = ((IDictionary)PrivateField(catalog, "payloadByHandle")).Values.Cast<NativePortableSoftwarePayload>().ToArray();
             output.WriteLine(JsonSerializer.Serialize(new
@@ -96,9 +96,9 @@ public sealed class PortableSoftwareRegistryWorkspaceMeasurementTests(ITestOutpu
                 firstSnapshotElapsedMilliseconds = firstReadElapsed.TotalMilliseconds,
                 firstSnapshotThreadManagedAllocatedBytes = firstReadAllocated,
                 nativeSessionRequestedBytes = capacity.ResidentByteCount,
-                outputScratchBytes = scratch.Length,
-                nativeSessionPlusScratchRequestedBytes = checked(capacity.ResidentByteCount + scratch.Length),
-                scratchPhase = "Backing allocated by first snapshot; StartAsync only declares scratch identity/length",
+                snapshotScratchBytesPerCall = snapshotScratchBytes,
+                nativeSessionPlusScratchRequestedBytes = checked(capacity.ResidentByteCount + snapshotScratchBytes),
+                scratchPhase = "Created per snapshot call at the live rows and closed before it returns; none between calls",
                 retainedPayloads = catalog.Count,
                 retainedPayloadUtf8Bytes = payloads.Sum(static p => (long)p.Utf8Bytes.Length),
                 retainedPayloadUtf16CharacterBytes = payloads.Sum(static p => (long)p.Text.Length * sizeof(char)),

@@ -68,6 +68,100 @@ test "external scratch ABI rejects missing storage and never transfers its owner
     try std.testing.expectEqual(ResultCode.invalid_argument, ordinary.unbindScratch());
 }
 
+test "sampling session rows start empty, grow by registered rows and shrink back after removal" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    var rows = session.queryWorkspaceCapacity();
+    try expectRows(rows, 0, 0, 0);
+    try std.testing.expectEqual(@as(u32, 0), rows.scratch_rows);
+    try std.testing.expectEqual(@as(usize, 0), session.source_index.len);
+    try std.testing.expectEqual(@as(usize, 0), session.item_index.len);
+    try std.testing.expectEqual(@as(u64, @sizeOf(session_module.Session)), rows.resident_bytes);
+
+    const flags = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval;
+    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 100, flags, 1_000, &.{ 10, 11, 12 }));
+    rows = session.queryWorkspaceCapacity();
+    try expectRows(rows, 1, 3, 3);
+    // Owned scratch exists only inside an operation.
+    try std.testing.expectEqual(@as(u32, 0), rows.scratch_rows);
+    try std.testing.expectEqual(@as(usize, 8), session.item_index.len); // ceilPow2(2 x 3 rows)
+    try std.testing.expectEqual(ResultCode.ok, track(session, 2, 1_000, 1_000, 101, flags, 1_000, &.{ 12, 13 }));
+    try expectRows(session.queryWorkspaceCapacity(), 2, 4, 5);
+    // The configured capacity is still the admission limit: 4 live + 5 new > 8.
+    try std.testing.expectEqual(ResultCode.sampling_item_capacity_exceeded, track(session, 3, 1_000, 1_000, 102, flags, 1_000, &.{ 20, 21, 22, 23, 24 }));
+    try expectRows(session.queryWorkspaceCapacity(), 2, 4, 5);
+
+    try std.testing.expectEqual(ResultCode.ok, remove(session, 3, 1_000, 101));
+    try expectRows(session.queryWorkspaceCapacity(), 1, 3, 3);
+    try std.testing.expectEqual(@as(?u32, null), session.findItem(13));
+    try std.testing.expect(session.findItem(12) != null);
+    try std.testing.expectEqual(ResultCode.ok, remove(session, 4, 1_000, 100));
+    rows = session.queryWorkspaceCapacity();
+    try expectRows(rows, 0, 0, 0);
+    try std.testing.expectEqual(@as(usize, 0), session.source_index.len);
+    try std.testing.expectEqual(@as(usize, 0), session.item_index.len);
+    try std.testing.expectEqual(@as(u64, @sizeOf(session_module.Session)), rows.resident_bytes);
+}
+
+test "sampling rows compact after release and memberships follow their live slots" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const flags = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval;
+    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 100, flags, 1_000, &.{ 10, 11 }));
+    try std.testing.expectEqual(ResultCode.ok, track(session, 2, 1_000, 1_000, 101, flags, 1_000, &.{12}));
+    try std.testing.expectEqual(@as(?u32, 2), session.findItem(12));
+    try std.testing.expectEqual(ResultCode.ok, remove(session, 3, 1_000, 100));
+    try expectRows(session.queryWorkspaceCapacity(), 1, 1, 1);
+    try std.testing.expectEqual(@as(?u32, 0), session.findItem(12));
+    try std.testing.expectEqual(@as(?u32, 0), session.findSource(101));
+    try std.testing.expect(session.findMembership(101, 12) != null);
+    const planned = runPlan(session, 4, 1, 2_000);
+    try std.testing.expectEqual(ResultCode.ok, planned.code);
+    try std.testing.expectEqual(@as(u32, 1), planned.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 12), planned.result.due[0].item_handle);
+}
+
+test "external scratch binds exactly the live item rows the caller lends" {
+    var config = testConfig();
+    const session = try session_module.Session.createExternalScratch(&config);
+    defer session.destroy();
+    var bytes: [32 * output_capacity]u8 align(8) = @splat(0);
+    // A Track may add its references, so it borrows live items + references rows.
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(bytes[0 .. 32 * 3]));
+    try std.testing.expectEqual(@as(u32, 3), session.queryWorkspaceCapacity().scratch_rows);
+    const flags = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval;
+    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 100, flags, 1_000, &.{ 10, 11, 12 }));
+    try std.testing.expectEqual(ResultCode.ok, session.unbindScratch());
+    const live = session.queryWorkspaceCapacity();
+    try expectRows(live, 1, 3, 3);
+    try std.testing.expectEqual(@as(u32, 0), live.scratch_rows);
+
+    // Plan, Remove and Snapshot borrow exactly the live item rows; fewer are refused.
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(bytes[0 .. 32 * 2]));
+    try std.testing.expectEqual(ResultCode.invalid_argument, runPlan(session, 2, 1, 2_000).code);
+    try std.testing.expectEqual(ResultCode.ok, session.unbindScratch());
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(bytes[0 .. 32 * live.item_rows]));
+    try std.testing.expectEqual(live.known_item_count, session.queryWorkspaceCapacity().scratch_rows);
+    try std.testing.expectEqual(ResultCode.ok, runSnapshot(session).code);
+    try std.testing.expectEqual(ResultCode.ok, remove(session, 2, 2_000, 100));
+    try std.testing.expectEqual(ResultCode.ok, session.unbindScratch());
+
+    // Without live items no operation needs scratch at all.
+    try expectRows(session.queryWorkspaceCapacity(), 0, 0, 0);
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, 3, 1, 3_000).code);
+    try std.testing.expectEqual(ResultCode.ok, runSnapshot(session).code);
+}
+
+fn expectRows(rows: protocol.WorkspaceCapacity, sources: u32, items: u32, memberships: u32) !void {
+    try std.testing.expectEqual(sources, rows.source_rows);
+    try std.testing.expectEqual(sources, rows.active_source_count);
+    try std.testing.expectEqual(items, rows.item_rows);
+    try std.testing.expectEqual(items, rows.known_item_count);
+    try std.testing.expectEqual(memberships, rows.membership_rows);
+}
+
 const PlanResult = struct {
     header: protocol.PlanHeader,
     due: [output_capacity]protocol.DueItemOutput,

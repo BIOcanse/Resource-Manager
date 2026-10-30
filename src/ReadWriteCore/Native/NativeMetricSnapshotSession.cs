@@ -62,6 +62,7 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
                 scratch.Dispose();
                 throw new InvalidOperationException("The metric scratch resource is too short.");
             }
+            DescribeScratch(scratch);
         }
         catch
         {
@@ -464,11 +465,18 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
         scratch = candidate; // Retain retirement obligations even if validation fails.
         if (candidate.Length < capacity.ScratchByteCount)
             throw new InvalidOperationException("The metric scratch resource is too short.");
+        DescribeScratch(candidate);
         LogResize(
             $"Native resize workArea=metric-completion-scratch oldRows=rules:{scratchRuleCount},metrics:{scratchMetricCount} newRows=rules:{catalogRuleCount},metrics:{catalogMetricCount} oldBytes={oldBytes} newBytes={candidate.Length} reason=catalog-high-water");
         scratchRuleCount = catalogRuleCount;
         scratchMetricCount = catalogMetricCount;
     }
+
+    // The scratch is sized for the catalog rows it is created for, so at creation
+    // its rows and the live catalog rows are the same numbers.
+    private void DescribeScratch(INativeMetricSnapshotScratch created)
+        => created.Describe("metric-snapshot",
+            $"rules={catalogRuleCount}/live={catalogRuleCount}, metrics={catalogMetricCount}/live={catalogMetricCount}");
 
     private void LogCatalogResize(uint sources, uint rules, uint metrics, string reason)
     {

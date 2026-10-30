@@ -87,10 +87,10 @@ public sealed partial class HostManagerSamplingSubscriptionOwnerTests
     public void UninitializedAndRejectedWorkspaceMetadataStillHasAnExplicitIdempotentClose()
     {
         using var workspace = new NativeSamplingSubscriptionWorkspace();
-        Assert.Throws<InvalidOperationException>(() => workspace.GetSession(1));
+        Assert.Throws<InvalidOperationException>(() => workspace.AcquireRole(1));
         Assert.Throws<InvalidOperationException>(() => workspace.Initialize(CompiledHostManagerSamplingSubscriptionPlan.Unpublished));
         workspace.Dispose(); workspace.Dispose();
-        Assert.Throws<ObjectDisposedException>(() => workspace.GetSession(1));
+        Assert.Throws<ObjectDisposedException>(() => workspace.AcquireRole(1));
         Assert.Throws<ObjectDisposedException>(() => workspace.Initialize(HostManagerTestPlanFactory.CreatePlan().SamplingSubscription));
     }
 

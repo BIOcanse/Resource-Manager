@@ -260,19 +260,6 @@ public sealed class ResourceManagerComputeScratchTests
                         using var remainingRoleOutputs = new SamplingOutputCapacityBatch();
                         registered += SamplingOutputCapacityBatch.FillRemainingRoleOutputs(owner, remainingRoleOutputs);
                         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
-                        var nativeSamplingPlan = HostManagerTestPlanFactory.CreatePlan().SamplingSubscription;
-                        ResourceManagerLedgerOwner.ComputeScratch? currentNative = null, candidateNative = null;
-                        using var currentNativeWorkspace = new NativeSamplingSubscriptionWorkspace();
-                        using var candidateNativeWorkspace = new NativeSamplingSubscriptionWorkspace();
-                        currentNativeWorkspace.Initialize(nativeSamplingPlan, length => currentNative = owner.CreateScratch(length));
-                        candidateNativeWorkspace.Initialize(nativeSamplingPlan, length => candidateNative = owner.CreateScratch(length));
-                        SamplingSessionScratchTests.Snapshot(currentNativeWorkspace.GetSession(1));
-                        SamplingSessionScratchTests.Snapshot(candidateNativeWorkspace.GetSession(7));
-                        using var currentNativeUse = currentNative!.Acquire();
-                        using var candidateNativeUse = candidateNative!.Acquire();
-                        currentNativeUse.Complete(); candidateNativeUse.Complete();
-                        registered += currentNative.Length + candidateNative.Length;
-                        Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                         ResourceManagerLedgerOwner.ComputeScratch? pdhIdentity = null;
                         using var pdh = new PdhParsingScratch(length => pdhIdentity = owner.CreateScratch(length), owner.NativePageSize);
                         var additionalResources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
@@ -284,8 +271,9 @@ public sealed class ResourceManagerComputeScratchTests
                             registered += pdhIdentity!.Length;
                             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                             // The 23 registered workspaces above (four persistence headers and Smart are compact), then query pools (2 * 64),
-                            // model (2), portable registry (2), display normalization (2), and placement (2).
-                            for (var index = 0; index < 141; index++)
+                            // model (2), portable registry per-call outputs (2), display normalization (2), placement (2), and two
+                            // sampling per-operation borrows. Sampling sessions and portable registries hold no scratch between operations.
+                            for (var index = 0; index < 143; index++)
                             {
                                 var resource = owner.CreateScratch(8192);
                                 additionalResources.Add(resource);

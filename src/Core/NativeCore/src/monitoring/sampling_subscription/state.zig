@@ -56,6 +56,9 @@ pub const Session = struct {
     scratch_trigger_due_milliseconds: []u64,
     scratch_issued_triggers: []protocol.TriggerOutput,
     owns_scratch: bool,
+    // Owned mode only: the one block behind the five columns, held for a
+    // single operation (beginScratch .. endScratch).
+    owned_scratch_words: []u64 = &.{},
     issued_trigger_count: u32 = 0,
     issued_trigger_plan_epoch: u64 = 0,
     last_operation_epoch: u64 = 0,
@@ -78,63 +81,24 @@ pub const Session = struct {
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
 
-        const source_capacity: usize = @intCast(config.maximum_source_count);
-        const item_capacity: usize = @intCast(config.maximum_item_count);
-        // Configured capacities are admission limits; membership storage follows
-        // the real source-item rows observed by this session.
-        const membership_capacity: usize = 0;
-
-        const sources = try allocator.alloc(SourceSlot, source_capacity);
-        errdefer allocator.free(sources);
-        @memset(sources, .{});
-        const items = try allocator.alloc(ItemSlot, item_capacity);
-        errdefer allocator.free(items);
-        @memset(items, .{});
-        const memberships = try allocator.alloc(MembershipSlot, membership_capacity);
-        errdefer allocator.free(memberships);
-        @memset(memberships, .{});
-
-        const source_index = try allocator.alloc(u32, try indexCapacity(source_capacity));
-        errdefer allocator.free(source_index);
-        @memset(source_index, no_index);
-        const item_index = try allocator.alloc(u32, try indexCapacity(item_capacity));
-        errdefer allocator.free(item_index);
-        @memset(item_index, no_index);
-
-        const scratch_capacity = if (owns_scratch) item_capacity else 0;
-        const scratch_item_handles = try allocator.alloc(u64, scratch_capacity);
-        errdefer allocator.free(scratch_item_handles);
-        @memset(scratch_item_handles, 0);
-        const scratch_effective_intervals = try allocator.alloc(u64, scratch_capacity);
-        errdefer allocator.free(scratch_effective_intervals);
-        @memset(scratch_effective_intervals, std.math.maxInt(u64));
-        const scratch_source_counts = try allocator.alloc(u32, scratch_capacity);
-        errdefer allocator.free(scratch_source_counts);
-        @memset(scratch_source_counts, 0);
-        const scratch_sampling_counts = try allocator.alloc(u32, scratch_capacity);
-        errdefer allocator.free(scratch_sampling_counts);
-        @memset(scratch_sampling_counts, 0);
-        const scratch_trigger_due_milliseconds = try allocator.alloc(u64, scratch_capacity);
-        errdefer allocator.free(scratch_trigger_due_milliseconds);
-        @memset(scratch_trigger_due_milliseconds, std.math.maxInt(u64));
-        const scratch_issued_triggers = try allocator.alloc(protocol.TriggerOutput, membership_capacity);
-        errdefer allocator.free(scratch_issued_triggers);
-        @memset(scratch_issued_triggers, std.mem.zeroes(protocol.TriggerOutput));
-
+        // Configured capacities are admission limits only. Sources, items,
+        // memberships and both indexes start empty, grow by the rows a Track
+        // really registers and shrink back to the live rows after each
+        // operation (fitRows).
         self.* = .{
             .allocator = allocator,
             .config = config.*,
-            .sources = sources,
-            .items = items,
-            .memberships = memberships,
-            .source_index = source_index,
-            .item_index = item_index,
-            .scratch_item_handles = scratch_item_handles,
-            .scratch_effective_intervals = scratch_effective_intervals,
-            .scratch_source_counts = scratch_source_counts,
-            .scratch_sampling_counts = scratch_sampling_counts,
-            .scratch_trigger_due_milliseconds = scratch_trigger_due_milliseconds,
-            .scratch_issued_triggers = scratch_issued_triggers,
+            .sources = &.{},
+            .items = &.{},
+            .memberships = &.{},
+            .source_index = &.{},
+            .item_index = &.{},
+            .scratch_item_handles = &.{},
+            .scratch_effective_intervals = &.{},
+            .scratch_source_counts = &.{},
+            .scratch_sampling_counts = &.{},
+            .scratch_trigger_due_milliseconds = &.{},
+            .scratch_issued_triggers = &.{},
             .owns_scratch = owns_scratch,
         };
         return self;
@@ -142,13 +106,7 @@ pub const Session = struct {
 
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
-        if (self.owns_scratch) {
-            allocator.free(self.scratch_source_counts);
-            allocator.free(self.scratch_sampling_counts);
-            allocator.free(self.scratch_trigger_due_milliseconds);
-            allocator.free(self.scratch_effective_intervals);
-            allocator.free(self.scratch_item_handles);
-        }
+        if (self.owns_scratch) allocator.free(self.owned_scratch_words);
         allocator.free(self.scratch_issued_triggers);
         allocator.free(self.item_index);
         allocator.free(self.source_index);
@@ -158,17 +116,16 @@ pub const Session = struct {
         allocator.destroy(self);
     }
 
+    /// External mode: binds bytes.len / 32 rows (at most the item admission
+    /// limit). The caller lends the rows the next operation needs, read from
+    /// workspaceCapacity().item_rows, and unbinds after that operation.
     pub fn bindScratch(self: *Session, bytes: []u8) ResultCode {
         lockMutex(&self.mutex);
         defer self.mutex.unlock();
-        if (self.owns_scratch or self.scratchReady()) return .invalid_argument;
-        const view = scratch.View.bind(bytes, self.config.maximum_item_count) orelse
-            return .invalid_argument;
-        self.scratch_item_handles = view.handles;
-        self.scratch_effective_intervals = view.intervals;
-        self.scratch_source_counts = view.source_counts;
-        self.scratch_sampling_counts = view.sampling_counts;
-        self.scratch_trigger_due_milliseconds = view.trigger_due;
+        if (self.owns_scratch or self.scratch_item_handles.len != 0) return .invalid_argument;
+        const rows = @min(bytes.len / 32, @as(usize, self.config.maximum_item_count));
+        const view = scratch.View.bind(bytes, rows) orelse return .invalid_argument;
+        self.setScratchView(view);
         return .ok;
     }
 
@@ -176,22 +133,87 @@ pub const Session = struct {
         lockMutex(&self.mutex);
         defer self.mutex.unlock();
         if (self.owns_scratch) return .invalid_argument;
+        self.clearScratchView();
+        return .ok;
+    }
+
+    fn setScratchView(self: *Session, view: scratch.View) void {
+        self.scratch_item_handles = view.handles;
+        self.scratch_effective_intervals = view.intervals;
+        self.scratch_source_counts = view.source_counts;
+        self.scratch_sampling_counts = view.sampling_counts;
+        self.scratch_trigger_due_milliseconds = view.trigger_due;
+    }
+
+    fn clearScratchView(self: *Session) void {
         self.scratch_item_handles = &.{};
         self.scratch_effective_intervals = &.{};
         self.scratch_source_counts = &.{};
         self.scratch_sampling_counts = &.{};
         self.scratch_trigger_due_milliseconds = &.{};
+    }
+
+    /// Scratch rows one operation needs: one per allocated item slot, plus the
+    /// references a Track may add or a Completion names, never above the item
+    /// admission limit.
+    pub fn scratchRowsFor(self: *const Session, reference_rows: usize, adds_items: bool) usize {
+        const limit: usize = self.config.maximum_item_count;
+        const rows = if (adds_items)
+            self.items.len +| reference_rows
+        else
+            @max(self.items.len, reference_rows);
+        return @min(rows, limit);
+    }
+
+    /// Lends `rows` disposable rows to the operation under the session mutex.
+    /// External scratch must already be bound with at least that many rows.
+    /// Owned scratch is created at exactly `rows` and released by endScratch,
+    /// so neither mode keeps scratch between operations.
+    pub fn beginScratch(self: *Session, rows: usize) ResultCode {
+        if (!self.owns_scratch)
+            return if (self.scratch_item_handles.len >= rows) .ok else .invalid_argument;
+        if (rows == 0) return .ok;
+        const words = self.allocator.alloc(u64, rows * 4) catch return .out_of_memory;
+        const view = scratch.View.bind(std.mem.sliceAsBytes(words), rows) orelse unreachable;
+        self.owned_scratch_words = words;
+        self.setScratchView(view);
         return .ok;
     }
 
-    pub fn scratchReady(self: *const Session) bool {
-        return self.scratch_item_handles.len == self.config.maximum_item_count;
+    pub fn endScratch(self: *Session) void {
+        if (!self.owns_scratch) return;
+        self.allocator.free(self.owned_scratch_words);
+        self.owned_scratch_words = &.{};
+        self.clearScratchView();
+    }
+
+    pub fn workspaceCapacity(self: *const Session) protocol.WorkspaceCapacity {
+        const bytes = @sizeOf(Session) +
+            self.sources.len * @sizeOf(SourceSlot) +
+            self.items.len * @sizeOf(ItemSlot) +
+            self.memberships.len * @sizeOf(MembershipSlot) +
+            (self.source_index.len + self.item_index.len) * @sizeOf(u32) +
+            self.scratch_issued_triggers.len * @sizeOf(protocol.TriggerOutput) +
+            self.owned_scratch_words.len * @sizeOf(u64);
+        return .{
+            .struct_size = @sizeOf(protocol.WorkspaceCapacity),
+            .source_rows = @intCast(self.sources.len),
+            .item_rows = @intCast(self.items.len),
+            .membership_rows = @intCast(self.memberships.len),
+            .active_source_count = self.activeSourceCount(),
+            .known_item_count = self.knownItemCount(),
+            .issued_trigger_rows = @intCast(self.scratch_issued_triggers.len),
+            .scratch_rows = @intCast(self.scratch_item_handles.len),
+            .resident_bytes = bytes,
+        };
     }
 
     pub fn reconfigure(self: *Session, config: *const protocol.Config) ResultCode {
         lockMutex(&self.mutex);
         defer self.mutex.unlock();
-        if (!self.scratchReady()) return .invalid_argument;
+        const begun = self.beginScratch(self.scratchRowsFor(0, false));
+        if (begun != .ok) return begun;
+        defer self.endScratch();
         if (!protocol.validConfig(config)) return .abi_mismatch;
         if (config.generation <= self.config.generation) return .stale_frame;
         if (!sameCapacities(config, &self.config)) return .invalid_argument;
@@ -226,8 +248,15 @@ pub const Session = struct {
         self.issued_trigger_plan_epoch = 0;
         self.last_plan_epoch = 0;
         self.next_wake_milliseconds = 0;
+        self.fitRows("reset");
         self.commitOperation(input.operation_epoch, input.command_at_milliseconds);
         return .ok;
+    }
+
+    pub fn queryWorkspaceCapacity(self: *Session) protocol.WorkspaceCapacity {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
+        return self.workspaceCapacity();
     }
 
     pub fn capacity(self: *const Session) protocol.Capacity {
@@ -521,8 +550,17 @@ pub const Session = struct {
         for (handles) |handle| if (self.findItem(handle) == null) {
             new_item_count += 1;
         };
-        if (new_item_count > self.replacementFreeItemCount(existing_source_index, handles)) return .sampling_item_capacity_exceeded;
-        if (existing_source_index == null and self.freeSourceCount() == 0) return .sampling_source_capacity_exceeded;
+        // Free item rows are the slots this replacement releases plus the
+        // rows still below the admission limit; only the shortfall is grown.
+        const reusable_item_rows = self.replacementFreeItemCount(existing_source_index, handles);
+        const item_headroom = @as(usize, self.config.maximum_item_count) - self.items.len;
+        if (new_item_count > reusable_item_rows + item_headroom) return .sampling_item_capacity_exceeded;
+        const free_source_rows = self.freeSourceCount();
+        const source_headroom = @as(usize, self.config.maximum_source_count) - self.sources.len;
+        if (existing_source_index == null and free_source_rows + source_headroom == 0) return .sampling_source_capacity_exceeded;
+        const grown_item_rows = self.items.len + (new_item_count -| reusable_item_rows);
+        const grown_source_rows = self.sources.len +
+            @intFromBool(existing_source_index == null and free_source_rows == 0);
         const reusable_memberships = if (existing_source_index) |source_index|
             self.sourceItemCount(source_index)
         else
@@ -558,6 +596,7 @@ pub const Session = struct {
         const sampling_flags_changed = previous_sampling_flags != source.sampling_flags or
             (previous_effective_interval != 0 and previous_effective_interval != period);
 
+        var membership_candidate: ?[]MembershipSlot = null;
         if (required_memberships != self.memberships.len) {
             const candidate = self.allocator.alloc(MembershipSlot, required_memberships) catch return .out_of_memory;
             @memset(candidate, .{});
@@ -573,8 +612,14 @@ pub const Session = struct {
                 candidate[retained_count] = membership;
                 retained_count += 1;
             }
-            self.replaceMemberships(candidate, "track-demand");
+            membership_candidate = candidate;
         }
+        // Growth keeps every slot position, so the candidate rows stay valid.
+        if (!self.growRows(grown_source_rows, grown_item_rows)) {
+            if (membership_candidate) |candidate| self.allocator.free(candidate);
+            return .out_of_memory;
+        }
+        if (membership_candidate) |candidate| self.replaceMemberships(candidate, "track-demand");
         const source_index = existing_source_index orelse self.allocateSource(input.source_handle) orelse unreachable;
         self.sources[source_index] = updated_source;
 
@@ -634,6 +679,7 @@ pub const Session = struct {
         _ = self.rebuildItemAggregates();
         self.refreshItemDeadlines(input.command_at_milliseconds);
         self.next_wake_milliseconds = self.nextWakeFromAggregates(input.command_at_milliseconds);
+        self.fitRows("track");
         self.commitOperation(input.operation_epoch, input.command_at_milliseconds);
         return .ok;
     }
@@ -694,6 +740,7 @@ pub const Session = struct {
         _ = self.rebuildItemAggregates();
         self.refreshItemDeadlines(input.command_at_milliseconds);
         self.next_wake_milliseconds = self.nextWakeFromAggregates(input.command_at_milliseconds);
+        self.fitRows("source-remove");
         self.commitOperation(input.operation_epoch, input.command_at_milliseconds);
         return .ok;
     }
@@ -718,6 +765,107 @@ pub const Session = struct {
         self.allocator.free(self.scratch_issued_triggers);
         self.scratch_issued_triggers = candidate;
         if (previous != candidate.len) std.log.defaultLog(.info, .sampling_subscription, "workspace resize column=issued-triggers old_rows={d} new_rows={d} old_bytes={d} new_bytes={d} reason={s}", .{ previous, candidate.len, previous * @sizeOf(protocol.TriggerOutput), candidate.len * @sizeOf(protocol.TriggerOutput), reason });
+    }
+
+    /// Grows sources and items to at least these rows. Every slot keeps its
+    /// position, so membership slot numbers stay valid. All storage is
+    /// allocated before anything is published; failure changes nothing.
+    fn growRows(self: *Session, source_rows: usize, item_rows: usize) bool {
+        if (source_rows <= self.sources.len and item_rows <= self.items.len) return true;
+        return self.replaceRows(
+            @max(source_rows, self.sources.len),
+            @max(item_rows, self.items.len),
+            false,
+            "track-demand",
+        );
+    }
+
+    /// Shrinks sources, items and both indexes to the live rows at the end of
+    /// an operation. Live slots keep their relative order and memberships
+    /// follow them; every output is ordered by handle, never by slot.
+    /// Allocation failure keeps the current rows, which stay valid.
+    pub fn fitRows(self: *Session, reason: []const u8) void {
+        const live_sources: usize = self.activeSourceCount();
+        const live_items: usize = self.knownItemCount();
+        if (live_sources == self.sources.len and live_items == self.items.len) return;
+        _ = self.replaceRows(live_sources, live_items, true, reason);
+    }
+
+    fn replaceRows(
+        self: *Session,
+        source_rows: usize,
+        item_rows: usize,
+        compact: bool,
+        reason: []const u8,
+    ) bool {
+        const allocator = self.allocator;
+        const sources = allocator.alloc(SourceSlot, source_rows) catch return false;
+        const items = allocator.alloc(ItemSlot, item_rows) catch {
+            allocator.free(sources);
+            return false;
+        };
+        const source_index = allocator.alloc(u32, indexRows(source_rows)) catch {
+            allocator.free(items);
+            allocator.free(sources);
+            return false;
+        };
+        const item_index = allocator.alloc(u32, indexRows(item_rows)) catch {
+            allocator.free(source_index);
+            allocator.free(items);
+            allocator.free(sources);
+            return false;
+        };
+        @memset(sources, .{});
+        @memset(items, .{});
+        @memset(source_index, no_index);
+        @memset(item_index, no_index);
+
+        var next_source: usize = 0;
+        for (self.sources, 0..) |source, old| {
+            if (!source.active) continue;
+            const slot = if (compact) next_source else old;
+            sources[slot] = source;
+            if (!insertIndex(source_index, sources, source.source_handle, @intCast(slot), sourceHandleAt)) unreachable;
+            next_source += 1;
+        }
+        var next_item: usize = 0;
+        for (self.items, 0..) |item, old| {
+            if (!item.active) continue;
+            const slot = if (compact) next_item else old;
+            items[slot] = item;
+            if (!insertIndex(item_index, items, item.item_handle, @intCast(slot), itemHandleAt)) unreachable;
+            next_item += 1;
+        }
+        if (compact) {
+            // The new indexes translate each membership's old slots by handle.
+            for (self.memberships) |*membership| {
+                if (!membership.active) continue;
+                const old_source = &self.sources[membership.source_index];
+                const old_item = &self.items[membership.item_index];
+                // A membership whose slot was released cannot follow it; the
+                // slot would otherwise be reused by another handle.
+                if (!old_source.active or !old_item.active) {
+                    membership.* = .{};
+                    continue;
+                }
+                membership.source_index = findIndex(source_index, sources, old_source.source_handle, sourceHandleAt) orelse unreachable;
+                membership.item_index = findIndex(item_index, items, old_item.item_handle, itemHandleAt) orelse unreachable;
+            }
+        }
+
+        const previous_sources = self.sources.len;
+        const previous_items = self.items.len;
+        allocator.free(self.item_index);
+        allocator.free(self.source_index);
+        allocator.free(self.items);
+        allocator.free(self.sources);
+        self.sources = sources;
+        self.items = items;
+        self.source_index = source_index;
+        self.item_index = item_index;
+        if (previous_sources != source_rows) std.log.defaultLog(.info, .sampling_subscription, "workspace resize column=sources old_rows={d} new_rows={d} old_bytes={d} new_bytes={d} reason={s}", .{ previous_sources, source_rows, previous_sources * @sizeOf(SourceSlot), source_rows * @sizeOf(SourceSlot), reason });
+        if (previous_items != item_rows) std.log.defaultLog(.info, .sampling_subscription, "workspace resize column=items old_rows={d} new_rows={d} old_bytes={d} new_bytes={d} reason={s}", .{ previous_items, item_rows, previous_items * @sizeOf(ItemSlot), item_rows * @sizeOf(ItemSlot), reason });
+        return true;
     }
 
     fn allocateSource(self: *Session, handle: u64) ?u32 {
@@ -777,6 +925,7 @@ fn findIndex(
     handle: u64,
     comptime handleAt: anytype,
 ) ?u32 {
+    if (index.len == 0) return null;
     const mask = index.len - 1;
     var probe = hashHandle(handle) & mask;
     var remaining = index.len;
@@ -796,6 +945,7 @@ fn insertIndex(
     slot_index: u32,
     comptime handleAt: anytype,
 ) bool {
+    if (index.len == 0) return false;
     const mask = index.len - 1;
     var probe = hashHandle(handle) & mask;
     var first_tombstone: ?usize = null;
@@ -825,6 +975,7 @@ fn removeIndex(
     handle: u64,
     comptime handleAt: anytype,
 ) void {
+    if (index.len == 0) return;
     const mask = index.len - 1;
     var probe = hashHandle(handle) & mask;
     var remaining = index.len;
@@ -873,9 +1024,11 @@ fn hashHandle(handle: u64) usize {
     return @truncate(value);
 }
 
-fn indexCapacity(item_capacity: usize) !usize {
-    const doubled = try std.math.mul(usize, @max(item_capacity, 1), 2);
-    return std.math.ceilPowerOfTwo(usize, doubled);
+// Open addressing at most half full, sized by the rows really held; no rows
+// hold no index at all.
+fn indexRows(rows: usize) usize {
+    if (rows == 0) return 0;
+    return std.math.ceilPowerOfTwo(usize, rows * 2) catch unreachable;
 }
 
 fn smoothedInterval(previous: u64, elapsed: u64) u64 {

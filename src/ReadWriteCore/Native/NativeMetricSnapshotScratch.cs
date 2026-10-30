@@ -8,6 +8,10 @@ internal interface INativeMetricSnapshotScratch : IDisposable
 {
     ulong Length { get; }
     NativeMetricSnapshotScratchLease Acquire();
+
+    // Called once right after creation with the user and capacity/live rows that
+    // /api/debug/native-memory reports. Storage without such names ignores it.
+    void Describe(string workArea, string rows) { }
 }
 
 internal abstract class NativeMetricSnapshotScratchLease : IDisposable

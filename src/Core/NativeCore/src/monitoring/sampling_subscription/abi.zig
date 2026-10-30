@@ -99,6 +99,22 @@ pub export fn rm_sampling_subscription_query_capacity(
     return code(.ok);
 }
 
+// Rows this session holds now; the caller sizes each scratch borrow from
+// item_rows and reports the rows to the workspace diagnostics.
+pub export fn rm_sampling_subscription_query_workspace_capacity(
+    handle: ?*anyopaque,
+    output: ?*protocol.WorkspaceCapacity,
+    output_size: u32,
+) callconv(.c) i32 {
+    if (output_size != @sizeOf(protocol.WorkspaceCapacity)) return code(.abi_mismatch);
+    const session: *session_module.Session = @ptrCast(@alignCast(
+        handle orelse return code(.invalid_argument),
+    ));
+    const actual_output = output orelse return code(.invalid_argument);
+    actual_output.* = session.queryWorkspaceCapacity();
+    return code(.ok);
+}
+
 pub export fn rm_sampling_subscription_track(
     handle: ?*anyopaque,
     input: ?*const protocol.TrackInput,
@@ -209,6 +225,7 @@ fn code(result: ResultCode) i32 {
 comptime {
     if (@sizeOf(protocol.Config) != 112) @compileError("sampling subscription Config export size changed");
     if (@sizeOf(protocol.Capacity) != 72) @compileError("sampling subscription Capacity export size changed");
+    if (@sizeOf(protocol.WorkspaceCapacity) != 40) @compileError("sampling subscription WorkspaceCapacity export size changed");
     if (@sizeOf(protocol.ItemReference) != 32) @compileError("sampling subscription ItemReference export size changed");
     if (@sizeOf(protocol.TrackInput) != 96) @compileError("sampling subscription TrackInput export size changed");
     if (@sizeOf(protocol.RemoveInput) != 72) @compileError("sampling subscription RemoveInput export size changed");

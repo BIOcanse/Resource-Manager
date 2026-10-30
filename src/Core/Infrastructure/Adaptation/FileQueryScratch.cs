@@ -6,6 +6,8 @@ namespace ResourceManager.App.Infrastructure.Adaptation;
 // Thin storage adapter over the product's existing single-owner scratch path.
 internal sealed class FileQueryScratch(IComputeScratch resource) : INativeFileQueryScratch
 {
+    internal const string WorkArea = "file-query";
+
     internal static INativeFileQueryScratch Create(Func<ulong, IComputeScratch> createScratch,
         ulong byteCount, uint alignment)
     {
@@ -14,7 +16,10 @@ internal sealed class FileQueryScratch(IComputeScratch resource) : INativeFileQu
             throw new ArgumentOutOfRangeException(nameof(alignment));
         // The session aligns the absolute pinned address, including small ordinary
         // storage selected by the existing owner. Slack is real allocated bytes.
-        return new FileQueryScratch(createScratch(checked(byteCount + alignment - 1)));
+        var allocation = checked(byteCount + alignment - 1);
+        var resource = createScratch(allocation);
+        ComputeScratchNames.Name(resource, WorkArea, $"bytes={allocation}/live={byteCount}");
+        return new FileQueryScratch(resource);
     }
 
     public ulong Length => resource.Length;

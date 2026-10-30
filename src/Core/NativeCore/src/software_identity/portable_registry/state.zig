@@ -90,6 +90,19 @@ pub const Session = struct {
         };
     }
 
+    pub fn workspaceRows(self: *Session) protocol.WorkspaceRows {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
+        const totals = self.snapshotTotals();
+        return .{
+            .struct_size = @sizeOf(protocol.WorkspaceRows),
+            .registration_count = totals.registration_count,
+            .path_count = totals.path_count,
+            .dirty_path_count = totals.dirty_path_count,
+            .resident_byte_count = self.allocatedByteCount(),
+        };
+    }
+
     pub fn importPersisted(
         self: *Session,
         input: *const protocol.ImportInput,

@@ -142,19 +142,6 @@ public sealed class MetricScratchLedgerLifecycleTests
         using var remainingRoleOutputs = new SamplingOutputCapacityBatch();
         registered += SamplingOutputCapacityBatch.FillRemainingRoleOutputs(owner, remainingRoleOutputs);
         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
-        var nativeSamplingPlan = HostManagerTestPlanFactory.CreatePlan().SamplingSubscription;
-        ResourceManagerLedgerOwner.ComputeScratch? currentNative = null, candidateNative = null;
-        using var currentNativeWorkspace = new NativeSamplingSubscriptionWorkspace();
-        using var candidateNativeWorkspace = new NativeSamplingSubscriptionWorkspace();
-        currentNativeWorkspace.Initialize(nativeSamplingPlan, length => currentNative = owner.CreateScratch(length));
-        candidateNativeWorkspace.Initialize(nativeSamplingPlan, length => candidateNative = owner.CreateScratch(length));
-        SamplingSessionScratchTests.Snapshot(currentNativeWorkspace.GetSession(1));
-        SamplingSessionScratchTests.Snapshot(candidateNativeWorkspace.GetSession(7));
-        using var currentNativeUse = currentNative!.Acquire();
-        using var candidateNativeUse = candidateNative!.Acquire();
-        currentNativeUse.Complete(); candidateNativeUse.Complete();
-        registered += currentNative.Length + candidateNative.Length;
-        Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
         ResourceManagerLedgerOwner.ComputeScratch? pdhIdentity = null;
         using var pdh = new PdhParsingScratch(length => pdhIdentity = owner.CreateScratch(length), owner.NativePageSize);
         var additionalResources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
@@ -167,9 +154,10 @@ public sealed class MetricScratchLedgerLifecycleTests
             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
             // Preserve the 23 registered workspace uses (Smart and four persistence headers are compact), and occupy current
             // plus pending query pools (2 * 64), model workspaces (2),
-            // portable registry output workspaces (2), display normalization workspaces (2),
-            // and current plus pending placement workspaces (2).
-            for (var index = 0; index < 141; index++)
+            // portable registry per-call outputs (2), display normalization workspaces (2),
+            // current plus pending placement workspaces (2), and two sampling per-operation borrows.
+            // Sampling sessions and portable registries hold no scratch between operations.
+            for (var index = 0; index < 143; index++)
             {
                 var resource = owner.CreateScratch(8192);
                 additionalResources.Add(resource);

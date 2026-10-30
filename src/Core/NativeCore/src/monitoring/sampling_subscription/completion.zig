@@ -14,7 +14,9 @@ pub fn complete(
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
 
-    if (!session.scratchReady()) return .invalid_argument;
+    const begun = session.beginScratch(session.scratchRowsFor(references.len, false));
+    if (begun != .ok) return begun;
+    defer session.endScratch();
 
     if (!protocol.validCompletion(input, &session.config)) return .abi_mismatch;
     if (references.len != input.item_count) return .invalid_argument;
@@ -132,6 +134,7 @@ pub fn complete(
     const active_item_count = session.rebuildItemAggregates();
     session.refreshItemDeadlines(input.command_at_milliseconds);
     session.next_wake_milliseconds = session.nextWakeFromAggregates(input.command_at_milliseconds);
+    session.fitRows("completion");
     session.commitOperation(input.operation_epoch, input.command_at_milliseconds);
 
     const active_source_count = session.activeSourceCount();

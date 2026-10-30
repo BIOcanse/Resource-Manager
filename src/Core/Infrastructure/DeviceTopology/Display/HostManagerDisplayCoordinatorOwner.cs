@@ -48,7 +48,7 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         ResourceManagerLedgerOwner ledgerOwner)
         : this(planProvider, deployment, persistenceCapability, environment, logger,
             (configuration, callbacks) => new NativeDisplayCoordinatorWorkspace(in configuration, callbacks,
-                bytes => new DisplayNormalizationScratch(ledgerOwner.CreateScratch(bytes))),
+                bytes => DisplayNormalizationScratch.Create(ledgerOwner.CreateScratch, bytes)),
             static path => new NativeDisplayCoordinatorPersistenceStore(path,
                 Path.Combine(AppContext.BaseDirectory, "Native", "DiskCheckpoint", "native.json")))
     {

@@ -4,6 +4,8 @@ const protocol = @import("protocol.zig");
 test "sampling subscription ABI sizes and offsets are fixed" {
     try std.testing.expectEqual(@as(usize, 112), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.Capacity));
+    try std.testing.expectEqual(@as(usize, 40), @sizeOf(protocol.WorkspaceCapacity));
+    try std.testing.expectEqual(@as(usize, 32), @offsetOf(protocol.WorkspaceCapacity, "resident_bytes"));
     try std.testing.expectEqual(@as(usize, 32), @sizeOf(protocol.ItemReference));
     try std.testing.expectEqual(@as(usize, 96), @sizeOf(protocol.TrackInput));
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.RemoveInput));

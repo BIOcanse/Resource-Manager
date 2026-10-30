@@ -5,6 +5,7 @@ test "portable registry ABI v1 sizes offsets masks and enums are fixed" {
     try std.testing.expectEqual(@as(u32, 0x0001_0000), protocol.abi_version);
     try expectSize(protocol.Config, 112);
     try expectSize(protocol.Capacity, 88);
+    try expectSize(protocol.WorkspaceRows, 24);
     try expectSize(protocol.ImportInput, 80);
     try expectSize(protocol.PersistedPathInput, 96);
     try expectSize(protocol.ObserveInput, 144);
@@ -23,6 +24,7 @@ test "portable registry ABI v1 sizes offsets masks and enums are fixed" {
     try expectOffset(protocol.Config, "generation", 8);
     try expectOffset(protocol.Config, "resident_byte_budget", 64);
     try expectOffset(protocol.Capacity, "resident_byte_count", 48);
+    try expectOffset(protocol.WorkspaceRows, "resident_byte_count", 16);
     try expectOffset(protocol.ImportInput, "valid_mask", 48);
     try expectOffset(protocol.PersistedPathInput, "executable_path_offset", 64);
     try expectOffset(protocol.ObserveInput, "valid_mask", 112);

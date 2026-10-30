@@ -133,6 +133,22 @@ pub const Capacity = extern struct {
     reserved: [3]u64,
 };
 
+/// Diagnostic and borrow-sizing view of the rows this session holds now.
+/// Capacity above is the admission limit; these are the allocated rows and
+/// the live rows inside them. item_rows is also the scratch row count the
+/// caller lends to Remove, Plan, Snapshot and Reconfigure.
+pub const WorkspaceCapacity = extern struct {
+    struct_size: u32,
+    source_rows: u32,
+    item_rows: u32,
+    membership_rows: u32,
+    active_source_count: u32,
+    known_item_count: u32,
+    issued_trigger_rows: u32,
+    scratch_rows: u32,
+    resident_bytes: u64,
+};
+
 pub const ItemReference = extern struct {
     struct_size: u32,
     flags: u32,
@@ -462,6 +478,7 @@ pub fn allZero(values: []const u64) bool {
 comptime {
     if (@sizeOf(Config) != 112) @compileError("sampling subscription Config ABI size changed");
     if (@sizeOf(Capacity) != 72) @compileError("sampling subscription Capacity ABI size changed");
+    if (@sizeOf(WorkspaceCapacity) != 40) @compileError("sampling subscription WorkspaceCapacity ABI size changed");
     if (@sizeOf(ItemReference) != 32) @compileError("sampling subscription ItemReference ABI size changed");
     if (@sizeOf(TrackInput) != 96) @compileError("sampling subscription TrackInput ABI size changed");
     if (@sizeOf(RemoveInput) != 72) @compileError("sampling subscription RemoveInput ABI size changed");

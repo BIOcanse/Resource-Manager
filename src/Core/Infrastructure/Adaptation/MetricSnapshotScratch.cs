@@ -20,6 +20,7 @@ internal sealed class MetricSnapshotScratch(IComputeScratch resource) : INativeM
     public ulong Length => resource.Length;
     public NativeMetricSnapshotScratchLease Acquire() => new Lease(resource);
     public void Dispose() => resource.Dispose();
+    public void Describe(string workArea, string rows) => ComputeScratchNames.Name(resource, workArea, rows);
 
     private sealed class Lease(IComputeScratch resource) : NativeMetricSnapshotScratchLease
     {

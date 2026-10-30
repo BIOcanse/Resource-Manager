@@ -152,6 +152,7 @@ comptime {
     _ = sampling_subscription_abi.rm_sampling_subscription_reconfigure;
     _ = sampling_subscription_abi.rm_sampling_subscription_reset;
     _ = sampling_subscription_abi.rm_sampling_subscription_query_capacity;
+    _ = sampling_subscription_abi.rm_sampling_subscription_query_workspace_capacity;
     _ = sampling_subscription_abi.rm_sampling_subscription_track;
     _ = sampling_subscription_abi.rm_sampling_subscription_remove;
     _ = sampling_subscription_abi.rm_sampling_subscription_plan;
@@ -204,6 +205,7 @@ comptime {
     _ = portable_software_registry_abi.rm_software_identity_portable_registry_destroy;
     _ = portable_software_registry_abi.rm_software_identity_portable_registry_reconfigure;
     _ = portable_software_registry_abi.rm_software_identity_portable_registry_query_capacity;
+    _ = portable_software_registry_abi.rm_software_identity_portable_registry_query_workspace_rows;
     _ = portable_software_registry_abi.rm_software_identity_portable_registry_import;
     _ = portable_software_registry_abi.rm_software_identity_portable_registry_observe;
     _ = portable_software_registry_abi.rm_software_identity_portable_registry_confirm_root;

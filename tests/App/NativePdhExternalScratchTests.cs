@@ -11,21 +11,26 @@ public sealed class NativePdhExternalScratchTests
     public void FailedScratchCloseKeepsSessionValidAndNativeHandleAliveUntilExplicitRetry()
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        var recorded = new PdhParsingScratchTests.RecordedResource(ledger.CreateScratch(12288));
+        var inner = ledger.CreateScratch(12288);
+        var recorded = new PdhParsingScratchTests.RecordedResource(inner) { FailClose = true };
         var factories = 0;
         var scratch = new PdhParsingScratch(length => ++factories == 1 ? recorded : ledger.CreateScratch(length), ledger.NativePageSize);
         var api = new ExternalApi();
         using var session = new NativePdhSession(api, new(TimeSpan.Zero, TimeSpan.Zero, 0), TimeProvider.System, null, scratch);
-        session.Read();
+        // Every sample closes its scratch on return; this close fails once.
+        Assert.Throws<IOException>(() => session.Read());
         Assert.Equal(1, api.Creates);
         Assert.Equal(1, api.Samples);
-        Assert.Equal(1, recorded.Ends);
+        Assert.Equal((1, 1), (recorded.Ends, recorded.CloseAttempts));
         recorded.FailClose = true;
         Assert.Throws<IOException>(() => session.Dispose());
+        Assert.Equal(2, recorded.CloseAttempts);
         Assert.Equal(0, api.Destroys);
         Assert.Throws<InvalidOperationException>(() => session.Read());
         Assert.Equal(1, api.Samples);
         session.RetryScratchReturn();
+        Assert.Equal(3, recorded.CloseAttempts);
+        Assert.True(inner.Closed);
         session.Read();
         Assert.Equal(1, api.Creates);
         Assert.Equal(2, api.Samples);

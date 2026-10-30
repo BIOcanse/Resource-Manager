@@ -28,7 +28,7 @@ public sealed partial class NativeSamplingSubscriptionSession : IDisposable
         : this(in configuration, null) { }
 
     internal NativeSamplingSubscriptionSession(in NativeSamplingSubscriptionConfiguration configuration,
-        Func<NativeSamplingSessionScratchLease>? acquireScratch)
+        Func<NativeSamplingScratchRows, NativeSamplingSessionScratchLease>? acquireScratch)
     {
         this.acquireScratch = acquireScratch;
         var actualVersion = NativeMethods.GetAbiVersion();
@@ -124,7 +124,7 @@ public sealed partial class NativeSamplingSubscriptionSession : IDisposable
     {
         lock (sync)
         {
-            using var scratch = AcquireInternalScratch();
+            using var scratch = AcquireInternalScratch(items.Length, addsItems: true);
             fixed (NativeSamplingSubscriptionItemReference* itemPointer = items)
             {
                 return (NativeSamplingSubscriptionStatus)NativeMethods.Track(
@@ -183,7 +183,7 @@ public sealed partial class NativeSamplingSubscriptionSession : IDisposable
     {
         lock (sync)
         {
-            using var scratch = AcquireInternalScratch();
+            using var scratch = AcquireInternalScratch(items.Length);
             output = new NativeSamplingSubscriptionCompletionOutput
             {
                 AbiVersion = NativeSamplingSubscriptionAbi.Version,

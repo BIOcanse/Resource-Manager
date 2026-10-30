@@ -44,6 +44,17 @@ pub export fn rm_software_identity_portable_registry_query_capacity(
     return code(.ok);
 }
 
+pub export fn rm_software_identity_portable_registry_query_workspace_rows(
+    handle: ?*anyopaque,
+    output: ?*protocol.WorkspaceRows,
+    output_size: u32,
+) callconv(.c) i32 {
+    if (output_size != @sizeOf(protocol.WorkspaceRows)) return code(.abi_mismatch);
+    const session: *session_module.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    (output orelse return code(.invalid_argument)).* = session.workspaceRows();
+    return code(.ok);
+}
+
 pub export fn rm_software_identity_portable_registry_import(
     handle: ?*anyopaque,
     input: ?*const protocol.ImportInput,

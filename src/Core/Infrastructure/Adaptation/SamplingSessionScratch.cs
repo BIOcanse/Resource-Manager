@@ -3,118 +3,96 @@ using ResourceManager.Subscription.Native;
 
 namespace ResourceManager.App.Infrastructure.Adaptation;
 
-// One identity per seven-role workspace. Sessions borrow disjoint slices and
-// never close the shared identity themselves.
-internal sealed class SamplingSessionScratch(IComputeScratch resource) : IDisposable
+// One sampling operation's borrow. It creates scratch for exactly the item rows
+// that operation reads (32 bytes per row, plus 7 bytes to align the start),
+// names it sampling-session with those rows, and closes it when the operation
+// returns, so a session holds no scratch between operations. A failed return or
+// close keeps the same use and resource for the session's explicit retry.
+internal sealed class SamplingSessionScratch : NativeSamplingSessionScratchLease
 {
-    private readonly object sync = new();
-    private Lease? loading;
-    private int readers;
-    private bool retiring;
+    internal const string WorkArea = "sampling-session";
+    private const ulong AlignmentBytes = 7;
+    private readonly IComputeScratch resource;
+    private readonly ulong length;
+    private ComputeScratchLease? use;
+    private MemoryHandle pin;
+    private bool pinned, closed;
 
-    internal NativeSamplingSessionScratchLease Acquire(ulong offset, ulong length)
+    private SamplingSessionScratch(IComputeScratch resource, ulong length)
     {
-        lock (sync)
+        this.resource = resource;
+        this.length = length;
+    }
+
+    internal static SamplingSessionScratch Create(
+        Func<ulong, IComputeScratch> createScratch, NativeSamplingScratchRows rows)
+    {
+        ArgumentNullException.ThrowIfNull(createScratch);
+        var length = rows.Length;
+        if (length == 0) throw new ArgumentOutOfRangeException(nameof(rows), "A sampling borrow needs at least one row.");
+        var allocation = checked(length + AlignmentBytes);
+        var resource = createScratch(allocation)
+            ?? throw new InvalidOperationException("The sampling scratch factory returned no resource.");
+        try
         {
-            ObjectDisposedException.ThrowIf(retiring, this);
-            while (loading is not null)
-            {
-                if (loading.ReturnFailed)
-                    throw new InvalidOperationException("The sampling scratch load must finish its explicit return before another operation.");
-                Monitor.Wait(sync);
-                ObjectDisposedException.ThrowIf(retiring, this);
-            }
-            // Allocate wrapper metadata before the actual SDK acquisition.
-            var lease = new Lease(this, offset, length);
-            var use = resource.Acquire();
-            lease.Attach(use);
-            if (use.IsLoading) loading = lease;
-            readers++;
-            return lease;
+            ComputeScratchNames.Name(resource, WorkArea, $"items={rows.Rows}/live={rows.LiveItems}");
+            if (resource.Length < allocation)
+                throw new InvalidOperationException("The sampling scratch is shorter than its rows.");
+            var borrowed = new SamplingSessionScratch(resource, length);
+            borrowed.use = resource.Acquire();
+            return borrowed;
+        }
+        catch (Exception failure)
+        {
+            try { resource.Dispose(); }
+            catch (Exception cleanup) { throw new AggregateException(failure, cleanup); }
+            throw;
         }
     }
 
-    public void Dispose()
+    internal override ulong Length => length;
+
+    internal override unsafe MemoryHandle Pin()
     {
-        lock (sync)
+        var current = use ?? throw new ObjectDisposedException(nameof(SamplingSessionScratch));
+        if (pinned) throw new InvalidOperationException("Sampling scratch is already pinned.");
+        pin = current.GetMemoryChunk(0, 1).Pin();
+        pinned = true;
+        try
         {
-            retiring = true;
-            Monitor.PulseAll(sync);
-            if (readers != 0) throw new InvalidOperationException("Sampling scratch is still in use.");
-            resource.Dispose();
+            if (pin.Pointer == null) throw new InvalidOperationException("Sampling scratch has no address.");
+            var first = (nuint)pin.Pointer;
+            var aligned = checked(first + 7) & ~(nuint)7;
+            var skip = (ulong)(aligned - first);
+            if (skip > current.Length || length > current.Length - skip)
+                throw new InvalidOperationException("Sampling rows exceed their allocation.");
+            _ = checked(aligned + checked((nuint)length));
+            return new MemoryHandle((void*)aligned);
         }
+        catch { Unpin(); throw; }
     }
 
-    private void Release(Lease lease)
+    internal override void Complete()
+        => (use ?? throw new ObjectDisposedException(nameof(SamplingSessionScratch))).Complete();
+
+    public override void Dispose()
     {
-        lock (sync)
+        Unpin();
+        if (use is not null)
         {
-            if (lease.Returned) return;
-            try { lease.EndUse(); }
-            catch { LoadReturnFailed(lease); throw; }
-            lease.Returned = true;
-            readers--;
-            if (ReferenceEquals(loading, lease)) loading = null;
-            Monitor.PulseAll(sync);
+            use.Dispose(); // Failure keeps this use for the retry.
+            use = null;
         }
+        if (closed) return;
+        resource.Dispose(); // Failure keeps this resource for the retry.
+        closed = true;
     }
 
-    private void LoadReturnFailed(Lease lease)
+    private void Unpin()
     {
-        lock (sync)
-        {
-            if (ReferenceEquals(loading, lease)) lease.ReturnFailed = true;
-            Monitor.PulseAll(sync);
-        }
-    }
-
-    private sealed class Lease(SamplingSessionScratch owner, ulong offset, ulong length)
-        : NativeSamplingSessionScratchLease
-    {
-        private MemoryHandle pin;
-        private bool pinned;
-        private ComputeScratchLease use = null!;
-        internal bool Returned, ReturnFailed;
-        internal void Attach(ComputeScratchLease actual) => use = actual;
-        internal void EndUse() => use.Dispose();
-        internal override ulong Length => length;
-        internal override unsafe MemoryHandle Pin()
-        {
-            ObjectDisposedException.ThrowIf(Returned, this);
-            if (pinned) throw new InvalidOperationException("Sampling slice is already pinned.");
-            pin = use.GetMemoryChunk(0, 1).Pin();
-            pinned = true;
-            try
-            {
-                if (pin.Pointer == null) throw new InvalidOperationException("Sampling scratch has no address.");
-                var first = (nuint)pin.Pointer;
-                var aligned = checked(first + 7) & ~(nuint)7;
-                var start = checked((ulong)(aligned - first) + offset);
-                if (start > use.Length || length > use.Length - start)
-                    throw new InvalidOperationException("Sampling slice exceeds its allocation.");
-                var address = checked(first + checked((nuint)start));
-                _ = checked(address + checked((nuint)length));
-                return new MemoryHandle((void*)address);
-            }
-            catch { Unpin(); throw; }
-        }
-        internal override void Complete()
-        {
-            ObjectDisposedException.ThrowIf(Returned, this);
-            try { use.Complete(); }
-            catch { owner.LoadReturnFailed(this); throw; }
-        }
-        public override void Dispose()
-        {
-            Unpin();
-            owner.Release(this);
-        }
-        private void Unpin()
-        {
-            if (!pinned) return;
-            pin.Dispose();
-            pin = default;
-            pinned = false;
-        }
+        if (!pinned) return;
+        pin.Dispose();
+        pin = default;
+        pinned = false;
     }
 }

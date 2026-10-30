@@ -16,34 +16,24 @@ internal sealed partial class NativePortableSoftwareRegistryWorkspace : IDisposa
         }
 
         ArgumentNullException.ThrowIfNull(createScratch);
+        this.createScratch = createScratch;
         var configuration = CreateConfiguration(plan);
         Session = new NativePortableSoftwareRegistrySession(in configuration);
         try
         {
+            // Capacities stay upper bounds only. Output rows are created per call
+            // at the rows the session holds, so nothing is reserved here.
             var capacity = Session.Capacity;
             OperationCapacity = checked((int)capacity.PersistenceOperationCapacity);
             RegistrationCapacity = checked((int)capacity.RegistrationSnapshotCapacity);
             PathCapacity = checked((int)capacity.PathSnapshotCapacity);
-            registrationsOffset = checked((ulong)OperationCapacity * (ulong)System.Runtime.CompilerServices.Unsafe.SizeOf<NativePortableSoftwarePersistenceOperation>());
-            pathsOffset = checked(registrationsOffset + (ulong)RegistrationCapacity * (ulong)System.Runtime.CompilerServices.Unsafe.SizeOf<NativePortableSoftwareRegistrationSnapshot>());
-            var length = checked(pathsOffset + (ulong)PathCapacity * (ulong)System.Runtime.CompilerServices.Unsafe.SizeOf<NativePortableSoftwarePathSnapshot>());
-            scratch = createScratch(length);
-            if (scratch.Length != length)
-            {
-                scratch.Dispose();
-                throw new InvalidOperationException("Portable registry output scratch length mismatch.");
-            }
         }
         catch { Session.Dispose(); throw; }
     }
 
     public NativePortableSoftwareRegistrySession Session { get; }
 
-    public void Dispose()
-    {
-        scratch.Dispose(); // A failed close keeps the native session available for an explicit retry.
-        Session.Dispose();
-    }
+    public void Dispose() => Session.Dispose();
 
     internal static NativePortableSoftwareRegistryConfiguration CreateConfiguration(
         CompiledHostManagerPortableSoftwareRegistryPlan plan)

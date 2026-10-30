@@ -19,7 +19,9 @@ pub fn plan(
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
 
-    if (!session.scratchReady()) return .invalid_argument;
+    const begun = session.beginScratch(session.scratchRowsFor(0, false));
+    if (begun != .ok) return begun;
+    defer session.endScratch();
 
     if (!protocol.validPlanHeader(header, &session.config)) return .abi_mismatch;
     if (due_capacity != header.due_item_capacity or
@@ -254,6 +256,7 @@ pub fn plan(
     session.next_wake_milliseconds = session.nextWakeFromAggregates(
         header.command_at_milliseconds,
     );
+    session.fitRows("plan");
     session.commitOperation(header.operation_epoch, header.command_at_milliseconds);
 
     var flags: u64 = 0;

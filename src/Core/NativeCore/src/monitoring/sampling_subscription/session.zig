@@ -17,14 +17,18 @@ pub fn track(
     const items = (item_pointer orelse return .invalid_argument)[0..item_count];
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
-    if (!session.scratchReady()) return .invalid_argument;
+    const begun = session.beginScratch(session.scratchRowsFor(items.len, true));
+    if (begun != .ok) return begun;
+    defer session.endScratch();
     return session.track(input, items);
 }
 
 pub fn remove(session: *Session, input: *const protocol.RemoveInput) ResultCode {
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
-    if (!session.scratchReady()) return .invalid_argument;
+    const begun = session.beginScratch(session.scratchRowsFor(0, false));
+    if (begun != .ok) return begun;
+    defer session.endScratch();
     return session.remove(input);
 }
 

@@ -71,6 +71,31 @@ public sealed class NativeMemoryDebugEndpointTests
     }
 
     [Fact]
+    public async Task CreationPointsNameTheirScratchWithCapacityAndLiveRows()
+    {
+        using var ledger = new ResourceManagerLedgerOwner();
+        using var fileQuery = FileQueryScratch.Create(ledger.CreateScratch, 4096, 8);
+        using var display = DisplayNormalizationScratch.Create(ledger.CreateScratch, 512);
+        using var output = SamplingOutputScratch.Create(ledger.CreateScratch, 1024, 8);
+        output.Describe("sampling-output-role3", "due=2/live=1, sources=1/live=1, expired=1/live=1, triggers=2/live=1");
+        using var metric = MetricSnapshotScratch.Create(ledger.CreateScratch, 2048, 8);
+        metric.Describe("metric-snapshot", "rules=2/live=2, metrics=5/live=5");
+        var (status, _, json) = await GetAsync(ledger);
+        Assert.Equal(200, status);
+        using (json)
+        {
+            var rows = json.RootElement.GetProperty("workspaces").EnumerateArray().ToDictionary(
+                static item => item.GetProperty("workArea").GetString()!,
+                static item => item.GetProperty("rows").GetString());
+            Assert.Equal(4, rows.Count);
+            Assert.Equal("bytes=4103/live=4096", rows[FileQueryScratch.WorkArea]);
+            Assert.Equal("bytes=512/live=512", rows[DisplayNormalizationScratch.WorkArea]);
+            Assert.Equal("due=2/live=1, sources=1/live=1, expired=1/live=1, triggers=2/live=1", rows["sampling-output-role3"]);
+            Assert.Equal("rules=2/live=2, metrics=5/live=5", rows["metric-snapshot"]);
+        }
+    }
+
+    [Fact]
     public void RouteUsesTheSameReadScopeAsTheOtherDebugReads()
     {
         var context = new DefaultHttpContext();

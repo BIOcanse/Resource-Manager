@@ -18,6 +18,7 @@ internal sealed class SamplingOutputScratch(IComputeScratch resource) : INativeS
     public ulong Length => resource.Length;
     public NativeSamplingOutputScratchLease Acquire() => new Lease(resource.Acquire());
     public void Dispose() => resource.Dispose();
+    public void Describe(string workArea, string rows) => ComputeScratchNames.Name(resource, workArea, rows);
 
     private sealed class Lease(ComputeScratchLease lease) : NativeSamplingOutputScratchLease
     {

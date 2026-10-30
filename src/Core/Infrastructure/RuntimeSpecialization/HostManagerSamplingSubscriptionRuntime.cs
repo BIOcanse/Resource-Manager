@@ -364,23 +364,38 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
         return ++nextWorkspaceIncarnation;
     }
 
+    // A lease that only reads HotPublish or OwnerToken builds no Native session;
+    // the first read of Session builds the role's session, and the lease keeps
+    // returning that same object, as before, also after it is disposed.
     internal sealed class SessionLease : ISamplingSubscriptionSessionLease<SamplingOwnerToken>
     {
         private WorkspaceHolder? holder;
+        private NativeSamplingSubscriptionWorkspace.RoleLease? role;
+        private NativeSamplingSubscriptionSession? session;
 
         internal SessionLease(
             WorkspaceHolder holder,
-            NativeSamplingSubscriptionSession session,
+            NativeSamplingSubscriptionWorkspace.RoleLease role,
             CompiledHostManagerSamplingSubscriptionRoleHotPublishPlan hotPublish)
         {
             this.holder = holder;
-            Session = session;
+            this.role = role;
             HotPublish = hotPublish;
             WorkspaceIncarnation = holder.WorkspaceIncarnation;
             OwnerToken = holder.OwnerToken;
         }
 
-        public NativeSamplingSubscriptionSession Session { get; }
+        public NativeSamplingSubscriptionSession Session
+        {
+            get
+            {
+                var read = Volatile.Read(ref session);
+                if (read is not null) return read;
+                read = (Volatile.Read(ref role) ?? throw new ObjectDisposedException(nameof(SessionLease))).Session;
+                Volatile.Write(ref session, read);
+                return read;
+            }
+        }
 
         public CompiledHostManagerSamplingSubscriptionRoleHotPublishPlan HotPublish { get; }
 
@@ -392,7 +407,12 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
         SamplingOwnerToken ISamplingSubscriptionSessionLease<SamplingOwnerToken>.OwnerToken => OwnerToken;
 
         public void Dispose()
-            => Interlocked.Exchange(ref holder, null)?.Release();
+        {
+            var previous = Interlocked.Exchange(ref holder, null);
+            if (previous is null) return;
+            try { Interlocked.Exchange(ref role, null)?.Dispose(); }
+            finally { previous.Release(); }
+        }
     }
 
     internal sealed class WorkspaceHolder
@@ -437,8 +457,10 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
             lock (sync)
             {
                 ObjectDisposedException.ThrowIf(retired, this);
-                var session = workspace.GetSession(roleId);
-                var lease = new SessionLease(this, session, roles[roleId - 1]);
+                var role = workspace.AcquireRole(roleId);
+                SessionLease lease;
+                try { lease = new SessionLease(this, role, roles[roleId - 1]); }
+                catch { role.Dispose(); throw; }
                 referenceCount++;
                 return lease;
             }

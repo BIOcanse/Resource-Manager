@@ -133,6 +133,16 @@ pub const Capacity = extern struct {
     reserved: [4]u64,
 };
 
+/// Rows the session holds right now. A caller sizes one persistence plan or
+/// one snapshot page from these counts instead of the configured capacities.
+pub const WorkspaceRows = extern struct {
+    struct_size: u32,
+    registration_count: u32,
+    path_count: u32,
+    dirty_path_count: u32,
+    resident_byte_count: u64,
+};
+
 pub const ImportInput = extern struct {
     abi_version: u32,
     struct_size: u32,
