@@ -88,7 +88,7 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
 
-        var emitted = outputs[..checked((int)snapshot.OutputCount)];
+        var emitted = NameOutputs(in snapshot, [process], ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs);
         Assert.Equal(cpuBonus, snapshot.CpuWelfareBonus, 10);
         Assert.Equal(memoryBonus, snapshot.MemoryWelfareBonus, 10);
         Assert.Equal(200 + cpuBonus, Assert.Single(emitted, static row =>

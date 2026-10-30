@@ -110,8 +110,8 @@ public sealed class MetricScratchLedgerLifecycleTests
         };
         using var currentOwnership = new NativeAppliedOwnershipWorkspace(in ownershipCapacity, owner.CreateScratch);
         using var candidateOwnership = new NativeAppliedOwnershipWorkspace(in ownershipCapacity, owner.CreateScratch);
-        using var currentOwnershipUse = currentOwnership.Acquire();
-        using var candidateOwnershipUse = candidateOwnership.Acquire();
+        using var currentOwnershipUse = currentOwnership.Acquire(0);
+        using var candidateOwnershipUse = candidateOwnership.Acquire(0);
         currentOwnershipUse.Image.Span[0] = 17;
         candidateOwnershipUse.Image.Span[0] = 23;
         currentOwnershipUse.Complete(); candidateOwnershipUse.Complete();

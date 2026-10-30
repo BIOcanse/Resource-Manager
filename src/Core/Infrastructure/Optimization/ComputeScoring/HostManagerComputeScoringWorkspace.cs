@@ -17,8 +17,9 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     private readonly NativeComputeScoringSession gpuSession;
     private readonly FrozenDictionary<string, uint> cpuCoreIndexes;
     private readonly NativeComputeScoringCapacity capacity;
+    private const string WorkArea = "compute-scoring";
     private ComputeScoringScratchLayout layout = null!;
-    private readonly RowSizedComputeScratch scratch;
+    private readonly Func<ulong, IComputeScratch> createScratch;
     private readonly double welfareBaseScore;
     private bool disposed;
 
@@ -28,6 +29,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         Func<ulong, IComputeScratch> createScratch)
     {
         ArgumentNullException.ThrowIfNull(createScratch);
+        this.createScratch = createScratch;
         CpuScoring = cpuScoring;
         welfareBaseScore = configuration.WelfareBaseScore;
         var weights = cpuScoring.CoreWeights.Cores.Select(static core => core.ReferenceWeight).ToArray();
@@ -50,7 +52,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             if (capacity.ScratchByteCount != gpuCapacity.ScratchByteCount ||
                 capacity.ScratchAlignment != gpuCapacity.ScratchAlignment)
                 throw new InvalidOperationException("CPU and GPU scoring sessions require different scratch layouts.");
-            scratch = new(createScratch, "compute-scoring");
         }
         catch
         {
@@ -121,7 +122,11 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         var cpuProjection = scoreCpu ? PrepareCpuDomain(processFacts, cpuResidency, exclusions) : null;
         var gpuFacts = scoreGpu ? ProjectGpuDomain(processFacts, gpuInventory) : null;
         if (cpuProjection is null && gpuFacts is null) return null;
-        EnsureLayout(cpuProjection, gpuFacts, gpuInventory);
+        var next = CreateLayout(cpuProjection, gpuFacts, gpuInventory, out var rows);
+        // Held for this round only: at the scheduler's 5 s cadence one create and close per
+        // round costs less than keeping the largest round's region between rounds.
+        using var scratch = CreateRoundScratch(next.Length, rows);
+        layout = next;
         using var lease = scratch.Acquire();
         using var view = new ComputeScratchView(lease);
         if (cpuProjection is not null) FillCpuDomain(view, cpuProjection);
@@ -405,13 +410,17 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             gpuComplete);
         return CreateResult(
             outputs,
+            processes.Slice(0, processCount),
+            gpus.Slice(0, gpuRowCount),
+            runtimeFacts,
             nativeSnapshot,
             cpuComplete,
             gpuComplete);
     }
 
-    private void EnsureLayout(CpuProjection? cpu, SchedulingProcessFactSnapshot? gpu,
-        SchedulingGpuInventorySnapshot inventory)
+    // This round's actual rows; nothing is carried from an earlier round.
+    private ComputeScoringScratchLayout CreateLayout(CpuProjection? cpu, SchedulingProcessFactSnapshot? gpu,
+        SchedulingGpuInventorySnapshot inventory, out string rows)
     {
         var processes = Math.Max(cpu?.Facts.Processes.Count ?? 0, gpu?.Processes.Count ?? 0);
         var gpuRows = gpu?.Processes.Sum(static process => process.Gpus.Count) ?? 0;
@@ -421,20 +430,30 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             throw new InvalidDataException("The compute scoring configured capacity was exceeded.");
         var cores = cpu?.CoreInputCount ?? 0;
         var adapters = gpu is null ? 0 : inventory.Adapters.Count;
-        if (layout is not null && scratch.Length == layout.Length && processes <= layout.ProcessCapacity && gpuRows <= layout.GpuCapacity
-            && outputs <= layout.OutputCapacity && cores <= layout.CoreInputCapacity && adapters <= layout.AdapterCapacity)
-            return;
-        processes = Math.Max(processes, layout?.ProcessCapacity ?? 0);
-        gpuRows = Math.Max(gpuRows, layout?.GpuCapacity ?? 0);
-        outputs = Math.Max(outputs, layout?.OutputCapacity ?? 0);
-        cores = Math.Max(cores, layout?.CoreInputCapacity ?? 0);
-        adapters = Math.Max(adapters, layout?.AdapterCapacity ?? 0);
-        var next = new ComputeScoringScratchLayout(checked((uint)processes), checked((uint)gpuRows),
+        rows = $"processes={processes},gpu-rows={gpuRows},outputs={outputs},core-rows={cores},adapters={adapters}";
+        return new ComputeScoringScratchLayout(checked((uint)processes), checked((uint)gpuRows),
             checked((uint)outputs), cores,
             NativeComputeScoringSession.ScratchByteCount(checked((uint)processes), checked((uint)gpuRows)),
             capacity.ScratchAlignment, adapters);
-        scratch.Ensure(next.Length, $"processes={processes},gpu-rows={gpuRows},outputs={outputs},core-rows={cores},adapters={adapters}");
-        layout = next;
+    }
+
+    private IComputeScratch CreateRoundScratch(ulong length, string rows)
+    {
+        var created = createScratch(length)
+            ?? throw new InvalidOperationException($"{WorkArea} scratch factory returned no resource.");
+        if (created.Length != length)
+        {
+            var mismatch = new InvalidOperationException($"{WorkArea} scratch factory returned the wrong length.");
+            try { created.Dispose(); }
+            catch (Exception cleanup) { throw new AggregateException(mismatch, cleanup); }
+            throw mismatch;
+        }
+        if (created is ResourceManagerLedgerOwner.ComputeScratch registered)
+        {
+            registered.WorkArea = WorkArea;
+            registered.Rows = rows;
+        }
+        return created;
     }
 
     private sealed record CpuProjection(SchedulingProcessFactSnapshot Facts, HostManagerCpuOccupancySource Source,
@@ -650,7 +669,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         {
             return;
         }
-        scratch.Dispose();
         disposed = true;
         try { cpuSession.Dispose(); }
         finally { gpuSession.Dispose(); }
@@ -786,63 +804,66 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         }
     }
 
+    // Output sections follow the native order: process CPU, software CPU, process GPU,
+    // software GPU, software memory. Identity comes from the input row each output names.
     private HostManagerComputeScoringCycleResult CreateResult(
         ReadOnlySpan<NativeComputeScoringOutput> outputs,
+        ReadOnlySpan<NativeComputeScoringProcessInput> processes,
+        ReadOnlySpan<NativeComputeScoringGpuInput> gpus,
+        IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact> runtimeFacts,
         NativeComputeScoringSnapshot snapshot,
         bool cpuComplete,
         bool gpuComplete)
     {
-        var cpuCount = checked((int)(snapshot.ProcessCpuOutputCount + snapshot.SoftwareCpuOutputCount));
-        var gpuCount = checked((int)(snapshot.ProcessGpuOutputCount + snapshot.SoftwareGpuOutputCount));
+        var processCpuCount = checked((int)snapshot.ProcessCpuOutputCount);
+        var softwareCpuCount = checked((int)snapshot.SoftwareCpuOutputCount);
+        var processGpuCount = checked((int)snapshot.ProcessGpuOutputCount);
+        var softwareGpuCount = checked((int)snapshot.SoftwareGpuOutputCount);
         var memoryCount = checked((int)snapshot.SoftwareMemoryOutputCount);
-        var cpu = cpuComplete
-            ? ImmutableArray.CreateBuilder<HostManagerComputeScore>(cpuCount)
-            : null;
-        var gpu = gpuComplete
-            ? ImmutableArray.CreateBuilder<HostManagerComputeScore>(gpuCount)
-            : null;
-        var memory = cpuComplete
-            ? ImmutableArray.CreateBuilder<HostManagerComputeScore>(memoryCount)
-            : null;
-        var outputCount = checked((int)snapshot.OutputCount);
-        for (var index = 0; index < outputCount; index++)
+        if (!cpuComplete && processCpuCount + softwareCpuCount != 0)
         {
-            var row = ConvertOutput(outputs[index]);
-            switch (row.Kind)
-            {
-                case NativeComputeScoringOutputKind.ProcessCpu:
-                case NativeComputeScoringOutputKind.SoftwareCpu:
-                    if (cpu is null)
-                    {
-                        throw new InvalidOperationException("Native compute scoring emitted CPU output for an incomplete CPU domain.");
-                    }
-                    cpu.Add(row);
-                    break;
-                case NativeComputeScoringOutputKind.ProcessGpu:
-                case NativeComputeScoringOutputKind.SoftwareGpu:
-                    if (gpu is null)
-                    {
-                        throw new InvalidOperationException("Native compute scoring emitted GPU output for an incomplete GPU domain.");
-                    }
-                    gpu.Add(row);
-                    break;
-                case NativeComputeScoringOutputKind.SoftwareMemory:
-                    if (memory is null)
-                    {
-                        throw new InvalidOperationException("Native compute scoring emitted memory output without CPU scores.");
-                    }
-                    memory.Add(row);
-                    break;
-                default:
-                    throw new InvalidOperationException("Native compute scoring emitted an unknown output kind.");
-            }
+            throw new InvalidOperationException("Native compute scoring emitted CPU output for an incomplete CPU domain.");
+        }
+        if (!gpuComplete && processGpuCount + softwareGpuCount != 0)
+        {
+            throw new InvalidOperationException("Native compute scoring emitted GPU output for an incomplete GPU domain.");
+        }
+        if (!cpuComplete && memoryCount != 0)
+        {
+            throw new InvalidOperationException("Native compute scoring emitted memory output without CPU scores.");
         }
 
-        if (cpu is not null && cpu.Count != cpuCount
-            || gpu is not null && gpu.Count != gpuCount
-            || memory is not null && memory.Count != memoryCount)
+        var roundNumber = snapshot.RoundNumber;
+        var cursor = 0;
+        ImmutableArray<HostManagerComputeScore>.Builder? cpu = null;
+        ImmutableArray<HostManagerComputeScore>.Builder? gpu = null;
+        ImmutableArray<HostManagerComputeScore>.Builder? memory = null;
+        if (cpuComplete)
         {
-            throw new InvalidOperationException("Native compute scoring output counts are inconsistent.");
+            cpu = ImmutableArray.CreateBuilder<HostManagerComputeScore>(processCpuCount + softwareCpuCount);
+            for (var index = 0; index < processCpuCount; index++)
+                cpu.Add(ConvertOutput(NativeComputeScoringOutputKind.ProcessCpu, outputs[cursor++],
+                    processes, gpus, runtimeFacts, roundNumber));
+            for (var index = 0; index < softwareCpuCount; index++)
+                cpu.Add(ConvertOutput(NativeComputeScoringOutputKind.SoftwareCpu, outputs[cursor++],
+                    processes, gpus, runtimeFacts, roundNumber));
+        }
+        if (gpuComplete)
+        {
+            gpu = ImmutableArray.CreateBuilder<HostManagerComputeScore>(processGpuCount + softwareGpuCount);
+            for (var index = 0; index < processGpuCount; index++)
+                gpu.Add(ConvertOutput(NativeComputeScoringOutputKind.ProcessGpu, outputs[cursor++],
+                    processes, gpus, runtimeFacts, roundNumber));
+            for (var index = 0; index < softwareGpuCount; index++)
+                gpu.Add(ConvertOutput(NativeComputeScoringOutputKind.SoftwareGpu, outputs[cursor++],
+                    processes, gpus, runtimeFacts, roundNumber));
+        }
+        if (cpuComplete)
+        {
+            memory = ImmutableArray.CreateBuilder<HostManagerComputeScore>(memoryCount);
+            for (var index = 0; index < memoryCount; index++)
+                memory.Add(ConvertOutput(NativeComputeScoringOutputKind.SoftwareMemory, outputs[cursor++],
+                    processes, gpus, runtimeFacts, roundNumber));
         }
 
         return new HostManagerComputeScoringCycleResult(
@@ -887,66 +908,48 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         => double.IsFinite(value) && value is >= 0 and <= 1;
 
     private static HostManagerComputeScore ConvertOutput(
-        NativeComputeScoringOutput row)
+        NativeComputeScoringOutputKind kind,
+        NativeComputeScoringOutput row,
+        ReadOnlySpan<NativeComputeScoringProcessInput> processes,
+        ReadOnlySpan<NativeComputeScoringGpuInput> gpus,
+        IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact> runtimeFacts,
+        ulong roundNumber)
     {
-        var processOutput = row.Kind is NativeComputeScoringOutputKind.ProcessCpu
+        var processOutput = kind is NativeComputeScoringOutputKind.ProcessCpu
             or NativeComputeScoringOutputKind.ProcessGpu;
-        var gpuOutput = row.Kind is NativeComputeScoringOutputKind.ProcessGpu
+        var gpuOutput = kind is NativeComputeScoringOutputKind.ProcessGpu
             or NativeComputeScoringOutputKind.SoftwareGpu;
-        var expectedValidity = NativeComputeScoringOutputValidity.RoundNumber |
-            NativeComputeScoringOutputValidity.SoftwareIdentity |
-            NativeComputeScoringOutputValidity.Score |
-            (processOutput
-                ? NativeComputeScoringOutputValidity.ProcessIdentity
-                : NativeComputeScoringOutputValidity.MemberCount) |
-            (gpuOutput
-                ? NativeComputeScoringOutputValidity.AdapterIdentity
-                : NativeComputeScoringOutputValidity.None);
-        if (row.StructSize != NativeComputeScoringSession.SizeOf<NativeComputeScoringOutput>()
-            || row.ValidMask != expectedValidity
-            || row.SoftwareKey == 0
-            || !double.IsFinite(row.Score)
+        if (!double.IsFinite(row.Score)
             || row.Score < 0
-            || (row.AdapterKey == 0) == gpuOutput
-            || row.Flags != 0
-            || row.Reserved0 != 0
-            || row.Reserved[0] != 0
-            || row.Reserved[1] != 0)
+            || row.InputIndex >= (uint)(gpuOutput ? gpus.Length : processes.Length)
+            || (processOutput ? row.MemberCount != 1 : row.MemberCount == 0))
         {
             throw new InvalidOperationException("Native compute scoring emitted an invalid output row.");
         }
 
-        if (processOutput)
+        if (gpuOutput)
         {
-            if (row.TargetKey == 0
-                || row.ProcessId == 0
-                || row.ProcessStartKey == 0
-                || row.MemberCount != 1
-                || row.RuntimeState > NativeComputeScoringRuntimeState.NotRunning)
+            ref readonly var gpu = ref gpus[(int)row.InputIndex];
+            if (!processOutput)
             {
-                throw new InvalidOperationException("Native compute scoring emitted an invalid process output row.");
+                return new HostManagerComputeScore(kind, roundNumber, 0, gpu.SoftwareKey, 0, 0,
+                    gpu.AdapterKey, row.Score, row.MemberCount, NativeComputeScoringRuntimeState.Unknown);
             }
-        }
-        else if (row.TargetKey != 0
-            || row.ProcessId != 0
-            || row.ProcessStartKey != 0
-            || row.SourceIndex != 0
-            || row.MemberCount == 0
-            || row.RuntimeState != NativeComputeScoringRuntimeState.Unknown)
-        {
-            throw new InvalidOperationException("Native compute scoring emitted an invalid software output row.");
+            var processId = checked((int)gpu.ProcessId);
+            // A GPU input carries its process identity but not its runtime state.
+            if (!runtimeFacts.TryGetValue(new HostManagerComputeProcessIdentity(processId, gpu.ProcessStartKey), out var runtime))
+            {
+                throw new InvalidOperationException("Native compute scoring named a GPU row without runtime state.");
+            }
+            return new HostManagerComputeScore(kind, roundNumber, gpu.TargetKey, gpu.SoftwareKey, processId,
+                gpu.ProcessStartKey, gpu.AdapterKey, row.Score, 1, runtime.RuntimeState);
         }
 
-        return new HostManagerComputeScore(
-            row.Kind,
-            row.RoundNumber,
-            row.TargetKey,
-            row.SoftwareKey,
-            checked((int)row.ProcessId),
-            row.ProcessStartKey,
-            row.AdapterKey,
-            row.Score,
-            row.MemberCount,
-            row.RuntimeState);
+        ref readonly var process = ref processes[(int)row.InputIndex];
+        return processOutput
+            ? new HostManagerComputeScore(kind, roundNumber, process.TargetKey, process.SoftwareKey,
+                checked((int)process.ProcessId), process.ProcessStartKey, 0, row.Score, 1, process.RuntimeState)
+            : new HostManagerComputeScore(kind, roundNumber, 0, process.SoftwareKey, 0, 0, 0,
+                row.Score, row.MemberCount, NativeComputeScoringRuntimeState.Unknown);
     }
 }

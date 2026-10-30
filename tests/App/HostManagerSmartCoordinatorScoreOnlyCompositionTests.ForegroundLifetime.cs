@@ -150,41 +150,18 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ForegroundLifetimeCloseInUseRetainsScoringOwnerUntilExplicitRetry(bool directDispose)
+    public async Task ForegroundCloseHasNoScoringRegionToWaitOnBetweenRounds(bool directDispose)
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
             processFactsSnapshot: CreateCompleteProcessFacts(4242, 100, "software:scoring-close", 20, 50, 25));
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-        var workspace = Assert.IsType<HostManagerComputeScoringWorkspace>(
+        Assert.IsType<HostManagerComputeScoringWorkspace>(
             ReadPrivateField<object>(fixture.Coordinator, "computeScoringWorkspace"));
-        var scratch = (ResourceManager.App.Infrastructure.Adaptation.IComputeScratch)workspace.GetType()
-            .GetField("scratch", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(workspace)!;
-        using var lease = scratch.Acquire();
-        try
-        {
-            var failure = await Assert.ThrowsAnyAsync<Exception>(() => directDispose
-                ? Task.Run(fixture.Coordinator.Dispose)
-                : fixture.Coordinator.StopAsync(CancellationToken.None));
-            Assert.Contains("InUse", failure.ToString());
-            Assert.Same(workspace,
-                ReadPrivateField<object>(fixture.Coordinator, "computeScoringWorkspace"));
-            Assert.Equal(HostManagerSmartCoordinatorLifecycleState.Closing,
-                fixture.Coordinator.LifecycleState);
-            Assert.Equal(0, ReadPrivateValue<int>(fixture.Coordinator, "baseDisposeStarted"));
-            Assert.NotEmpty(lease.GetMemoryChunk(0, 1).ToArray());
-            await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-                fixture.Coordinator.RunOnceAsync(CancellationToken.None));
-        }
-        finally
-        {
-            lease.Dispose();
-        }
-
-        await fixture.Coordinator.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        // Scoring returned its region when the round ended, so the first close completes.
+        if (directDispose) await Task.Run(fixture.Coordinator.Dispose).WaitAsync(TimeSpan.FromSeconds(10));
+        else await fixture.Coordinator.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(HostManagerSmartCoordinatorLifecycleState.Closed, fixture.Coordinator.LifecycleState);
         AssertOwnedResourcesCleared(fixture.Coordinator);
-        await fixture.Coordinator.StopAsync(CancellationToken.None);
-        fixture.Coordinator.Dispose();
         fixture.Coordinator.Dispose();
     }
 
@@ -242,15 +219,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             => area.Length >= ledger.NativePageSize ? area.Length : 0;
         var smartBytes = Registered(scratch);
         var before = ledger.ReadTable().RegisteredBytes;
-        var scoring = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
-            ReadPrivateReference(ReadPrivateReference(fixture.Coordinator, "computeScoringWorkspace")!, "scratch"));
         var ownership = Assert.IsType<ResourceManager.App.Infrastructure.NativeCore.NativeAppliedOwnershipOwner>(
             ReadPrivateReference(fixture.NativeTransactions.AppliedOwnership, "owner"));
-        var ownershipScratch = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
-            ReadPrivateReference(ReadPrivateReference(ownership, "workspace")!, "scratch"));
-        var ownershipBytes = Registered(ownershipScratch);
         var journalBytes = Registered(JournalWorkspaceScratch(fixture));
-        Assert.Equal(Registered(scoring) + smartBytes + ownershipBytes + journalBytes, before);
+        // Scoring and ownership hold no region between rounds or operations.
+        Assert.Equal(smartBytes + journalBytes, before);
         Assert.NotEqual(0UL, use.AllocationNumber);
         var probe = new SmartReplacementCountProbe();
         fixture.Coordinator.TransitionProbe = probe;
@@ -298,11 +271,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(1, probe.Creates);
         var nextScratch = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
             ReadPrivateReference(current!, "scratch"));
-        var nextScoring = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
-            ReadPrivateReference(ReadPrivateReference(fixture.Coordinator, "computeScoringWorkspace")!, "scratch"));
-        Assert.Equal(Registered(nextScoring) + Registered(nextScratch) + ownershipBytes + journalBytes, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(Registered(nextScratch) + journalBytes, ledger.ReadTable().RegisteredBytes);
         await fixture.Coordinator.StopAsync(CancellationToken.None);
-        Assert.Equal(ownershipBytes + journalBytes, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(journalBytes, ledger.ReadTable().RegisteredBytes);
         Assert.Equal(ResourceManager.App.Infrastructure.NativeCore.NativeAppliedOwnershipOwnerState.Ready, ownership.State);
         await fixture.NativeTransactions.DisposeAsync();
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);

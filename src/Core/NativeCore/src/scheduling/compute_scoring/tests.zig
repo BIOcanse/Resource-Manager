@@ -65,8 +65,7 @@ test "each software receives one full welfare independent of software and member
             &snapshot,
         ));
         var software_count: usize = 0;
-        for (outputs[0..snapshot.output_count]) |row| {
-            if (row.kind != @intFromEnum(protocol.OutputKind.software_cpu)) continue;
+        for (outputSection(&outputs, &snapshot, .software_cpu)) |row| {
             try std.testing.expectEqual(@as(f64, 60), row.score);
             software_count += 1;
         }
@@ -102,12 +101,10 @@ test "software memory score uses CPU raw sum and only memory welfare" {
             &snapshot,
         ));
         try std.testing.expectEqual(@as(u32, 1), snapshot.software_memory_output_count);
-        for (outputs[0..snapshot.output_count]) |row| {
-            if (row.kind == @intFromEnum(protocol.OutputKind.software_memory))
-                try std.testing.expectApproxEqAbs(@as(f64, 120), row.score, 1e-10);
-            if (row.kind == @intFromEnum(protocol.OutputKind.software_cpu))
-                try std.testing.expectApproxEqAbs(if (generation == 1) @as(f64, 99) else 60, row.score, 1e-10);
-        }
+        for (outputSection(&outputs, &snapshot, .software_memory)) |row|
+            try std.testing.expectApproxEqAbs(@as(f64, 120), row.score, 1e-10);
+        for (outputSection(&outputs, &snapshot, .software_cpu)) |row|
+            try std.testing.expectApproxEqAbs(if (generation == 1) @as(f64, 99) else 60, row.score, 1e-10);
     }
 }
 
@@ -216,6 +213,62 @@ test "baseline normalization is identical for every software and preserves membe
     try std.testing.expectEqual(@as(u32, 1), outputs[4].member_count);
 }
 
+test "narrow output rows name their input rows section by section" {
+    try std.testing.expectEqual(@as(usize, 16), @sizeOf(protocol.ScoreOutput));
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    // Input order differs from identity and aggregate order, so input_index is never the emit position.
+    var processes = [_]protocol.ProcessInput{
+        processRow(0, 30, 300, 2, 80, 1, 10),
+        processRow(1, 10, 100, 1, 80, 1, 20),
+        processRow(2, 20, 200, 1, 80, 1, 30),
+    };
+    var gpus = [_]protocol.GpuInput{
+        gpuRow(processes[2], 22, 0, 40),
+        gpuRow(processes[1], 11, 1, 25),
+        gpuRow(processes[2], 11, 2, 35),
+    };
+    var envelope = testEnvelope(1, processes.len, gpus.len, 2, protocol.EnvelopeFlags.cpu_snapshot_complete | protocol.EnvelopeFlags.gpu_snapshot_complete);
+    var outputs: [16]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    // Each expected row is { input_index, member_count }.
+    const expected = [_]struct { section: OutputSection, rows: []const [2]u32 }{
+        // Process rows follow identity order (process id, start key, adapter key) and name themselves.
+        .{ .section = .process_cpu, .rows = &.{ .{ 1, 1 }, .{ 2, 1 }, .{ 0, 1 } } },
+        // Software rows follow aggregate order and name their first counted member.
+        .{ .section = .software_cpu, .rows = &.{ .{ 1, 2 }, .{ 0, 1 } } },
+        .{ .section = .process_gpu, .rows = &.{ .{ 1, 1 }, .{ 2, 1 }, .{ 0, 1 } } },
+        .{ .section = .software_gpu, .rows = &.{ .{ 1, 2 }, .{ 0, 1 } } },
+        .{ .section = .software_memory, .rows = &.{ .{ 1, 2 }, .{ 0, 1 } } },
+    };
+    var total: usize = 0;
+    for (expected) |entry| {
+        const rows = outputSection(&outputs, &snapshot, entry.section);
+        try std.testing.expectEqual(entry.rows.len, rows.len);
+        for (rows, entry.rows) |row, want| {
+            try std.testing.expectEqual(want[0], row.input_index);
+            try std.testing.expectEqual(want[1], row.member_count);
+        }
+        total += rows.len;
+    }
+    try std.testing.expectEqual(@as(usize, snapshot.output_count), total);
+    try std.testing.expectEqual(@as(u64, 11), gpus[outputSection(&outputs, &snapshot, .software_gpu)[0].input_index].adapter_key);
+    try std.testing.expectEqual(@as(u64, 2), processes[outputSection(&outputs, &snapshot, .software_cpu)[1].input_index].software_key);
+}
+
 test "configuration output capacity covers every process and software score" {
     var config = testConfig();
     const required_output_count = 3 * config.maximum_process_count + 2 * config.maximum_gpu_row_count;
@@ -304,9 +357,9 @@ test "per adapter GPU scores are isolated and aggregate by stable adapter key" {
     try std.testing.expectEqual(@as(u32, 2), snapshot.software_gpu_output_count);
     const software_gpu_start = snapshot.process_cpu_output_count + snapshot.software_cpu_output_count +
         snapshot.process_gpu_output_count;
-    try std.testing.expectEqual(@as(u64, 11), outputs[software_gpu_start].adapter_key);
+    try std.testing.expectEqual(@as(u64, 11), gpus[outputs[software_gpu_start].input_index].adapter_key);
     try std.testing.expectEqual(@as(f64, 40), outputs[software_gpu_start].score);
-    try std.testing.expectEqual(@as(u64, 22), outputs[software_gpu_start + 1].adapter_key);
+    try std.testing.expectEqual(@as(u64, 22), gpus[outputs[software_gpu_start + 1].input_index].adapter_key);
     try std.testing.expectEqual(@as(f64, 40), outputs[software_gpu_start + 1].score);
 }
 
@@ -568,10 +621,29 @@ fn runCpuSoftwareScore(
         outputs.len,
         &snapshot,
     ));
-    for (outputs[0..snapshot.output_count]) |row| {
-        if (row.kind == @intFromEnum(protocol.OutputKind.software_cpu)) return row.score;
-    }
-    return error.MissingSoftwareCpuScore;
+    const software = outputSection(&outputs, &snapshot, .software_cpu);
+    if (software.len == 0) return error.MissingSoftwareCpuScore;
+    return software[0].score;
+}
+
+const OutputSection = enum { process_cpu, software_cpu, process_gpu, software_gpu, software_memory };
+
+// Reads one output section the way the managed caller does: by the snapshot counts, in protocol order.
+fn outputSection(
+    outputs: []const protocol.ScoreOutput,
+    snapshot: *const protocol.Snapshot,
+    section: OutputSection,
+) []const protocol.ScoreOutput {
+    const counts = [_]u32{
+        snapshot.process_cpu_output_count,
+        snapshot.software_cpu_output_count,
+        snapshot.process_gpu_output_count,
+        snapshot.software_gpu_output_count,
+        snapshot.software_memory_output_count,
+    };
+    var start: usize = 0;
+    for (counts[0..@intFromEnum(section)]) |count| start += count;
+    return outputs[start..][0..counts[@intFromEnum(section)]];
 }
 
 fn testConfig() protocol.Config {
@@ -700,7 +772,7 @@ test "scratch capacity is actual typed extent with unchanged ABI offsets" {
     const session = try session_module.Session.create(&config, &.{1});
     defer session.destroy();
     const actual = session.capacity();
-    try std.testing.expectEqual(@as(u32, 0x00070000), actual.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x00080000), actual.abi_version);
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.Capacity));
     try std.testing.expectEqual(@as(usize, 40), @offsetOf(protocol.Capacity, "scratch_byte_count"));
     try std.testing.expectEqual(@as(usize, 48), @offsetOf(protocol.Capacity, "scratch_alignment"));
@@ -860,15 +932,14 @@ test "bad CPU runtime and GPU facts exclude only their process domain" {
     try std.testing.expectEqual(@as(u32, 1), snapshot.process_cpu_output_count);
     try std.testing.expectEqual(@as(u32, 1), snapshot.process_gpu_output_count);
     try std.testing.expect(snapshot.invalid_fact_count >= 3);
-    for (outputs[0..snapshot.output_count]) |row| {
-        if (row.kind == @intFromEnum(protocol.OutputKind.process_cpu))
-            try std.testing.expectEqual(@as(u32, 30), row.process_id);
-        if (row.kind == @intFromEnum(protocol.OutputKind.process_gpu))
-            try std.testing.expectEqual(@as(u32, 10), row.process_id);
-        if (row.kind == @intFromEnum(protocol.OutputKind.software_cpu) or
-            row.kind == @intFromEnum(protocol.OutputKind.software_gpu))
-            try std.testing.expectEqual(@as(u32, 1), row.member_count);
-    }
+    for (outputSection(&outputs, &snapshot, .process_cpu)) |row|
+        try std.testing.expectEqual(@as(u32, 30), processes[row.input_index].process_id);
+    for (outputSection(&outputs, &snapshot, .process_gpu)) |row|
+        try std.testing.expectEqual(@as(u32, 10), gpus[row.input_index].process_id);
+    for (outputSection(&outputs, &snapshot, .software_cpu)) |row|
+        try std.testing.expectEqual(@as(u32, 1), row.member_count);
+    for (outputSection(&outputs, &snapshot, .software_gpu)) |row|
+        try std.testing.expectEqual(@as(u32, 1), row.member_count);
     processes[0].struct_size = 0;
     try std.testing.expectEqual(protocol.Status.abi_mismatch, scoreWithScratchFixture(
         session,
@@ -925,9 +996,7 @@ test "malformed fact flags masks and reserved bytes preserve sibling scoring" {
         try std.testing.expect(snapshot.invalid_fact_count > 0);
         try std.testing.expectEqual(if (kind < 4) @as(u32, 1) else 2, snapshot.process_cpu_output_count);
         try std.testing.expectEqual(@as(u32, 1), snapshot.process_gpu_output_count);
-        for (outputs[0..snapshot.output_count]) |row| {
-            if (row.kind == @intFromEnum(protocol.OutputKind.process_gpu))
-                try std.testing.expectEqual(@as(u32, 20), row.process_id);
-        }
+        for (outputSection(&outputs, &snapshot, .process_gpu)) |row|
+            try std.testing.expectEqual(@as(u32, 20), gpus[row.input_index].process_id);
     }
 }

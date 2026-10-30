@@ -174,11 +174,7 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         try
         {
             EnsureReady();
-            workspace.Ensure(session);
-            using var operation = workspace.Acquire();
-            var snapshot = operation.ReadSnapshot(session);
-            operation.Complete();
-            return snapshot;
+            return workspace.ReadSnapshot(session);
         }
         finally
         {
@@ -232,8 +228,7 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         try
         {
             EnsureReady();
-            workspace.Ensure(session, maximumAdditions);
-            using var operation = workspace.Acquire();
+            using var operation = workspace.BeginMutation(session, maximumAdditions);
             var status = mutation(session, in input);
             if (status != NativeAppliedOwnershipStatus.Ok)
             {

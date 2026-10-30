@@ -67,34 +67,37 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
-    public void RealScratchReallocatesAndRecomputesTheSameRoundWithoutChangingReturnedScores()
+    public void RealRoundRegionIsReturnedWhenTheRoundEndsAndTheSameRoundRecomputesTheSameScores()
     {
         using var owner = new ResourceManagerLedgerOwner();
-        ResourceManagerLedgerOwner.ComputeScratch? resource = null;
+        var resources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)),
-            length => resource = owner.CreateScratch(length));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), length =>
+            {
+                var next = owner.CreateScratch(length);
+                resources.Add(next);
+                return next;
+            });
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes); // Constructor is lazy.
         var inventory = CreateInventory();
         var facts = CreateLedgerSizedFacts(inventory);
         var runtime = LedgerRuntimeFacts(facts);
         var first = workspace.Score(1, facts, inventory, runtime, null);
         var saved = first!.Cpu!.Scores.ToArray();
-        Assert.NotNull(resource);
-        var uid = resource.Uid;
-        ulong allocation;
-        using (var lease = resource.Acquire()) allocation = lease.AllocationNumber;
-        Assert.NotEqual(0UL, allocation);
-        Assert.Equal(resource.Length, owner.ReadTable().RegisteredBytes);
-        owner.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, owner.Tick().Released);
+        var round = Assert.Single(resources);
+        Assert.True(round.Length >= owner.NativePageSize); // A registered ledger region while the round ran.
+        // The lease ended and the region closed with the round, so the ledger has nothing to reclaim.
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+        Assert.Throws<ObjectDisposedException>(() => round.Acquire());
+        owner.SetMode(LedgerTableMode.Optimize);
+        Assert.Equal(0UL, owner.Tick().Released);
         Assert.Equal<ResourceManager.App.Infrastructure.Optimization.HostManagerComputeScore>(saved, first.Cpu.Scores);
         var second = workspace.Score(1, facts, inventory, runtime, null);
         Assert.Equal(1UL, second!.RoundNumber);
-        Assert.Equal(uid, resource.Uid);
-        using (var lease = resource.Acquire()) Assert.NotEqual(allocation, lease.AllocationNumber);
+        Assert.Equal(2, resources.Count);
+        Assert.Throws<ObjectDisposedException>(() => resources[1].Acquire());
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         Assert.Equal(first.Cpu.Scores.Select(value => value.Score), second!.Cpu!.Scores.Select(value => value.Score));
     }
 
@@ -116,11 +119,15 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     [Fact]
     public void PoisonedBorrowIsReturnedOnFailureAndBothDomainsRebuildTheirLivePrefixes()
     {
-        PoisonedScratch? resource = null;
+        var resources = new List<PoisonedScratch>();
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)),
-            length => resource = new PoisonedScratch(length));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), length =>
+            {
+                var resource = new PoisonedScratch(length);
+                resources.Add(resource);
+                return resource;
+            });
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, 10);
         var first = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency());
@@ -140,8 +147,13 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         Assert.DoesNotContain(smaller.Gpu!.Scores, value => value.ProcessId == 20);
         Assert.Throws<ArgumentOutOfRangeException>(() => workspace.Score(0, facts, inventory,
             CreateRuntimeFacts(), CreateCpuResidency()));
-        Assert.Equal(4, resource!.Acquires);
-        Assert.Equal(resource.Acquires, resource.Returns);
+        // The rejected round opens nothing; each scored round borrowed once, returned and closed its own scratch.
+        Assert.Equal(4, resources.Count);
+        Assert.All(resources, static resource =>
+        {
+            Assert.Equal((1, 1), (resource.Acquires, resource.Returns));
+            Assert.True(resource.Disposed);
+        });
     }
 
     [Fact]
@@ -178,7 +190,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
-    public void SmallEnvelopeGrowsOneSlotOnlyAfterThePreviousScratchIsClosed()
+    public void EachRoundSizesItsOwnScratchAndReturnsItBeforeTheNextRoundOpensOne()
     {
         var resources = new List<PoisonedScratch>();
         var configuration = CreateConfiguration();
@@ -198,14 +210,18 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         var first = workspace.Score(1, small, inventory, runtime, CreateCpuResidency());
         Assert.NotNull(first?.Cpu);
         var original = Assert.Single(resources);
-        Assert.True(original.Length < 4096);
+        Assert.True(original.Disposed);
         workspace.Score(2, full, inventory, CreateRuntimeFacts(), CreateCpuResidency());
         Assert.Equal(2, resources.Count);
         Assert.True(resources[1].Length > original.Length);
-        Assert.True(original.Disposed);
+        // A smaller round after a larger one sizes for its own rows; no earlier round's size is kept.
         workspace.Score(3, small, inventory, runtime, CreateCpuResidency());
-        Assert.Equal(2, resources.Count);
-        Assert.Equal(1, original.Acquires);
-        Assert.Equal(2, resources[1].Acquires);
+        Assert.Equal(3, resources.Count);
+        Assert.Equal(original.Length, resources[2].Length);
+        Assert.All(resources, static resource =>
+        {
+            Assert.Equal((1, 1), (resource.Acquires, resource.Returns));
+            Assert.True(resource.Disposed);
+        });
     }
 }

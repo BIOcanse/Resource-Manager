@@ -261,23 +261,20 @@ public sealed class NativeAppliedOwnershipOwnerTests
             new NativeAppliedOwnershipFileStore(Path.Combine(directory.Path, "ownership.bin")),
             new NativeAppliedOwnershipSessionFactory(), create, open,
             length => resource = ledger.CreateScratch(length), CancellationToken.None);
-        Assert.NotNull(resource);
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes); // Startup's one-use image is ordinary.
+        Assert.Null(resource); // Startup's one-use image is ordinary; the owner holds no region.
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
         var first = await owner.ReadSnapshotAsync(CancellationToken.None);
         Assert.Empty(first.Records);
-        Assert.Equal(128UL, resource!.Length);
+        Assert.Null(resource); // A snapshot is copied straight into the reader's array.
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
-        var uid = resource.Uid;
-        ulong allocation;
-        using (var lease = resource.Acquire()) allocation = lease.AllocationNumber;
         ledger.SetMode(LedgerTableMode.Optimize);
         Assert.Equal(0UL, ledger.Tick().Released);
         var second = await owner.ReadSnapshotAsync(CancellationToken.None);
         Assert.Equal(first.Header.LedgerInstanceLow, second.Header.LedgerInstanceLow);
         Assert.Equal(first.Header.LedgerRevision, second.Header.LedgerRevision);
-        Assert.Equal(uid, resource.Uid);
-        using (var lease = resource.Acquire()) Assert.Equal(allocation, lease.AllocationNumber);
+        Assert.Null(resource);
         Assert.Empty(first.Records);
+        Assert.Empty(second.Records);
 
         var encodedPath = Path.Combine(directory.Path, "native-encode", "ownership.bin");
         var encodedStore = new NativeAppliedOwnershipFileStore(encodedPath);
@@ -286,21 +283,24 @@ public sealed class NativeAppliedOwnershipOwnerTests
         ResourceManagerLedgerOwner.ComputeScratch? encodedResource = null;
         using var encodedWorkspace = new NativeAppliedOwnershipWorkspace(encoder.Capacity,
             length => encodedResource = ledger.CreateScratch(length));
-        using (var operation = encodedWorkspace.Acquire())
+        byte[] encodedImage;
+        using (var operation = encodedWorkspace.BeginMutation(encoder, 0))
         {
+            Assert.Equal(128UL, encodedResource!.Length); // An empty ledger encodes into a header-only region.
             await encodedStore.PersistAsync(encoder, operation.Image, CancellationToken.None);
+            encodedImage = operation.Image.ToArray();
             operation.Complete();
         }
         var actualFile = await File.ReadAllBytesAsync(encodedPath);
-        using var regionReader = encodedResource!.Acquire();
-        var imageOffset = 0UL;
-        Assert.Equal(actualFile, regionReader.GetMemoryChunk(imageOffset, actualFile.Length).ToArray());
+        Assert.Equal(actualFile, encodedImage[..actualFile.Length]);
+        Assert.Equal(0UL, encodedWorkspace.Length);
+        Assert.Throws<ObjectDisposedException>(() => encodedResource!.Acquire()); // Closed with its operation.
     }
 
     [Theory]
     [InlineData(16U)]
     [InlineData(8192U)]
-    public void ActualRowsSizeTheSnapshotAndImageAndGrowthClosesTheOldUid(uint capacity)
+    public void ActualRowsSizeEachMutationImageAndNothingIsHeldBetweenOperations(uint capacity)
     {
         using var ledger = new ResourceManagerLedgerOwner();
         using var session = new FakeSession(CreateImage(0x51))
@@ -313,42 +313,41 @@ public sealed class NativeAppliedOwnershipOwnerTests
             },
             SnapshotRecords = [new NativeAppliedOwnershipRecord { RecordRevision = 71 }]
         };
-        ResourceManagerLedgerOwner.ComputeScratch? resource = null;
-        using var workspace = new NativeAppliedOwnershipWorkspace(session.Capacity,
-            bytes => resource = ledger.CreateScratch(bytes));
-        var emptyRegion = resource!;
-        workspace.Ensure(session);
-        Assert.Equal(768UL, workspace.Length); // One snapshot record and its encoded image.
-        Assert.NotEqual(emptyRegion.Uid, resource!.Uid);
-        Assert.Throws<ObjectDisposedException>(() => emptyRegion.Acquire());
-        session.SnapshotRecords = Enumerable.Range(71, 7)
+        var regions = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+        using var workspace = new NativeAppliedOwnershipWorkspace(session.Capacity, bytes =>
+        {
+            var region = ledger.CreateScratch(bytes);
+            regions.Add(region);
+            return region;
+        });
+        Assert.Empty(regions); // The configured capacity sizes nothing.
+        var first = workspace.ReadSnapshot(session);
+        Assert.Equal(71UL, Assert.Single(first.Records).RecordRevision);
+        Assert.Empty(regions); // Native records are the only stored copy; a read builds the reader's array.
+        using (var operation = workspace.BeginMutation(session, 1))
+        {
+            Assert.Equal(768, operation.Image.Length); // Header, one record and one addition.
+            Assert.Equal(768UL, workspace.Length);
+            operation.Complete();
+        }
+        Assert.Equal(0UL, workspace.Length);
+        session.SnapshotRecords = Enumerable.Range(71, 13)
             .Select(revision => new NativeAppliedOwnershipRecord { RecordRevision = (ulong)revision }).ToArray();
-        workspace.Ensure(session);
-        Assert.Equal(4608UL, resource.Length);
-        var uid = resource.Uid;
-        NativeAppliedOwnershipSnapshot first;
-        using (var operation = workspace.Acquire())
+        using (var operation = workspace.BeginMutation(session, 0))
         {
-            first = operation.ReadSnapshot(session);
-            Assert.Equal(7, first.Records.Count);
-            Assert.Equal(71UL, first.Records[0].RecordRevision);
+            Assert.Equal(4288, operation.Image.Length); // Thirteen records cross a page, so this region is in Ledger.
+            Assert.NotEqual(0UL, ledger.ReadTable().RegisteredBytes);
             operation.Complete();
         }
-        ulong allocation;
-        using (var lease = resource.Acquire()) allocation = lease.AllocationNumber;
-        ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(2, regions.Count);
+        Assert.All(regions, region => Assert.Throws<ObjectDisposedException>(() => region.Acquire()));
         session.SnapshotRecords[0].RecordRevision = 73;
-        workspace.Ensure(session);
-        using (var operation = workspace.Acquire())
-        {
-            Assert.Equal(73UL, operation.ReadSnapshot(session).Records[0].RecordRevision);
-            Assert.Equal(7, first.Records.Count);
-            Assert.Equal(71UL, first.Records[0].RecordRevision);
-            operation.Complete();
-        }
-        Assert.Equal(uid, resource.Uid);
-        using (var lease = resource.Acquire()) Assert.NotEqual(allocation, lease.AllocationNumber);
+        var second = workspace.ReadSnapshot(session);
+        Assert.Equal(13, second.Records.Count);
+        Assert.Equal(73UL, second.Records[0].RecordRevision);
+        Assert.Equal(71UL, Assert.Single(first.Records).RecordRevision);
+        Assert.Equal(2, regions.Count);
     }
 
     [Fact]
@@ -363,8 +362,12 @@ public sealed class NativeAppliedOwnershipOwnerTests
             LargeConfiguration(), LargeOpenConfiguration(), length => resource = ledger.CreateScratch(length), CancellationToken.None);
         try
         {
-            await owner.ReadSnapshotAsync(CancellationToken.None);
-            using (var held = resource!.Acquire())
+            // Reads hold no region, so the refused close is reached through a mutation's image region.
+            ComputeScratchLease? foreign = null;
+            session.OnMutation = () => foreign = resource!.Acquire();
+            var refused = await Assert.ThrowsAsync<LedgerException>(() => owner.PromoteAsync(default, CancellationToken.None));
+            Assert.Equal(LedgerStatus.InUse, refused.Status);
+            using (var held = foreign!)
             {
                 var failure = await Assert.ThrowsAsync<LedgerException>(() => owner.DisposeAsync().AsTask());
                 Assert.Equal(LedgerStatus.InUse, failure.Status);
@@ -387,19 +390,21 @@ public sealed class NativeAppliedOwnershipOwnerTests
         using var directory = new TemporaryDirectory();
         using var ledger = new ResourceManagerLedgerOwner();
         RefusingAcquire? resource = null;
+        var refuse = true; // Each mutation creates its own region, so the refusal is chosen per creation.
         var session = LargeSession(0x71);
         var path = Path.Combine(directory.Path, "ownership.bin");
         await using var owner = await NativeAppliedOwnershipOwner.OpenOrCreateAsync(
             new NativeAppliedOwnershipFileStore(path), new FakeFactory(session),
             LargeConfiguration(), LargeOpenConfiguration(),
-            length => resource = new RefusingAcquire(ledger.CreateScratch(length)), CancellationToken.None);
+            length => resource = new RefusingAcquire(ledger.CreateScratch(length)) { Refuse = refuse }, CancellationToken.None);
         session.NextMutationImage = CreateImage(0x72);
         await Assert.ThrowsAsync<IOException>(() => owner.PromoteAsync(default, CancellationToken.None));
         Assert.NotNull(session.NextMutationImage);
         Assert.Equal(NativeAppliedOwnershipOwnerState.Ready, owner.State);
         Assert.Null(owner.PersistenceFailure);
         Assert.Equal(CreateImage(0x71), await File.ReadAllBytesAsync(path));
-        resource!.Refuse = false;
+        Assert.NotNull(resource);
+        refuse = false;
         Assert.Equal(NativeAppliedOwnershipStatus.Ok, await owner.PromoteAsync(default, CancellationToken.None));
         Assert.Equal(CreateImage(0x72), await File.ReadAllBytesAsync(path));
     }
@@ -459,7 +464,8 @@ public sealed class NativeAppliedOwnershipOwnerTests
             length => resource = new RefusingEnd(ledger.CreateScratch(length)), CancellationToken.None);
         try
         {
-            await Assert.ThrowsAsync<IOException>(() => owner.ReadSnapshotAsync(CancellationToken.None));
+            // Reads hold no region; a mutation's image lease is the use whose end fails.
+            await Assert.ThrowsAsync<IOException>(() => owner.PromoteAsync(default, CancellationToken.None));
             Assert.Equal(1, resource!.EndAttempts);
             await Assert.ThrowsAsync<InvalidOperationException>(() => owner.ReadSnapshotAsync(CancellationToken.None));
             Assert.Equal(1, resource.EndAttempts); // No silent retry at another operation's entry.
@@ -499,8 +505,11 @@ public sealed class NativeAppliedOwnershipOwnerTests
             new HostManagerTransactionJournalDeploymentRuntime(provider, deployment), applied, retirements, ledger.CreateScratch);
         try
         {
-            await owner.ReadSnapshotAsync(CancellationToken.None);
-            using (var held = resource!.Acquire())
+            // Reads hold no region, so the refused close is reached through a mutation's image region.
+            ComputeScratchLease? foreign = null;
+            session.OnMutation = () => foreign = resource!.Acquire();
+            await Assert.ThrowsAsync<LedgerException>(() => owner.PromoteAsync(default, CancellationToken.None));
+            using (var held = foreign!)
             {
                 await Assert.ThrowsAsync<InvalidOperationException>(() => host.DisposeAsync().AsTask());
                 Assert.Equal(NativeAppliedOwnershipOwnerState.Disposing, owner.State);
@@ -517,6 +526,81 @@ public sealed class NativeAppliedOwnershipOwnerTests
         }
         finally { await host.DisposeAsync(); }
     }
+
+    [Fact]
+    public async Task RealNativeRecordsAreTheOnlyStoredCopyAndRestartRestoresThemUnchanged()
+    {
+        using var directory = new TemporaryDirectory();
+        using var ledger = new ResourceManagerLedgerOwner();
+        var path = Path.Combine(directory.Path, "ownership.bin");
+        var create = LargeConfiguration();
+        create.MaximumImageBytes = 16384;
+        create.MaximumResidentBytes = 65536;
+        var open = LargeOpenConfiguration();
+        open.MaximumImageBytes = create.MaximumImageBytes;
+        open.MaximumResidentBytes = create.MaximumResidentBytes;
+        var regions = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+        IComputeScratch CreateRegion(ulong length)
+        {
+            var region = ledger.CreateScratch(length);
+            regions.Add(region);
+            return region;
+        }
+
+        NativeAppliedOwnershipSnapshot before;
+        await using (var owner = await NativeAppliedOwnershipOwner.OpenOrCreateAsync(
+            new NativeAppliedOwnershipFileStore(path), new NativeAppliedOwnershipSessionFactory(),
+            create, open, CreateRegion, CancellationToken.None))
+        {
+            for (uint id = 1; id <= 13; id++)
+                Assert.Equal(NativeAppliedOwnershipStatus.Ok, await owner.PromoteAsync(RealPromote(id), CancellationToken.None));
+            before = await owner.ReadSnapshotAsync(CancellationToken.None);
+            Assert.Equal(Enumerable.Range(1, 13).Select(id => (ulong)id),
+                before.Records.Select(record => record.Primary.TargetId).Order());
+            // One image region per mutation, sized for that mutation's rows and closed with it.
+            Assert.Equal(Enumerable.Range(1, 13).Select(rows => (ulong)NativeAppliedOwnershipWorkspace.ImageLengthForRows((uint)rows)),
+                regions.Select(region => region.Length));
+            Assert.All(regions, region => Assert.Throws<ObjectDisposedException>(() => region.Acquire()));
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+        }
+
+        var persisted = await File.ReadAllBytesAsync(path);
+        Assert.Equal(NativeAppliedOwnershipWorkspace.ImageLengthForRows(13), persisted.Length);
+        await using var restarted = await NativeAppliedOwnershipOwner.OpenOrCreateAsync(
+            new NativeAppliedOwnershipFileStore(path), new NativeAppliedOwnershipSessionFactory(),
+            create, open, CreateRegion, CancellationToken.None);
+        var after = await restarted.ReadSnapshotAsync(CancellationToken.None);
+        Assert.Equal(before.Header.LedgerRevision, after.Header.LedgerRevision);
+        Assert.Equal(before.Header.LedgerInstanceLow, after.Header.LedgerInstanceLow);
+        Assert.Equal(before.Header.EntryCount, after.Header.EntryCount);
+        Assert.Equal(RecordBytes(before), RecordBytes(after));
+        Assert.Equal(persisted, await File.ReadAllBytesAsync(path)); // Restore reads; it does not rewrite.
+        Assert.Equal(13, regions.Count); // Restore and reads create no region.
+
+        static byte[] RecordBytes(NativeAppliedOwnershipSnapshot snapshot)
+            => System.Runtime.InteropServices.MemoryMarshal.AsBytes(snapshot.Records.ToArray().AsSpan()).ToArray();
+    }
+
+    private static NativeAppliedOwnershipPromoteInput RealPromote(uint id) => new()
+    {
+        AbiVersion = NativeAppliedOwnershipAbi.Version, StructSize = NativeAppliedOwnershipAbi.PromoteInputSize,
+        ExpectedLedgerRevision = id,
+        Primary = new() { Scope = 1, TargetId = id, SoftwareId = id, ProcessStartKey = id, ProcessId = id },
+        OriginalBinding = new()
+        {
+            JournalInstanceLow = 11, JournalInstanceHigh = 12,
+            ActionIdentity = new()
+            {
+                ConfigurationGeneration = 1, PlanEpoch = 2, ActionId = id, HostSessionIncarnation = 4,
+                TargetId = id, SoftwareId = id, ProcessStartKey = id, ProcessId = id
+            },
+            Scope = 1, Disposition = 1, DomainMask = 1, GradeValidMask = 1,
+            ProcessFromGrade = 0, ProcessToGrade = -1, MaximumRecoveryAttempts = 3,
+            RecoveryDeadlineUtcMilliseconds = 11000
+        },
+        Payload = new() { Slot = id, Generation = 1, Length = 512, DigestLow = 1, DigestHigh = 2 },
+        CurrentGrades = new() { ValidMask = 1, ProcessGrade = -1 }, PromotedAtUtcMilliseconds = 1000
+    };
 
     private sealed class RefusingEnd(IComputeScratch inner) : IComputeScratch
     {
@@ -776,9 +860,13 @@ public sealed class NativeAppliedOwnershipOwnerTests
             DisposeCount++;
         }
 
+        // Runs inside the owner's mutation, while that mutation's image region is leased.
+        public Action? OnMutation { get; set; }
+
         private NativeAppliedOwnershipStatus ApplyMutation(
             NativeAppliedOwnershipStatus status)
         {
+            OnMutation?.Invoke();
             if (status == NativeAppliedOwnershipStatus.Ok && NextMutationImage is not null)
             {
                 image = NextMutationImage.ToArray();

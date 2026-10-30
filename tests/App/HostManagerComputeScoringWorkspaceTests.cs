@@ -92,6 +92,62 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
+    public void Score_NarrowNativeRowsGiveConsumersTheIdentityAndScoresOfTheRowsTheyName()
+    {
+        var configuration = CreateConfiguration(cpuBaselineRatio: 0.5);
+        using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
+        var inventory = CreateInventory();
+
+        var result = workspace.Score(
+            1,
+            CreateFacts(inventory, firstMemoryPercent: 10),
+            inventory,
+            CreateRuntimeFacts(), CreateCpuResidency());
+
+        Assert.NotNull(result?.Cpu);
+        Assert.NotNull(result!.Gpu);
+        Assert.NotNull(result.Memory);
+        var rows = result.Cpu!.Scores.Concat(result.Gpu!.Scores).Concat(result.Memory!.Scores).ToArray();
+        Assert.NotEqual(0UL, Assert.Single(rows.Select(static row => row.SoftwareKey).Distinct()));
+        Assert.All(rows, static row => Assert.Equal(1UL, row.RoundNumber));
+        // A process row carries the identity and runtime state of the process input it names.
+        var processRows = rows.Where(static row => row.Kind is NativeComputeScoringOutputKind.ProcessCpu
+            or NativeComputeScoringOutputKind.ProcessGpu).ToArray();
+        Assert.All(processRows, static row =>
+        {
+            Assert.Contains(row.ProcessId, new[] { 10, 20 });
+            Assert.Equal(row.ProcessId == 10 ? FirstStartKey : SecondStartKey, row.ProcessStartKey);
+            Assert.Equal(NativeComputeScoringRuntimeState.BackgroundProcess, row.RuntimeState);
+            Assert.Equal(1U, row.MemberCount);
+        });
+        Assert.All(processRows.GroupBy(static row => row.ProcessId),
+            static process => Assert.Single(process.Select(static row => row.TargetKey).Distinct()));
+        // A software row carries only its software and, for GPU, its adapter.
+        Assert.All(rows.Where(static row => row.Kind is NativeComputeScoringOutputKind.SoftwareCpu
+            or NativeComputeScoringOutputKind.SoftwareGpu or NativeComputeScoringOutputKind.SoftwareMemory), static row =>
+        {
+            Assert.Equal((0UL, 0, 0UL, NativeComputeScoringRuntimeState.Unknown),
+                (row.TargetKey, row.ProcessId, row.ProcessStartKey, row.RuntimeState));
+            Assert.NotEqual(0U, row.MemberCount);
+        });
+        // The scores this fixture already pins, each found under the identity it had before.
+        Assert.Equal(100D, Row(NativeComputeScoringOutputKind.ProcessCpu, 10, 0).Score);
+        Assert.Equal(0D, Row(NativeComputeScoringOutputKind.ProcessCpu, 20, 0).Score);
+        var softwareCpu = Row(NativeComputeScoringOutputKind.SoftwareCpu, 0, 0);
+        Assert.Equal((100D, 2U), (softwareCpu.Score, softwareCpu.MemberCount));
+        Assert.Equal(25D, Row(NativeComputeScoringOutputKind.ProcessGpu, 10, 11).Score);
+        Assert.Equal(25D, Row(NativeComputeScoringOutputKind.ProcessGpu, 20, 11).Score);
+        Assert.Equal(50D, Row(NativeComputeScoringOutputKind.ProcessGpu, 10, 22).Score);
+        Assert.Equal(50D, Row(NativeComputeScoringOutputKind.SoftwareGpu, 0, 11).Score);
+        Assert.Equal(50D, Row(NativeComputeScoringOutputKind.SoftwareGpu, 0, 22).Score);
+        Row(NativeComputeScoringOutputKind.SoftwareMemory, 0, 0);
+
+        HostManagerComputeScore Row(NativeComputeScoringOutputKind kind, int processId, ulong adapterKey)
+            => Assert.Single(rows, row => row.Kind == kind && row.ProcessId == processId && row.AdapterKey == adapterKey);
+    }
+
+    [Fact]
     public void Score_DoesNotTurnWholeAdapterUsageIntoAnotherGpuScore()
     {
         var configuration = CreateConfiguration();

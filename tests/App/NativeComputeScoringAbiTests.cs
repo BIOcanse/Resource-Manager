@@ -12,7 +12,7 @@ public sealed class NativeComputeScoringAbiTests
     [InlineData(typeof(NativeComputeScoringProcessInput), 88)]
     [InlineData(typeof(NativeComputeScoringCpuCoreInput), 16)]
     [InlineData(typeof(NativeComputeScoringGpuInput), 88)]
-    [InlineData(typeof(NativeComputeScoringOutput), 96)]
+    [InlineData(typeof(NativeComputeScoringOutput), 16)]
     [InlineData(typeof(NativeComputeScoringSnapshot), 176)]
     public void ManagedStructSizesMatchNativeContract(Type type, int expectedSize)
         => Assert.Equal(expectedSize, Marshal.SizeOf(type));
@@ -44,7 +44,9 @@ public sealed class NativeComputeScoringAbiTests
     [InlineData(typeof(NativeComputeScoringProcessInput), nameof(NativeComputeScoringProcessInput.WeightedCpuUsePercent), 56)]
     [InlineData(typeof(NativeComputeScoringProcessInput), nameof(NativeComputeScoringProcessInput.ProcessId), 68)]
     [InlineData(typeof(NativeComputeScoringGpuInput), nameof(NativeComputeScoringGpuInput.AdapterKey), 40)]
-    [InlineData(typeof(NativeComputeScoringOutput), nameof(NativeComputeScoringOutput.Score), 56)]
+    [InlineData(typeof(NativeComputeScoringOutput), nameof(NativeComputeScoringOutput.Score), 0)]
+    [InlineData(typeof(NativeComputeScoringOutput), nameof(NativeComputeScoringOutput.InputIndex), 8)]
+    [InlineData(typeof(NativeComputeScoringOutput), nameof(NativeComputeScoringOutput.MemberCount), 12)]
     [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.OutputCount), 48)]
     [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.CpuFreeRatio), 56)]
     [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.WelfareShare), 112)]
@@ -54,7 +56,7 @@ public sealed class NativeComputeScoringAbiTests
     [Fact]
     public void EnumAndMaskValuesMatchNativeContract()
     {
-        Assert.Equal(0x0007_0000U, NativeComputeScoringAbi.Version);
+        Assert.Equal(0x0008_0000U, NativeComputeScoringAbi.Version);
         Assert.Equal(7, NativeComputeScoringAbi.RuntimeStateCount);
         Assert.Equal(0x0FUL, (ulong)NativeComputeScoringConfigFields.Required);
         Assert.Equal(0x03UL, (ulong)NativeComputeScoringEnvelopeFlags.Known);

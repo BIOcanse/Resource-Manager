@@ -51,103 +51,54 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
-    public void GrowthRetiresOldUidAndReclaimRefillsOnlyTheNewUid()
+    public void EachRoundOpensOneRealRegionSizedForItsOwnRowsAfterThePreviousIsClosed()
     {
         using var owner = new ResourceManagerLedgerOwner();
         var resources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
         var configuration = CreateConfiguration();
+        using var expectedSession = new NativeComputeScoringSession(in configuration, [1]);
+        var capacity = expectedSession.Capacity;
+        var inventory = CreateInventory();
+        var full = CreateLedgerSizedFacts(inventory);
+        var small = full with { Processes = full.Processes.Take(5).ToArray(), EnumeratedCount = 5, EmittedCount = 5 };
+        ulong Expected(ResourceManager.App.Domain.ResourceBreakdown.SchedulingProcessFactSnapshot facts)
+        {
+            var processes = checked((uint)facts.Processes.Count);
+            var gpuRows = checked((uint)facts.Processes.Sum(static process => process.Gpus.Count));
+            return new ComputeScoringScratchLayout(processes, gpuRows, Math.Max(processes * 3, gpuRows * 2), 0,
+                NativeComputeScoringSession.ScratchByteCount(processes, gpuRows), capacity.ScratchAlignment,
+                inventory.Adapters.Count).Length;
+        }
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
             HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), length =>
             {
+                // A round opens its region only after the previous round's region is closed.
+                Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+                Assert.All(resources, static previous => Assert.Throws<ObjectDisposedException>(() => previous.Acquire()));
                 var next = owner.CreateScratch(length);
                 resources.Add(next);
                 return next;
             });
-        var inventory = CreateInventory();
-        var full = CreateLedgerSizedFacts(inventory);
-        var small = full with { Processes = full.Processes.Take(5).ToArray(), EnumeratedCount = 5, EmittedCount = 5 };
-        workspace.Score(1, small, inventory, LedgerRuntimeFacts(small), null);
-        var previous = Assert.Single(resources);
-        var result = workspace.Score(2, full, inventory, LedgerRuntimeFacts(full), null)!;
-        Assert.Equal(2, resources.Count);
-        var current = resources[1];
-        Assert.NotEqual(previous.Uid, current.Uid);
-        Assert.Throws<ObjectDisposedException>(() => previous.Acquire());
-        Assert.Equal(current.Length, owner.ReadTable().RegisteredBytes);
+        Assert.Empty(resources);
+        var first = workspace.Score(1, full, inventory, LedgerRuntimeFacts(full), null)!;
+        var reduced = workspace.Score(2, small, inventory, LedgerRuntimeFacts(small), null)!;
+        var again = workspace.Score(3, full, inventory, LedgerRuntimeFacts(full), null)!;
+        // One region per round holds both domains and the native work, sized for that round's rows.
+        Assert.Equal(new[] { Expected(full), Expected(small), Expected(full) }, resources.Select(static resource => resource.Length));
+        Assert.True(resources[0].Length >= owner.NativePageSize);
+        Assert.True(resources[1].Length < resources[0].Length);
+        Assert.All(resources, static resource => Assert.Throws<ObjectDisposedException>(() => resource.Acquire()));
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         owner.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, owner.Tick().Released);
-        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
-        var refill = workspace.Score(3, full, inventory, LedgerRuntimeFacts(full), null)!;
-        Assert.Equal(2, resources.Count);
-        Assert.Equal(current.Length, owner.ReadTable().RegisteredBytes);
-        Assert.Equal(result.Cpu!.Scores.Select(value => value.Score), refill.Cpu!.Scores.Select(value => value.Score));
-    }
-
-    [Fact]
-    public void BothDomainsUseOneRealRegionIncludingNativeWorkAndRefillAfterReclaim()
-    {
-        using var owner = new ResourceManagerLedgerOwner();
-        ResourceManagerLedgerOwner.ComputeScratch? resource = null;
-        var creates = 0;
-        var configuration = CreateConfiguration();
-        using var expectedSession = new NativeComputeScoringSession(in configuration, [1]);
-        var capacity = expectedSession.Capacity;
-        var inventory = CreateInventory();
-        var facts = CreateLedgerSizedFacts(inventory);
-        var runtime = LedgerRuntimeFacts(facts);
-        var gpuRows = checked((uint)facts.Processes.Sum(static process => process.Gpus.Count));
-        var nativeBytes = NativeComputeScoringSession.ScratchByteCount(checked((uint)facts.Processes.Count), gpuRows);
-        var coreRows = 0;
-        var expectedLayout = new ComputeScoringScratchLayout(checked((uint)facts.Processes.Count), gpuRows,
-            Math.Max(checked((uint)facts.Processes.Count * 3), gpuRows * 2), coreRows, nativeBytes,
-            capacity.ScratchAlignment, inventory.Adapters.Count);
-        using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)),
-            length => { creates++; return resource = owner.CreateScratch(length); });
-        Assert.Equal(0, creates);
-        Assert.Null(resource);
-        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
-        var first = workspace.Score(1, facts, inventory, runtime, null)!;
-        Assert.Equal(1, creates);
-        Assert.Equal(expectedLayout.Length, resource!.Length);
-        var savedCpu = first.Cpu!.Scores.ToArray();
-        var savedGpu = first.Gpu!.Scores.ToArray();
-        var uid = resource.Uid;
-        Assert.Equal(expectedLayout.Length, owner.ReadTable().RegisteredBytes); // Not two Native regions/UIDs.
-        ulong allocation;
-        using (var lease = resource.Acquire())
-        {
-            allocation = lease.AllocationNumber;
-            using (var view = new ComputeScratchView(lease))
-            {
-                // Poison every byte of the shared Native extent, then rely on actual score refill.
-                var pointer = view.AlignedRegion(expectedLayout.NativeScratch,
-                    nativeBytes, capacity.ScratchAlignment);
-                System.Runtime.InteropServices.Marshal.Copy(
-                    Enumerable.Repeat((byte)0xA5, checked((int)nativeBytes)).ToArray(),
-                    0, pointer, checked((int)nativeBytes));
-            }
-            lease.Complete();
-        }
-        var afterPoison = workspace.Score(2, facts, inventory, runtime, null)!;
-        Assert.Equal(savedCpu.Select(value => value.Score), afterPoison.Cpu!.Scores.Select(value => value.Score));
-        Assert.Equal(savedGpu.Select(value => value.Score), afterPoison.Gpu!.Scores.Select(value => value.Score));
-        owner.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, owner.Tick().Released);
-        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
-        var afterReclaim = workspace.Score(3, facts, inventory, runtime, null)!;
-        Assert.Equal(uid, resource.Uid);
-        using (var lease = resource.Acquire()) Assert.NotEqual(allocation, lease.AllocationNumber);
-        Assert.Equal(expectedLayout.Length, owner.ReadTable().RegisteredBytes);
-        Assert.Equal(savedCpu.Select(value => value.Score), afterReclaim.Cpu!.Scores.Select(value => value.Score));
-        Assert.Equal(savedGpu.Select(value => value.Score), afterReclaim.Gpu!.Scores.Select(value => value.Score));
-        Assert.Equal<HostManagerComputeScore>(savedCpu, first.Cpu.Scores);
-        Assert.Equal<HostManagerComputeScore>(savedGpu, first.Gpu.Scores);
-        var repeated = workspace.Score(3, facts, inventory,
-            runtime, null)!;
+        Assert.Equal(0UL, owner.Tick().Released);
+        Assert.NotNull(reduced.Cpu);
+        Assert.NotNull(reduced.Gpu);
+        Assert.Equal(first.Cpu!.Scores.Select(value => value.Score), again.Cpu!.Scores.Select(value => value.Score));
+        Assert.Equal(first.Gpu!.Scores.Select(value => value.Score), again.Gpu!.Scores.Select(value => value.Score));
+        var repeated = workspace.Score(3, full, inventory, LedgerRuntimeFacts(full), null)!;
         Assert.Equal(3UL, repeated.RoundNumber);
-        Assert.Equal<HostManagerComputeScore>(afterReclaim.Cpu!.Scores, repeated.Cpu!.Scores);
-        Assert.Equal<HostManagerComputeScore>(afterReclaim.Gpu!.Scores, repeated.Gpu!.Scores);
-        Assert.Equal(1, creates);
+        Assert.Equal<HostManagerComputeScore>(again.Cpu.Scores, repeated.Cpu!.Scores);
+        Assert.Equal<HostManagerComputeScore>(again.Gpu.Scores, repeated.Gpu!.Scores);
+        Assert.Equal(4, resources.Count);
     }
 }

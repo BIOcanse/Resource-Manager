@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeComputeScoringAbi
 {
-    public const uint Version = 0x0007_0000;
+    public const uint Version = 0x0008_0000;
     public const int RuntimeStateCount = 7;
 }
 
@@ -108,20 +108,6 @@ internal enum NativeComputeScoringGpuValidity : ulong
     Required = ProcessIdentity | SoftwareIdentity | AdapterIdentity |
         GpuPolicyMultiplier | GpuOccupancy,
     Known = Required
-}
-
-[Flags]
-internal enum NativeComputeScoringOutputValidity : ulong
-{
-    None = 0,
-    RoundNumber = 1UL << 0,
-    SoftwareIdentity = 1UL << 1,
-    ProcessIdentity = 1UL << 2,
-    AdapterIdentity = 1UL << 3,
-    Score = 1UL << 4,
-    MemberCount = 1UL << 5,
-    Known = RoundNumber | SoftwareIdentity | ProcessIdentity |
-        AdapterIdentity | Score | MemberCount
 }
 
 [Flags]
@@ -239,25 +225,15 @@ internal struct NativeComputeScoringCpuCoreInput
     public double UsagePercent;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 96)]
-internal unsafe struct NativeComputeScoringOutput
+// Rows come in sections: process CPU, software CPU, process GPU, software GPU, software memory;
+// each section is as long as its snapshot count. InputIndex names the caller's process input (CPU
+// and memory sections) or GPU input (GPU sections); a software row names its first counted member.
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 16)]
+internal struct NativeComputeScoringOutput
 {
-    public uint StructSize;
-    public NativeComputeScoringOutputKind Kind;
-    public NativeComputeScoringRuntimeState RuntimeState;
-    public ushort Reserved0;
-    public NativeComputeScoringOutputValidity ValidMask;
-    public ulong RoundNumber;
-    public ulong TargetKey;
-    public ulong SoftwareKey;
-    public ulong ProcessStartKey;
-    public ulong AdapterKey;
     public double Score;
-    public uint SourceIndex;
-    public uint ProcessId;
+    public uint InputIndex;
     public uint MemberCount;
-    public uint Flags;
-    public fixed ulong Reserved[2];
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8, Size = 176)]

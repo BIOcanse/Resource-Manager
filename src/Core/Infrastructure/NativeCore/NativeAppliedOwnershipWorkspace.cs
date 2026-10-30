@@ -1,15 +1,18 @@
-using System.Runtime.CompilerServices;
 using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.NativeCore;
 
+// The native session holds the only stored copy of applied ownership; promote, transition,
+// remove, get, plan and encode all read it. Nothing is held here between operations: a
+// snapshot is copied straight into the array its reader keeps, and a mutation leases an
+// image region sized for this operation's rows only to encode and persist, then closes it.
 internal sealed class NativeAppliedOwnershipWorkspace : IDisposable
 {
-    private readonly RowSizedComputeScratch scratch;
+    private const string WorkArea = "ownership";
+    private readonly Func<ulong, IComputeScratch> createScratch;
     private readonly uint maximumRecords;
-    private int recordCount;
-    private ulong imageOffset;
-    private int imageLength;
+    private readonly IDisposable? nativeCapacityRegistration;
+    private readonly INativeWorkspaceCapacitySource? observedNativeCapacity;
     private Operation? active;
     private bool endUsePending;
     private bool retiring;
@@ -30,87 +33,109 @@ internal sealed class NativeAppliedOwnershipWorkspace : IDisposable
                 "Applied ownership workspace capacity is invalid.");
         }
 
+        this.createScratch = createScratch;
         maximumRecords = capacity.RecordCapacity;
-        scratch = new RowSizedComputeScratch(createScratch, "ownership");
-        try
+        if (nativeCapacity is not null && createScratch.Target is IWorkspaceCapacityRegistry registry)
         {
-            EnsureRows(0);
-            if (nativeCapacity is not null) scratch.DescribeNative(nativeCapacity.ReadWorkspaceCapacity, nativeCapacity.SetGrowthObserver);
-        }
-        catch
-        {
-            scratch.Dispose();
-            throw;
+            nativeCapacityRegistration = registry.RegisterNativeWorkspace(WorkArea + "-native",
+                nativeCapacity.ReadWorkspaceCapacity);
+            try { nativeCapacity.SetGrowthObserver(registry.LogNativeGrowth); }
+            catch
+            {
+                nativeCapacityRegistration.Dispose();
+                throw;
+            }
+            observedNativeCapacity = nativeCapacity;
         }
     }
 
-    internal ulong Length => scratch.Length;
+    // The current operation's region; zero between operations.
+    internal ulong Length => active?.Length ?? 0;
 
     internal static int ImageLengthForRows(uint rows)
         => checked((int)((ulong)NativeAppliedOwnershipAbi.ImageHeaderSize +
             (ulong)rows * NativeAppliedOwnershipAbi.RecordSize));
 
-    internal void Ensure(INativeAppliedOwnershipSession session, uint maximumAdditions = 0)
+    internal NativeAppliedOwnershipSnapshot ReadSnapshot(INativeAppliedOwnershipSession session)
     {
-        ObjectDisposedException.ThrowIf(disposed || retiring, this);
-        if (active is not null)
-            throw new InvalidOperationException("The previous ownership scratch use has not ended.");
+        RequireIdle();
+        var records = new NativeAppliedOwnershipRecord[CountRecords(session)];
+        var header = default(NativeAppliedOwnershipSnapshotHeader);
+        var status = session.GetSnapshot(ref header, records);
+        if (status != NativeAppliedOwnershipStatus.Ok || header.EntryCount > records.Length)
+            throw new InvalidOperationException($"Native applied ownership snapshot failed with {status}.");
+        return new(header, header.EntryCount == records.Length ? records : records[..checked((int)header.EntryCount)]);
+    }
+
+    // Sized before the mutation runs, so an allocation refusal leaves the authority unchanged.
+    internal Operation BeginMutation(INativeAppliedOwnershipSession session, uint maximumAdditions)
+    {
+        RequireIdle();
+        return Acquire(checked((uint)Math.Min((ulong)maximumRecords,
+            (ulong)CountRecords(session) + maximumAdditions)));
+    }
+
+    internal Operation Acquire(uint rows)
+    {
+        RequireIdle();
+        var length = (ulong)ImageLengthForRows(rows);
+        var scratch = createScratch(length)
+            ?? throw new InvalidOperationException($"{WorkArea} scratch factory returned no resource.");
+        ComputeScratchLease lease;
+        try
+        {
+            if (scratch.Length != length)
+                throw new InvalidOperationException($"{WorkArea} scratch factory returned the wrong length.");
+            if (scratch is ResourceManagerLedgerOwner.ComputeScratch registered)
+            {
+                registered.WorkArea = WorkArea;
+                registered.Rows = $"{rows} records";
+            }
+            lease = scratch.Acquire();
+        }
+        catch (Exception failure)
+        {
+            try { scratch.Dispose(); }
+            catch (Exception cleanup) { throw new AggregateException(failure, cleanup); }
+            throw;
+        }
+        active = new(this, scratch, lease);
+        return active;
+    }
+
+    private uint CountRecords(INativeAppliedOwnershipSession session)
+    {
         var header = default(NativeAppliedOwnershipSnapshotHeader);
         var status = session.GetSnapshot(ref header, Span<NativeAppliedOwnershipRecord>.Empty);
         if ((status != NativeAppliedOwnershipStatus.Ok &&
              status != NativeAppliedOwnershipStatus.BufferTooSmall) || header.EntryCount > maximumRecords)
             throw new InvalidOperationException($"Native ownership count query failed with {status}.");
-        var rows = checked((uint)Math.Min((ulong)maximumRecords,
-            (ulong)header.EntryCount + maximumAdditions));
-        EnsureRows(rows);
+        return header.EntryCount;
     }
 
-    private void EnsureRows(uint rows)
-    {
-        if (rows <= recordCount && scratch.Length != 0) return;
-        var nextImageOffset = checked((ulong)rows * (ulong)Unsafe.SizeOf<NativeAppliedOwnershipRecord>());
-        var nextImageLength = ImageLengthForRows(rows);
-        var length = checked(nextImageOffset + (ulong)nextImageLength);
-        scratch.Ensure(length, $"{rows} records");
-        recordCount = checked((int)rows);
-        imageOffset = nextImageOffset;
-        imageLength = nextImageLength;
-    }
-
-    internal Operation Acquire()
+    private void RequireIdle()
     {
         ObjectDisposedException.ThrowIf(disposed || retiring, this);
         if (active is not null)
             throw new InvalidOperationException("The previous ownership scratch use has not ended.");
-        active = new(this, scratch.Acquire());
-        return active;
     }
 
-    internal sealed class Operation(NativeAppliedOwnershipWorkspace owner, ComputeScratchLease lease) : IDisposable
+    internal sealed class Operation(NativeAppliedOwnershipWorkspace owner, IComputeScratch scratch,
+        ComputeScratchLease lease) : IDisposable
     {
         private bool complete;
         private bool ended;
+        private bool leaseEnded;
+
+        internal ulong Length => scratch.Length;
 
         internal Memory<byte> Image
         {
             get
             {
                 RequireActive();
-                return lease.GetMemoryChunk(owner.imageOffset, owner.imageLength);
+                return lease.GetMemoryChunk(0, checked((int)scratch.Length));
             }
-        }
-
-        internal NativeAppliedOwnershipSnapshot ReadSnapshot(INativeAppliedOwnershipSession session)
-        {
-            RequireActive();
-            using var view = new ComputeScratchView(lease);
-            var records = view.Column<NativeAppliedOwnershipRecord>(0, owner.recordCount);
-            records.Clear();
-            var header = default(NativeAppliedOwnershipSnapshotHeader);
-            var status = session.GetSnapshot(ref header, records);
-            if (status != NativeAppliedOwnershipStatus.Ok || header.EntryCount > records.Length)
-                throw new InvalidOperationException($"Native applied ownership snapshot failed with {status}.");
-            return new(header, records[..checked((int)header.EntryCount)].ToArray());
         }
 
         internal void Complete()
@@ -131,12 +156,21 @@ internal sealed class NativeAppliedOwnershipWorkspace : IDisposable
             ended = true;
             owner.endUsePending = true;
             if (complete) lease.Complete();
-            lease.Dispose(); // A failed end remains reachable for explicit workspace close.
+            End(); // A failed end or close remains reachable for explicit workspace close.
             owner.active = null;
             owner.endUsePending = false;
         }
 
-        internal void RetryEndForClose() => lease.Dispose();
+        // Ends this operation's use, then closes its region; each step is retried until it succeeds.
+        internal void End()
+        {
+            if (!leaseEnded)
+            {
+                lease.Dispose();
+                leaseEnded = true;
+            }
+            scratch.Dispose();
+        }
     }
 
     public void Dispose()
@@ -147,11 +181,12 @@ internal sealed class NativeAppliedOwnershipWorkspace : IDisposable
         {
             if (!endUsePending)
                 throw new InvalidOperationException("The ownership workspace is still in use.");
-            active.RetryEndForClose();
+            active.End();
             active = null;
             endUsePending = false;
         }
-        scratch.Dispose();
+        observedNativeCapacity?.SetGrowthObserver(null);
+        nativeCapacityRegistration?.Dispose();
         disposed = true;
     }
 }

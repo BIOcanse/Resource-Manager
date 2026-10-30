@@ -35,7 +35,21 @@ public sealed class ResourceManagerComputeScratchTests
         Assert.Equal(88, Marshal.SizeOf<NativeComputeScoringProcessInput>());
         Assert.Equal(88, Marshal.SizeOf<NativeComputeScoringGpuInput>());
         Assert.Equal(16, Marshal.SizeOf<NativeComputeScoringCpuCoreInput>());
-        Assert.Equal(96, Marshal.SizeOf<NativeComputeScoringOutput>());
+        Assert.Equal(16, Marshal.SizeOf<NativeComputeScoringOutput>());
+    }
+
+    [Fact]
+    public void TrayRoundLayoutPinsTheNarrowOutputFormula()
+    {
+        // Tray evidence 10-30: 501 process rows, 42 GPU rows, 2,099 core rows, 2 adapters,
+        // outputs max(3 x 501, 2 x 42), native alignment 8.
+        var layout = new ComputeScoringScratchLayout(501, 42, 1503, 2099,
+            NativeComputeScoringSession.ScratchByteCount(501, 42), 8, 2);
+        Assert.Equal(56_472UL, layout.NativeScratchByteCount); // (88 + 16) x (501 + 42)
+        Assert.Equal(1503UL * 16, layout.AdapterOrder - layout.Outputs);
+        // 501x88 + 501x8 + 2099x16 + 42x88 + 1503x16 + 2x4 = 109,432; + 7 + 56,472, rounded to 8.
+        // The 96-byte output row made the same round 286,152 bytes.
+        Assert.Equal(165_912UL, layout.Length);
     }
 
     [Fact]
@@ -50,7 +64,9 @@ public sealed class ResourceManagerComputeScratchTests
     public void RealPinReadsAndWritesAllColumnsAndRejectsTheirFullOutOfBoundsExtent()
     {
         using var owner = new ResourceManagerLedgerOwner();
-        var layout = new ComputeScoringScratchLayout(8, 16, 56, 8, 0, 1, 16);
+        // 312 narrow output rows keep this layout above a page, so it is a real Ledger pin.
+        var layout = new ComputeScoringScratchLayout(8, 16, 312, 8, 0, 1, 16);
+        Assert.True(layout.Length >= owner.NativePageSize);
         using var resource = owner.CreateScratch(layout.Length);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         using (var lease = resource.Acquire())
@@ -228,8 +244,8 @@ public sealed class ResourceManagerComputeScratchTests
                         };
                         using var currentOwnership = new NativeAppliedOwnershipWorkspace(in ownershipCapacity, owner.CreateScratch);
                         using var candidateOwnership = new NativeAppliedOwnershipWorkspace(in ownershipCapacity, owner.CreateScratch);
-                        using var currentOwnershipUse = currentOwnership.Acquire();
-                        using var candidateOwnershipUse = candidateOwnership.Acquire();
+                        using var currentOwnershipUse = currentOwnership.Acquire(0);
+                        using var candidateOwnershipUse = candidateOwnership.Acquire(0);
                         currentOwnershipUse.Image.Span[0] = 11;
                         candidateOwnershipUse.Image.Span[0] = 22;
                         currentOwnershipUse.Complete(); candidateOwnershipUse.Complete();

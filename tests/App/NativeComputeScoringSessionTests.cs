@@ -94,13 +94,17 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(1U, snapshot.SoftwareCpuOutputCount);
         Assert.Equal(4U, snapshot.OutputCount);
         Assert.Equal(1U, snapshot.SoftwareMemoryOutputCount);
-        Assert.Equal(NativeComputeScoringOutputKind.ProcessCpu, outputs[0].Kind);
-        Assert.Equal(10U, outputs[0].ProcessId);
+        var named = NameOutputs(in snapshot, processes, ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs);
+        Assert.Equal(NativeComputeScoringOutputKind.ProcessCpu, named[0].Kind);
+        Assert.Equal(1U, outputs[0].InputIndex);
+        Assert.Equal(10U, named[0].ProcessId);
         Assert.Equal(50D, outputs[0].Score);
-        Assert.Equal(20U, outputs[1].ProcessId);
+        Assert.Equal(0U, outputs[1].InputIndex);
+        Assert.Equal(20U, named[1].ProcessId);
         Assert.Equal(0D, outputs[1].Score);
         Assert.Equal(0L, BitConverter.DoubleToInt64Bits(outputs[1].Score));
-        Assert.Equal(NativeComputeScoringOutputKind.SoftwareCpu, outputs[2].Kind);
+        Assert.Equal(NativeComputeScoringOutputKind.SoftwareCpu, named[2].Kind);
+        Assert.Equal(1UL, named[2].SoftwareKey);
         Assert.Equal(50D, outputs[2].Score);
         Assert.Equal(2U, outputs[2].MemberCount);
     }
@@ -143,9 +147,10 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(100D, outputs[2].Score);
         var softwareGpuStart = checked((int)(snapshot.ProcessCpuOutputCount +
             snapshot.SoftwareCpuOutputCount + snapshot.ProcessGpuOutputCount));
-        Assert.Equal(11UL, outputs[softwareGpuStart].AdapterKey);
+        var named = NameOutputs(in snapshot, processes, gpus, outputs);
+        Assert.Equal(11UL, named[softwareGpuStart].AdapterKey);
         Assert.Equal(50D, outputs[softwareGpuStart].Score);
-        Assert.Equal(22UL, outputs[softwareGpuStart + 1].AdapterKey);
+        Assert.Equal(22UL, named[softwareGpuStart + 1].AdapterKey);
         Assert.Equal(50D, outputs[softwareGpuStart + 1].Score);
     }
 
@@ -191,7 +196,7 @@ public sealed partial class NativeComputeScoringSessionTests
         var cpuBonus = 60D * 0.5;
         Assert.Equal(cpuBonus, snapshot.CpuWelfareBonus, precision: 10);
         Assert.Equal(cpuBonus, snapshot.MemoryWelfareBonus, precision: 10);
-        var emitted = outputs[..checked((int)snapshot.OutputCount)];
+        var emitted = NameOutputs(in snapshot, processes, gpus, outputs);
         Assert.Equal(50 + cpuBonus, Assert.Single(emitted, static row =>
             row.Kind == NativeComputeScoringOutputKind.ProcessCpu && row.ProcessId == 10).Score, precision: 10);
         Assert.Equal(cpuBonus, Assert.Single(emitted, static row =>
@@ -245,7 +250,8 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(NativeComputeScoringStatus.Ok, status);
         Assert.Equal(1U, snapshot.WelfareEligibleProcessCount);
         Assert.Equal(3.75D, snapshot.WelfareShare);
-        var emitted = outputs[..checked((int)snapshot.OutputCount)];
+        var emitted = NameOutputs(in snapshot, [running, stopped],
+            ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs);
         Assert.Equal(50 + 60 * 0.5, Assert.Single(emitted, static row =>
             row.Kind == NativeComputeScoringOutputKind.ProcessCpu && row.ProcessId == 10).Score, precision: 10);
         Assert.Equal(0D, Assert.Single(emitted, static row =>
@@ -453,4 +459,54 @@ public sealed partial class NativeComputeScoringSessionTests
             SourceIndex = sourceIndex,
             ProcessId = process.ProcessId
         };
+
+    // The identity a consumer reads for one narrow output row: the section gives the kind and
+    // the input row the output names gives the process, software and adapter, as the workspace decodes it.
+    private readonly record struct NamedOutput(
+        NativeComputeScoringOutputKind Kind,
+        uint ProcessId,
+        ulong SoftwareKey,
+        ulong AdapterKey,
+        double Score,
+        uint MemberCount);
+
+    private static NamedOutput[] NameOutputs(
+        in NativeComputeScoringSnapshot snapshot,
+        ReadOnlySpan<NativeComputeScoringProcessInput> processes,
+        ReadOnlySpan<NativeComputeScoringGpuInput> gpus,
+        ReadOnlySpan<NativeComputeScoringOutput> outputs)
+    {
+        var sections = new (NativeComputeScoringOutputKind Kind, uint Count)[]
+        {
+            (NativeComputeScoringOutputKind.ProcessCpu, snapshot.ProcessCpuOutputCount),
+            (NativeComputeScoringOutputKind.SoftwareCpu, snapshot.SoftwareCpuOutputCount),
+            (NativeComputeScoringOutputKind.ProcessGpu, snapshot.ProcessGpuOutputCount),
+            (NativeComputeScoringOutputKind.SoftwareGpu, snapshot.SoftwareGpuOutputCount),
+            (NativeComputeScoringOutputKind.SoftwareMemory, snapshot.SoftwareMemoryOutputCount)
+        };
+        var named = new NamedOutput[checked((int)snapshot.OutputCount)];
+        var cursor = 0;
+        foreach (var (kind, count) in sections)
+        {
+            var processRow = kind is NativeComputeScoringOutputKind.ProcessCpu or NativeComputeScoringOutputKind.ProcessGpu;
+            for (var index = 0U; index < count; index++, cursor++)
+            {
+                var row = outputs[cursor];
+                if (kind is NativeComputeScoringOutputKind.ProcessGpu or NativeComputeScoringOutputKind.SoftwareGpu)
+                {
+                    var gpu = gpus[checked((int)row.InputIndex)];
+                    named[cursor] = new(kind, processRow ? gpu.ProcessId : 0, gpu.SoftwareKey, gpu.AdapterKey,
+                        row.Score, row.MemberCount);
+                }
+                else
+                {
+                    var process = processes[checked((int)row.InputIndex)];
+                    named[cursor] = new(kind, processRow ? process.ProcessId : 0, process.SoftwareKey, 0,
+                        row.Score, row.MemberCount);
+                }
+            }
+        }
+        Assert.Equal(named.Length, cursor);
+        return named;
+    }
 }

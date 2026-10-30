@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0007_0000;
+pub const abi_version: u32 = 0x0008_0000;
 pub const runtime_state_count: usize = 7;
 
 pub const Status = enum(i32) {
@@ -73,25 +73,6 @@ pub const GpuValidity = struct {
     pub const required: u64 = process_identity | software_identity | adapter_identity |
         gpu_policy_multiplier | gpu_occupancy;
     pub const known: u64 = required;
-};
-
-pub const OutputKind = enum(u8) {
-    process_cpu = 1,
-    process_gpu = 2,
-    software_cpu = 3,
-    software_gpu = 4,
-    software_memory = 5,
-};
-
-pub const OutputValidity = struct {
-    pub const round_number: u64 = 1 << 0;
-    pub const software_identity: u64 = 1 << 1;
-    pub const process_identity: u64 = 1 << 2;
-    pub const adapter_identity: u64 = 1 << 3;
-    pub const score: u64 = 1 << 4;
-    pub const member_count: u64 = 1 << 5;
-    pub const known: u64 = round_number | software_identity | process_identity |
-        adapter_identity | score | member_count;
 };
 
 pub const SnapshotFlags = struct {
@@ -194,23 +175,14 @@ pub const CpuCoreInput = extern struct {
     usage_percent: f64,
 };
 
+// Rows come in sections: process CPU, software CPU, process GPU, software GPU,
+// software memory; each section is as long as its Snapshot count. Identity is not
+// echoed: input_index names the caller's ProcessInput (CPU and memory sections) or
+// GpuInput (GPU sections); a software row names its first counted member.
 pub const ScoreOutput = extern struct {
-    struct_size: u32,
-    kind: u8,
-    runtime_state: u8,
-    reserved0: u16,
-    valid_mask: u64,
-    round_number: u64,
-    target_key: u64,
-    software_key: u64,
-    process_start_key: u64,
-    adapter_key: u64,
     score: f64,
-    source_index: u32,
-    process_id: u32,
+    input_index: u32,
     member_count: u32,
-    flags: u32,
-    reserved: [2]u64,
 };
 
 pub const Snapshot = extern struct {

@@ -101,7 +101,10 @@ comptime {
     if (@sizeOf(protocol.GenerationEnvelope) != 104) @compileError("compute scoring GenerationEnvelope export size changed");
     if (@sizeOf(protocol.ProcessInput) != 88) @compileError("compute scoring ProcessInput export size changed");
     if (@sizeOf(protocol.GpuInput) != 88) @compileError("compute scoring GpuInput export size changed");
-    if (@sizeOf(protocol.ScoreOutput) != 96) @compileError("compute scoring ScoreOutput export size changed");
+    if (@sizeOf(protocol.ScoreOutput) != 16) @compileError("compute scoring ScoreOutput export size changed");
+    if (@offsetOf(protocol.ScoreOutput, "score") != 0 or
+        @offsetOf(protocol.ScoreOutput, "input_index") != 8 or
+        @offsetOf(protocol.ScoreOutput, "member_count") != 12) @compileError("compute scoring ScoreOutput offsets changed");
     if (@sizeOf(protocol.Snapshot) != 176) @compileError("compute scoring Snapshot export size changed");
     if (@sizeOf(protocol.CpuCoreInput) != 16) @compileError("compute scoring CpuCoreInput export size changed");
 }

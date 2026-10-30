@@ -246,7 +246,7 @@ pub fn score(
     var software_memory_count: u32 = 0;
     if (cpu_complete) {
         if (!emitProcessCpu(&work, &accepted, outputs, &output_count, &process_cpu_count, welfare.cpu_bonus) or
-            !emitSoftwareCpu(&work, &accepted, outputs, &output_count, &software_cpu_count, welfare.cpu_bonus, .software_cpu))
+            !emitSoftwareCpu(&work, &accepted, outputs, &output_count, &software_cpu_count, welfare.cpu_bonus))
             return .buffer_too_small;
     }
     if (gpu_complete) {
@@ -254,7 +254,7 @@ pub fn score(
             !emitSoftwareGpu(&work, &accepted, outputs, &output_count, &software_gpu_count))
             return .buffer_too_small;
     }
-    if (cpu_complete and !emitSoftwareCpu(&work, &accepted, outputs, &output_count, &software_memory_count, welfare.memory_bonus, .software_memory))
+    if (cpu_complete and !emitSoftwareCpu(&work, &accepted, outputs, &output_count, &software_memory_count, welfare.memory_bonus))
         return .buffer_too_small;
 
     snapshot.* = .{
@@ -386,7 +386,7 @@ fn emitProcessCpu(
         const work = workspace.processes[slot];
         if ((work.row.flags & protocol.ProcessFlags.cpu_metrics_complete) == 0) continue;
         const score_value = process_scores.addWelfare(work.cpu_score, work.row.runtime_state, welfare_bonus) catch return false;
-        outputs[cursor.*] = processOutput(envelope, &work.row, 0, score_value, .process_cpu);
+        outputs[cursor.*] = .{ .score = score_value, .input_index = slot, .member_count = 1 };
         cursor.* += 1;
         count.* += 1;
     }
@@ -402,20 +402,7 @@ fn emitProcessGpu(
 ) bool {
     for (workspace.gpu_identity_order[0..@intCast(envelope.gpu_row_count)]) |slot| {
         if (cursor.* >= outputs.len) return false;
-        const work = workspace.gpus[slot];
-        const process_index = findProcess(
-            workspace,
-            @intCast(envelope.process_count),
-            work.row.process_id,
-            work.row.process_start_key,
-        ) orelse return false;
-        outputs[cursor.*] = processOutput(
-            envelope,
-            &workspace.processes[process_index].row,
-            work.row.adapter_key,
-            work.gpu_score,
-            .process_gpu,
-        );
+        outputs[cursor.*] = .{ .score = workspace.gpus[slot].gpu_score, .input_index = slot, .member_count = 1 };
         cursor.* += 1;
         count.* += 1;
     }
@@ -429,7 +416,6 @@ fn emitSoftwareCpu(
     cursor: *usize,
     count: *u32,
     welfare_bonus: f64,
-    kind: protocol.OutputKind,
 ) bool {
     var index: usize = 0;
     const order = workspace.process_aggregate_order[0..@intCast(envelope.process_count)];
@@ -437,25 +423,20 @@ fn emitSoftwareCpu(
         const software_key = workspace.processes[order[index]].row.software_key;
         var sum = aggregation.DeterministicSum{};
         var members: u32 = 0;
+        var first_member: u32 = 0;
         var running = false;
         while (index < order.len and workspace.processes[order[index]].row.software_key == software_key) : (index += 1) {
             const work = workspace.processes[order[index]];
             if ((work.row.flags & protocol.ProcessFlags.cpu_metrics_complete) == 0) continue;
             if (!sum.add(work.cpu_score)) return false;
             running = running or work.row.runtime_state != @intFromEnum(protocol.RuntimeState.not_running);
+            if (members == 0) first_member = order[index];
             members += 1;
         }
         if (members == 0) continue;
         if (running and !sum.add(welfare_bonus)) return false;
         if (cursor.* >= outputs.len) return false;
-        outputs[cursor.*] = softwareOutput(
-            envelope,
-            software_key,
-            0,
-            sum.total() orelse return false,
-            members,
-            kind,
-        );
+        outputs[cursor.*] = .{ .score = sum.total() orelse return false, .input_index = first_member, .member_count = members };
         cursor.* += 1;
         count.* += 1;
     }
@@ -472,7 +453,8 @@ fn emitSoftwareGpu(
     var index: usize = 0;
     const order = workspace.gpu_aggregate_order[0..@intCast(envelope.gpu_row_count)];
     while (index < order.len) {
-        const first = workspace.gpus[order[index]].row;
+        const first_slot = order[index];
+        const first = workspace.gpus[first_slot].row;
         var sum = aggregation.DeterministicSum{};
         var members: u32 = 0;
         while (index < order.len) : (index += 1) {
@@ -482,79 +464,11 @@ fn emitSoftwareGpu(
             members += 1;
         }
         if (cursor.* >= outputs.len) return false;
-        outputs[cursor.*] = softwareOutput(
-            envelope,
-            first.software_key,
-            first.adapter_key,
-            sum.total() orelse return false,
-            members,
-            .software_gpu,
-        );
+        outputs[cursor.*] = .{ .score = sum.total() orelse return false, .input_index = first_slot, .member_count = members };
         cursor.* += 1;
         count.* += 1;
     }
     return true;
-}
-
-fn processOutput(
-    envelope: *const protocol.GenerationEnvelope,
-    process: *const protocol.ProcessInput,
-    adapter_key: u64,
-    score_value: f64,
-    kind: protocol.OutputKind,
-) protocol.ScoreOutput {
-    return .{
-        .struct_size = @sizeOf(protocol.ScoreOutput),
-        .kind = @intFromEnum(kind),
-        .runtime_state = process.runtime_state,
-        .reserved0 = 0,
-        .valid_mask = protocol.OutputValidity.round_number |
-            protocol.OutputValidity.software_identity | protocol.OutputValidity.process_identity |
-            protocol.OutputValidity.score |
-            (if (adapter_key != 0) protocol.OutputValidity.adapter_identity else 0),
-        .round_number = envelope.round_number,
-        .target_key = process.target_key,
-        .software_key = process.software_key,
-        .process_start_key = process.process_start_key,
-        .adapter_key = adapter_key,
-        .score = score_value,
-        .source_index = process.source_index,
-        .process_id = process.process_id,
-        .member_count = 1,
-        .flags = 0,
-        .reserved = .{ 0, 0 },
-    };
-}
-
-fn softwareOutput(
-    envelope: *const protocol.GenerationEnvelope,
-    software_key: u64,
-    adapter_key: u64,
-    score_value: f64,
-    member_count: u32,
-    kind: protocol.OutputKind,
-) protocol.ScoreOutput {
-    return .{
-        .struct_size = @sizeOf(protocol.ScoreOutput),
-        .kind = @intFromEnum(kind),
-        .runtime_state = @intFromEnum(protocol.RuntimeState.unknown),
-        .reserved0 = 0,
-        .valid_mask = protocol.OutputValidity.round_number |
-            protocol.OutputValidity.software_identity | protocol.OutputValidity.score |
-            protocol.OutputValidity.member_count |
-            (if (adapter_key != 0) protocol.OutputValidity.adapter_identity else 0),
-        .round_number = envelope.round_number,
-        .target_key = 0,
-        .software_key = software_key,
-        .process_start_key = 0,
-        .adapter_key = adapter_key,
-        .score = score_value,
-        .source_index = 0,
-        .process_id = 0,
-        .member_count = member_count,
-        .flags = 0,
-        .reserved = .{ 0, 0 },
-    };
 }
 
 fn processIdentityBefore(workspace: *const scratch.View, left_slot: u32, right_slot: u32) bool {

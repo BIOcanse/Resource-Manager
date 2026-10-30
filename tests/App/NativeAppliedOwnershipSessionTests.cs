@@ -60,7 +60,7 @@ public sealed class NativeAppliedOwnershipSessionTests
         };
 
         using var workspace = new NativeAppliedOwnershipWorkspace(in capacity, NativeAppliedOwnershipTestStorage.Create);
-        using var operation = workspace.Acquire();
+        using var operation = workspace.Acquire(0);
 
         Assert.Equal(NativeAppliedOwnershipAbi.ImageHeaderSize, workspace.Length);
         Assert.Equal((int)NativeAppliedOwnershipAbi.ImageHeaderSize, operation.Image.Length);
