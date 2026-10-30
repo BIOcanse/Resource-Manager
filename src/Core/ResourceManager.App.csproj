@@ -54,7 +54,7 @@
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.47" />
+    <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.48" />
     <PackageReference Include="ResourceManager.Ledger" Version="0.1.0-dev.6" />
     <PackageReference Include="FanControlCore.Library" Version="0.1.0-dev.6" />
     <PackageReference Include="Disk.ReadWrite" Version="0.1.0" />

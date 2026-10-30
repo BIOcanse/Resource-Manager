@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "component": "Microsoft Roslyn bundled in FreedomPoint.SourceTracking 0.1.0-dev.47; payload hashes reverified against the original SDK provenance",
+  "component": "Microsoft Roslyn bundled in FreedomPoint.SourceTracking 0.1.0-dev.48; payload hashes reverified against the original SDK provenance",
   "actualOriginalBinarySource": "Windows .NET SDK 10.0.300 Roslyn/bincore",
   "assemblies": [
     {

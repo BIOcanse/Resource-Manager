@@ -74,7 +74,7 @@ internal static class PreferenceSourceCheck
         }, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
         foreach (var issue in issues) Console.Error.WriteLine($"{issue.Code}: {issue.RelativePath}: {issue.Detail}");
         if (!result.IsComplete || !issues.IsEmpty) throw new InvalidDataException(result.Failure ?? "Extension source contract failed.");
-        Console.WriteLine("SDK47 extension source check complete: zero issues.");
+        Console.WriteLine("SDK48 extension source check complete: zero issues.");
 
         CSharpCompilationContext ReadContext(JsonElement project)
         {

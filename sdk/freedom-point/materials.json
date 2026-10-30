@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "scope": "RM dev.47 Core/Generators/SourceTracking; Ledger dev.6 build-time dev.39 Core/Generators",
+  "scope": "RM dev.48 Core/Generators/SourceTracking; Ledger dev.6 build-time dev.39 Core/Generators",
   "firstPartyLicenseId": "Apache-2.0",
   "firstPartyCopyrightOwner": "BIOcanse",
   "firstPartyPublicLicensePending": false,
@@ -61,39 +61,39 @@
     {
       "authors": "BIOcanse",
       "nuspecContainsLicense": true,
-      "fileName": "FreedomPoint.Core.0.1.0-dev.47.nupkg",
-      "nuspecSha256": "A0A843135F559B3DA2169FC8920342B8E7688284D984DA34267F3BB02EF81BB4",
-      "bytes": 102190,
+      "fileName": "FreedomPoint.Core.0.1.0-dev.48.nupkg",
+      "nuspecSha256": "62FB2F2262E3025176376B623901EFAC11796F464079D33D17FD20AED253C6FB",
+      "bytes": 182916,
       "id": "FreedomPoint.Core",
       "license": "Apache-2.0",
-      "version": "0.1.0-dev.47",
+      "version": "0.1.0-dev.48",
       "use": "Backend and native frontend; build tooling",
-      "sha256": "B21C69EA9D0CCEDEB0B82B90ADCEEFB17CA27B618CFBCEF77D2019EE7A5FBD5B",
+      "sha256": "03FA3AF6A643F0CB0CBED51CBAAC55E9FF90B53B4EE411644252E449DB17517E",
       "dependencies": []
     },
     {
       "authors": "BIOcanse",
       "nuspecContainsLicense": true,
-      "fileName": "FreedomPoint.Generators.0.1.0-dev.47.nupkg",
-      "nuspecSha256": "39FD61FFA8DD04FBA89DBFE961FA1842028C11C9BD66A450804233F8548103EA",
-      "bytes": 42322,
+      "fileName": "FreedomPoint.Generators.0.1.0-dev.48.nupkg",
+      "nuspecSha256": "159B35AC6DD7B6EF60858E207B630D60F41DF006FD200F979BA779822340687C",
+      "bytes": 56673,
       "id": "FreedomPoint.Generators",
       "license": "Apache-2.0",
-      "version": "0.1.0-dev.47",
+      "version": "0.1.0-dev.48",
       "use": "Frontend generation/source-check and formal CLI tool only",
-      "sha256": "2DC9CFE9B624F2509697C5AAD8AD6F598B1490328D0F2703DE6030F15EE6AE9F",
+      "sha256": "FDB0A3CF06963BE6D3A7ACF50EA24D5ADB72420ACE5CAE4397ECAE1ED4DC35A6",
       "dependencies": [
         {
           "id": "FreedomPoint.Core",
-          "version": "0.1.0-dev.47"
+          "version": "0.1.0-dev.48"
         }
       ]
     },
     {
       "authors": "BIOcanse",
       "nuspecContainsLicense": true,
-      "fileName": "FreedomPoint.SourceTracking.0.1.0-dev.47.nupkg",
-      "nuspecSha256": "CFC18E95A113E3C2DD49AF42FBBC9DDD1EE1F8C41128FE779BEB48EF16CE979D",
+      "fileName": "FreedomPoint.SourceTracking.0.1.0-dev.48.nupkg",
+      "nuspecSha256": "3BF266DFB2B9F402E731DCE99C01C508CE29D9628A23354D93C4651C1B4AB655",
       "bundledRoslyn": [
         {
           "entry": "lib/net10.0/Microsoft.CodeAnalysis.CSharp.dll",
@@ -110,16 +110,16 @@
           "matchesOriginalWindowsSdk": true
         }
       ],
-      "bytes": 12179596,
+      "bytes": 12250296,
       "id": "FreedomPoint.SourceTracking",
       "license": "Apache-2.0",
-      "version": "0.1.0-dev.47",
+      "version": "0.1.0-dev.48",
       "use": "Frontend generation/source-check and formal CLI tool only",
-      "sha256": "AF661429B1174586DC4DF0A8C2C8947B06932CAF9FC37EF7F4ACEECAA85C5630",
+      "sha256": "07F67540E354994F18874BB378815200972B08BC3BA8A4851A8B690BBD5EB8E5",
       "dependencies": [
         {
           "id": "FreedomPoint.Core",
-          "version": "0.1.0-dev.47"
+          "version": "0.1.0-dev.48"
         }
       ]
     }
@@ -139,7 +139,7 @@
     {
       "path": "authorization.json",
       "bytes": 2031,
-      "sha256": "18AF086A3AB0BEAC2C0DB4A62163065CC37C3192A497B958477A426CF9F02FC4"
+      "sha256": "401EA65B2663D451FC689503F6A06A359DEA8A11BDF190E8677D279FC024B20F"
     },
     {
       "path": "third-party/dotnet/LICENSE.txt",
@@ -164,7 +164,7 @@
     {
       "path": "third-party/provenance.json",
       "bytes": 1798,
-      "sha256": "4915892693B255441337A263AB809A6300D1F29F9C68886F842FC7704DC6FC4A"
+      "sha256": "FAEBFB89D5B682CC47E15798A315A64C1F697397FB54ED7B994EFE7F1E34F48B"
     }
   ],
   "packageBytesChanged": false,
@@ -173,7 +173,7 @@
   "repositoryFeedIntegrationVerified": true,
   "mixedBundleRedistributionReassessed": false,
   "deliveryReceipt": {
-    "sha256": "BA3CD6DF680863DD7701AE37C0FFD16E0B6B5F69E9FC3A2BC29703DD4F86CE89",
-    "path": "FreedomPoint:artifacts/receipts/sdk47/delivery.json"
+    "sha256": "91F26ECB0ECDA2FE4DC46BB7D1D9960601DB17C3510B7F7E32E749D40FA4EF9D",
+    "path": "FreedomPoint:artifacts/receipts/sdk48/delivery.json"
   }
 }

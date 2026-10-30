@@ -8,8 +8,8 @@
     <AssemblyName>ResourceManager.FrontendPreferencesBuild</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="FreedomPoint.Generators" Version="0.1.0-dev.47" />
-    <PackageReference Include="FreedomPoint.SourceTracking" Version="0.1.0-dev.47" />
+    <PackageReference Include="FreedomPoint.Generators" Version="0.1.0-dev.48" />
+    <PackageReference Include="FreedomPoint.SourceTracking" Version="0.1.0-dev.48" />
     <ProjectReference Include="../../FreedomPointContracts/ResourceManager.FreedomPointContracts.csproj" />
     <ProjectReference Include="../../Shared/ResourceManager.Shared.csproj" />
   </ItemGroup>

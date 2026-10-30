@@ -7,6 +7,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="FreedomPoint.Generators" Version="0.1.0-dev.47" />
+    <PackageReference Include="FreedomPoint.Generators" Version="0.1.0-dev.48" />
   </ItemGroup>
 </Project>
