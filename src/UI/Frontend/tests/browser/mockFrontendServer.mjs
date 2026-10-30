@@ -277,6 +277,29 @@ let targetedRecordingCompletionId = null;
 let targetedRecordingSequence = 0;
 let cpuBaselineOverrideRatio = null;
 const targetedRecordings = new Map();
+// 录制配置（只在内存里）、录制项目录和“目标是否在运行”。形状和错误代码照后端
+// （TargetedRecordingModels.cs、TargetedRecordingProfileService.cs）；默认配置 id 为 default、名称“默认”。
+const targetedRecordingFramesItemId = "frames.present";
+const targetedRecordingCatalog = [
+  { kind: "frames", id: targetedRecordingFramesItemId, unit: "ms", sources: [], naturalIntervalMs: null },
+  { kind: "software", id: "cpu.usage", unit: "%", sources: ["resource-breakdown"], naturalIntervalMs: null },
+  { kind: "software", id: "memory.usage", unit: "B", sources: ["resource-breakdown"], naturalIntervalMs: null },
+  { kind: "metric", id: "cpu.usage", unit: "%", sources: ["cpu.usage@cpu0"], naturalIntervalMs: null },
+  { kind: "metric", id: "cpu.temperature", unit: "°C", sources: ["cpu.temperature@cpu0", "cpu.temperature@board"], naturalIntervalMs: 2000 },
+  { kind: "metric", id: "memory.usage", unit: "%", sources: ["memory.usage@system"], naturalIntervalMs: null }
+];
+const targetedRecordingDefaultItems = () => [
+  { kind: "frames", id: targetedRecordingFramesItemId },
+  { kind: "software", id: "cpu.usage" },
+  { kind: "software", id: "memory.usage" },
+  { kind: "metric", id: "cpu.usage" },
+  { kind: "metric", id: "cpu.temperature" }
+].map((item) => ({ ...item, source: "auto", intervalMs: null, syncPrecision: "mid" }));
+const targetedRecordingDefaultProfile = () =>
+  ({ id: "default", name: "默认", defaultIntervalMs: 1000, items: targetedRecordingDefaultItems() });
+let targetedRecordingProfiles = [targetedRecordingDefaultProfile()];
+let targetedRecordingProfileSequence = 0;
+let targetedRecordingTargetRunning = true;
 const defaultAppSettings = {
   version: "1.0.37",
   memoryProtection: defaultMemoryProtectionSettings(),
@@ -438,6 +461,13 @@ const server = createServer(async (request, response) => {
         }
       }
       return json(response, 200, { publications: queries.length, queries });
+    }
+    if (url.pathname === "/__test/targeted-recordings/target-running" && request.method === "POST") {
+      // 旅程用它让示例软件“退出”或“重新运行”：不在运行时 /targets 为空，开始录制回 409 target-not-running。
+      const body = JSON.parse(await readBody(request));
+      if (typeof body.running !== "boolean") return json(response, 400, { error: "running must be a boolean" });
+      targetedRecordingTargetRunning = body.running;
+      return json(response, 200, { running: targetedRecordingTargetRunning });
     }
     if (url.pathname === "/__test/targeted-recordings/complete-pending" && request.method === "POST") {
       // 立即做 15 s 计时器本来要做的事：以「达到最长时长」结束计时器等待的那条录制。
@@ -922,6 +952,68 @@ async function handleApi(request, response, url) {
     }
     return json(response, 200, { removedCount });
   }
+  if (path === "/api/targeted-recordings/targets" && request.method === "GET") {
+    return json(response, 200, targetedRecordingTargetRunning
+      ? [{ softwareId: mockSoftware.id, name: "示例软件", processCount: 2 }]
+      : []);
+  }
+  if (path === "/api/targeted-recordings/items/catalog" && request.method === "GET") {
+    return json(response, 200, structuredClone(targetedRecordingCatalog));
+  }
+  if (path === "/api/targeted-recordings/profiles" && request.method === "GET") {
+    return json(response, 200, structuredClone(targetedRecordingProfiles));
+  }
+  if (path === "/api/targeted-recordings/profiles" && request.method === "POST") {
+    const body = JSON.parse(await readBody(request));
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name || name.length > 64) return json(response, 400, { error: "targeted-recording-profile-invalid-name" });
+    if (targetedRecordingProfiles.length >= 64) return json(response, 400, { error: "targeted-recording-profiles-too-many" });
+    let source = null;
+    if (body.copyFromId !== undefined && body.copyFromId !== null) {
+      source = targetedRecordingProfiles.find((item) => item.id === body.copyFromId) ?? null;
+      if (!source) return json(response, 404, { error: "targeted-recording-profile-not-found" });
+    }
+    const defaultIntervalMs = body.defaultIntervalMs ?? source?.defaultIntervalMs ?? 1000;
+    if (!targetedRecordingIntervalValid(defaultIntervalMs)) return json(response, 400, { error: "targeted-recording-interval-out-of-range" });
+    const items = body.items ?? (source ? structuredClone(source.items) : targetedRecordingDefaultItems());
+    const itemsError = targetedRecordingItemsError(items);
+    if (itemsError) return json(response, 400, { error: itemsError });
+    const created = { id: `profile-${++targetedRecordingProfileSequence}`, name, defaultIntervalMs, items: normalizeTargetedRecordingItems(items) };
+    targetedRecordingProfiles.push(created);
+    return json(response, 201, created);
+  }
+  const targetedProfileMatch = path.match(/^\/api\/targeted-recordings\/profiles\/([^/]+)$/);
+  if (targetedProfileMatch && request.method === "PATCH") {
+    const profile = targetedRecordingProfiles.find((item) => item.id === decodeURIComponent(targetedProfileMatch[1]));
+    if (!profile) return json(response, 404, { error: "targeted-recording-profile-not-found" });
+    const body = JSON.parse(await readBody(request));
+    const next = structuredClone(profile);
+    if (body.name !== undefined) {
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      if (!name || name.length > 64) return json(response, 400, { error: "targeted-recording-profile-invalid-name" });
+      next.name = name;
+    }
+    if (body.defaultIntervalMs !== undefined) {
+      if (!targetedRecordingIntervalValid(body.defaultIntervalMs)) return json(response, 400, { error: "targeted-recording-interval-out-of-range" });
+      next.defaultIntervalMs = body.defaultIntervalMs;
+    }
+    if (body.items !== undefined) {
+      const itemsError = targetedRecordingItemsError(body.items);
+      if (itemsError) return json(response, 400, { error: itemsError });
+      next.items = normalizeTargetedRecordingItems(body.items);
+    }
+    Object.assign(profile, next);
+    return json(response, 200, profile);
+  }
+  if (targetedProfileMatch && request.method === "DELETE") {
+    const id = decodeURIComponent(targetedProfileMatch[1]);
+    if (!targetedRecordingProfiles.some((item) => item.id === id)) return json(response, 404, { error: "targeted-recording-profile-not-found" });
+    if (targetedRecordingProfiles.length === 1) return json(response, 409, { error: "targeted-recording-last-profile" });
+    targetedRecordingProfiles = targetedRecordingProfiles.filter((item) => item.id !== id);
+    response.writeHead(204);
+    response.end();
+    return;
+  }
   if (path === "/api/targeted-recordings" && request.method === "GET") {
     return json(response, 200, [...targetedRecordings.values()].map((entry) => entry.header));
   }
@@ -937,6 +1029,20 @@ async function handleApi(request, response, url) {
     }
     if (softwareId.toLowerCase() !== mockSoftware.id.toLowerCase()) { response.writeHead(404); response.end(); return; }
     softwareId = mockSoftware.id;
+    // 后端：profileId 和 items 二选一；都没有时用第一份配置。
+    let profile = null;
+    let items;
+    if (body.items !== undefined) {
+      const itemsError = targetedRecordingItemsError(body.items);
+      if (itemsError) return json(response, 400, { error: itemsError });
+      items = normalizeTargetedRecordingItems(body.items);
+    } else {
+      profile = body.profileId === undefined ? targetedRecordingProfiles[0]
+        : targetedRecordingProfiles.find((item) => item.id === body.profileId) ?? null;
+      if (!profile) return json(response, 404, { error: "targeted-recording-profile-not-found" });
+      items = structuredClone(profile.items);
+    }
+    if (!targetedRecordingTargetRunning) return json(response, 409, { error: "target-not-running" });
     const softwareName = softwareId === "frontend-harness.software" ? "示例软件" : softwareId;
     const startedAt = now();
     const id = `recording-fixture-${++targetedRecordingSequence}`;
@@ -950,8 +1056,16 @@ async function handleApi(request, response, url) {
         maximumDurationSeconds: body.maximumDurationSeconds ?? 600,
         status: "recording",
         stopReason: null,
-        incomplete: false
+        incomplete: false,
+        profileId: profile?.id ?? null,
+        profileName: profile?.name ?? null,
+        items: items.map((item) => targetedRecordingItemReport(item, profile?.defaultIntervalMs ?? 1000, false)),
+        processes: [],
+        storedBytes: 0,
+        maximumReportKib: 4096
       },
+      selectedItems: items,
+      defaultIntervalMs: profile?.defaultIntervalMs ?? 1000,
       frameIntervals: [],
       fpsDistribution: [],
       resourceSamples: []
@@ -993,10 +1107,17 @@ async function handleApi(request, response, url) {
     const entry = targetedRecordings.get(decodeURIComponent(targetedExport[1]));
     if (!entry) { response.writeHead(404); response.end(); return; }
     const format = url.searchParams.get("format") ?? "json";
-    if (format === "json") return json(response, 200, targetedRecordingReport(entry));
-    if (format !== "csv") { response.writeHead(400); response.end(); return; }
+    if (format === "json") return json(response, 200, { schemaVersion: 1, ...targetedRecordingReport(entry) });
+    // 各格式的表头照后端的导出；内容是固定的几行。
+    const csv = {
+      csv: "kind,utc,processId,processStartKey,source,swapChain,frameTimeMs,scope,metric,value\r\nsummary,,,,,,,,averageFps,100\r\n",
+      "long-csv": "time_ms,item,process,value,unit\r\n0,software:cpu.usage,,25,%\r\n0,system:cpu.usage,,40,%\r\n",
+      "frames-csv": "time_ms,process_id,process_start_key,source,swap_chain,frame_time_ms\r\n0,123,1234,0,1,9\r\n",
+      presentmon: "Application,ProcessID,SwapChainAddress,Runtime,SyncInterval,PresentFlags,Dropped,TimeInSeconds,MsBetweenPresents\r\nexample.exe,123,0x1,Other,-1,0,0,0.000,9.000\r\n"
+    }[format];
+    if (csv === undefined) return json(response, 400, { error: "unknown export format" });
     response.writeHead(200, { "Content-Type": "text/csv; charset=utf-8" });
-    response.end("kind,utc,processId,processStartKey,source,swapChain,frameTimeMs,scope,metric,value\r\nsummary,,,,,,,,averageFps,100\r\n");
+    response.end(csv);
     return;
   }
   if (path === "/api/metrics/catalog") {
@@ -1862,6 +1983,9 @@ function resetScenario() {
   diskScanSequence = 0;
   targetedRecordingSequence = 0;
   targetedRecordings.clear();
+  targetedRecordingProfiles = [targetedRecordingDefaultProfile()];
+  targetedRecordingProfileSequence = 0;
+  targetedRecordingTargetRunning = true;
   cpuBaselineOverrideRatio = null;
   diskUsageSummary.totalBytes = 91_000_000;
   diskUsageSummary.scannedBytes = 91_000_000;
@@ -3408,6 +3532,69 @@ function completeTargetedRecording(id, stopReason) {
     stopReason,
     incomplete: false
   };
+  if (entry.selectedItems) {
+    entry.header.items = entry.selectedItems.map((item) => targetedRecordingItemReport(item, entry.defaultIntervalMs, true));
+    entry.header.processes = [{ processId: 123, processStartKey: 1234, name: "example.exe",
+      firstSeenAt: entry.header.startedAt, exitedAt: null }];
+    entry.header.storedBytes = 2048;
+  }
+}
+
+function targetedRecordingIntervalValid(value) {
+  return Number.isInteger(value) && value >= 100 && value <= 60000;
+}
+
+// 录制项列表的校验，代码和后端一致；没有问题时返回 null。
+function targetedRecordingItemsError(items) {
+  if (!Array.isArray(items) || items.length === 0) return "targeted-recording-profile-items-empty";
+  if (items.length > 256) return "targeted-recording-profile-items-too-many";
+  const seen = new Set();
+  for (const item of items) {
+    if (!["frames", "software", "metric"].includes(item?.kind)) return "targeted-recording-item-invalid-kind";
+    const entry = targetedRecordingCatalog.find((candidate) => candidate.kind === item.kind && candidate.id === item.id);
+    if (!entry) return "targeted-recording-item-unknown";
+    const key = `${item.kind}:${item.id}`;
+    if (seen.has(key)) return "targeted-recording-item-duplicate";
+    seen.add(key);
+    const source = item.source ?? "auto";
+    if (source !== "auto" && !entry.sources.includes(source)) return "targeted-recording-item-source-invalid";
+    if (item.syncPrecision !== undefined && !["low", "mid", "high"].includes(item.syncPrecision)) {
+      return "targeted-recording-item-invalid-precision";
+    }
+    if (item.kind !== "frames" && item.intervalMs !== undefined && item.intervalMs !== null
+      && !targetedRecordingIntervalValid(item.intervalMs)) return "targeted-recording-interval-out-of-range";
+  }
+  return null;
+}
+
+function normalizeTargetedRecordingItems(items) {
+  return items.map((item) => ({ kind: item.kind, id: item.id, source: item.source ?? "auto",
+    intervalMs: item.kind === "frames" ? null : item.intervalMs ?? null, syncPrecision: item.syncPrecision ?? "mid" }));
+}
+
+// 报告头里一项的录制信息：完成后才有点数；整机温度在示例采样里是 null，记一段“没有值”的空缺。
+function targetedRecordingItemReport(item, defaultIntervalMs, completed) {
+  const entry = targetedRecordingCatalog.find((candidate) => candidate.kind === item.kind && candidate.id === item.id);
+  const frames = item.kind === "frames";
+  const actualSource = item.source !== "auto" ? item.source
+    : frames ? "etw" : entry?.sources[0] ?? item.source;
+  const intervalOrigin = frames ? "per-present"
+    : item.intervalMs !== null ? "item"
+    : entry?.naturalIntervalMs !== null && entry?.naturalIntervalMs !== undefined ? "natural" : "profile-default";
+  return {
+    kind: item.kind,
+    id: item.id,
+    unit: entry?.unit ?? "",
+    selectedSource: item.source,
+    actualSources: completed ? [actualSource] : [],
+    selectedIntervalMs: frames ? null : item.intervalMs,
+    intervalOrigin,
+    actualIntervalMs: frames ? null : item.intervalMs ?? entry?.naturalIntervalMs ?? defaultIntervalMs,
+    syncPrecision: item.syncPrecision,
+    pointCount: completed ? (frames ? 3 : 2) : 0,
+    gaps: completed && item.kind === "metric" && item.id === "cpu.temperature"
+      ? [{ fromMs: 0, toMs: 1000, reason: "value-unavailable" }] : []
+  };
 }
 
 // Deterministic report values, using the production wire shape including nullable metrics.
@@ -3425,11 +3612,25 @@ function targetedRecordingReport(entry) {
       source: 0, swapChain: 1, endedAt: new Date(start + (end - start) * index / 2).toISOString(), durationMs: [9, 10, 11][index] })),
     fpsDistribution: [{ fromFps: 100, toFps: 110, count: 3 }],
     resourceSamples: [entry.header.startedAt, capturedAt].map((capturedAt) => ({
-      capturedAt, software: { "cpu.usage": 25, "memory.usage": 1048576 },
-      system: { "cpu.usage": 40, "cpu.temperature": null },
+      capturedAt, ...targetedRecordingSampleValues(entry),
       processes: [{ processId: 123, processStartKey: 1234 }]
     }))
   };
+}
+
+// 按录制项录的报告，采样里只带选中的项；没有录制项的旧录制保持原来的四个值。
+function targetedRecordingSampleValues(entry) {
+  const software = { "cpu.usage": 25, "memory.usage": 1048576 };
+  const system = { "cpu.usage": 40, "cpu.temperature": null, "memory.usage": 50 };
+  if (!entry.selectedItems) {
+    return { software: { "cpu.usage": 25, "memory.usage": 1048576 }, system: { "cpu.usage": 40, "cpu.temperature": null } };
+  }
+  const values = { software: {}, system: {} };
+  for (const item of entry.selectedItems) {
+    if (item.kind === "software") values.software[item.id] = software[item.id] ?? 1;
+    if (item.kind === "metric") values.system[item.id] = item.id in system ? system[item.id] : 1;
+  }
+  return values;
 }
 
 function publishOperationValue(subscriber, value) {

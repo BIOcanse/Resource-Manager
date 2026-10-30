@@ -476,6 +476,7 @@ export default function App() {
         onConfirmPortableRoot={() => void softwareActions.confirmPortableRootFromDetail()}
         onSaveGpuPlacementSoftwarePolicy={(policy) => softwareActions.saveGpuPlacementSoftwarePolicyFromDetail(policy)}
         onSaveGpuPlacementProcessPolicy={(policy) => void softwareActions.saveGpuPlacementProcessPolicyFromDetail(policy)}
+        confirmDialog={confirmDialog}
       />
       <ManualSoftwareModal
         open={Boolean(management.manualSoftwareKind())}

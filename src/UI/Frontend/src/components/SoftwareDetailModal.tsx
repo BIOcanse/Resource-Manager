@@ -54,6 +54,7 @@ import { isHttpUrl, pathLooksUsable, textOrEmpty, uniqueTextValues } from "../ut
 import { UserDetailsDialog } from "./UserDetailsDialog";
 import { SoftwareIssueDetailSection } from "./SoftwareIssuePresentation";
 import { TargetedRecordingControl } from "../features/targetedReport/TargetedRecordingControl.tsx";
+import type { ConfirmDialogRequest } from "./AppFeedback";
 import { uiText } from "../text.ts";
 import { formatBytes } from "../presentation/byteUnits.ts";
 import { SoftwareOverlaySettings } from "../features/overlay/SoftwareOverlaySettings.tsx";
@@ -81,6 +82,8 @@ interface SoftwareDetailModalProps {
   onConfirmPortableRoot: () => void;
   onSaveGpuPlacementSoftwarePolicy: (policy: GpuPlacementSoftwarePolicy) => Promise<void> | void;
   onSaveGpuPlacementProcessPolicy: (policy: GpuPlacementProcessPolicy) => void;
+  /** 定向录制的配置管理对话框删除配置、放弃修改时用的应用内确认框。 */
+  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
 }
 
 // 文案按当前语言求值，不能在模块顶层固化。
@@ -309,7 +312,8 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                   </Show>
                   <DetailSection title={uiText.softwareDetail.section.operations} rows={model().operationRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <Show when={props.mutablePersistenceEnabled && model().type === "software"}>
-                    <TargetedRecordingControl softwareId={model().id} active={frontendWork.frontendVisible()} />
+                    <TargetedRecordingControl softwareId={model().id} active={frontendWork.frontendVisible()}
+                      confirmDialog={props.confirmDialog} />
                   </Show>
                   <Show when={props.gpuPlacementEnabled && model().type === "software" && !props.preciseGpuPlacementEnabled}>
                     <section class="software-detail-section">

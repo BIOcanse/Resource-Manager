@@ -7,6 +7,10 @@ import { seriesSet, type ReportSeries, type SeriesSet } from "./seriesModel.ts";
  * - 帧间隔：帧时间（ms）和帧率（1000 / 帧时间，FPS）各出两条，一条按时间（帧结束时刻），一条按帧序号
  *   （报告里的顺序）。帧时间不大于 0 的帧在帧率序列里是缺口。
  * - 资源采样：软件段和整机段的每个指标各一条时间序列；某次采样没有这个指标或值为 null 时是缺口。
+ * - 报告头带录制项（recording.items 非空，按录制配置录的报告）时，资源序列按录制项逐项出，顺序同录制项：
+ *   software 项读采样的软件段，role 为 software:<id>；metric 项读整机段，role 为 system:<id>；单位用录制项的单位。
+ *   各项间隔可以不同，某次采样里没有这一项的键表示这次没采它，不出点；键在但值为 null 是缺口。
+ *   帧序列照旧。旧报告（没有录制项）走下面按采样里出现的指标出序列的路径。
  * - 时间以录制开始为 0（毫秒）。开始时间解析不出来时以 0 为原点，横轴直接显示原始毫秒数，不另找原点。
  *   时刻解析不出来的帧或采样不进序列。
  */
@@ -16,6 +20,8 @@ export interface SeriesLabels {
   software: string;
   system: string;
   metric: (metricId: string) => string;
+  /** 录制项的名称（按录制项出序列时用；和报告的录制项表同名）。 */
+  item: (kind: "software" | "metric", id: string) => string;
 }
 
 export const frameRoles = { frameTime: "frames", frameRate: "frameRate" } as const;
@@ -65,6 +71,26 @@ export function seriesFromReport(report: RecordingReport, labels: SeriesLabels):
   const samples = report.resourceSamples;
   const sampleTimes = new Float64Array(samples.length);
   for (let index = 0; index < samples.length; index++) sampleTimes[index] = Date.parse(samples[index].capturedAt) - origin;
+  const items = report.recording.items ?? [];
+  if (items.length > 0) {
+    for (const item of items) {
+      if (item.kind === "frames") continue;
+      const scope = item.kind === "software" ? "software" : "system";
+      const times: number[] = [];
+      const values: number[] = [];
+      for (let index = 0; index < samples.length; index++) {
+        const segment = samples[index][scope];
+        if (!Object.hasOwn(segment, item.id)) continue;
+        times.push(sampleTimes[index]);
+        values.push(segment[item.id] ?? Number.NaN);
+      }
+      const pairs = sortedPairs(Float64Array.from(times), Float64Array.from(values));
+      const role = `${scope}:${item.id}`;
+      series.push({ id: role, role, label: `${scope === "software" ? labels.software : labels.system} · ${labels.item(item.kind, item.id)}`,
+        unit: item.unit, kind: "time", x: pairs.x, y: pairs.y, meta: { scope, metricId: item.id } });
+    }
+    return seriesSet(series);
+  }
   for (const scope of ["software", "system"] as const) {
     const metrics = new Set<string>();
     for (const sample of samples) for (const metric of Object.keys(sample[scope])) metrics.add(metric);

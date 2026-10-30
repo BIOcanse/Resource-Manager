@@ -22,7 +22,8 @@ const f64 = (values: number[]) => Float64Array.from(values);
 const list = (values: ArrayLike<number>) => Array.from(values);
 const labels: SeriesLabels = {
   frameTime: "Frame time", frameRate: "Frame rate", software: "Target", system: "System",
-  metric: (id) => `metric ${id}`
+  metric: (id) => `metric ${id}`,
+  item: (kind, id) => `${kind} item ${id}`
 };
 
 const start = Date.parse("2026-10-30T00:00:00Z");

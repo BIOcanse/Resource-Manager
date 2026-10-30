@@ -116,6 +116,8 @@ export function getFocusableDialogElements(dialog: HTMLElement) {
 /**
  * 把对话框之外的整个页面设为 inert：从遮罩往上走到 body，每一层都把祖先链以外的兄弟元素设为 inert。
  * 对话框挂在应用根里时，这就是它旁边的应用内容；经 Portal 挂到 body 时，它旁边的应用根（#root）也在其中。
+ * 叠开时最上面的对话框必须能用：先开的对话框可能已把这一个所在的祖先（例如经 Portal 打开配置对话框后，
+ * 应用根里的确认框）设成 inert，所以祖先链上每一层也恢复为可交互。
  * 记下每个元素原来的 inert，关闭时原样恢复（叠开的对话框各自恢复自己改过的那部分）。
  */
 function inertOutsideBackdrop(backdrop: HTMLElement | undefined) {
@@ -123,6 +125,10 @@ function inertOutsideBackdrop(backdrop: HTMLElement | undefined) {
   let kept: HTMLElement | null = backdrop ?? null;
   // DOM 深度上限：正常页面不到 30 层；防的是异常结构下无止境地往上走。
   for (let depth = 0; kept && kept !== document.body && depth < 256; depth += 1) {
+    if (kept.inert) {
+      records.push({ element: kept, wasInert: true });
+      kept.inert = false;
+    }
     const parent: HTMLElement | null = kept.parentElement;
     if (!parent) {
       break;

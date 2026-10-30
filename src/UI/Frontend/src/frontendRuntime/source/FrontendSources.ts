@@ -143,8 +143,10 @@ import {
 import type { OptimizationReportOverview } from "../../types.ts";
 import {
   getRecording,
-  listRecordings, getRecordingTargets,
+  listRecordings, getRecordingTargets, listProfiles,
   type RecordingHeader,
+  type RecordingProfile,
+  type RecordingTarget,
   type RecordingReport
 } from "../../features/targetedReport/targetedRecordingApi.ts";
 import type {
@@ -225,7 +227,8 @@ export interface FrontendSources {
   readonly dashboardSettings: SourceHandle<DashboardSettingsResult>;
   readonly optimizationReports: SourceHandle<OptimizationReportOverview>;
   readonly targetedRecordings: SourceHandle<RecordingHeader[]>;
-  readonly targetedRecordingTargets: SourceHandle<Awaited<ReturnType<typeof getRecordingTargets>>>;
+  readonly targetedRecordingTargets: SourceHandle<RecordingTarget[]>;
+  readonly targetedRecordingProfiles: SourceHandle<RecordingProfile[]>;
   readonly targetedRecordingReport: SourceFamily<
     { readonly recordingId: string },
     RecordingReport
@@ -421,9 +424,14 @@ export function createFrontendSources(
       selectCapturedAt: (value) =>
         value.status.lastEvaluationAt ?? value.capturedAt
     }),
-    targetedRecordingTargets: sourceRegistry.define({
+    targetedRecordingTargets: sourceRegistry.define<RecordingTarget[]>({
       key: "targeted-recordings.targets",
       load: (signal) => getRecordingTargets(requestClient, signal),
+      retainLastGood: false
+    }),
+    targetedRecordingProfiles: sourceRegistry.define<RecordingProfile[]>({
+      key: "targeted-recordings.profiles",
+      load: (signal) => listProfiles(requestClient, signal),
       retainLastGood: false
     }),
     targetedRecordings: sourceRegistry.define<RecordingHeader[]>({

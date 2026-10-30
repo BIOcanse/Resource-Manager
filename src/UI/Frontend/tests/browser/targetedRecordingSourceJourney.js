@@ -89,6 +89,12 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   await detail.locator(".targeted-recording-control").waitFor({ state: "visible", timeout: 5000 });
   const startButton = detail.getByRole("button", { name: app.targetedReport.start, exact: true });
   await startButton.waitFor({ state: "visible", timeout: 5000 });
+  // 软件详情里的录制控件同样有配置选择（默认第一份，显示在选择框上）和打开配置管理的按钮。
+  const profileSelect = detail.getByRole("combobox", { name: app.targetedReport.profile, exact: true });
+  await page.waitForFunction(() => document.querySelector(".targeted-recording-profile [role='combobox']")?.textContent?.trim() === "默认",
+    null, { timeout: 5000 });
+  assert(await profileSelect.isEnabled(), "The profile select is not available before recording");
+  await detail.getByRole("button", { name: app.targetedReport.manageProfiles, exact: true }).waitFor();
   await detail.getByRole("status").filter({ hasText: app.targetedReport.oneAtATime }).waitFor();
   assert(await startButton.isDisabled(), "Another software recording must block start");
   const conflictReads = listReads;
@@ -110,9 +116,11 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
     .waitFor({ state: "visible", timeout: 5000 });
   // start() 先提交录制状态再刷新列表；等刷新结束才推进轮询时钟，避免把尚在飞行的请求算进窗口。
   await page.waitForFunction(() => {
-    const stop = document.querySelector(".targeted-recording-actions button");
+    const stop = document.querySelector(".targeted-recording-action button");
     return stop && !stop.disabled;
   }, null, { timeout: 5000 });
+  // 录制中不能换配置。
+  assert(await profileSelect.isDisabled(), "The profile select stayed available while recording");
   const readsAtStart = listReads;
   await passPollWindow();
   assert(listReads > readsAtStart,

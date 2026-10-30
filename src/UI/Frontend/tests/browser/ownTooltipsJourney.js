@@ -432,7 +432,9 @@ export default async function ownTooltipsJourney(page, baseUrl) {
     await page.getByRole("dialog", { name: app.taskCenter.title, exact: true }).waitFor({ state: "detached" });
     // 资源条读数后面的问号：名称和说明是这种语言的，说明整个在窗口里、不盖住问号。
     // （标题栏开机时长的问号在这么窄的窗口里随标题区一起被页签挤出可见范围，原来的原生 title 也一样；它在 1280 宽下验。）
-    const barHint = page.locator(`.resource-breakdown-header .help-hint${NOT_GHOST}`).first();
+    // 第一批资源条数据到之前是占位（aria-busy），数据到时整块换成正式的资源条，占位里的问号随之卸下；等正式的出来再悬停。
+    const barHint = page.locator(`.resource-breakdown:not([aria-busy="true"]) .resource-breakdown-header .help-hint${NOT_GHOST}`).first();
+    await barHint.waitFor();
     assert.equal(await barHint.getAttribute("aria-label"), app.common.helpHint, `${language}: the question mark is named in this language`);
     await hoverCenter(page, barHint);
     const popover = page.locator(`.help-hint-popover${NOT_GHOST}`);
@@ -468,7 +470,9 @@ export default async function ownTooltipsJourney(page, baseUrl) {
       await waitTooltip(page, await label.getAttribute("data-full-content"), `${tag} metric name`);
       await shotAround(page, join(shots, `full-content-${tag}.png`), label, tooltip);
       // 问号说明：资源条读数后面的统计口径和刻度含义。
-      const barHint = page.locator(`.resource-breakdown-header .help-hint${NOT_GHOST}`).first();
+      // 第一批资源条数据到之前是占位（aria-busy），数据到时整块换成正式的资源条，占位里的问号随之卸下；等正式的出来再悬停。
+      const barHint = page.locator(`.resource-breakdown:not([aria-busy="true"]) .resource-breakdown-header .help-hint${NOT_GHOST}`).first();
+      await barHint.waitFor();
       await hoverCenter(page, barHint);
       await page.locator(`.help-hint-popover${NOT_GHOST}`).waitFor();
       await shotAround(page, join(shots, `help-hint-${tag}.png`), barHint, ".help-hint-popover:not([data-exit-ghost])");

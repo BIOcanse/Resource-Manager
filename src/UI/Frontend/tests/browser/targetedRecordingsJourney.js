@@ -34,22 +34,45 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
     await panel.getByText(copy.empty, { exact: true }).waitFor();
     const targets = panel.getByRole("combobox", { name: copy.software, exact: true });
     // The software list is the app's standard select (a combobox button with a listbox popup), not a native select.
-    const targetName = "示例软件";
+    // It lists the running registered software from /api/targeted-recordings/targets, each with its process count.
+    const targetName = copy.targetOption("示例软件", 2);
     await targets.click();
     await page.getByRole("listbox", { name: copy.software, exact: true }).getByRole("option", { name: targetName, exact: true }).click();
     const visibleTarget = async () => (await targets.textContent()).trim();
     const control = panel.locator(".targeted-recording-control");
     const duration = control.getByRole("spinbutton", { name: copy.maximumSeconds, exact: true });
     assert(await duration.inputValue() === "600", `${language}: default duration is not 600`);
+    // The profile select shows its default, the first profile, instead of hiding it.
+    const profileSelect = control.getByRole("combobox", { name: copy.profile, exact: true });
+    assert((await profileSelect.textContent()).trim() === "默认", `${language}: the first profile is not the visible default`);
+    let profileId = "default";
     if (language === "zh-CN") {
+      profileId = await checkProfiles(page, control, copy, assert);
+      await profileSelect.click();
+      await page.getByRole("listbox", { name: copy.profile, exact: true }).getByRole("option", { name: "旅程配置（改）", exact: true }).click();
+      // Starting while the target is not running: the backend refuses with 409 target-not-running, the control says so
+      // and rereads the running software, which is now empty.
+      await page.request.post(`${baseUrl}/__test/targeted-recordings/target-running`, { data: { running: false } });
+      const refused = page.waitForResponse(response => response.url().endsWith("/api/targeted-recordings") && response.request().method() === "POST");
+      await control.getByRole("button", { name: copy.start, exact: true }).click();
+      const refusal = await refused;
+      assert(refusal.status() === 409 && (await refusal.json()).error === "target-not-running", "Start was not refused for a stopped target");
+      assert(JSON.parse(refusal.request().postData()).profileId === profileId, "Start did not send the chosen profile");
+      await control.getByText(copy.errors.targetNotRunning, { exact: true }).waitFor();
+      await panel.getByText(copy.noSoftware, { exact: true }).waitFor();
+      await page.request.post(`${baseUrl}/__test/targeted-recordings/target-running`, { data: { running: true } });
+      await panel.getByRole("button", { name: copy.refresh, exact: true }).click();
+      await page.waitForFunction(({ name }) => [...document.querySelectorAll(".targeted-reports-page [role='combobox']")]
+        .some(element => element.textContent.trim() === name), { name: targetName });
+      await control.getByText(copy.errors.targetNotRunning, { exact: true }).waitFor({ state: "detached" });
       const emptyTargets = route => route.fulfill({ json: [] });
-      await page.route("**/api/software", emptyTargets);
+      await page.route("**/api/targeted-recordings/targets", emptyTargets);
       await panel.getByRole("button", { name: copy.refresh, exact: true }).click();
       await panel.getByText(copy.noSoftware, { exact: true }).waitFor();
       // Refresh reads targets and recordings independently. Finish both before
       // changing the list fixture, or the next refresh can join the old list read.
       await panel.getByText(copy.empty, { exact: true }).waitFor();
-      await page.unroute("**/api/software", emptyTargets);
+      await page.unroute("**/api/targeted-recordings/targets", emptyTargets);
       const otherRecording = route => route.fulfill({ json: [{
         id: "other", softwareId: "other-software", softwareName: "Other software",
         startedAt: new Date().toISOString(), endedAt: null, maximumDurationSeconds: 600,
@@ -63,6 +86,11 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
       await panel.getByRole("button", { name: copy.refresh, exact: true }).click();
       await panel.getByText(copy.empty, { exact: true }).waitFor();
       assert(await visibleTarget() === targetName, "Refreshing targets lost the visible selection");
+      // The journey's own profile records one item; the result views below need the default profile's software series,
+      // so the recording itself uses the default profile.
+      await profileSelect.click();
+      await page.getByRole("listbox", { name: copy.profile, exact: true }).getByRole("option", { name: "默认", exact: true }).click();
+      profileId = "default";
     }
     // This journey stops explicitly; a short deadline would expire during a queue memory pause.
     await duration.fill("3600");
@@ -71,6 +99,8 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
     const started = await (await response).json();
     assert(started.softwareId === "frontend-harness.software" && started.maximumDurationSeconds === 3600,
       `${language}: wrong start payload`);
+    assert(started.profileId === profileId && started.items.length === 5,
+      `${language}: the recording did not use the chosen profile`);
     await control.getByRole("status").filter({ hasText: copy.recording }).waitFor();
     const row = panel.locator(".targeted-report-list-row:not([data-exit-ghost])");
     await row.getByText("示例软件", { exact: true }).waitFor();
@@ -86,24 +116,35 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
     await row.getByRole("button", { name: copy.stop, exact: true }).click();
     await panel.locator(".targeted-report-detail:not([data-exit-ghost])").getByText(new RegExp(copy.stopReasons.user)).waitFor();
     await panel.locator(".targeted-report-summary").getByText(copy.averageFps, { exact: true }).waitFor();
+    await checkReportInfo(panel, copy, language, started, assert);
     await checkReportViews(page, panel, app, copy, language, assert);
     if (process.env.RM_BROWSER_ARTIFACT_DIR) {
       await page.screenshot({ path: resolve(process.env.RM_BROWSER_ARTIFACT_DIR, `${language}.png`), fullPage: true });
     }
     if (language === "zh-CN") {
-      for (const [label, format] of [[copy.exportJson, "json"], [copy.exportCsv, "csv"]]) {
+      // Five export formats, in the order of the buttons; file names match the backend's Content-Disposition names.
+      const exportGroup = panel.getByRole("group", { name: copy.exports, exact: true });
+      assert(await exportGroup.getByRole("button").count() === 5, "The report does not offer five exports");
+      for (const [label, format, fileName, csvHeader] of [
+        [copy.exportPresentMon, "presentmon", `targeted-recording-${started.id}-presentmon-1.6.csv`, "Application,ProcessID,SwapChainAddress,"],
+        [copy.exportLongCsv, "long-csv", `targeted-recording-${started.id}-long.csv`, "time_ms,item,process,value,unit"],
+        [copy.exportFramesCsv, "frames-csv", `targeted-recording-${started.id}-frames.csv`, "time_ms,process_id,process_start_key,"],
+        [copy.exportJson, "json", `targeted-recording-${started.id}.json`, null],
+        [copy.exportCsv, "csv", `targeted-recording-${started.id}.csv`, "kind,utc,processId,"]
+      ]) {
         const download = page.waitForEvent("download");
         const exported = page.waitForResponse(response => response.url().includes(`/${started.id}/export?format=${format}`));
-        await panel.getByRole("button", { name: label, exact: true }).click();
-        assert((await download).suggestedFilename().endsWith(`.${format}`), `Wrong ${format} download`);
+        await exportGroup.getByRole("button", { name: label, exact: true }).click();
+        assert((await download).suggestedFilename() === fileName, `Wrong ${format} download name`);
         const response = await exported;
         assert(response.ok(), `${format} export failed`);
         if (format === "json") {
           const report = await response.json();
-          assert(report.recording.id === started.id && report.summary.averageFps === 100, "JSON export lost report values");
+          assert(report.schemaVersion === 1 && report.recording.id === started.id && report.summary.averageFps === 100,
+            "JSON export lost report values");
         } else {
           const csv = await response.text();
-          assert(csv.startsWith("kind,utc,processId,") && csv.includes("averageFps,100"), "CSV export lost report values");
+          assert(csv.startsWith(csvHeader), `${format} export has the wrong header`);
         }
       }
       const noFrames = async route => {
@@ -167,7 +208,98 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
     previous = language;
   }
   assert(failures.length === 0, JSON.stringify(failures));
-  return { languages: checked, startRunningStopReport: true, charts: true, views: true, exports: true, deletion: true, historyClear: true, listRecovery: true };
+  return { languages: checked, startRunningStopReport: true, charts: true, views: true, exports: true, deletion: true, historyClear: true,
+    listRecovery: true, profiles: true, targetNotRunning: true, reportInfo: true };
+}
+
+// Recording profiles (docs/targeted_recording_views_2026-10-30.md §3.2): the last profile cannot be deleted and says why;
+// create a profile (empty until an item is added), rename it, change an item's interval and sync precision, copy it, and
+// delete the copy through the app's confirm dialog. Every change is saved explicitly. Returns the created profile's id.
+async function checkProfiles(page, control, copy, assert) {
+  const profiles = copy.profiles;
+  await control.getByRole("button", { name: copy.manageProfiles, exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: profiles.title, exact: true });
+  await dialog.waitFor();
+  const remove = dialog.getByRole("button", { name: profiles.delete, exact: true });
+  await dialog.getByText(copy.errors.lastProfile, { exact: true }).waitFor();
+  assert(await remove.isDisabled(), "The last profile could be deleted");
+
+  await dialog.getByRole("button", { name: profiles.newProfile, exact: true }).click();
+  const name = dialog.locator(".targeted-profiles-field input").first();
+  await name.fill("旅程配置");
+  const save = dialog.getByRole("button", { name: profiles.save, exact: true });
+  await dialog.getByText(copy.errors.profileItemsEmpty, { exact: true }).waitFor();
+  assert(await save.isDisabled(), "A profile without items could be saved");
+  const picker = dialog.locator(".item-picker");
+  await picker.getByText(copy.itemPicker.count(0, 256), { exact: true }).waitFor();
+  await picker.getByRole("searchbox", { name: copy.itemPicker.search, exact: true }).fill("cpu.temperature");
+  await picker.locator(".item-picker-catalog .item-picker-entry button").first().click();
+  await picker.getByText(copy.itemPicker.count(1, 256), { exact: true }).waitFor();
+  const created = page.waitForResponse(response => response.url().endsWith("/api/targeted-recordings/profiles")
+    && response.request().method() === "POST");
+  await save.click();
+  const createdResponse = await created;
+  const createdProfile = await createdResponse.json();
+  assert(createdResponse.status() === 201 && createdProfile.name === "旅程配置" && createdProfile.items.length === 1
+    && createdProfile.items[0].source === "auto" && createdProfile.items[0].syncPrecision === "mid", "Profile creation sent the wrong profile");
+
+  // Rename, interval and precision stay unsaved (and say so) until Save sends one PATCH with the changed fields.
+  await name.fill("旅程配置（改）");
+  await dialog.getByText(profiles.unsaved, { exact: true }).first().waitFor();
+  const interval = picker.locator(".item-picker-row input[type='text']").first();
+  await interval.fill("50");
+  await picker.getByText(copy.itemPicker.intervalInvalid, { exact: true }).waitFor();
+  assert(await save.isDisabled(), "An out-of-range interval could be saved");
+  await interval.fill("500");
+  const precision = picker.locator(".item-picker-row [role='combobox']").nth(1);
+  await precision.click();
+  await page.getByRole("option", { name: copy.itemPicker.precisions.high, exact: true }).click();
+  const patched = page.waitForResponse(response => response.url().endsWith(`/api/targeted-recordings/profiles/${createdProfile.id}`)
+    && response.request().method() === "PATCH");
+  await save.click();
+  const patchBody = JSON.parse((await patched).request().postData());
+  assert(patchBody.name === "旅程配置（改）" && patchBody.items[0].intervalMs === 500 && patchBody.items[0].syncPrecision === "high"
+    && !("defaultIntervalMs" in patchBody), `Profile save sent the wrong patch: ${JSON.stringify(patchBody)}`);
+  await dialog.getByText(profiles.unsaved, { exact: true }).first().waitFor({ state: "detached" });
+
+  const copied = page.waitForResponse(response => response.url().endsWith("/api/targeted-recordings/profiles")
+    && response.request().method() === "POST");
+  await dialog.getByRole("button", { name: profiles.copyProfile, exact: true }).click();
+  const copyResponse = await copied;
+  assert(copyResponse.status() === 201 && JSON.parse(copyResponse.request().postData()).copyFromId === createdProfile.id,
+    "Copy did not copy the selected profile");
+  const copyProfile = await copyResponse.json();
+  // The dialog selects the copy once the list is reread; deleting before that would remove the profile selected before.
+  await dialog.locator(`button[aria-pressed="true"]`).filter({ hasText: copyProfile.name }).waitFor();
+
+  // Deleting asks in the app's confirm dialog first.
+  const confirm = page.getByRole("dialog", { name: profiles.confirmDelete, exact: true });
+  await remove.click();
+  await confirm.getByRole("button", { name: profiles.delete, exact: true }).waitFor();
+  const deleted = page.waitForResponse(response => response.url().endsWith(`/api/targeted-recordings/profiles/${copyProfile.id}`)
+    && response.request().method() === "DELETE");
+  await confirm.getByRole("button", { name: profiles.delete, exact: true }).click();
+  assert((await deleted).status() === 204, "Profile deletion failed");
+  await confirm.waitFor({ state: "detached" });
+  await dialog.getByRole("button", { name: copyProfile.name, exact: true }).waitFor({ state: "detached" });
+  await dialog.getByRole("button", { name: profiles.close, exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  return createdProfile.id;
+}
+
+// The report detail shows the profile, one row per recorded item, the processes and the storage used out of the cap.
+async function checkReportInfo(panel, copy, language, started, assert) {
+  const info = copy.reportInfo;
+  const detail = panel.locator(".targeted-report-detail:not([data-exit-ghost])");
+  await detail.getByText(started.profileName, { exact: true }).waitFor();
+  const items = detail.getByRole("region", { name: info.items, exact: true });
+  await items.getByRole("columnheader", { name: info.columns.gaps, exact: true }).waitFor();
+  assert(await items.locator("tbody tr").count() === started.items.length, `${language}: the items table lost rows`);
+  // The temperature item has a gap in the mock (no value), listed with its reason.
+  await items.getByText(new RegExp(info.gapReasons.valueUnavailable)).first().waitFor();
+  const processes = detail.getByRole("region", { name: info.processes, exact: true });
+  await processes.getByRole("rowheader", { name: "example.exe", exact: true }).waitFor();
+  await detail.getByText(info.storageUsed((2048 / 1024).toFixed(1), "4096"), { exact: true }).waitFor();
 }
 
 // Result views (docs/targeted_recording_views_2026-10-30.md). The three default views are ordinary views built from the

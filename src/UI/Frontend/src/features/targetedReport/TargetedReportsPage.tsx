@@ -10,12 +10,12 @@ import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface.ts";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand.tsx";
-import { softwareRecordName } from "../../presentation/softwareFacts.ts";
 import { currentLanguage, uiText } from "../../text.ts";
 import {
-  deleteRecording, exportRecording, stopRecording,
-  type RecordingHeader, type RecordingReport
+  deleteRecording, exportFileName, exportRecording, stopRecording,
+  type ExportFormat, type RecordingHeader, type RecordingReport
 } from "./targetedRecordingApi.ts";
+import { TargetedReportInfo } from "./TargetedReportInfo.tsx";
 import { ReportViews } from "./views/ReportViews.tsx";
 import { seriesFromReport } from "./views/reportSeriesAdapter.ts";
 import { localizedSeriesLabels } from "./views/seriesLabels.ts";
@@ -233,14 +233,15 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
     }
   };
 
-  const download = async (id: string, format: "json" | "csv") => {
+  // 五种导出格式（docs/targeted_recording_views_2026-10-30.md §3.6），文件名和后端的 Content-Disposition 一致。
+  const download = async (id: string, format: ExportFormat) => {
     setActionFailed(false);
     try {
       const bytes = await exportRecording(runtime.requestClient, id, format);
-      const url = URL.createObjectURL(new Blob([bytes], { type: format === "csv" ? "text/csv" : "application/json" }));
+      const url = URL.createObjectURL(new Blob([bytes], { type: format === "json" ? "application/json" : "text/csv" }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `targeted-recording-${id}.${format}`;
+      link.download = exportFileName(id, format);
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
@@ -250,11 +251,14 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
 
   const pageName = useCurrentPageName();
   const targets = createMemo(() => targetsSource.snapshot().data ?? []);
-  // 选中的软件不在当前列表里（例如刷新后被移除）时按“未选择”显示；记住的选择保留，软件回到列表后恢复。
-  const selectedTarget = createMemo(() => targets().some((software) => software.id === targetId()) ? targetId() : "");
+  // 列表是正在运行的已登记软件（/api/targeted-recordings/targets），每项带进程数；控件打开和开始失败（409）时重读。
+  // 选中的软件不在当前列表里（例如进程已退出）时按“未选择”显示；记住的选择保留，软件回到列表后恢复。
+  const selectedTarget = createMemo(() => targets().some((target) => target.softwareId === targetId()) ? targetId() : "");
   const targetOptions = createMemo<StandardSelectOption[]>(() => [
     { value: "", label: uiText.targetedReport.chooseSoftware },
-    ...targets().map((software) => ({ value: software.id, label: softwareRecordName(software) }))
+    ...targets().map((target) => ({
+      value: target.softwareId, label: uiText.targetedReport.targetOption(target.name, target.processCount)
+    }))
   ]);
   const targetsFailed = () => targetsSource.snapshot().status === "error"
     || targetsSource.snapshot().status === "unavailable";
@@ -286,7 +290,7 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
       </div>
       <p class="targeted-report-note">{uiText.targetedReport.workflow}</p>
       <TargetedRecordingControl layout="toolbar" softwareId={selectedTarget()} hint={toolbarHint()}
-        active={frontendWork.isNeeded(frontendWorkIds.targetedReportsPage)}
+        active={frontendWork.isNeeded(frontendWorkIds.targetedReportsPage)} confirmDialog={props.confirmDialog}
         onStarted={(recording) => select(recording.id)}>
         <div class="targeted-recording-field targeted-recording-target">
           <span aria-hidden="true">{uiText.targetedReport.software}</span>
@@ -350,14 +354,21 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
           <div ref={(element) => exitOnUnmount(element)} class="targeted-report-detail">
             <div class="targeted-report-toolbar">
               <h3>{current().recording.softwareName} · {dateTime(current().recording.startedAt)}</h3>
-              <div class="targeted-report-actions">
-                <button class="secondary panel-refresh-button" type="button" onClick={() => void download(current().recording.id, "json")}>{uiText.targetedReport.exportJson}</button>
-                <button class="secondary panel-refresh-button" type="button" onClick={() => void download(current().recording.id, "csv")}>{uiText.targetedReport.exportCsv}</button>
+              <div class="targeted-report-actions" role="group" aria-label={uiText.targetedReport.exports}>
+                <For each={exportButtons}>
+                  {([format, label]) => (
+                    <button class="secondary panel-refresh-button" type="button"
+                      onClick={() => void download(current().recording.id, format)}>{label()}</button>
+                  )}
+                </For>
               </div>
             </div>
             <p class="targeted-report-note">{uiText.targetedReport.applicationPresent} · {current().recording.status === "recording"
               ? uiText.targetedReport.recording : stopReason(current().recording.stopReason)}</p>
             <Show when={current().recording.incomplete}><p class="targeted-report-note warning" role="status">{uiText.targetedReport.incomplete}</p></Show>
+            <Show when={current().recording.items !== undefined}>
+              <TargetedReportInfo recording={current().recording} />
+            </Show>
             <Show when={current().summary} fallback={<p class="targeted-report-note">{uiText.targetedReport.noFrames}</p>}>
               {(summary) => (
                 <dl class="targeted-report-summary">
@@ -389,6 +400,14 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
     </section>
   );
 }
+
+const exportButtons: ReadonlyArray<readonly [ExportFormat, () => string]> = [
+  ["presentmon", () => uiText.targetedReport.exportPresentMon],
+  ["long-csv", () => uiText.targetedReport.exportLongCsv],
+  ["frames-csv", () => uiText.targetedReport.exportFramesCsv],
+  ["json", () => uiText.targetedReport.exportJson],
+  ["csv", () => uiText.targetedReport.exportCsv]
+];
 
 // 录制停止原因。"user" 和 "process-exit" 是旧版后端写进报告的值，存下来的旧报告仍带着它们；
 // 后端以后可能加新值，认不出的原样显示代码，不当作正常完成。
