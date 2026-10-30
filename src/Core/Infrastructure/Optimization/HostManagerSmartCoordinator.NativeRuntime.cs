@@ -18,13 +18,12 @@ public sealed partial class HostManagerSmartCoordinator
     // Work order and effect permission are separate: policy and placement both
     // require the original NativeActionTransaction permit, but neither may
     // consume the other's opportunity indefinitely while its backlog remains.
-    private enum NewEffectStage { MemoryTransaction, NativePolicy, Placement, PublicResource, MemoryCleanup }
+    private enum NewEffectStage { MemoryTransaction, NativePolicy, Placement, MemoryCleanup }
     private static readonly NewEffectStage[] NewEffectOrder =
     [
         NewEffectStage.MemoryTransaction,
         NewEffectStage.NativePolicy,
         NewEffectStage.Placement,
-        NewEffectStage.PublicResource,
         NewEffectStage.MemoryCleanup
     ];
     private int nextRealtimeNewEffectIndex;
@@ -237,7 +236,6 @@ public sealed partial class HostManagerSmartCoordinator
             }
             else
             {
-                hostPublicResourceNormalReleaseEvidence.Stop();
                 ClearNonAdaptedMemoryModeProjection();
                 schedulingAuthorityOwner.PublishUnavailable(roundNumber,
                     HostManagerSchedulingPlanBinding.Create(desired), durableTimeSource.NextUtc(), "optimization-mode-normal");
@@ -316,13 +314,9 @@ public sealed partial class HostManagerSmartCoordinator
         }
         var runtimePlan = desired.RuntimePlan;
         var modePlan = runtimePlan.OptimizationMode;
-        var normalCapacitySample = !modePlan.SchedulingEnabled && HasAvailablePublicResourceLifecycle()
-            ? CapturePublicResourceCapacitySample()
-            : null;
         if (!modePlan.SchedulingEnabled)
         {
             cycleFactExclusions.Clear();
-            hostPublicResourceNormalReleaseEvidence.Stop();
             ClearNonAdaptedMemoryModeProjection();
             schedulingAuthorityOwner.PublishUnavailable(
                 roundNumber,
@@ -356,9 +350,7 @@ public sealed partial class HostManagerSmartCoordinator
                 maximumActionsThisCycle,
                 cancellationToken,
                 placementStateAvailable,
-                gpuControlAvailable,
-                runPublicResourceLifecycle: () => RunNormalModePublicResourceLifecycle(
-                    effectAdmission, desired, normalCapacitySample)))
+                gpuControlAvailable))
         {
             normalRestorationComplete = false;
             cycleDiagnostics?.Defer("normal-mode-ownership-restoration-incomplete");
@@ -373,8 +365,6 @@ public sealed partial class HostManagerSmartCoordinator
                         processEffectValidationScope, desired, leaseSample, null, true, false,
                         cancellationToken, gpuControlAvailable: gpuControlAvailable);
             }
-            if (scoreOnlyEnabled)
-                RunNormalModePublicResourceLifecycle(effectAdmission, desired, normalCapacitySample);
             if (normalRestorationComplete) cycleDiagnostics?.Complete();
             return new(normalRestorationComplete
                 ? runtimePlan.HostManager.SchedulerSamplingInterval
@@ -441,130 +431,109 @@ public sealed partial class HostManagerSmartCoordinator
             HostManagerSmartCoordinatorOuterLoopPhase.NativeSequenceAssigned,
             nativeCycleSequence: sequence);
         var firstEffectIndex = realtimeCycle ? nextRealtimeNewEffectIndex : 0;
-        var externalCycle = CreateNativeExternalEffectCycle(
-            effectAdmission,
+        var externalEffects = new NativeExternalEffectSink(
+            this,
             processEffectValidationScope,
             sample,
-            modePlan,
             desired.RuntimePlan,
-            desired.HostPlan,
-            desired.RuntimePlan.Version,
-            desired.PublicationSequence,
             sequence,
             cancellationToken);
-        try
+        for (var offset = 0; offset < NewEffectOrder.Length; offset++)
         {
-            for (var offset = 0; offset < NewEffectOrder.Length; offset++)
+            var effectKind = NewEffectOrder[
+                (firstEffectIndex + offset) % NewEffectOrder.Length];
+            switch (effectKind)
             {
-                var effectKind = NewEffectOrder[
-                    (firstEffectIndex + offset) % NewEffectOrder.Length];
-                switch (effectKind)
-                {
-                    case NewEffectStage.MemoryTransaction:
-                        var memoryTransactions = default(NonAdaptedMemoryTransactionBatchResult);
-                        if (effectAdmission.TryAcquire(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction, out var memoryTransactionPermit))
-                        {
-                            memoryTransactions = await ApplyNonAdaptedMemoryModeTransactionsAsync(
-                                memoryTransactionPermit,
-                                processEffectValidationScope,
-                                schedulingPlanBinding,
-                                sample,
-                                CreateAppliedOwnershipFactIndex(ownershipSnapshot),
-                                executionAdmission
-                                    ?? throw new InvalidOperationException(
-                                        "The memory transaction effect has no journal execution admission."),
-                                maximumActionsThisCycle,
-                                modePlan.NonAdaptedMemoryPriorityEnabled,
-                                cancellationToken);
-                        }
-                        else
-                        {
-                            RecordRemainingMemoryDirectiveSkips("memory_effect_not_admitted");
-                        }
-                        cycleDiagnostics?.CaptureMemoryTransactions(memoryTransactions.TransactionCount);
-                        cycleDiagnostics?.Mark("memory-transactions");
-                        if (memoryTransactions.IsBlocked)
-                        {
-                            cycleDiagnostics?.Defer("memory-transaction-blocked");
-                            return new(TimeSpan.FromMilliseconds(
-                                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
-                        }
-                        if (memoryTransactions.TransactionCount != 0)
-                        {
-                            ownershipSnapshot = await nativeActionTransactions.AppliedOwnership
-                                .ReadSnapshotAsync(cancellationToken);
-                        }
-                        break;
-                    case NewEffectStage.NativePolicy:
-                        if (!await RunNativePlanningAndActionsAsync(
-                                effectAdmission,
-                                processEffectValidationScope,
-                                desired,
-                                sample,
-                                computeScoring,
-                                CreateAppliedOwnershipFactIndex(ownershipSnapshot),
-                                protectionLevels,
-                                cpuPlacementEnabled,
-                                gpuPlacementEnabled,
-                                executionAdmission,
-                                sequence,
-                                trigger,
-                                cycleDiagnostics,
-                                cancellationToken))
-                        {
-                            return new(TimeSpan.FromMilliseconds(
-                                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
-                        }
-                        if (!scoreOnlyEnabled)
-                        {
-                            ownershipSnapshot = await nativeActionTransactions.AppliedOwnership
-                                .ReadSnapshotAsync(cancellationToken);
-                        }
-                        break;
-                    case NewEffectStage.Placement:
-                        // A shared-journal recovery cannot be bypassed by moving
-                        // placement ahead of policy in this cycle's rotation.
-                        if (authoritativeAppliedFactsRequired || !placementStateAvailable)
-                        {
-                            cycleDiagnostics?.Mark("placement-ledger-busy");
-                            break;
-                        }
-                        var placementCompleted = await RunAutomaticPlacementCycleAsync(
-                            effectAdmission, processEffectValidationScope, desired, sample, computeScoring,
-                            cpuPlacementEnabled, gpuPlacementEnabled, cancellationToken, firstUse, gpuControlAvailable);
-                        if (!placementCompleted && !HasPendingGpuOwnerWork())
-                            return new(TimeSpan.FromMilliseconds(desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
-                        if (!placementCompleted) cycleDiagnostics?.Mark("gpu-placement-pending");
-                        break;
-                    case NewEffectStage.PublicResource:
-                    case NewEffectStage.MemoryCleanup:
-                        var externalEffectKind = effectKind == NewEffectStage.PublicResource
-                            ? HostManagerCycleEffectKind.PublicResourceLifecycle
-                            : HostManagerCycleEffectKind.AutomaticMemoryCleanup;
-                        await HostManagerNativeExternalEffectDispatcher.RunAsync(
+                case NewEffectStage.MemoryTransaction:
+                    var memoryTransactions = default(NonAdaptedMemoryTransactionBatchResult);
+                    if (effectAdmission.TryAcquire(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction, out var memoryTransactionPermit))
+                    {
+                        memoryTransactions = await ApplyNonAdaptedMemoryModeTransactionsAsync(
+                            memoryTransactionPermit,
+                            processEffectValidationScope,
+                            schedulingPlanBinding,
+                            sample,
+                            CreateAppliedOwnershipFactIndex(ownershipSnapshot),
+                            executionAdmission
+                                ?? throw new InvalidOperationException(
+                                    "The memory transaction effect has no journal execution admission."),
+                            maximumActionsThisCycle,
+                            modePlan.NonAdaptedMemoryPriorityEnabled,
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        RecordRemainingMemoryDirectiveSkips("memory_effect_not_admitted");
+                    }
+                    cycleDiagnostics?.CaptureMemoryTransactions(memoryTransactions.TransactionCount);
+                    cycleDiagnostics?.Mark("memory-transactions");
+                    if (memoryTransactions.IsBlocked)
+                    {
+                        cycleDiagnostics?.Defer("memory-transaction-blocked");
+                        return new(TimeSpan.FromMilliseconds(
+                            desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+                    }
+                    if (memoryTransactions.TransactionCount != 0)
+                    {
+                        ownershipSnapshot = await nativeActionTransactions.AppliedOwnership
+                            .ReadSnapshotAsync(cancellationToken);
+                    }
+                    break;
+                case NewEffectStage.NativePolicy:
+                    if (!await RunNativePlanningAndActionsAsync(
                             effectAdmission,
-                            modePlan.AutomaticMemoryCleanupEnabled,
-                            externalEffectKind,
-                            externalCycle.Sink);
-                        cycleDiagnostics?.Mark(effectKind == NewEffectStage.PublicResource
-                            ? "public-resources"
-                            : "memory-cleanup");
-                        if (effectKind == NewEffectStage.MemoryCleanup
-                            && externalCycle.Sink.MemoryCleanupResult.HasUnresolvedCurrentEffects)
-                        {
-                            cycleDiagnostics?.Defer("memory-cleanup-unresolved-effects");
-                            return new(TimeSpan.FromMilliseconds(
-                                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
-                        }
+                            processEffectValidationScope,
+                            desired,
+                            sample,
+                            computeScoring,
+                            CreateAppliedOwnershipFactIndex(ownershipSnapshot),
+                            protectionLevels,
+                            cpuPlacementEnabled,
+                            gpuPlacementEnabled,
+                            executionAdmission,
+                            sequence,
+                            trigger,
+                            cycleDiagnostics,
+                            cancellationToken))
+                    {
+                        return new(TimeSpan.FromMilliseconds(
+                            desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+                    }
+                    if (!scoreOnlyEnabled)
+                    {
+                        ownershipSnapshot = await nativeActionTransactions.AppliedOwnership
+                            .ReadSnapshotAsync(cancellationToken);
+                    }
+                    break;
+                case NewEffectStage.Placement:
+                    // A shared-journal recovery cannot be bypassed by moving
+                    // placement ahead of policy in this cycle's rotation.
+                    if (authoritativeAppliedFactsRequired || !placementStateAvailable)
+                    {
+                        cycleDiagnostics?.Mark("placement-ledger-busy");
                         break;
-                }
+                    }
+                    var placementCompleted = await RunAutomaticPlacementCycleAsync(
+                        effectAdmission, processEffectValidationScope, desired, sample, computeScoring,
+                        cpuPlacementEnabled, gpuPlacementEnabled, cancellationToken, firstUse, gpuControlAvailable);
+                    if (!placementCompleted && !HasPendingGpuOwnerWork())
+                        return new(TimeSpan.FromMilliseconds(desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+                    if (!placementCompleted) cycleDiagnostics?.Mark("gpu-placement-pending");
+                    break;
+                case NewEffectStage.MemoryCleanup:
+                    await HostManagerNativeExternalEffectDispatcher.RunAsync(
+                        effectAdmission,
+                        modePlan.AutomaticMemoryCleanupEnabled,
+                        externalEffects);
+                    cycleDiagnostics?.Mark("memory-cleanup");
+                    if (externalEffects.MemoryCleanupResult.HasUnresolvedCurrentEffects)
+                    {
+                        cycleDiagnostics?.Defer("memory-cleanup-unresolved-effects");
+                        return new(TimeSpan.FromMilliseconds(
+                            desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+                    }
+                    break;
             }
-        }
-        finally
-        {
-            hostPublicResourceNormalReleaseEvidence.CompleteCycle(
-                externalCycle.ReleaseCycle,
-                externalCycle.Sink.MemoryCleanupResult);
         }
 
         if (realtimeCycle && !scoreOnlyEnabled)

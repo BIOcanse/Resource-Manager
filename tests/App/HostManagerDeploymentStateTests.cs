@@ -395,7 +395,6 @@ public sealed class HostManagerDeploymentStateTests
         HostManagerDeploymentSnapshot snapshot)
         =>
         [
-            snapshot.SharedResources,
             snapshot.ResourceScheduler,
             snapshot.AdapterPrivateResourceLedger,
             snapshot.SmartCoordinator,

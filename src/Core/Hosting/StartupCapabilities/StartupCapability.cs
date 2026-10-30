@@ -5,12 +5,10 @@ public enum StartupCapability : uint
 {
     None = 0,
     MutablePersistence = 1 << 0,
-    LegacyPersistenceImport = 1 << 1,
     GpuLaunchInterceptionReconciliation = 1 << 2,
     RuntimeEffectOwners = 1 << 3,
     PublicServiceCoordination = 1 << 4,
-    OptimizationRuntime = 1 << 5,
-    SharedResourceOwnership = 1 << 6
+    OptimizationRuntime = 1 << 5
 }
 
 public sealed record StartupCapabilitySet(
@@ -27,12 +25,10 @@ public sealed record StartupCapabilitySet(
     public static StartupCapabilitySet Full { get; } = new(
         FullProfileId,
         StartupCapability.MutablePersistence
-        | StartupCapability.LegacyPersistenceImport
         | StartupCapability.GpuLaunchInterceptionReconciliation
         | StartupCapability.RuntimeEffectOwners
         | StartupCapability.PublicServiceCoordination
-        | StartupCapability.OptimizationRuntime
-        | StartupCapability.SharedResourceOwnership);
+        | StartupCapability.OptimizationRuntime);
 
     public bool Allows(StartupCapability capability)
         => capability != StartupCapability.None

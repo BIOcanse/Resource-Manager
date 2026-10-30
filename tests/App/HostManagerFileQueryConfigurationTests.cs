@@ -55,8 +55,6 @@ public sealed class HostManagerFileQueryConfigurationTests
     public void CompilerRejectsMissingOrInvalidFileQueryShape()
     {
         Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
-            root["build_specialize"]!.AsObject().Remove("file_query_abi_version")));
-        Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
             root["build_specialize"]!["capacity_limits"]!["file_query"]!["per_session"]!
                 .AsObject()
                 .Remove("ordinal_index_capacity")));
@@ -71,12 +69,6 @@ public sealed class HostManagerFileQueryConfigurationTests
             root["hot_publish"]!["file_query"]!["total_resident_byte_budget"] = 12_582_912));
         Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
             root["hot_publish"]!["file_query"]!["candidate_limit_multiplier"] = int.MaxValue));
-        Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
-        {
-            var modules = root["build_specialize"]!["native_modules"]!.AsArray();
-            modules.Remove(
-                modules.Single(static value => value?.GetValue<string>() == "file_query"));
-        }));
     }
 
     [Fact]

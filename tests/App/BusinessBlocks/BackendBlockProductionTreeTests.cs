@@ -24,7 +24,7 @@ public sealed class BackendBlockProductionTreeTests
         BackendUids.FanControlCoreLifetimeService, BlockUids.HardwareBridgeProcessOwner, BackendUids.PortableSoftwareDiscoveryService, BackendUids.EtwCpuCoreResidencyReader,
         BackendUids.EtwSystemInterruptSnapshotSource, BackendUids.EtwPhysicalDiskIoAttributionReader, BackendUids.EtwNetworkTcpIpAttributionReader,
         BackendUids.WindowsResourceBreakdownSampler, BackendUids.GpuPlacementProcessHistoryObserver,
-        BackendUids.SharedResourceSubscriptionMaintenanceService, BackendUids.JsonDebugDiagnosticLogWriter,
+        BackendUids.JsonDebugDiagnosticLogWriter,
         BackendUids.HostManagerReportCoordinatorOwner, BackendUids.HostManagerSmartCoordinator, BackendUids.DeviceTopologySnapshotProvider, BackendUids.HostMemoryProtection,
         BackendUids.KernelLeakObservation
     ];
@@ -120,8 +120,8 @@ public sealed class BackendBlockProductionTreeTests
     }
 
     [Theory]
-    [InlineData(false, 44, 42)]
-    [InlineData(true, 45, 43)]
+    [InlineData(false, 43, 42)]
+    [InlineData(true, 44, 43)]
     public async Task ProductionTreeContainsConcurrentFlowsAndDrainsChildrenBeforeTheirOwners(bool windowsService, int expectedCount, int expectedDataEdges)
     {
         var services = new ServiceCollection();
@@ -141,7 +141,6 @@ public sealed class BackendBlockProductionTreeTests
         Assert.Equal(expectedCount, graph.Nodes.Count);
         Assert.Equal(expectedDataEdges, graph.Nodes.Sum(node => node.Inputs.Count));
         Assert.DoesNotContain(production, node => node.HostedServiceType?.Name is "ResourceManagerDatabaseInitializer"
-            or "SqliteLegacyDataImportHostedService" or "SharedMemoryPublicResourceBroker"
             or "TargetedRecordingService" or "GpuLaunchInterceptionReconciler");
         var serialFlows = services.Where(value => value.ServiceType == typeof(IHostedService)
             && value.ImplementationType?.IsGenericType == true
@@ -149,8 +148,7 @@ public sealed class BackendBlockProductionTreeTests
             .Select(value => value.ImplementationType!.GetGenericArguments()[0].Name).Order().ToArray();
         // KernelLeakObserver's serial turn only binds the plan publisher; its concurrent flow is registered separately.
         Assert.Equal(new[] { "GpuLaunchInterceptionReconciler", "KernelLeakObserver",
-            "ResourceManagerDatabaseInitializer", "SharedMemoryPublicResourceBroker",
-            "SqliteLegacyDataImportHostedService", "TargetedRecordingService" }.Order(), serialFlows);
+            "ResourceManagerDatabaseInitializer", "TargetedRecordingService" }.Order(), serialFlows);
         Assert.DoesNotContain(production, node => node.HostedServiceType?.Name == "KernelLeakObserver");
         Assert.Contains(production, node => node.Id == BackendUids.KernelLeakObservation);
         Assert.Contains(BackendUids.EtwNetworkTcpIpAttributionReader,

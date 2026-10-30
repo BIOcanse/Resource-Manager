@@ -81,9 +81,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var durableBefore = CaptureDurableFiles(fixture.Root);
         var rollbackIncarnationBefore =
             fixture.StateStore.Current.NativeHostSessionIncarnation;
-        var normalReleaseEvidenceBefore = CapturePrivateState(
-            fixture.Coordinator,
-            "hostPublicResourceNormalReleaseEvidence");
         var workspaceBefore = fixture.Workspace;
         var capacityBefore = fixture.Workspace.Capacity;
         var runSalt = evidence?.Plan.RunNonce ?? Guid.NewGuid().ToString("N");
@@ -262,9 +259,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 NativeSmartCoordinatorInputValidity.ProcessIdentity, row.ValidMask));
             Assert.Equal(rollbackIncarnationBefore,
                 fixture.StateStore.Current.NativeHostSessionIncarnation);
-            Assert.Equal(normalReleaseEvidenceBefore,
-                CapturePrivateState(fixture.Coordinator,
-                    "hostPublicResourceNormalReleaseEvidence"));
             Assert.Equal(durableBefore, CaptureDurableFiles(fixture.Root));
             fixture.CaptureHostedScoreOnlyEffectCounters().AssertAllZero();
             mutationWatcher.AssertNoMutation();
@@ -367,11 +361,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         Assert.Equal(rollbackIncarnationBefore,
             fixture.StateStore.Current.NativeHostSessionIncarnation);
-        Assert.Equal(
-            normalReleaseEvidenceBefore,
-            CapturePrivateState(
-                fixture.Coordinator,
-                "hostPublicResourceNormalReleaseEvidence"));
         var durableAfter = CaptureDurableFiles(fixture.Root);
         Assert.Equal(durableBefore, durableAfter);
         var effectCounters = fixture.CaptureHostedScoreOnlyEffectCounters();
@@ -1312,9 +1301,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     effectCounters.MemoryCleanupCompleteAttempts,
                     effectCounters.MemoryCleanupCompleteCalls,
                     effectCounters.MemoryCleanupCompletionHistoryCount,
-                    effectCounters.PublicResourceTickAttempts,
-                    effectCounters.PublicResourceTickCalls,
-                    effectCounters.PublicResourceNewEffectAttemptCount,
                     effectCounters.GraphicsTotalCalls
                 },
                 allZero = effectCounters.AllZero

@@ -33,17 +33,13 @@ public sealed class HostManagerDisplayCoordinatorTests
     }
 
     [Fact]
-    public void ProfileRejectsMissingPersistencePathAndRetiredAbi()
+    public void ProfileRejectsMissingPersistencePath()
     {
         Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
         {
             root["host_recreate"]!["display_coordinator"]!
                 .AsObject()
                 .Remove("persistence_relative_path");
-        }));
-        Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
-        {
-            root["build_specialize"]!["display_coordinator_abi_version"] = 0x0002_0000U;
         }));
     }
 

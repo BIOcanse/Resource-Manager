@@ -256,7 +256,8 @@ public sealed partial class LoopbackApiAccessTests
         Assert.Equal("decision-snapshot", first.RootElement.GetProperty("subscriptionId").GetString());
         Assert.Equal("resource-manager-smart-decision-diagnostics-v2",
             second.RootElement.GetProperty("value").GetProperty("contract").GetString());
-        Assert.NotEqual(first.RootElement.GetProperty("value").GetProperty("schedulingAuthority").GetProperty("roundNumber").GetString(),
+        // Normal mode samples nothing, so the round stays the same; the second frame is still a new publication.
+        Assert.Equal(first.RootElement.GetProperty("value").GetProperty("schedulingAuthority").GetProperty("roundNumber").GetString(),
             second.RootElement.GetProperty("value").GetProperty("schedulingAuthority").GetProperty("roundNumber").GetString());
         Assert.Equal("unavailable", second.RootElement.GetProperty("value")
             .GetProperty("schedulingAuthority").GetProperty("availability").GetString());
@@ -575,7 +576,6 @@ public sealed partial class LoopbackApiAccessTests
     [InlineData("POST", "/api/optimization/smart/run-once", false)]
     [InlineData("GET", "/api/debug/amd-smu", false)]
     [InlineData("GET", "/api/debug/gpu-control", false)]
-    [InlineData("GET", "/api/public/v1/resources", true)]
     [InlineData("GET", "/api/index/files/search", false)]
     [InlineData("GET", "/api/index/software/{softwareId}", false)]
     [InlineData("GET", "/api/public/v1/index/files/search", false)]

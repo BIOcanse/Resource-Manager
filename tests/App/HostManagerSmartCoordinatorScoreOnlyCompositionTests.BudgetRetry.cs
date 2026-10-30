@@ -18,7 +18,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             scoreOnlyEnabled: false,
             optimizationMode: AppOptimizationModes.Normal,
             automaticMemoryCleanupEnabled: false);
-        fixture.PublicResourceManager.Available = false;
         var deadline = Assert.IsType<HostManagerVersionedWakeDeadline>(
             ReadPrivateField<HostManagerVersionedWakeDeadline>(fixture.Coordinator, "schedulingWakeDeadline"));
 

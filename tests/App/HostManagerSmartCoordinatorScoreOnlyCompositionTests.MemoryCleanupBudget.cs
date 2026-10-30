@@ -1,9 +1,7 @@
-using ResourceManager.Adapter.SharedMemory;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.Optimization.MemoryCleanup;
 using ResourceManager.App.Infrastructure.Optimization;
-using ResourceManager.App.Infrastructure.PublicResources;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
@@ -35,9 +33,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 CpuScore = index == 0 ? 20 : 10
             }).ToArray()
         };
-        var tracker = new HostPublicResourceNormalReleaseEvidenceTracker();
-        var cycle = new HostPublicResourceNormalReleaseCycle(
-            1, 1, 1, 1, new string('A', 64), 1, 1, new string('B', 64), true, 1);
 
         for (var round = 1; round <= 2; round++)
         {
@@ -50,10 +45,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         Succeeded: true,
                         "trimmed")])).ToArray()
                 : [];
-            cycle = cycle with { RoundNumber = checked((ulong)round) };
-            Assert.False(tracker.BeginCycle(
-                cycle,
-                HostPublicResourceCapacityObservation.ShortageFresh()).AfterNormalReleaseRounds);
             var admission = HostManagerCycleEffectAdmission.Create(scoreOnly: false);
             admission.InitializeBudgets(1, 1);
             Assert.True(admission.TryAcquire(
@@ -68,19 +59,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(2, result.CandidateCount);
             Assert.Equal(1, result.PlannedCount);
             Assert.Equal(1, result.RequestedCount);
-            Assert.Equal(outcomeKnown, result.CompletedNormalReleaseRound);
             Assert.Equal(outcomeKnown
                 ? HostManagerMemoryCleanupRoundDisposition.CompleteKnownFull
                 : HostManagerMemoryCleanupRoundDisposition.BatchOutcomeUnknown, result.Disposition);
             Assert.Equal(0U, admission.NewPointOfNoReturnRemaining);
             Assert.Equal(request.Candidates[1].ProcessId,
                 Assert.Single(fixture.ProcessPolicyWriter.BatchRequests).ProcessId);
-            tracker.CompleteCycle(cycle, result);
         }
-
-        Assert.Equal(secondOutcomeKnown, tracker.BeginCycle(
-            cycle with { RoundNumber = 3 },
-            HostPublicResourceCapacityObservation.ShortageFresh()).AfterNormalReleaseRounds);
     }
 
     [Fact]
@@ -104,7 +89,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             CancellationToken.None);
 
         Assert.Equal(HostManagerMemoryCleanupRoundDisposition.DeferredByCycleBudget, result.Disposition);
-        Assert.False(result.CompletedNormalReleaseRound);
         Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
     }

@@ -1,6 +1,5 @@
 using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Infrastructure.Persistence;
-using ResourceManager.App.Infrastructure.Persistence.Legacy;
 using ResourceManager.App.Application.Indexing;
 using ResourceManager.App.Infrastructure.Indexing;
 using ResourceManager.App.Application.SoftwareDiscovery;
@@ -38,11 +37,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
         {
             services.AddSingleton<IPortableSoftwareRegistry,
                 StartupDisabledPortableSoftwareRegistry>();
-        }
-
-        if (startupCapabilities.Allows(StartupCapability.LegacyPersistenceImport))
-        {
-            services.AddSerialHostedService<SqliteLegacyDataImportHostedService>();
         }
         return services;
     }

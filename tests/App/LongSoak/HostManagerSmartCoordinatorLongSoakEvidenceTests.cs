@@ -85,9 +85,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var durableBeforeSha256 = ComputeHostedScoreOnlyIdentitySha256(durableBefore);
             var rollbackIncarnationBefore =
                 fixture.StateStore.Current.NativeHostSessionIncarnation;
-            var normalReleaseEvidenceBefore = CapturePrivateState(
-                fixture.Coordinator,
-                "hostPublicResourceNormalReleaseEvidence");
             var workspaceBefore = fixture.Workspace;
             var capacityBefore = fixture.Workspace.Capacity;
             var lifecycleBefore = fixture.Coordinator.LifecycleState;
@@ -255,11 +252,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 var durableAfter = CaptureDurableFiles(fixture.Root);
                 var durableAfterSha256 = ComputeHostedScoreOnlyIdentitySha256(durableAfter);
                 if (rollbackIncarnationBefore != rollbackIncarnationAfter
-                    || durableBeforeSha256 != durableAfterSha256
-                    || !normalReleaseEvidenceBefore.SequenceEqual(
-                        CapturePrivateState(
-                            fixture.Coordinator,
-                            "hostPublicResourceNormalReleaseEvidence")))
+                    || durableBeforeSha256 != durableAfterSha256)
                 {
                     throw new InvalidDataException(
                         "The long-soak durable or rollback identity changed.");

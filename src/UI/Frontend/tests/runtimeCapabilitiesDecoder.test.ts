@@ -6,12 +6,10 @@ const source = {
   profileId: "production",
   readOnly: false,
   mutablePersistence: true,
-  legacyPersistenceImport: false,
   gpuLaunchInterceptionReconciliation: true,
   runtimeEffectOwners: true,
   publicServiceCoordination: false,
   optimizationRuntime: true,
-  sharedResourceOwnership: true,
   futureField: "ignored"
 };
 
@@ -20,12 +18,10 @@ assert.deepEqual(decoded, {
   profileId: "production",
   readOnly: false,
   mutablePersistence: true,
-  legacyPersistenceImport: false,
   gpuLaunchInterceptionReconciliation: true,
   runtimeEffectOwners: true,
   publicServiceCoordination: false,
-  optimizationRuntime: true,
-  sharedResourceOwnership: true
+  optimizationRuntime: true
 });
 assert.notEqual(decoded, source);
 assert.equal(Object.isFrozen(decoded), true);
@@ -34,7 +30,7 @@ for (const [value, expectedPath] of [
   [{ ...source, profileId: "" }, "$.profileId"],
   [{ ...source, readOnly: 0 }, "$.readOnly"],
   [{ ...source, mutablePersistence: "true" }, "$.mutablePersistence"],
-  [{ ...source, sharedResourceOwnership: undefined }, "$.sharedResourceOwnership"]
+  [{ ...source, optimizationRuntime: undefined }, "$.optimizationRuntime"]
 ] as const) {
   assert.throws(
     () => runtimeCapabilitiesDecoder.decode(value),

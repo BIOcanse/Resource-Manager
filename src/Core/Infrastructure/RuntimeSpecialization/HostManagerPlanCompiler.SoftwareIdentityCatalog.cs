@@ -7,18 +7,11 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerSoftwareIdentityCatalogBuildPlan CompileSoftwareIdentityCatalogBuild(
-        uint abiVersion,
         HostManagerSoftwareIdentityCatalogCapacityProfile source,
         CompiledHostManagerNativeBinaryIdentity binary)
     {
-        if (abiVersion != NativeSoftwareIdentityCatalogAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.software_identity_catalog_abi_version does not match the binary.");
-        }
-
         return new CompiledHostManagerSoftwareIdentityCatalogBuildPlan(
-            abiVersion,
+            NativeSoftwareIdentityCatalogAbi.Version,
             "software_identity_catalog",
             binary.FileName,
             binary.Sha256,

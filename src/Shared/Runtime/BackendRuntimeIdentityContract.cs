@@ -39,9 +39,7 @@ public sealed record BackendStartupCapabilitiesResponse(
     string ProfileId,
     bool ReadOnly,
     bool MutablePersistence,
-    bool LegacyPersistenceImport,
     bool GpuLaunchInterceptionReconciliation,
     bool RuntimeEffectOwners,
     bool PublicServiceCoordination,
-    bool OptimizationRuntime,
-    bool SharedResourceOwnership);
+    bool OptimizationRuntime);

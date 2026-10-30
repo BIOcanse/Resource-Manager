@@ -2,7 +2,6 @@ namespace ResourceManager.App.Domain.RuntimeSpecialization;
 
 public enum HostManagerModuleKind : byte
 {
-    SharedResources = 1,
     ResourceScheduler = 2,
     SmartCoordinator = 3,
     MemoryCleanup = 4,
@@ -97,7 +96,6 @@ public sealed record HostManagerDeploymentSnapshot(
     long RuntimePlanVersion,
     ulong PublishedPlanEpoch,
     DateTimeOffset CapturedAtUtc,
-    HostManagerModuleDeploymentSnapshot SharedResources,
     HostManagerModuleDeploymentSnapshot ResourceScheduler,
     HostManagerModuleDeploymentSnapshot AdapterPrivateResourceLedger,
     HostManagerModuleDeploymentSnapshot SmartCoordinator,

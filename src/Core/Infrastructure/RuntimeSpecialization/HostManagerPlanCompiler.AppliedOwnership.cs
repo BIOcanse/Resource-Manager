@@ -4,7 +4,6 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 public sealed partial class HostManagerPlanCompiler
 {
-    private const uint AppliedOwnershipAbiVersion = 0x0002_0000;
     private const long AppliedOwnershipImageHeaderBytes = 128;
     private const long AppliedOwnershipRecordBytes = 320;
 

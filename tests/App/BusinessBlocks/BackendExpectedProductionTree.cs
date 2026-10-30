@@ -50,8 +50,7 @@ internal static class BackendExpectedProductionTree
             Group(BlockUids.Optimization, BlockUids.HostManagerSmartCoordinator, BlockUids.GpuPlacementProcessHistoryObserver);
             Group(BlockUids.Reports, BlockUids.HostManagerReportCoordinatorOwner);
             Group(BlockUids.SoftwareManagement, BlockUids.SqlitePortableSoftwareRegistry, BlockUids.PortableSoftwareDiscoveryService);
-            Group(BlockUids.PublicServices, BlockUids.HostManagerPublicServiceCoordinatorOwner,
-                BlockUids.SharedResourceSubscriptionMaintenanceService);
+            Group(BlockUids.PublicServices, BlockUids.HostManagerPublicServiceCoordinatorOwner);
         }
         if (profile == 2) Group(BlockUids.ServiceHost, BlockUids.AutomaticProductUpdateService);
         return parents;

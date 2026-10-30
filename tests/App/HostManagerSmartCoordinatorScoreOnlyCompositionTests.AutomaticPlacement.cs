@@ -683,7 +683,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             NativeSmartCoordinatorSnapshotFlags.ScoreOnly));
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
-        Assert.Equal(0, fixture.PublicResourceManager.TickAttemptCalls);
         Assert.Equal(0, fixture.StateStore.SaveCalls);
         Assert.Equal(durableBefore, CaptureDurableFiles(fixture.Root));
         fixture.AssertNoEffectCollaboratorCalls();

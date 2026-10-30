@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.Indexing;
 using ResourceManager.App.Application.ProcessAttribution;
-using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.PublicServices;
@@ -23,9 +22,7 @@ using ResourceManager.App.Infrastructure.Operations;
 using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Infrastructure.Optimization.Reports;
 using ResourceManager.App.Infrastructure.Persistence;
-using ResourceManager.App.Infrastructure.Persistence.Legacy;
 using ResourceManager.App.Infrastructure.PublicServices;
-using ResourceManager.App.Infrastructure.PublicResources;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.SoftwareDiscovery;
 using ResourceManager.App.Domain.SoftwareDiscovery;
@@ -88,10 +85,8 @@ public sealed class NormalReadOnlyServiceGraphTests
             hostedServices[3]);
         Assert.DoesNotContain(hostedServices, static service =>
             service is ResourceManagerDatabaseInitializer
-            or SqliteLegacyDataImportHostedService
             or GpuLaunchInterceptionReconciler);
         AssertNoHostedAlias<ResourceManagerDatabaseInitializer>(hostedServices);
-        AssertNoHostedAlias<SqliteLegacyDataImportHostedService>(hostedServices);
         AssertNoHostedAlias<GpuLaunchInterceptionReconciler>(hostedServices);
         Assert.DoesNotContain(hostedServices, static service => service.GetType().Name == "GpuGraphicsApiDiscoveryService");
         AssertNoHostedAlias<SqlitePortableSoftwareRegistry>(hostedServices);
@@ -106,20 +101,6 @@ public sealed class NormalReadOnlyServiceGraphTests
         AssertNoHostedAlias<HostManagerReportCoordinatorOwner>(hostedServices);
         AssertNoHostedAlias<HostManagerSmartCoordinator>(hostedServices);
         AssertNoHostedAlias<PortableSoftwareDiscoveryService>(hostedServices);
-        Assert.DoesNotContain(hostedServices, static service =>
-            service is SharedMemoryPublicResourceBroker
-            or SharedResourceSubscriptionMaintenanceService);
-        AssertNoHostedAlias<SharedMemoryPublicResourceBroker>(hostedServices);
-        AssertNoHostedAlias<SharedResourceSubscriptionMaintenanceService>(hostedServices);
-
-        var publicResourceCapability = host.Services
-            .GetRequiredService<IHostPublicResourceCapability>()
-            .GetCapability();
-        Assert.False(publicResourceCapability.Available);
-        Assert.Contains(
-            "profile-disabled",
-            publicResourceCapability.Reason,
-            StringComparison.Ordinal);
         Assert.Null(host.Services.GetService<IHostManagerOperationCommandService>());
         Assert.Null(host.Services.GetService<IHostManagerOperationQueryService>());
         Assert.Null(host.Services.GetService<IHostManagerSmartCoordinator>());
@@ -179,8 +160,6 @@ public sealed class NormalReadOnlyServiceGraphTests
         Assert.Contains(hostedServices, static service =>
             service is SerialHostedService<ResourceManagerDatabaseInitializer>);
         Assert.Contains(hostedServices, static service =>
-            service is SerialHostedService<SqliteLegacyDataImportHostedService>);
-        Assert.Contains(hostedServices, static service =>
             service is SerialHostedService<GpuLaunchInterceptionReconciler>);
         Assert.DoesNotContain(hostedServices, static service => service.GetType().Name == "GpuGraphicsApiDiscoveryService");
         AssertHostedAlias<SqlitePortableSoftwareRegistry>(hostedServices);
@@ -199,8 +178,6 @@ public sealed class NormalReadOnlyServiceGraphTests
         Assert.Same(
             host.Services.GetRequiredService<SqliteSoftwareFileIndex>(),
             host.Services.GetRequiredService<ISoftwareFileIndexRefresher>());
-        Assert.Contains(hostedServices, static service => service is SerialHostedService<SharedMemoryPublicResourceBroker>);
-        AssertHostedAlias<SharedResourceSubscriptionMaintenanceService>(hostedServices);
     }
 
     [Fact]

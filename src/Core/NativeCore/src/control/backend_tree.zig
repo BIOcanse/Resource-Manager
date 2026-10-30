@@ -195,7 +195,6 @@ const all_tree_blocks = [_]tree.Block{
     .{ .uid = BlockUids.EtwNetworkTcpIpAttributionReader, .parent = BlockUids.Monitoring },
     .{ .uid = BlockUids.WindowsResourceBreakdownSampler, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsHardwareMetricSampler, BlockUids.HostManagerSamplingSubscriptionOwner, BlockUids.EtwPhysicalDiskIoAttributionReader, BlockUids.EtwNetworkTcpIpAttributionReader, BlockUids.GpuAllocationCollector, BlockUids.DxgkrnlVidMmEtwTelemetryZone } },
     .{ .uid = BlockUids.GpuPlacementProcessHistoryObserver, .parent = BlockUids.Optimization, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler, BlockUids.PresentFrameEtwSource, BlockUids.SqlitePortableSoftwareRegistry } },
-    .{ .uid = BlockUids.SharedResourceSubscriptionMaintenanceService, .parent = BlockUids.PublicServices },
     .{ .uid = BlockUids.JsonDebugDiagnosticLogWriter, .parent = BlockUids.ServiceHost, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
     .{ .uid = BlockUids.HostManagerReportCoordinatorOwner, .parent = BlockUids.Reports, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler, BlockUids.WindowsHardwareMetricSampler, BlockUids.EtwSystemInterruptSnapshotSource, BlockUids.SqlitePortableSoftwareRegistry } },
     .{ .uid = BlockUids.KernelLeakObservation, .parent = BlockUids.Reports, .inputs = &.{BlockUids.WindowsResourceBreakdownSampler} },
@@ -424,9 +423,6 @@ fn trustedRequestsShouldRun(input: *control.Input) anyerror!bool {
 fn publicServiceShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.HostManagerPublicServiceCoordinatorOwner, &.{ ItemUids.PublicServiceEnabled, ItemUids.PublicServiceTasksPending });
 }
-fn sharedResourceShouldRun(input: *control.Input) anyerror!bool {
-    return anyFact(input, BlockUids.SharedResourceSubscriptionMaintenanceService, &.{ItemUids.SharedResourceActivityExists});
-}
 fn operationsShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.HostManagerOperationCoordinatorOwner, &.{ItemUids.OperationsPending});
 }
@@ -461,7 +457,6 @@ const compute_functions = [_]control.types.Compute{
     .{ .condition = ConditionUids.PortableDiscoveryShouldRun, .function = portableDiscoveryShouldRun },
     .{ .condition = ConditionUids.TrustedRequestsShouldRun, .function = trustedRequestsShouldRun },
     .{ .condition = ConditionUids.PublicServiceShouldRun, .function = publicServiceShouldRun },
-    .{ .condition = ConditionUids.SharedResourceShouldRun, .function = sharedResourceShouldRun },
     .{ .condition = ConditionUids.OperationsShouldRun, .function = operationsShouldRun },
 };
 fn fullComputes() [compute_functions.len - 1]control.types.Compute {
@@ -623,7 +618,6 @@ const RuleTestFacts = struct {
             BlockUids.PortableSoftwareDiscoveryService => self.truth(I.PortableDiscoveryEnabled),
             BlockUids.TrustedAccessRequestOwner => self.truth(I.TrustedRequestsPending),
             BlockUids.HostManagerPublicServiceCoordinatorOwner => self.truth(I.PublicServiceEnabled) or self.truth(I.PublicServiceTasksPending),
-            BlockUids.SharedResourceSubscriptionMaintenanceService => self.truth(I.SharedResourceActivityExists),
             BlockUids.HostManagerOperationCoordinatorOwner => self.truth(I.OperationsPending),
             else => true,
         };

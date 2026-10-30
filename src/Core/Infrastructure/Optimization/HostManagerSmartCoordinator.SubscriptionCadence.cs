@@ -31,11 +31,9 @@ public sealed partial class HostManagerSmartCoordinator
         if (mode.AutomaticMemoryCleanupEnabled) mask |= SchedulingProcessMetricMask.MemoryUsage;
         if (mode.GpuSchedulingEnabled) mask |= SchedulingProcessMetricMask.GpuUsage | SchedulingProcessMetricMask.GpuDedicatedMemory;
         var process = mode.SchedulingEnabled || runtimeCpuLeases.HasLeases || smart.RealtimeActionBudget.Mode == AppRealtimeActionBudgetModes.Percent;
-        var publicResources = HasAvailablePublicResourceLifecycle();
-        var request = mode.SchedulingEnabled ? CreateSmartSchedulingMetricRequest(mode, publicResources)
-            : publicResources ? CreatePublicResourceMetricRequest() : MetricSampleRequest.ForIds([]);
+        var request = mode.SchedulingEnabled ? CreateSmartSchedulingMetricRequest(mode) : MetricSampleRequest.ForIds([]);
         if (runtimeCpuLeases.HasLeases && request.IsEmpty)
-            request = CreateSmartSchedulingMetricRequest(CompiledOptimizationModePlan.Compile(AppOptimizationModes.CpuOnly), publicResources);
+            request = CreateSmartSchedulingMetricRequest(CompiledOptimizationModePlan.Compile(AppOptimizationModes.CpuOnly));
         return smartSubscriptions.UpdateAsync(cpu, process ? mask : SchedulingProcessMetricMask.None,
             request, interval, cancellationToken);
     }

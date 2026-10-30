@@ -8,18 +8,11 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerReportCoordinatorBuildPlan CompileReportCoordinatorBuild(
-        uint abiVersion,
         HostManagerReportCoordinatorCapacityProfile source,
         CompiledHostManagerNativeBinaryIdentity binary)
     {
-        if (abiVersion != NativeReportCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.report_coordinator_abi_version does not match the binary.");
-        }
-
         return new CompiledHostManagerReportCoordinatorBuildPlan(
-            abiVersion,
+            NativeReportCoordinatorAbi.Version,
             "report_coordinator",
             binary.FileName,
             binary.Sha256,

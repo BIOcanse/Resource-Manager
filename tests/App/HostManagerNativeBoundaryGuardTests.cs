@@ -11,11 +11,11 @@ public sealed class HostManagerNativeBoundaryGuardTests
         Assert.Throws<InvalidOperationException>(() =>
             HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
                 HostManagerDeploymentAttemptSettlement.Stale,
-                HostManagerModuleKind.SharedResources));
+                HostManagerModuleKind.ResourceScheduler));
         Assert.Throws<InvalidOperationException>(() =>
             HostManagerDeploymentAttemptSettlementGuard.RequireFailed(
                 HostManagerDeploymentAttemptSettlement.Stale,
-                HostManagerModuleKind.SharedResources));
+                HostManagerModuleKind.ResourceScheduler));
     }
 
     [Fact]

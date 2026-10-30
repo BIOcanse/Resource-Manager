@@ -7,16 +7,9 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerOperationCoordinatorBuildPlan CompileOperationCoordinatorBuild(
-        uint abiVersion,
         HostManagerOperationCoordinatorCapacityProfile source,
         CompiledHostManagerNativeBinaryIdentity binary)
     {
-        if (abiVersion != NativeOperationCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.operation_coordinator_abi_version does not match the binary.");
-        }
-
         var capacity = CompileOperationCoordinatorCapacity(
             source,
             "build_specialize.capacity_limits.operation_coordinator");
@@ -27,7 +20,7 @@ public sealed partial class HostManagerPlanCompiler
         }
 
         return new CompiledHostManagerOperationCoordinatorBuildPlan(
-            abiVersion,
+            NativeOperationCoordinatorAbi.Version,
             "operation_coordinator",
             capacity);
     }

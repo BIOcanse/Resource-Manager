@@ -105,9 +105,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var durableBeforeSha256 = ComputeHostedScoreOnlyIdentitySha256(durableBefore);
         var rollbackIncarnationBefore =
             fixture.StateStore.Current.NativeHostSessionIncarnation;
-        var normalReleaseEvidenceBefore = CapturePrivateState(
-            fixture.Coordinator,
-            "hostPublicResourceNormalReleaseEvidence");
         var workspaceBefore = fixture.Workspace;
         var capacityBefore = fixture.Workspace.Capacity;
         Assert.Equal(HostManagerSmartCoordinatorLifecycleState.Created,
@@ -200,11 +197,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var rollbackIncarnationAfter =
                 fixture.StateStore.Current.NativeHostSessionIncarnation;
             Assert.Equal(rollbackIncarnationBefore, rollbackIncarnationAfter);
-            Assert.Equal(
-                normalReleaseEvidenceBefore,
-                CapturePrivateState(
-                    fixture.Coordinator,
-                    "hostPublicResourceNormalReleaseEvidence"));
             var durableAfterStop = CaptureDurableFiles(fixture.Root);
             Assert.Equal(durableBefore, durableAfterStop);
 

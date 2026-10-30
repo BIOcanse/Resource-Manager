@@ -9,18 +9,11 @@ public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerPublicServiceCoordinatorBuildPlan
         CompilePublicServiceCoordinatorBuild(
-            uint abiVersion,
             HostManagerPublicServiceCoordinatorCapacityProfile source,
             CompiledHostManagerNativeBinaryIdentity nativeBinary)
     {
-        if (abiVersion != NativePublicServiceCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.public_service_coordinator_abi_version does not match the binary.");
-        }
-
         return new CompiledHostManagerPublicServiceCoordinatorBuildPlan(
-            abiVersion,
+            NativePublicServiceCoordinatorAbi.Version,
             "public_service_coordinator",
             nativeBinary.FileName,
             nativeBinary.Sha256,

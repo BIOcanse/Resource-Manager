@@ -138,7 +138,7 @@ if($Stage -eq 'ProductBackend') {
     & $dotnet @probeArguments 1> (Join-Path $RunDirectory 'legacy-probe-result.json') 2> (Join-Path $RunDirectory 'legacy-probe-error.log')
     if($LASTEXITCODE -ne 0){throw 'Legacy Adapter initialization/layout probe failed.'}
     $probe=Get-Content (Join-Path $RunDirectory 'legacy-probe-result.json') -Raw|ConvertFrom-Json
-    if($probe.status -ne 'passed' -or @($probe.sessions).Count -ne 4 -or @($probe.sessions|Where-Object {-not $_.initialized -or -not $_.disposed}).Count){throw 'Legacy Adapter probe result incomplete.'}
+    if($probe.status -ne 'passed' -or @($probe.sessions).Count -ne 3 -or @($probe.sessions|Where-Object {-not $_.initialized -or -not $_.disposed}).Count){throw 'Legacy Adapter probe result incomplete.'}
     # The backend publishes as a folder like the release script; the shell programs stay single-file.
     $extra=@('-p:SkipClientAppBuild=true','-p:PublishSingleFile=false',
         ('-p:ResourceManagerLedgerWorkRoot='+(Join-Path $ScratchRoot 'ledger-work')),('-p:ResourceManagerLedgerBuildRoot='+[IO.Path]::GetFullPath($LedgerBuildRoot)),

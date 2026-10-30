@@ -8,18 +8,11 @@ public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerSoftwareIdentityResolutionBuildPlan
         CompileSoftwareIdentityResolutionBuild(
-            uint abiVersion,
             HostManagerSoftwareIdentityResolutionCapacityProfile source,
             CompiledHostManagerNativeBinaryIdentity binary)
     {
-        if (abiVersion != NativeSoftwareIdentityResolutionAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.software_identity_resolution_abi_version does not match the binary.");
-        }
-
         return new CompiledHostManagerSoftwareIdentityResolutionBuildPlan(
-            abiVersion,
+            NativeSoftwareIdentityResolutionAbi.Version,
             "software_identity_resolution",
             binary.FileName,
             binary.Sha256,

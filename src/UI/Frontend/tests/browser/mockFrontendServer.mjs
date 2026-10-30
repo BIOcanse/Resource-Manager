@@ -539,12 +539,10 @@ async function handleApi(request, response, url) {
       profileId: "frontend-harness",
       readOnly: false,
       mutablePersistence: true,
-      legacyPersistenceImport: false,
       gpuLaunchInterceptionReconciliation: scenario.gpuPlacementEnabled,
       runtimeEffectOwners: scenario.runtimeEffectOwners,
       publicServiceCoordination: false,
-      optimizationRuntime: scenario.optimizationRuntime === true,
-      sharedResourceOwnership: false
+      optimizationRuntime: scenario.optimizationRuntime === true
     });
   }
   const readsOptimizationReports = path === "/api/optimization/reports"

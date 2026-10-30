@@ -38,7 +38,6 @@ public sealed class StartupCapabilityEndpointMapTests
             || route.Contains(" /api/settings/", StringComparison.Ordinal)) && !route.StartsWith("GET ", StringComparison.Ordinal));
         Assert.Contains("GET /api/components", routes);
         Assert.Contains("GET /api/dependencies", routes);
-        Assert.Contains("GET /api/public/v1/capability", routes);
         Assert.Contains("GET /api/software/metadata/{softwareIdentityId}", routes);
         Assert.DoesNotContain("GET /api/adapters/resource-manager/scheduling", routes);
         Assert.DoesNotContain("POST /api/adapters/resource-manager/scheduling", routes);

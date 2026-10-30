@@ -14,7 +14,6 @@ export const runtimeCapabilitiesDecoder = defineResponseDecoder<BackendStartupCa
       profileId: requireNonEmptyString(record.profileId, "$.profileId"),
       readOnly: requireBoolean(record.readOnly, "$.readOnly"),
       mutablePersistence: requireBoolean(record.mutablePersistence, "$.mutablePersistence"),
-      legacyPersistenceImport: requireBoolean(record.legacyPersistenceImport, "$.legacyPersistenceImport"),
       gpuLaunchInterceptionReconciliation: requireBoolean(
         record.gpuLaunchInterceptionReconciliation,
         "$.gpuLaunchInterceptionReconciliation"),
@@ -22,9 +21,6 @@ export const runtimeCapabilitiesDecoder = defineResponseDecoder<BackendStartupCa
       publicServiceCoordination: requireBoolean(
         record.publicServiceCoordination,
         "$.publicServiceCoordination"),
-      optimizationRuntime: requireBoolean(record.optimizationRuntime, "$.optimizationRuntime"),
-      sharedResourceOwnership: requireBoolean(
-        record.sharedResourceOwnership,
-        "$.sharedResourceOwnership")
+      optimizationRuntime: requireBoolean(record.optimizationRuntime, "$.optimizationRuntime")
     });
   });

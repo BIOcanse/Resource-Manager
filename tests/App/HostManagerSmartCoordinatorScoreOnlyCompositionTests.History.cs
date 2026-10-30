@@ -242,7 +242,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(0U, fixture.Workspace.Snapshot.InflightCount);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
-        Assert.Equal(0U, fixture.PublicResourceManager.NewEffectAttemptCount);
 
         NativeSmartCoordinatorSnapshotRow GetProcessRow()
             => Assert.Single(

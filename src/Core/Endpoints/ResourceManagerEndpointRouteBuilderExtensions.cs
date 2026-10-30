@@ -13,7 +13,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         ArgumentNullException.ThrowIfNull(startupCapabilities);
         app.MapRuntimeIdentityEndpoints();
         app.MapTrustedAccessEndpoints();
-        app.MapPublicResourceEndpoints();
         if (startupCapabilities.Allows(
                 StartupCapability.PublicServiceCoordination))
         {

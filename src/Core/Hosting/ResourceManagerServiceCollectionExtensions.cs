@@ -84,7 +84,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
             .AddResourceManagerSoftware()
             .AddResourceManagerComponentsAndTasks()
             .AddResourceManagerGpuPlacement(startupCapabilities)
-            .AddResourceManagerSharedResources(startupCapabilities)
             .AddResourceManagerSystemHealth()
             .AddResourceManagerOptimization(startupCapabilities)
             .AddResourceManagerDeviceTopology()

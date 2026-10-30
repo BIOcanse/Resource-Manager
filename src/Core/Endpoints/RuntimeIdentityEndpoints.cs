@@ -68,13 +68,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 capabilities.ProfileId,
                 capabilities.Allowed == StartupCapability.None,
                 capabilities.Allows(StartupCapability.MutablePersistence),
-                capabilities.Allows(StartupCapability.LegacyPersistenceImport),
                 capabilities.Allows(
                     StartupCapability.GpuLaunchInterceptionReconciliation),
                 capabilities.Allows(StartupCapability.RuntimeEffectOwners),
                 capabilities.Allows(StartupCapability.PublicServiceCoordination),
-                capabilities.Allows(StartupCapability.OptimizationRuntime),
-                capabilities.Allows(StartupCapability.SharedResourceOwnership)))).AllowAnonymous();
+                capabilities.Allows(StartupCapability.OptimizationRuntime)))).AllowAnonymous();
 
         return app;
     }

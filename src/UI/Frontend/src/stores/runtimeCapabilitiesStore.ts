@@ -16,12 +16,10 @@ const failClosedCapabilities: BackendStartupCapabilities = {
   profileId: "unavailable",
   readOnly: true,
   mutablePersistence: false,
-  legacyPersistenceImport: false,
   gpuLaunchInterceptionReconciliation: false,
   runtimeEffectOwners: false,
   publicServiceCoordination: false,
-  optimizationRuntime: false,
-  sharedResourceOwnership: false
+  optimizationRuntime: false
 };
 
 export interface RuntimeCapabilitiesStore {
@@ -33,7 +31,6 @@ export interface RuntimeCapabilitiesStore {
   runtimeEffectsEnabled: Accessor<boolean>;
   publicServicesEnabled: Accessor<boolean>;
   optimizationEnabled: Accessor<boolean>;
-  sharedResourcesEnabled: Accessor<boolean>;
   refresh: () => Promise<boolean>;
 }
 
@@ -88,7 +85,6 @@ export function createRuntimeCapabilitiesStore(
     runtimeEffectsEnabled: allows((value) => value.runtimeEffectOwners),
     publicServicesEnabled: allows((value) => value.publicServiceCoordination),
     optimizationEnabled: allows((value) => value.optimizationRuntime),
-    sharedResourcesEnabled: allows((value) => value.sharedResourceOwnership),
     refresh
   };
 }

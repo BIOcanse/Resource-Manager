@@ -30,8 +30,7 @@ public sealed partial class HostManagerSmartCoordinator
         var mode = runtimeCpuLeases.HasLeases && !runtimePlan.OptimizationMode.CpuSchedulingEnabled
             ? runtimePlan.OptimizationMode with { Domains = runtimePlan.OptimizationMode.Domains | OptimizationDomains.Cpu }
             : runtimePlan.OptimizationMode;
-        var hardware = metricSnapshotSource.ReadLatest(
-            CreateSmartSchedulingMetricRequest(mode, HasAvailablePublicResourceLifecycle()));
+        var hardware = metricSnapshotSource.ReadLatest(CreateSmartSchedulingMetricRequest(mode));
         if (hardware is null)
         {
             PublishCpuLeasesUnavailable("hardware-snapshot-unavailable");
@@ -93,20 +92,6 @@ public sealed partial class HostManagerSmartCoordinator
                 residency)));
     }
 
-    // Normal mode subscribes only to capacity. It shares the capture-owned round
-    // without making public-resource maintenance depend on process sampling.
-    private (HardwareMetricSnapshot Hardware, ulong RoundNumber)? CapturePublicResourceCapacitySample()
-    {
-        var hardware = metricSnapshotSource.ReadLatest(CreatePublicResourceMetricRequest());
-        if (hardware is null) return null;
-        var identities = new CapturedSourceIdentities(
-            CaptureHardwarePublicationIdentities(hardware),
-            previousRoundSources?.ProcessPublications ?? [],
-            previousRoundSources?.Residency);
-        AcceptCapturedSources(identities);
-        return (hardware, roundNumber);
-    }
-
     private static (string Dataset, ulong Workspace, ulong Generation, SamplingObservationStatus Status)[]
         CaptureHardwarePublicationIdentities(HardwareMetricSnapshot hardware)
         => hardware.Datasets.Values
@@ -141,31 +126,22 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     private static MetricSampleRequest CreateSmartSchedulingMetricRequest(
-        CompiledOptimizationModePlan mode,
-        bool publicResourcesAvailable)
+        CompiledOptimizationModePlan mode)
     {
         var ids = new List<string>();
         if (mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled)
         {
             ids.Add(SamplingDatasetIds.SystemCpuUsage);
         }
-        if (mode.MemorySchedulingEnabled || publicResourcesAvailable)
-        {
-            ids.Add(SamplingDatasetIds.SystemMemoryUsage);
-        }
         if (mode.MemorySchedulingEnabled)
         {
+            ids.Add(SamplingDatasetIds.SystemMemoryUsage);
             ids.Add(SamplingDatasetIds.SystemVirtualMemoryUsage);
         }
-        return mode.GpuSchedulingEnabled || publicResourcesAvailable
+        return mode.GpuSchedulingEnabled
             ? MetricSampleRequest.ForIdsAndAllGpuCoreMetrics(ids)
             : MetricSampleRequest.ForIds(ids);
     }
-
-    private static MetricSampleRequest CreatePublicResourceMetricRequest()
-        => CreateSmartSchedulingMetricRequest(
-            CompiledOptimizationModePlan.Default,
-            publicResourcesAvailable: true);
 
     private static IEnumerable<HostManagerTargetInfo> BuildTargetInfos(
         SchedulingProcessFactSnapshot snapshot,

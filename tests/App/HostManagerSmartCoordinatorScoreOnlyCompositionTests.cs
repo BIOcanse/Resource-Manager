@@ -9,7 +9,6 @@ using ResourceManager.App.Application.Diagnostics;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Optimization.MemoryCleanup;
-using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
@@ -22,7 +21,6 @@ using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.Optimization.Scoring;
 using ResourceManager.App.Domain.Optimization.MemoryCleanup;
-using ResourceManager.App.Domain.PublicResources;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
@@ -35,7 +33,6 @@ using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Infrastructure.Optimization.NativeScheduling;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
-using ResourceManager.Adapter.SharedMemory;
 using Xunit.Abstractions;
 
 namespace Resource_Manager_APP.Tests;
@@ -75,13 +72,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(journalPlanBefore.HasSameModuleConfiguration(
             new HostManagerTransactionJournalRuntimePlan(
                 expectedHostPlan,
-                expectedHostPlan.BuildSpecialize.TransactionJournalAbiVersion,
+                NativeTransactionJournalAbi.Version,
                 expectedHostPlan.HostRecreate.TransactionJournal,
                 expectedHostPlan.HotPublish.TransactionJournal)));
         Assert.True(ownershipPlanBefore.HasSameModuleConfiguration(
             new HostManagerAppliedOwnershipRuntimePlan(
                 expectedHostPlan,
-                expectedHostPlan.BuildSpecialize.AppliedOwnershipAbiVersion,
+                NativeAppliedOwnershipAbi.Version,
                 expectedHostPlan.HostRecreate.AppliedOwnership,
                 expectedHostPlan.HotPublish.AppliedOwnership)));
 
@@ -630,180 +627,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task RepeatedRawMemoryPressure_DoesNotClaimCompletedNormalReleaseRounds()
-    {
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            processFactsSnapshot: CreateCompleteProcessFacts(
-                24_101, 132_537_599_900_000_000, "software:raw-memory-pressure",
-                baseScore: 30, cpuUsagePercent: 0, memoryUsagePercent: 25),
-            processRecoveryRead: processId =>
-            {
-                Assert.Equal(24_101, processId);
-                return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
-                    new ProcessInstanceRecoverySnapshot(
-                        processId, DateTimeOffset.FromFileTime(132_537_599_900_000_000)));
-            },
-            scoreOnlyEnabled: false,
-            automaticMemoryCleanupEnabled: true);
-
-        await fixture.PrimeMemoryCleanupAdmissionAsync();
-        var first = fixture.PublicResourceManager.LastRequest!.Value.Shortage;
-        _ = await fixture.RunRealtimeCycleAsync();
-
-        var shortage = fixture.PublicResourceManager.LastRequest!.Value.Shortage;
-        Assert.True(first.MemoryCurrentShortage);
-        Assert.Equal(
-            HostPublicResourceCapacityObservationState.ShortageFresh,
-            shortage.Memory.State);
-        Assert.True(shortage.MemoryCurrentShortage);
-        Assert.False(shortage.VideoMemoryCurrentShortage);
-        Assert.False(shortage.MemoryAfterNormalReleaseRounds);
-        Assert.False(shortage.VideoMemoryAfterNormalReleaseRounds);
-        Assert.True(
-            fixture.MemoryCleanupPlanner.PlanCalls == 1,
-            fixture.DescribeMemoryCleanupState());
-    }
-
-    [Fact]
-    public async Task RepeatedHealthyMemorySample_CannotAuthorizeAnotherRecallCycle()
-    {
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            scoreOnlyEnabled: false,
-            automaticMemoryCleanupEnabled: false);
-        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(memoryUsagePercent: 20));
-
-        _ = await fixture.RunRealtimeCycleAsync();
-        var first = fixture.PublicResourceManager.LastRequest!.Value.Shortage;
-        _ = await fixture.RunRealtimeCycleAsync();
-        var repeated = fixture.PublicResourceManager.LastRequest!.Value.Shortage;
-
-        Assert.True(first.Memory.RecallAllowed);
-        Assert.Equal(
-            HostPublicResourceCapacityObservationState.UnknownOrStale,
-            repeated.Memory.State);
-        Assert.False(repeated.Memory.RecallAllowed);
-    }
-
-    [Fact]
-    public async Task TwoKnownMemoryReleaseRoundsAndNewerSamples_EnablePublicPressureGate()
-    {
-        const int processId = 24_200;
-        var time = new ManualTimeProvider(
-            new DateTimeOffset(2026, 8, 13, 12, 0, 0, TimeSpan.Zero));
-        var processStartedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
-        var processStartKey = checked((ulong)processStartedAt.ToFileTime());
-        var processFacts = CreateCompleteProcessFacts(
-            processId,
-            processStartKey,
-            "software:normal-release-proof",
-            baseScore: 30,
-            cpuUsagePercent: 0,
-            memoryUsagePercent: 25);
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            scoreOnlyEnabled: false,
-            processFactsSnapshot: processFacts,
-            processRecoveryRead: requestedProcessId =>
-            {
-                Assert.Equal(processId, requestedProcessId);
-                return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
-                    new ProcessInstanceRecoverySnapshot(processId, processStartedAt));
-            },
-            automaticMemoryCleanupEnabled: true,
-            optimizationMode: AppOptimizationModes.MemoryOnly,
-            timeProvider: time,
-            realtimeActionBudget: 1);
-        fixture.MemoryCleanupPlanner.PlanHandler = request =>
-            CreateAutomaticMemoryCleanupPlan(request);
-        fixture.ProcessPolicyWriter.BatchHandler = requests => requests
-            .Select(request =>
-            {
-                time.Advance(TimeSpan.FromSeconds(1));
-                Assert.Equal(processId, request.ProcessId);
-                Assert.True(request.TrimWorkingSet);
-                return new ProcessResourcePolicyBatchWriteResult(
-                    request.ProcessId,
-                    [new ProcessResourcePolicyBatchFieldResult(
-                        ProcessResourcePolicyBatchFields.TrimWorkingSet,
-                        Succeeded: true,
-                        "trimmed")]);
-            })
-            .ToArray();
-
-        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
-            committedGeneration: 1,
-            capturedAt: time.GetUtcNow()));
-        fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
-            fixture.ProcessFacts.Snapshot,
-            fixture.MetricSampler.Snapshot));
-        _ = await fixture.RunRealtimeCycleAsync();
-        Assert.False(fixture.PublicResourceManager.LastRequest!.Value
-            .Shortage.MemoryAfterNormalReleaseRounds);
-
-        time.Advance(TimeSpan.FromSeconds(1));
-        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
-            committedGeneration: 2,
-            capturedAt: time.GetUtcNow()));
-        fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
-            fixture.ProcessFacts.Snapshot,
-            fixture.MetricSampler.Snapshot));
-        _ = await fixture.RunRealtimeCycleAsync();
-        Assert.False(fixture.PublicResourceManager.LastRequest!.Value
-            .Shortage.MemoryAfterNormalReleaseRounds);
-
-        time.Advance(TimeSpan.FromSeconds(1));
-        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
-            committedGeneration: 3,
-            capturedAt: time.GetUtcNow()));
-        fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
-            fixture.ProcessFacts.Snapshot,
-            fixture.MetricSampler.Snapshot));
-        _ = await fixture.RunRealtimeCycleAsync();
-        Assert.False(fixture.PublicResourceManager.LastRequest!.Value
-            .Shortage.MemoryAfterNormalReleaseRounds);
-
-        time.Advance(TimeSpan.FromSeconds(1));
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
-        var stages = (Array)typeof(HostManagerSmartCoordinator).GetField(
-            "NewEffectOrder", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
-        // The cycle that first sees the escalated gate starts with cleanup,
-        // independently of other work stages; public work follows in the next cycle.
-        typeof(HostManagerSmartCoordinator).GetField(
-                "nextRealtimeNewEffectIndex", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(fixture.Coordinator, Enumerable.Range(0, stages.Length)
-                .Single(index => stages.GetValue(index)!.ToString() == "MemoryCleanup"));
-        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
-            committedGeneration: 4,
-            capturedAt: time.GetUtcNow()));
-        fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
-            fixture.ProcessFacts.Snapshot,
-            fixture.MetricSampler.Snapshot));
-        _ = await fixture.RunRealtimeCycleAsync();
-
-        Assert.True(fixture.PublicResourceManager.LastRequest!.Value
-            .Shortage.MemoryAfterNormalReleaseRounds);
-        Assert.Equal(0U, fixture.PublicResourceManager.NewEffectAttemptCount);
-
-        time.Advance(TimeSpan.FromSeconds(1));
-        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
-            committedGeneration: 5,
-            capturedAt: time.GetUtcNow()));
-        fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
-            fixture.ProcessFacts.Snapshot,
-            fixture.MetricSampler.Snapshot));
-        _ = await fixture.RunRealtimeCycleAsync();
-
-        Assert.True(fixture.PublicResourceManager.LastRequest!.Value
-            .Shortage.MemoryAfterNormalReleaseRounds);
-        Assert.Equal(1U, fixture.PublicResourceManager.NewEffectAttemptCount);
-        Assert.Equal(3, fixture.MemoryCleanupPlanner.PlanCalls); // No plan is reserved after public work spends the budget.
-        Assert.Equal(3, fixture.ProcessPolicyWriter.BatchCalls);
-    }
-
-    [Fact]
-    public async Task UnavailableMemoryCapacity_DoesNotRunCleanupOrClaimShortage()
+    public async Task UnavailableMemoryCapacity_DoesNotRunCleanup()
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
@@ -816,16 +640,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         _ = await fixture.RunRealtimeCycleAsync();
 
         Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
-        var shortage = fixture.PublicResourceManager.LastRequest!.Value.Shortage;
-        Assert.Equal(
-            HostPublicResourceCapacityObservationState.UnknownOrStale,
-            shortage.Memory.State);
-        Assert.False(shortage.MemoryCurrentShortage);
-        Assert.False(shortage.MemoryAfterNormalReleaseRounds);
     }
 
     [Fact]
-    public async Task RetainedMemoryCapacity_DoesNotRunCleanupOrAllowRecall()
+    public async Task RetainedMemoryCapacity_DoesNotRunCleanup()
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
@@ -849,12 +667,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             fixture.Coordinator.SchedulingAuthority.Availability);
         Assert.Null(fixture.Coordinator.SchedulingAuthority.MemoryModes);
         Assert.Null(fixture.Coordinator.NonAdaptedMemoryModeProjection);
-        var shortage = fixture.PublicResourceManager.LastRequest!.Value.Shortage;
-        Assert.Equal(
-            HostPublicResourceCapacityObservationState.UnknownOrStale,
-            shortage.Memory.State);
-        Assert.False(shortage.Memory.RecallAllowed);
-        Assert.False(shortage.MemoryAfterNormalReleaseRounds);
     }
 
     [Fact]
@@ -921,7 +733,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
             CreateFinalAdmissionAwareMemoryCleanupPlan;
-        fixture.PublicResourceManager.TickHandler = () =>
+        fixture.AfterMemoryCleanupBaselineCycle = () =>
             fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
                 memoryUsagePercent: 20,
                 committedGeneration: 2,
@@ -966,7 +778,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler = static _ =>
             AutomaticMemoryCleanupPlanResult.Empty;
-        fixture.PublicResourceManager.TickHandler = () =>
+        fixture.AfterMemoryCleanupBaselineCycle = () =>
             fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
                 memoryUsagePercent: finalMemoryUsagePercent,
                 committedGeneration: 2,
@@ -1027,7 +839,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             committedGeneration: 1,
             capturedAt: baselineCapturedAt));
         fixture.MetricSampler.AdvanceMemoryOnlyCapture = false;
-        fixture.PublicResourceManager.TickHandler = () =>
+        fixture.AfterMemoryCleanupBaselineCycle = () =>
             fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
                 memoryUsagePercent: 80,
                 committedGeneration: 2,
@@ -1172,7 +984,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     new ProcessInstanceRecoverySnapshot(processId, startedAt)),
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
-        fixture.PublicResourceManager.TickHandler = () =>
+        fixture.AfterMemoryCleanupBaselineCycle = () =>
             fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
                 memoryUsagePercent: finalMemoryUsagePercent,
                 virtualMemoryUsagePercent: finalVirtualMemoryUsagePercent,
@@ -1216,7 +1028,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task ValidationScopeBlocksAutomaticCleanupAndPublicResourceLifecycle()
+    public async Task ValidationScopeBlocksAutomaticCleanup()
     {
         const int processId = 24_290;
         var startedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
@@ -1240,14 +1052,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly,
             processEffectValidationScopeAuthority: validation.Authority);
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
 
         _ = await fixture.RunRealtimeCycleAsync();
 
         Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Equal(0, fixture.PublicResourceManager.TickAttemptCalls);
-        Assert.Null(fixture.PublicResourceManager.LastRequest);
     }
 
     [Fact]
@@ -1271,7 +1080,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     new ProcessInstanceRecoverySnapshot(processId, startedAt)),
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
-        fixture.PublicResourceManager.TickHandler = () =>
+        fixture.AfterMemoryCleanupBaselineCycle = () =>
             fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
                 memoryUsagePercent: 80,
                 virtualMemoryUsageAvailable: false,
@@ -1376,7 +1185,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
             CreateFinalAdmissionAwareMemoryCleanupPlan;
-        fixture.PublicResourceManager.TickHandler = () =>
+        fixture.AfterMemoryCleanupBaselineCycle = () =>
         {
             var current = processFacts.Processes[0] with { SourceGeneration = 2 };
             fixture.ProcessFacts.SetSnapshot(processFacts with
@@ -1428,7 +1237,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
             CreateFinalAdmissionAwareMemoryCleanupPlan;
-        fixture.PublicResourceManager.TickHandler = () =>
+        fixture.AfterMemoryCleanupBaselineCycle = () =>
         {
             var current = processFacts.Processes[0] with { SourceGeneration = 2 };
             var transitioned = transition switch
@@ -1611,28 +1420,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(2, fixture.MemoryCleanupPlanner.PlanCalls);
         Assert.Equal(2, fixture.MemoryCleanupPlanner.CompleteCalls);
         Assert.Equal(2, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.False(fixture.PublicResourceManager.LastRequest!.Value
-            .Shortage.MemoryAfterNormalReleaseRounds);
-    }
-
-    [Fact]
-    public async Task DisabledAutomaticCleanup_DoesNotDisableHealthyPublicResourceRecallCapacity()
-    {
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            scoreOnlyEnabled: false,
-            automaticMemoryCleanupEnabled: false);
-        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(memoryUsagePercent: 20));
-
-        _ = await fixture.RunRealtimeCycleAsync();
-
-        Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
-        var shortage = fixture.PublicResourceManager.LastRequest!.Value.Shortage;
-        Assert.Equal(
-            HostPublicResourceCapacityObservationState.HealthyFresh,
-            shortage.Memory.State);
-        Assert.True(shortage.Memory.RecallAllowed);
-        Assert.False(shortage.MemoryAfterNormalReleaseRounds);
     }
 
     [Theory]
@@ -1850,7 +1637,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task NormalModeMaintainsPublicResourcesWithoutSchedulingSnapshots()
+    public async Task NormalModeHoldsNoSamplingSubscriptions()
     {
         var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -1859,56 +1646,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationMode: AppOptimizationModes.Normal,
             automaticMemoryCleanupEnabled: false,
             cpuCoreReader: cpuReader);
-
-        await fixture.Coordinator.StartAsync(CancellationToken.None);
-        try
-        {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (fixture.PublicResourceManager.TickCalls == 0)
-            {
-                await Task.Delay(10, timeout.Token);
-            }
-
-            Assert.Equal(0, fixture.ProcessFacts.ReadLatestCalls);
-            Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
-            Assert.Empty(fixture.ProcessFacts.SubscriptionHistory);
-            Assert.Empty(cpuReader.Subscriptions);
-            Assert.Equal(1, fixture.MetricSampler.ActiveSubscriptionCount);
-            var hardware = Assert.Single(fixture.MetricSampler.SubscriptionHistory);
-            Assert.True(hardware.Request.Includes("memory.usage"));
-            Assert.False(hardware.Request.Includes("cpu.usage"));
-            Assert.False(hardware.Request.Includes("virtualMemory.usage"));
-            Assert.False((await fixture.Coordinator.GetStatusAsync(CancellationToken.None))
-                .SchedulerRunning);
-            var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(
-                CancellationToken.None);
-            Assert.False(diagnostics.SchedulerRunning);
-            Assert.Null(diagnostics.NativeCoordinator);
-            Assert.Null(diagnostics.SchedulingAuthority.Cpu);
-            Assert.Null(diagnostics.SchedulingAuthority.Gpu);
-            Assert.Empty(fixture.Workspace.CurrentSnapshotRows.ToArray());
-        }
-        finally
-        {
-            await fixture.Coordinator.StopAsync(CancellationToken.None);
-        }
-
-        Assert.Equal(0, fixture.MetricSampler.ActiveSubscriptionCount);
-        Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
-        Assert.Equal(0, cpuReader.ReleasedSubscriptions);
-    }
-
-    [Fact]
-    public async Task NormalModeWithoutPublicResourcesHoldsNoSamplingSubscriptions()
-    {
-        var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            scoreOnlyEnabled: false,
-            optimizationMode: AppOptimizationModes.Normal,
-            automaticMemoryCleanupEnabled: false,
-            cpuCoreReader: cpuReader);
-        fixture.PublicResourceManager.Available = false;
 
         await fixture.Coordinator.StartAsync(CancellationToken.None);
         try
@@ -1925,7 +1662,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
             Assert.Equal(0, fixture.ProcessFacts.ReadLatestCalls);
             Assert.Empty(cpuReader.Subscriptions);
-            Assert.Equal(0, fixture.PublicResourceManager.TickCalls);
         }
         finally
         {
@@ -1936,7 +1672,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task DirectNormalWorkerMaintainsCadenceAndTracksPlanOrPublicResourcePublication(
+    public async Task DirectNormalWorkerMaintainsCadenceAndTracksPlanPublication(
         bool warm)
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -1947,7 +1683,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             editFreedomPoints: root => FreedomPointTestFactory.Point(root,
                 ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints
                     .BackendFreedomPointPaths.SchedulerSamplingInterval)["value"] = 100);
-        fixture.PublicResourceManager.Available = false;
         var deadline = Assert.IsType<HostManagerVersionedWakeDeadline>(
             ReadPrivateField<HostManagerVersionedWakeDeadline>(
                 fixture.Coordinator, "schedulingWakeDeadline"));
@@ -1984,11 +1719,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             {
                 await Task.Delay(10, timeout.Token);
             }
-            fixture.PublicResourceManager.Available = true;
-            while (fixture.PublicResourceManager.TickCalls == 0)
-            {
-                await Task.Delay(10, timeout.Token);
-            }
             Assert.False((await fixture.Coordinator.GetStatusAsync(CancellationToken.None))
                 .SchedulerRunning);
         }
@@ -2010,7 +1740,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuCoreReader: cpuReader,
             processFactsSnapshot: CreateCompleteProcessFacts(24_103, 132_537_599_900_000_000,
                 "software:normal-percent-subscription", 90, 0, 0));
-        fixture.PublicResourceManager.Available = false;
         var deadline = Assert.IsType<HostManagerVersionedWakeDeadline>(
             ReadPrivateField<HostManagerVersionedWakeDeadline>(fixture.Coordinator, "schedulingWakeDeadline"));
 
@@ -2093,7 +1822,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             warm: true,
             optimizationMode: mode,
             cpuCoreReader: cpuReader);
-        fixture.PublicResourceManager.Available = false;
 
         await fixture.Coordinator.StartAsync(CancellationToken.None);
         try
@@ -2146,39 +1874,34 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (fixture.PublicResourceManager.TickCalls == 0)
+            while (fixture.Coordinator.SchedulingAuthority.UnavailableReason
+                != "optimization-mode-normal")
             {
                 await Task.Delay(10, timeout.Token);
             }
+            Assert.Equal(0, fixture.MetricSampler.ActiveSubscriptionCount);
             fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
             {
                 Version = 2,
                 OptimizationMode = CompiledOptimizationModePlan.Compile(AppOptimizationModes.Smart)
             });
-            // The handoff admits the new demand before it retires the old one (make-before-break),
-            // so the old metric lease is released only after the new process lease exists.
             while (fixture.ProcessFacts.ActiveSubscriptionCount != 1
                 || fixture.MetricSampler.ActiveSubscriptionCount != 1)
             {
                 await Task.Delay(10, timeout.Token);
             }
-            Assert.Equal(1, fixture.MetricSampler.ActiveSubscriptionCount);
             Assert.Single(cpuReader.Subscriptions);
             Assert.Single(fixture.ProcessFacts.SubscriptionHistory);
-            Assert.Equal(2, fixture.MetricSampler.SubscriptionHistory.Count);
-            Assert.True(fixture.MetricSampler.SubscriptionHistory[1].Request.Includes("cpu.usage"));
+            Assert.True(Assert.Single(fixture.MetricSampler.SubscriptionHistory).Request.Includes("cpu.usage"));
 
             fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = 3 });
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
             while (fixture.ProcessFacts.ActiveSubscriptionCount != 0
-                || fixture.MetricSampler.ActiveSubscriptionCount != 1)
+                || fixture.MetricSampler.ActiveSubscriptionCount != 0)
             {
                 await Task.Delay(10, timeout.Token);
             }
-            Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
             Assert.Equal(1, cpuReader.ReleasedSubscriptions);
-            Assert.Equal(1, fixture.MetricSampler.ActiveSubscriptionCount);
-            Assert.False(fixture.MetricSampler.SubscriptionHistory[^1].Request.Includes("cpu.usage"));
             Assert.Null((await fixture.Coordinator.GetDecisionDiagnosticsAsync(
                 CancellationToken.None)).NativeCoordinator);
         }
@@ -2454,7 +2177,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(1, result.RequestedCount);
         Assert.Equal(1, result.TerminalCount);
         Assert.Equal(1, result.SucceededCount);
-        Assert.False(result.CompletedNormalReleaseRound);
         Assert.Equal(0U, admission.NewPointOfNoReturnRemaining);
         Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Single(fixture.ProcessPolicyWriter.BatchRequests);
@@ -2617,8 +2339,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(
             HostManagerMemoryCleanupRoundDisposition.PlannerConfigurationMismatch,
             result.Disposition);
-        Assert.False(result.CompletedNormalReleaseRound);
-        Assert.Equal(0, result.CompletedAtUtcTicks);
         Assert.Equal(37UL, result.PlannerStateRevision);
         Assert.Equal(1U, admission.NewPointOfNoReturnRemaining);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
@@ -3113,7 +2833,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             result.Disposition);
         Assert.Equal(1, result.CandidateCount);
         Assert.Equal(0UL, result.PlannerStateRevision);
-        Assert.True(result.CompletedNormalReleaseRound);
         Assert.Equal(1U, admission.NewPointOfNoReturnRemaining);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.MemoryCleanupPlanner.CompleteCalls);
@@ -3155,7 +2874,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(2, result.RequestedCount);
         Assert.Equal(2, result.TerminalCount);
         Assert.Equal(2, result.SucceededCount);
-        Assert.True(result.CompletedNormalReleaseRound);
         Assert.Equal(0U, admission.NewPointOfNoReturnRemaining);
         Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(2, fixture.MemoryCleanupPlanner.LastFeedback.Count);
@@ -3234,7 +2952,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(1, result.RequestedCount);
         Assert.Equal(0, result.TerminalCount);
         Assert.Equal(0, result.SucceededCount);
-        Assert.False(result.CompletedNormalReleaseRound);
         Assert.Equal(0U, admission.NewPointOfNoReturnRemaining);
         Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
         var feedback = Assert.Single(fixture.MemoryCleanupPlanner.LastFeedback);
@@ -3275,7 +2992,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(
             HostManagerMemoryCleanupRoundDisposition.BatchOutcomeUnknown,
             first.Disposition);
-        Assert.False(first.CompletedNormalReleaseRound);
 
         fixture.MemoryCleanupPlanner.PlanResult = AutomaticMemoryCleanupPlanResult.Empty;
         var secondAdmission = HostManagerCycleEffectAdmission.Create(scoreOnly: false);
@@ -3294,7 +3010,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             HostManagerMemoryCleanupRoundDisposition.CompleteNoDecision,
             second.Disposition);
         Assert.Equal(1, second.CandidateCount);
-        Assert.True(second.CompletedNormalReleaseRound);
         Assert.Equal(candidate, Assert.Single(Assert.IsType<AutomaticMemoryCleanupPlanRequest>(
             fixture.MemoryCleanupPlanner.LastRequest).Candidates));
         Assert.Equal(1U, secondAdmission.NewPointOfNoReturnRemaining);
@@ -3367,121 +3082,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(2, second.RequestedCount);
         Assert.Equal(2, second.TerminalCount);
         Assert.Equal(2, second.SucceededCount);
-        Assert.True(second.CompletedNormalReleaseRound);
         Assert.Equal(
             new[] { unknownCandidate.ProcessId, executableCandidate.ProcessId },
             fixture.ProcessPolicyWriter.BatchRequests.Select(static item => item.ProcessId));
         Assert.Equal(0U, secondAdmission.NewPointOfNoReturnRemaining);
         Assert.Equal(2, fixture.ProcessPolicyWriter.BatchCalls);
-    }
-
-    [Fact]
-    public async Task RealtimeFinalAdmissionSharesOneNewPonrWithoutSwitchingScoreOnly()
-    {
-        const int processId = 24_001;
-        var processStartedAt =
-            CreateProcessStartedAtOrderedBeforeSoftwareTarget(processId);
-        var processStartKey = checked((ulong)processStartedAt.ToFileTime());
-        var softwareId = CreateSoftwareIdOrderedAfterProcessTarget(
-            processId,
-            processStartKey);
-        var processFacts = CreateCompleteProcessFacts(
-            processId,
-            processStartKey,
-            softwareId,
-            baseScore: 20,
-            cpuUsagePercent: 50,
-            memoryUsagePercent: 25);
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            scoreOnlyEnabled: false,
-            processFactsSnapshot: processFacts,
-            processRecoveryRead: requestedProcessId =>
-            {
-                Assert.Equal(processId, requestedProcessId);
-                return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
-                    new ProcessInstanceRecoverySnapshot(
-                        processId,
-                        processStartedAt));
-            },
-            memoryModePolicyEnabled: true,
-            cpuUsagePercent: 1,
-            realtimeActionBudget: 1);
-        await fixture.PrimeMemoryCleanupAdmissionAsync();
-        fixture.MetricSampler.SetCpuUsagePercent(99);
-        fixture.PublishNextHostedCpuObservation();
-        var currentMemoryPriority = 5U;
-        fixture.ProcessPolicyWriter.ProcessReadHandler = requestedProcessId =>
-        {
-            Assert.Equal(processId, requestedProcessId);
-            return new ProcessResourcePolicySnapshot(
-                processId,
-                "cycle-budget",
-                @"c:\tests\cycle-budget.exe",
-                processStartedAt,
-                "Normal",
-                ProcessorAffinityMask: 1,
-                LogicalProcessorCount: 1,
-                MemoryPriority: currentMemoryPriority);
-        };
-        fixture.ProcessPolicyWriter.BatchHandler = requests =>
-        {
-            var request = Assert.Single(requests);
-            Assert.Equal(processId, request.ProcessId);
-            var targetMemoryPriority = Assert.IsType<uint>(request.MemoryPriority);
-            Assert.False(request.TrimWorkingSet);
-            currentMemoryPriority = targetMemoryPriority;
-            return
-            [
-                new ProcessResourcePolicyBatchWriteResult(
-                    processId,
-                    [new ProcessResourcePolicyBatchFieldResult(
-                        ProcessResourcePolicyBatchFields.MemoryPriority,
-                        Succeeded: true,
-                        "memory priority applied")])
-            ];
-        };
-        fixture.MemoryCleanupPlanner.PlanHandler = request =>
-            CreateAutomaticMemoryCleanupPlan(request);
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
-        var publicTickCallsBeforeFinalCycle = fixture.PublicResourceManager.TickCalls;
-        var nativePlanProbe = new CapturingNativePlanProbe(fixture.Workspace);
-        fixture.Coordinator.TransitionProbe = nativePlanProbe;
-
-        _ = await fixture.RunRealtimeCycleAsync();
-
-        Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Empty(fixture.ProcessPolicyWriter.BatchRequests);
-        Assert.Equal(5U, currentMemoryPriority);
-        Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
-        Assert.Null(fixture.MemoryCleanupPlanner.LastRequest);
-        Assert.Empty(fixture.MemoryCleanupPlanner.LastFeedback);
-        Assert.Equal(
-            publicTickCallsBeforeFinalCycle + 1,
-            fixture.PublicResourceManager.TickCalls);
-        Assert.Equal(
-            1U,
-            fixture.PublicResourceManager.LastRequest!.Value.MaximumNewEffectAttempts);
-        Assert.Equal(1U, fixture.PublicResourceManager.NewEffectAttemptCount);
-        Assert.Equal(0, fixture.PublicResourceManager.PendingNewEffectCandidates);
-        Assert.False(fixture.Workspace.Snapshot.Flags.HasFlag(
-            NativeSmartCoordinatorSnapshotFlags.ScoreOnly));
-        Assert.False(nativePlanProbe.Snapshot.Flags.HasFlag(
-            NativeSmartCoordinatorSnapshotFlags.ScoreOnly));
-        Assert.DoesNotContain(
-            nativePlanProbe.Actions,
-            static action => action.Flags.HasFlag(
-                NativeSmartCoordinatorActionFlags.RequiresFeedback));
-        Assert.True(
-            nativePlanProbe.Actions.All(
-                static action => action.Disposition ==
-                    NativeSmartCoordinatorActionDisposition.NoOp),
-            string.Join(
-                Environment.NewLine,
-                nativePlanProbe.Actions.Select(static action =>
-                    $"scope={action.Scope}; disposition={action.Disposition}; " +
-                    $"process={action.FromProcessGrade}->{action.ToProcessGrade}; " +
-                    $"flags={action.Flags}")));
     }
 
     [Fact]
@@ -3510,8 +3115,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.True(Assert.Single(requests).TrimWorkingSet);
             throw new InvalidOperationException("simulated unknown trim");
         };
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
-        var publicTicks = fixture.PublicResourceManager.TickCalls;
         var nativeSequence = fixture.Workspace.Snapshot.CycleSequence;
         var cursor = typeof(HostManagerSmartCoordinator).GetField(
             "nextRealtimeNewEffectIndex", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -3529,10 +3132,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 fixture.ProcessFacts.Snapshot, fixture.MetricSampler.Snapshot));
             _ = await fixture.RunRealtimeCycleAsync();
             Assert.Equal(attempt + 1, fixture.ProcessPolicyWriter.BatchCalls);
-            Assert.Equal(publicTicks + attempt + 1, fixture.PublicResourceManager.TickCalls);
             Assert.Equal(nativeSequence + checked((ulong)(attempt + 1)),
                 fixture.Workspace.Snapshot.CycleSequence);
-            Assert.Equal(1U, fixture.PublicResourceManager.NewEffectAttemptCount);
             Assert.Equal((cleanupIndex + attempt + 1) % stages.Length,
                 cursor.GetValue(fixture.Coordinator));
         }
@@ -3712,7 +3313,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             return new ProcessResourcePolicyBatchWriteResult(request.ProcessId, fields);
         }).ToArray();
         fixture.MemoryCleanupPlanner.PlanHandler = CreateAutomaticMemoryCleanupPlan;
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 20;
         var nativePlanProbe = new CapturingNativePlanProbe(fixture.Workspace);
         fixture.Coordinator.TransitionProbe = nativePlanProbe;
         var history = new List<string>();
@@ -3720,7 +3320,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         void RecordCycle(int cycle)
         {
             history.Add($"cycle={cycle}; memory={memoryWrites}; native={nativeWrites}; trim={trimWrites}; "
-                + $"public={fixture.PublicResourceManager.NewEffectAttemptCount}; actions="
+                + "actions="
                 + string.Join(",", nativePlanProbe.Actions.Select(action =>
                     $"{action.ProcessId}:{action.Disposition}:{action.FromProcessGrade}->{action.ToProcessGrade}"))
                 + "; rows=" + string.Join(",", fixture.Workspace.CurrentSnapshotRows.ToArray()
@@ -3735,11 +3335,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             fixture.MetricSampler.PublishNextHostedMemoryObservation();
             fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
                 fixture.ProcessFacts.Snapshot, fixture.MetricSampler.Snapshot));
-            var before = memoryWrites + nativeWrites + trimWrites
-                + fixture.PublicResourceManager.NewEffectAttemptCount;
+            var before = memoryWrites + nativeWrites + trimWrites;
             _ = await fixture.RunRealtimeCycleAsync();
-            var after = memoryWrites + nativeWrites + trimWrites
-                + fixture.PublicResourceManager.NewEffectAttemptCount;
+            var after = memoryWrites + nativeWrites + trimWrites;
             RecordCycle(cycle);
             Assert.InRange(after - before, 0, 1);
             Assert.Equal(0u, fixture.Workspace.Snapshot.InflightCount);
@@ -3748,7 +3346,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.InRange(memoryWrites, 1, 11);
         Assert.True(nativeWrites > 0, "Native effects never ran while memory work remained.");
         Assert.True(trimWrites > 0, "Working-set cleanup never received the shared budget.");
-        Assert.True(fixture.PublicResourceManager.NewEffectAttemptCount > 0);
         Assert.False(fixture.Workspace.Snapshot.Flags.HasFlag(
             NativeSmartCoordinatorSnapshotFlags.ScoreOnly));
         Assert.Contains(fixture.Workspace.CurrentSnapshotRows.ToArray(), row =>
@@ -3772,11 +3369,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
                 fixture.ProcessFacts.Snapshot, fixture.MetricSampler.Snapshot));
             var newBefore = memoryWrites - memoryRestoreWrites
-                + nativeWrites - nativeRestoreWrites + trimWrites
-                + fixture.PublicResourceManager.NewEffectAttemptCount;
+                + nativeWrites - nativeRestoreWrites + trimWrites;
             var memoryRecoveryBefore = memoryRestoreWrites;
             var recoveryBefore = nativeRestoreWrites;
-            var publicTicksBefore = fixture.PublicResourceManager.TickCalls;
             var memoryWritesBefore = memoryWrites;
             var trimWritesBefore = trimWrites;
             var newEffectIndexBefore = (int)typeof(HostManagerSmartCoordinator).GetField(
@@ -3788,7 +3383,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             {
                 Assert.True(fixture.Workspace.Snapshot.Flags.HasFlag(
                     NativeSmartCoordinatorSnapshotFlags.RequiresAuthoritativeResync));
-                Assert.Equal(publicTicksBefore, fixture.PublicResourceManager.TickCalls);
                 Assert.Equal(memoryWritesBefore, memoryWrites);
                 Assert.Equal(trimWritesBefore, trimWrites);
                 Assert.Equal(newEffectIndexBefore, typeof(HostManagerSmartCoordinator).GetField(
@@ -3797,8 +3391,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 return;
             }
             var newAfter = memoryWrites - memoryRestoreWrites
-                + nativeWrites - nativeRestoreWrites + trimWrites
-                + fixture.PublicResourceManager.NewEffectAttemptCount;
+                + nativeWrites - nativeRestoreWrites + trimWrites;
             var newEffectDelta = newAfter - newBefore;
             var recoveryDelta = memoryRestoreWrites - memoryRecoveryBefore
                 + nativeRestoreWrites - recoveryBefore;
@@ -4125,7 +3718,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(2, fixture.ProcessPolicyWriter.MemoryRecoveryReadCalls);
         Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.ProcessFacts.ReadLatestCalls);
-        if (!pendingGpu) Assert.True(fixture.MetricSampler.ReadLatestCalls > 0);
+        // Normal mode reads no metrics: restoration needs only the owned records and process reads.
+        if (!pendingGpu) Assert.Equal(0, fixture.MetricSampler.ReadLatestCalls);
         else
         {
             Assert.True(GpuActionFacts.HasUnsettledActions(fixture.StateStore.Current.AppliedPlacements));
@@ -4340,15 +3934,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         };
         fixture.ProcessPolicyWriter.BatchHandler = static _ =>
             throw new InvalidOperationException("The writer must not be called.");
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
 
         _ = await fixture.RunRealtimeCycleAsync();
 
         Assert.NotNull(blocker);
         Assert.True(fixture.ProcessPolicyWriter.TotalCalls > 0);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Null(fixture.PublicResourceManager.LastRequest);
-        Assert.Equal(0U, fixture.PublicResourceManager.NewEffectAttemptCount);
     }
 
     [Fact]
@@ -4417,7 +4008,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     out var admittedBlocker));
                 blocker = Assert.IsType<HostManagerProcessEffectValidationAdmissionPermit>(
                     admittedBlocker);
-                fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
             });
         fixture.Coordinator.TransitionProbe = nativePlanProbe;
 
@@ -4443,8 +4033,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     $"flags={action.Flags}")));
         Assert.NotNull(blocker);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Null(fixture.PublicResourceManager.LastRequest);
-        Assert.Equal(0U, fixture.PublicResourceManager.NewEffectAttemptCount);
     }
 
     [Fact]
@@ -4626,7 +4214,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.NotNull(blocker);
         Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(4U, currentMemoryPriority);
-        Assert.Null(fixture.PublicResourceManager.LastRequest);
     }
 
     [Fact]
@@ -5037,7 +4624,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var hostPlan = HostManagerTestPlanFactory.CreatePlan();
         var plan = new PlacementCoordinatorRuntimePlan(
             hostPlan,
-            hostPlan.BuildSpecialize.PlacementCoordinatorAbiVersion,
+            NativePlacementCoordinatorAbi.Version,
             hostPlan.HostRecreate.PlacementCoordinator,
             hostPlan.HotPublish.PlacementCoordinator);
         var configuration = new NativePlacementCoordinatorConfiguration
@@ -5190,8 +4777,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(0, fixture.MemoryCleanupPlanner.CompleteCalls);
         Assert.Empty(fixture.MemoryCleanupPlanner.CompletionHistory);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.False(fixture.PublicResourceManager.LastRequest!.Value
-            .Shortage.MemoryAfterNormalReleaseRounds);
     }
 
     private static HostManagerMemoryCleanupExecutionResult InvokeExecuteMemoryCleanup(
@@ -5405,7 +4990,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             RecordingProcessFactSource processFacts,
             RecordingProcessPolicyWriter processPolicyWriter,
             RecordingAutomaticMemoryCleanupPlanner memoryCleanupPlanner,
-            RecordingPublicResourceManager publicResourceManager,
             RecordingProtectionService protectionService,
             RecordingGraphicsPreferenceStore graphicsPreferenceStore,
             RecordingDebugLogWriter debugLogWriter,
@@ -5426,7 +5010,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             ProcessFacts = processFacts;
             ProcessPolicyWriter = processPolicyWriter;
             MemoryCleanupPlanner = memoryCleanupPlanner;
-            PublicResourceManager = publicResourceManager;
             ProtectionService = protectionService;
             GraphicsPreferenceStore = graphicsPreferenceStore;
             DebugLogWriter = debugLogWriter;
@@ -5449,7 +5032,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         internal RecordingProcessFactSource ProcessFacts { get; }
         internal RecordingProcessPolicyWriter ProcessPolicyWriter { get; }
         internal RecordingAutomaticMemoryCleanupPlanner MemoryCleanupPlanner { get; }
-        internal RecordingPublicResourceManager PublicResourceManager { get; }
+        // Runs once after PrimeMemoryCleanupAdmissionAsync's baseline cycle, before the next sample.
+        internal Action? AfterMemoryCleanupBaselineCycle { get; set; }
         internal RecordingProtectionService ProtectionService { get; }
         internal RecordingGraphicsPreferenceStore GraphicsPreferenceStore { get; }
         internal RecordingDebugLogWriter DebugLogWriter { get; }
@@ -5632,10 +5216,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             {
                 FailOnCall = failFastEffects
             };
-            var publicResourceManager = new RecordingPublicResourceManager
-            {
-                FailOnCall = failFastEffects
-            };
             var protectionService = new RecordingProtectionService();
             var graphicsPreferenceStore = new RecordingGraphicsPreferenceStore();
             var debugLogWriter = new RecordingDebugLogWriter(forwardingDebugLogWriter);
@@ -5723,7 +5303,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 debugLogWriter,
                 coordinatorLogger ?? NullLogger<HostManagerSmartCoordinator>.Instance,
                 selfLocalResourceManager,
-                publicResourceManager,
                 new HostManagerSchedulingAuthority(),
                 new HostManagerMemoryModePolicyAuthority(
                     memoryModePolicyEnabled
@@ -5771,7 +5350,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 processFacts,
                 processPolicyWriter,
                 memoryCleanupPlanner,
-                publicResourceManager,
                 protectionService,
                 graphicsPreferenceStore,
                 debugLogWriter,
@@ -6144,6 +5722,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             var baseline = MetricSampler.Snapshot;
             _ = await RunRealtimeCycleAsync();
+            AfterMemoryCleanupBaselineCycle?.Invoke();
             if (publishHardware
                 && !HasNewerMemoryDataset(baseline, MetricSampler.Snapshot))
             {
@@ -6196,9 +5775,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 MemoryCleanupPlanner.CompleteAttemptCalls,
                 MemoryCleanupPlanner.CompleteCalls,
                 MemoryCleanupPlanner.CompletionHistory.Count,
-                PublicResourceManager.TickAttemptCalls,
-                PublicResourceManager.TickCalls,
-                PublicResourceManager.NewEffectAttemptCount,
                 GraphicsPreferenceStore.TotalCalls);
 
         public async ValueTask DisposeAsync()
@@ -6658,68 +6234,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         public void Dispose()
         {
-        }
-    }
-
-    private sealed class RecordingPublicResourceManager :
-        IHostPublicResourceSelfManager, IHostPublicResourceCapability,
-        IHostPublicResourcePublicationNotifier
-    {
-        private bool available = true;
-        internal bool Available
-        {
-            get => available;
-            set
-            {
-                available = value;
-                if (value) HostResourcePublished?.Invoke();
-            }
-        }
-        public event Action? HostResourcePublished;
-        internal int TickCalls { get; private set; }
-        internal int TickAttemptCalls { get; private set; }
-        internal int PendingNewEffectCandidates { get; set; }
-        internal uint NewEffectAttemptCount { get; private set; }
-        internal HostPublicResourceSelfManagerTickRequest? LastRequest { get; private set; }
-        internal Action? TickHandler { get; set; }
-        internal bool FailOnCall { get; init; }
-
-        public HostPublicResourceCapabilitySnapshot GetCapability()
-            => new(
-                Available
-                    ? HostPublicResourceCapabilityStates.Available
-                    : HostPublicResourceCapabilityStates.Unavailable,
-                Available,
-                Available ? "test-available" : "test-unavailable");
-
-        public HostPublicResourceSelfManagerTickResult Tick(
-            HostPublicResourceSelfManagerTickRequest request)
-        {
-            TickAttemptCalls++;
-            if (FailOnCall)
-            {
-                throw new InvalidOperationException(
-                    "Score-only called the public-resource effect boundary.");
-            }
-            TickCalls++;
-            LastRequest = request;
-            TickHandler?.Invoke();
-            var attemptCount = Math.Min(
-                checked((uint)PendingNewEffectCandidates),
-                request.MaximumNewEffectAttempts);
-            PendingNewEffectCandidates = checked(
-                PendingNewEffectCandidates - (int)attemptCount);
-            NewEffectAttemptCount = checked(NewEffectAttemptCount + attemptCount);
-            return new HostPublicResourceSelfManagerTickResult(
-                PlannedCount: checked((int)attemptCount),
-                UnloadedCount: checked((int)attemptCount),
-                RecalledCount: 0,
-                RejectedCount: 0,
-                NewEffectAttemptCount: attemptCount,
-                RecoveryAttemptCount: 0,
-                ReleasedBytes: attemptCount,
-                RestoredBytes: 0,
-                SampleGeneration: checked((ulong)TickCalls));
         }
     }
 

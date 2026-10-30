@@ -12,13 +12,11 @@ public sealed class HostManagerAppliedOwnershipConfigurationTests
     {
         var plan = Compile(ParseDefault());
 
-        Assert.Equal(0x0002_0000U, plan.BuildSpecialize.AppliedOwnershipAbiVersion);
         Assert.Equal(65_536, plan.BuildSpecialize.CapacityLimits.AppliedOwnershipRecordCapacity);
         Assert.Equal(131_072, plan.BuildSpecialize.CapacityLimits.AppliedOwnershipPrimaryIndexCapacity);
         Assert.Equal(131_072, plan.BuildSpecialize.CapacityLimits.AppliedOwnershipPayloadIndexCapacity);
         Assert.Equal(134_217_728L, plan.BuildSpecialize.CapacityLimits.AppliedOwnershipResidentByteBudget);
         Assert.Equal(33_554_432L, plan.BuildSpecialize.CapacityLimits.AppliedOwnershipImageByteBudget);
-        Assert.Single(plan.BuildSpecialize.NativeModules, static module => module == "applied_ownership");
         Assert.Contains(
             "applied_ownership",
             plan.BuildSpecialize.NativeBinaries
@@ -49,8 +47,6 @@ public sealed class HostManagerAppliedOwnershipConfigurationTests
     public void LoaderAndCompiler_RejectIncompleteOrLegacyAppliedOwnershipShape()
     {
         AssertLoadRejected(static profile =>
-            profile["build_specialize"]!.AsObject().Remove("applied_ownership_abi_version"));
-        AssertLoadRejected(static profile =>
             profile["build_specialize"]!["capacity_limits"]!
                 .AsObject()
                 .Remove("applied_ownership_image_byte_budget"));
@@ -64,15 +60,6 @@ public sealed class HostManagerAppliedOwnershipConfigurationTests
             profile["hot_publish"]!.AsObject().Remove("applied_ownership"));
 
         AssertRejected(static profile => profile["schema_version"] = 10);
-        AssertRejected(static profile =>
-            profile["build_specialize"]!["applied_ownership_abi_version"] = 0x0001_0000U);
-        AssertRejected(static profile =>
-            profile["build_specialize"]!["native_modules"] = new JsonArray(
-                profile["build_specialize"]!["native_modules"]!
-                    .AsArray()
-                    .Where(static item => item?.GetValue<string>() != "applied_ownership")
-                    .Select(static item => item?.DeepClone())
-                    .ToArray()));
     }
 
     [Fact]

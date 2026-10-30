@@ -217,7 +217,6 @@ public sealed class HostManagerRuntimePublicationTests
         HostManagerDeploymentSnapshot snapshot)
         =>
         [
-            snapshot.SharedResources,
             snapshot.ResourceScheduler,
             snapshot.AdapterPrivateResourceLedger,
             snapshot.SmartCoordinator,

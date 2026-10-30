@@ -12,12 +12,10 @@ public sealed class HostManagerTransactionJournalConfigurationTests
     {
         var plan = Compile(ReadDefaultProfile());
 
-        Assert.Equal(0x0005_0000U, plan.BuildSpecialize.TransactionJournalAbiVersion);
         Assert.Equal(65_536, plan.BuildSpecialize.CapacityLimits.TransactionJournalRecordCapacity);
         Assert.Equal(268_435_456L, plan.BuildSpecialize.CapacityLimits.TransactionJournalResidentByteBudget);
         Assert.Equal(65_536, plan.BuildSpecialize.CapacityLimits.TransactionJournalPayloadCount);
         Assert.Equal(1_073_741_824L, plan.BuildSpecialize.CapacityLimits.TransactionJournalPayloadByteBudget);
-        Assert.Single(plan.BuildSpecialize.NativeModules, static module => module == "transaction_journal");
         Assert.Contains(
             "transaction_journal",
             plan.BuildSpecialize.NativeBinaries
@@ -62,10 +60,6 @@ public sealed class HostManagerTransactionJournalConfigurationTests
         missingHot["hot_publish"]!.AsObject().Remove("transaction_journal");
         Assert.Throws<InvalidDataException>(() => Load(missingHot));
 
-        var missingAbi = ParseDefault();
-        missingAbi["build_specialize"]!.AsObject().Remove("transaction_journal_abi_version");
-        Assert.Throws<InvalidDataException>(() => Load(missingAbi));
-
         var missingBuildLimit = ParseDefault();
         missingBuildLimit["build_specialize"]!["capacity_limits"]!
             .AsObject()
@@ -77,15 +71,6 @@ public sealed class HostManagerTransactionJournalConfigurationTests
             .AsObject()
             .Remove("journal_relative_path");
         Assert.Throws<InvalidDataException>(() => Load(missingPath));
-
-        var missingModule = ParseDefault();
-        missingModule["build_specialize"]!["native_modules"] = new JsonArray(
-            missingModule["build_specialize"]!["native_modules"]!
-                .AsArray()
-                .Where(static item => item?.GetValue<string>() != "transaction_journal")
-                .Select(static item => item?.DeepClone())
-                .ToArray());
-        Assert.Throws<InvalidDataException>(() => Compile(missingModule));
     }
 
     [Fact]
@@ -99,8 +84,6 @@ public sealed class HostManagerTransactionJournalConfigurationTests
             profile["host_recreate"]!["transaction_journal"]!["payload_count"] = 65_537);
         AssertRejected(static profile =>
             profile["host_recreate"]!["transaction_journal"]!["payload_byte_budget"] = 1_073_741_825L);
-        AssertRejected(static profile =>
-            profile["build_specialize"]!["transaction_journal_abi_version"] = 0x0003_0000U);
     }
 
     [Fact]

@@ -154,17 +154,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Contains(owned.Records, record =>
             record.Primary.ProcessId == checked((uint)ownerProcessId));
 
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
-        var publicTicksBefore = fixture.PublicResourceManager.TickCalls;
         _ = await fixture.RunRealtimeCycleAsync();
 
-        Assert.Equal(publicTicksBefore + 1, fixture.PublicResourceManager.TickCalls);
-        Assert.Equal(1U, fixture.PublicResourceManager.NewEffectAttemptCount);
         Assert.DoesNotContain(ownerProcessId, freshWrites);
     }
 
     [Fact]
-    public async Task UnavailableOwnedMemoryRestoreRetainsUnknownOwnerAndContinuesPublicLifecycle()
+    public async Task UnavailableOwnedMemoryRestoreRetainsUnknownOwner()
     {
         const int processId = 24_305;
         var processStartedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
@@ -199,8 +195,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         fixture.ProcessPolicyWriter.BatchHandler = static _ =>
             throw new InvalidOperationException(
                 "An unavailable exact process state must not be overwritten.");
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
-        var publicTicksBefore = fixture.PublicResourceManager.TickCalls;
 
         _ = await fixture.RunRealtimeCycleAsync();
 
@@ -216,8 +210,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             record.Phase);
         Assert.Equal(1U, journal.Header.EffectInvocationUncertainCount);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Equal(publicTicksBefore + 1, fixture.PublicResourceManager.TickCalls);
-        Assert.Equal(1U, fixture.PublicResourceManager.NewEffectAttemptCount);
     }
 
     [Fact]
@@ -293,8 +285,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         fixture.ProcessPolicyWriter.BatchHandler = static _ =>
             throw new InvalidOperationException(
                 "A shared durable payload failure must stop every memory write.");
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
-        var publicTicksBefore = fixture.PublicResourceManager.TickCalls;
         Assert.True(File.Exists(seeded.PayloadPath));
         File.Delete(seeded.PayloadPath);
 
@@ -302,8 +292,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             async () => _ = await fixture.RunRealtimeCycleAsync());
 
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Equal(publicTicksBefore, fixture.PublicResourceManager.TickCalls);
-        Assert.Equal(0U, fixture.PublicResourceManager.NewEffectAttemptCount);
         var ownership = await fixture.NativeTransactions.AppliedOwnership.ReadSnapshotAsync(
             CancellationToken.None);
         Assert.Contains(ownership.Records, record =>

@@ -145,21 +145,6 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
                     "unavailable")));
     }
 
-    [Fact]
-    public void UnknownFinalAdmission_CannotCompleteNormalReleaseRound()
-    {
-        var result = HostManagerMemoryCleanupExecutionResult.Incomplete(
-            HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCandidatesUnknown,
-            candidateCount: 1,
-            plannerStateRevision: 10);
-
-        Assert.False(result.CompletedNormalReleaseRound);
-        Assert.Equal(0, result.CompletedAtUtcTicks);
-        Assert.Equal(
-            result,
-            result.StampCompletion(DateTimeOffset.UtcNow));
-    }
-
     private static void AssertKnownIneligible(
         AdmissionFixture fixture,
         SchedulingProcessFact current,

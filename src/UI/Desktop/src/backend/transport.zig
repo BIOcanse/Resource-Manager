@@ -240,12 +240,10 @@ const Capabilities = struct {
     profileId: []const u8,
     readOnly: bool = false,
     mutablePersistence: bool = false,
-    legacyPersistenceImport: bool = false,
     gpuLaunchInterceptionReconciliation: bool = false,
     runtimeEffectOwners: bool = false,
     publicServiceCoordination: bool = false,
     optimizationRuntime: bool = false,
-    sharedResourceOwnership: bool = false,
 };
 fn validateCapabilities(bytes: []const u8, storage: []u8) !void {
     var allocator = std.heap.FixedBufferAllocator.init(storage);

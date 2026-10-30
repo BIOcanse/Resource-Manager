@@ -1,7 +1,6 @@
 using ResourceManager.Adapter;
 using ResourceManager.Adapter.NativeScheduling;
 using ResourceManager.Adapter.NativeLedger;
-using ResourceManager.Adapter.SharedMemory;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
@@ -9,7 +8,6 @@ using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
 using System.Collections.Immutable;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -79,38 +77,6 @@ public sealed partial class HostManagerPlanCompiler
 
         var recreate = profile.HostRecreate
             ?? throw Missing("host_recreate");
-        var recreateSharedResources = recreate.SharedResources
-            ?? throw Missing("host_recreate.shared_resources");
-        ValidatePositive(
-            recreateSharedResources.ResourceCapacity,
-            "host_recreate.shared_resources.resource_capacity");
-        ValidateMaximum(
-            recreateSharedResources.ResourceCapacity,
-            buildSpecialize.CapacityLimits.SharedResourceCapacity,
-            "host_recreate.shared_resources.resource_capacity");
-        ValidateNonNegative(
-            recreateSharedResources.SubscriptionCapacity,
-            "host_recreate.shared_resources.subscription_capacity");
-        ValidateMaximum(
-            recreateSharedResources.SubscriptionCapacity,
-            buildSpecialize.CapacityLimits.SharedSubscriptionCapacity,
-            "host_recreate.shared_resources.subscription_capacity");
-        ValidatePositive(
-            recreateSharedResources.TaskCapacity,
-            "host_recreate.shared_resources.task_capacity");
-        ValidateMaximum(
-            recreateSharedResources.TaskCapacity,
-            buildSpecialize.CapacityLimits.SharedTaskCapacity,
-            "host_recreate.shared_resources.task_capacity");
-        ValidatePositive(
-            recreateSharedResources.MaximumSubscriptionLeaseDurationMilliseconds,
-            "host_recreate.shared_resources.maximum_subscription_lease_duration_ms");
-        ValidatePositive(
-            recreateSharedResources.MaximumQueueDurationMilliseconds,
-            "host_recreate.shared_resources.maximum_queue_duration_ms");
-        ValidatePositive(
-            recreateSharedResources.MaximumGrantDurationMilliseconds,
-            "host_recreate.shared_resources.maximum_grant_duration_ms");
         var recreateResourceScheduler = recreate.ResourceScheduler
             ?? throw Missing("host_recreate.resource_scheduler");
         ValidatePositive(
@@ -263,14 +229,6 @@ public sealed partial class HostManagerPlanCompiler
 
         var hotPublish = profile.HotPublish
             ?? throw Missing("hot_publish");
-        var hotSharedResources = hotPublish.SharedResources
-            ?? throw Missing("hot_publish.shared_resources");
-        ValidateNonNegativeFinite(
-            hotSharedResources.SubscriptionCoefficient,
-            "hot_publish.shared_resources.subscription_coefficient");
-        ValidatePositive(
-            hotSharedResources.MaintenanceIntervalMilliseconds,
-            "hot_publish.shared_resources.maintenance_interval_ms");
         var hotResourceScheduler = hotPublish.ResourceScheduler
             ?? throw Missing("hot_publish.resource_scheduler");
         var adapterPrivateResource = CompileAdapterPrivateResourceHotPublish(
@@ -422,13 +380,6 @@ public sealed partial class HostManagerPlanCompiler
                 "maximum_in_flight_actions_per_target must not exceed maximum_in_flight_actions.");
         }
         var recreatePlan = new CompiledHostManagerRecreatePlan(
-            new CompiledHostManagerSharedResourceRecreatePlan(
-                recreateSharedResources.ResourceCapacity,
-                recreateSharedResources.SubscriptionCapacity,
-                recreateSharedResources.TaskCapacity,
-                recreateSharedResources.MaximumSubscriptionLeaseDurationMilliseconds,
-                recreateSharedResources.MaximumQueueDurationMilliseconds,
-                recreateSharedResources.MaximumGrantDurationMilliseconds),
             new CompiledHostManagerResourceSchedulerRecreatePlan(
                 recreateResourceScheduler.TargetCapacity,
                 recreateResourceScheduler.PrivateResourceCapacity,
@@ -461,9 +412,6 @@ public sealed partial class HostManagerPlanCompiler
             recreateMetricSnapshot,
             recreatePdhCollector);
         var hotPublishPlan = new CompiledHostManagerHotPublishPlan(
-            new CompiledHostManagerSharedResourceHotPublishPlan(
-                hotSharedResources.SubscriptionCoefficient,
-                hotSharedResources.MaintenanceIntervalMilliseconds),
             new CompiledHostManagerResourceSchedulerHotPublishPlan(
                 resourceSchedulerConfiguration,
                 resourceSchedulerDispatch.ExecutionCapabilityEnabled,
@@ -498,28 +446,25 @@ public sealed partial class HostManagerPlanCompiler
         var buildDigest = HostManagerPlanIdentity.ComputeDigest(new HostManagerBuildDigestInput(buildSpecialize, buildFreedomPoints, cpuCoreResidency.PhysicalCoreByLogicalProcessor.OrderBy(static pair => pair.Key).Select(static pair => new CpuCoreMappingDigestInput(pair.Key, pair.Value)).ToArray()));
         var deploymentDigests = new CompiledHostManagerDeploymentDigests(
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(recreatePlan.SharedResources),
-                HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.SharedResources)),
-            new CompiledHostManagerModuleDigests(
                 HostManagerPlanIdentity.ComputeDigest(recreatePlan.ResourceScheduler),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.ResourceScheduler)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new AdapterPrivateResourceRecreateDigestInput("adapter_private_resource_ledger", buildSpecialize.AdapterPrivateResourceLedgerAbiVersion, recreatePlan.AdapterPrivateResourceLedger)),
+                HostManagerPlanIdentity.ComputeDigest(new AdapterPrivateResourceRecreateDigestInput("adapter_private_resource_ledger", AdapterPrivateResourceLedgerProtocol.Version, recreatePlan.AdapterPrivateResourceLedger)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.AdapterPrivateResourceLedger)),
             new CompiledHostManagerModuleDigests(
                 HostManagerPlanIdentity.ComputeDigest(new SmartCoordinatorRecreateDigestInput("smart_coordinator", buildSpecialize.SmartCoordinator, recreatePlan.SmartCoordinator)),
                 HostManagerPlanIdentity.ComputeDigest(new SmartCoordinatorHotPublishDigestInput(smartCoordinator.ConfigurationGeneration, smartCoordinator.ConfigurationSha256, hotPublishPlan.SmartCoordinator))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new MemoryCleanupRecreateDigestInput("memory_cleanup_planner", buildSpecialize.MemoryCleanupAbiVersion, recreatePlan.MemoryCleanup)),
+                HostManagerPlanIdentity.ComputeDigest(new MemoryCleanupRecreateDigestInput("memory_cleanup_planner", NativeMemoryCleanupAbi.Version, recreatePlan.MemoryCleanup)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.MemoryCleanup)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new PlacementCoordinatorRecreateDigestInput("placement_coordinator", buildSpecialize.PlacementCoordinatorAbiVersion, recreatePlan.PlacementCoordinator)),
+                HostManagerPlanIdentity.ComputeDigest(new PlacementCoordinatorRecreateDigestInput("placement_coordinator", NativePlacementCoordinatorAbi.Version, recreatePlan.PlacementCoordinator)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.PlacementCoordinator)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new AppliedOwnershipRecreateDigestInput("applied_ownership", buildSpecialize.AppliedOwnershipAbiVersion, new AppliedOwnershipBuildDigestInput(buildSpecialize.CapacityLimits.AppliedOwnershipRecordCapacity, buildSpecialize.CapacityLimits.AppliedOwnershipPrimaryIndexCapacity, buildSpecialize.CapacityLimits.AppliedOwnershipPayloadIndexCapacity, buildSpecialize.CapacityLimits.AppliedOwnershipResidentByteBudget, buildSpecialize.CapacityLimits.AppliedOwnershipImageByteBudget), recreatePlan.AppliedOwnership)),
+                HostManagerPlanIdentity.ComputeDigest(new AppliedOwnershipRecreateDigestInput("applied_ownership", NativeAppliedOwnershipAbi.Version, new AppliedOwnershipBuildDigestInput(buildSpecialize.CapacityLimits.AppliedOwnershipRecordCapacity, buildSpecialize.CapacityLimits.AppliedOwnershipPrimaryIndexCapacity, buildSpecialize.CapacityLimits.AppliedOwnershipPayloadIndexCapacity, buildSpecialize.CapacityLimits.AppliedOwnershipResidentByteBudget, buildSpecialize.CapacityLimits.AppliedOwnershipImageByteBudget), recreatePlan.AppliedOwnership)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.AppliedOwnership)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new TransactionJournalRecreateDigestInput("transaction_journal", buildSpecialize.TransactionJournalAbiVersion, new TransactionJournalBuildDigestInput(buildSpecialize.CapacityLimits.TransactionJournalRecordCapacity, buildSpecialize.CapacityLimits.TransactionJournalResidentByteBudget, buildSpecialize.CapacityLimits.TransactionJournalPayloadCount, buildSpecialize.CapacityLimits.TransactionJournalPayloadByteBudget), recreatePlan.TransactionJournal)),
+                HostManagerPlanIdentity.ComputeDigest(new TransactionJournalRecreateDigestInput("transaction_journal", NativeTransactionJournalAbi.Version, new TransactionJournalBuildDigestInput(buildSpecialize.CapacityLimits.TransactionJournalRecordCapacity, buildSpecialize.CapacityLimits.TransactionJournalResidentByteBudget, buildSpecialize.CapacityLimits.TransactionJournalPayloadCount, buildSpecialize.CapacityLimits.TransactionJournalPayloadByteBudget), recreatePlan.TransactionJournal)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.TransactionJournal)),
             new CompiledHostManagerModuleDigests(
                 HostManagerPlanIdentity.ComputeDigest(new SamplingSubscriptionRecreateDigestInput("sampling_subscription", buildSpecialize.SamplingSubscription, recreatePlan.SamplingSubscription)),
@@ -552,10 +497,10 @@ public sealed partial class HostManagerPlanCompiler
                 metricSnapshot.RecreateSha256,
                 metricSnapshot.HotPublishSha256),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new ProcessPolicyExecutorDigestInput("process_policy_executor", buildSpecialize.ProcessPolicyExecutorAbiVersion)),
+                HostManagerPlanIdentity.ComputeDigest(new ProcessPolicyExecutorDigestInput("process_policy_executor", NativeProcessPolicyBatchAbi.Version)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.ProcessPolicyExecutor)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new PdhCollectorRecreateDigestInput("pdh_collector", buildSpecialize.PdhCollectorAbiVersion, recreatePlan.PdhCollector)),
+                HostManagerPlanIdentity.ComputeDigest(new PdhCollectorRecreateDigestInput("pdh_collector", NativeCoreAbi.Version, recreatePlan.PdhCollector)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.PdhCollector)));
         var recreateDigest = HostManagerPlanIdentity.ComputeDigest(recreatePlan);
         var hotPublishDigest = HostManagerPlanIdentity.ComputeDigest(new HostManagerHotPublishDigestInput(hotPublishPlan, compiledCpuScoring));
@@ -654,169 +599,7 @@ public sealed partial class HostManagerPlanCompiler
     private static CompiledHostManagerBuildSpecializePlan CompileBuildSpecialize(
         HostManagerBuildSpecializeProfile source)
     {
-        var targetOperatingSystem = source.TargetOperatingSystem;
-        var targetArchitecture = source.TargetArchitecture;
-        if (targetOperatingSystem != "windows")
-        {
-            throw new InvalidDataException("build_specialize.target_os must be 'windows'.");
-        }
-
-        if (targetArchitecture != "x64")
-        {
-            throw new InvalidDataException("build_specialize.target_architecture must be 'x64'.");
-        }
-
-        if (source.SharedResourceAbiVersion != SharedResourceProtocol.Version)
-        {
-            throw new InvalidDataException("build_specialize.shared_resource_abi_version does not match the binary.");
-        }
-
-        if (source.ResourceSchedulerAbiVersion != ResourceSchedulerProtocol.Version)
-        {
-            throw new InvalidDataException("build_specialize.resource_scheduler_abi_version does not match the binary.");
-        }
-
-        if (source.AdapterPrivateResourceLedgerAbiVersion != AdapterPrivateResourceLedgerProtocol.Version)
-        {
-            throw new InvalidDataException("build_specialize.adapter_private_resource_ledger_abi_version does not match the binary.");
-        }
-
-        if (source.AdapterInstanceLeaseAbiVersion != NativeAdapterInstanceLeaseAbi.Version)
-        {
-            throw new InvalidDataException("build_specialize.adapter_instance_lease_abi_version does not match the binary.");
-        }
-
-        if (source.SmartCoordinatorAbiVersion != NativeSmartCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException("build_specialize.smart_coordinator_abi_version does not match the binary.");
-        }
-
-        if (source.MemoryCleanupAbiVersion != NativeMemoryCleanupAbi.Version)
-        {
-            throw new InvalidDataException("build_specialize.memory_cleanup_abi_version does not match the binary.");
-        }
-
-        if (source.PlacementCoordinatorAbiVersion != NativePlacementCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.placement_coordinator_abi_version does not match the binary.");
-        }
-
-        if (source.AppliedOwnershipAbiVersion != AppliedOwnershipAbiVersion)
-        {
-            throw new InvalidDataException(
-                "build_specialize.applied_ownership_abi_version does not match the configured ABI contract.");
-        }
-
-        if (source.TransactionJournalAbiVersion != TransactionJournalAbiVersion)
-        {
-            throw new InvalidDataException(
-                "build_specialize.transaction_journal_abi_version does not match the configured ABI contract.");
-        }
-
-        if (source.SamplingSubscriptionAbiVersion != NativeSamplingSubscriptionAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.sampling_subscription_abi_version does not match the binary.");
-        }
-
-        if (source.PortableSoftwareRegistryAbiVersion != NativePortableSoftwareRegistryAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.portable_software_registry_abi_version does not match the binary.");
-        }
-
-        if (source.SoftwareIdentityCatalogAbiVersion != NativeSoftwareIdentityCatalogAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.software_identity_catalog_abi_version does not match the binary.");
-        }
-
-        if (source.SoftwareIdentityResolutionAbiVersion != NativeSoftwareIdentityResolutionAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.software_identity_resolution_abi_version does not match the binary.");
-        }
-
-        if (source.ReportCoordinatorAbiVersion != NativeReportCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.report_coordinator_abi_version does not match the binary.");
-        }
-
-        if (source.FileQueryAbiVersion != NativeFileQueryAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.file_query_abi_version does not match the binary.");
-        }
-
-        if (source.PublicServiceCoordinatorAbiVersion
-            != NativePublicServiceCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.public_service_coordinator_abi_version does not match the binary.");
-        }
-
-        if (source.DisplayCoordinatorAbiVersion
-            != NativeDisplayCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.display_coordinator_abi_version does not match the binary.");
-        }
-
-        if (source.OperationCoordinatorAbiVersion
-            != NativeOperationCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.operation_coordinator_abi_version does not match the binary.");
-        }
-
-        if (source.ProcessPolicyExecutorAbiVersion != NativeProcessPolicyBatchAbi.Version)
-        {
-            throw new InvalidDataException("build_specialize.process_policy_executor_abi_version does not match the binary.");
-        }
-
-        if (source.PdhCollectorAbiVersion != NativeCoreAbi.Version)
-        {
-            throw new InvalidDataException("build_specialize.pdh_collector_abi_version does not match the binary.");
-        }
-
-        var modules = (source.NativeModules ?? throw Missing("build_specialize.native_modules"))
-            .ToImmutableArray();
-        if (!modules.SequenceEqual(
-                [
-                    "adapter_private_resource_ledger",
-                    "adapter_instance_lease",
-                    "applied_ownership",
-                    "display_coordinator",
-                    "file_query",
-                    "memory_cleanup_planner",
-                    "metric_snapshot",
-                    "operation_coordinator",
-                    "placement_coordinator",
-                    "public_service_coordinator",
-                    "report_coordinator",
-                    "sampling_subscription",
-                    "smart_coordinator",
-                    "pdh_collector",
-                    "process_policy_executor",
-                    "resource_scheduler",
-                    "shared_resource",
-                    "software_identity_catalog",
-                    "software_identity_portable_registry",
-                    "software_identity_resolution",
-                    "transaction_journal"
-                ],
-                StringComparer.Ordinal))
-        {
-            throw new InvalidDataException(
-                "build_specialize.native_modules must contain exactly the configured Zig Host modules.");
-        }
-
         var limits = source.CapacityLimits ?? throw Missing("build_specialize.capacity_limits");
-        ValidatePositive(limits.SharedResourceCapacity, "build_specialize.capacity_limits.shared_resource_capacity");
-        ValidatePositive(limits.SharedSubscriptionCapacity, "build_specialize.capacity_limits.shared_subscription_capacity");
-        ValidatePositive(limits.SharedTaskCapacity, "build_specialize.capacity_limits.shared_task_capacity");
         ValidatePositive(limits.SchedulerTargetCapacity, "build_specialize.capacity_limits.scheduler_target_capacity");
         ValidatePositive(limits.SchedulerResourceCapacity, "build_specialize.capacity_limits.scheduler_resource_capacity");
         ValidatePositive(limits.SchedulerPendingCapacity, "build_specialize.capacity_limits.scheduler_pending_capacity");
@@ -855,89 +638,60 @@ public sealed partial class HostManagerPlanCompiler
         ValidatePositive(limits.TransactionJournalPayloadCount, "build_specialize.capacity_limits.transaction_journal_payload_count");
         ValidatePositive(limits.TransactionJournalPayloadByteBudget, "build_specialize.capacity_limits.transaction_journal_payload_byte_budget");
 
-        var compatible = OperatingSystem.IsWindows()
-            && RuntimeInformation.ProcessArchitecture == Architecture.X64;
-        if (!compatible)
-        {
-            throw new InvalidDataException("The current Host binary does not match build_specialize.");
-        }
-
-        var nativeBinaries = CompileNativeBinaryIdentities(modules);
+        var nativeBinaries = CompileNativeBinaryIdentities();
         var smartCoordinatorBinary = nativeBinaries.Single(
             static binary => binary.Modules.Contains("smart_coordinator", StringComparer.Ordinal));
         var smartCoordinatorBuild = new CompiledHostManagerSmartCoordinatorBuildPlan(
-            source.SmartCoordinatorAbiVersion,
+            NativeSmartCoordinatorAbi.Version,
             "smart_coordinator",
             smartCoordinatorBinary.FileName,
             smartCoordinatorBinary.Sha256);
         var nativeCoreBinary = nativeBinaries.Single(
             static binary => binary.Modules.Contains("sampling_subscription", StringComparer.Ordinal));
         var samplingSubscriptionBuild = CompileSamplingSubscriptionBuild(
-            source.SamplingSubscriptionAbiVersion,
             limits.SamplingSubscriptionRoles,
             nativeCoreBinary);
         var portableSoftwareRegistryBuild = CompilePortableSoftwareRegistryBuild(
-            source.PortableSoftwareRegistryAbiVersion,
             limits.PortableSoftwareRegistry
             ?? throw Missing("build_specialize.capacity_limits.portable_software_registry"),
             nativeCoreBinary);
         var softwareIdentityCatalogBuild = CompileSoftwareIdentityCatalogBuild(
-            source.SoftwareIdentityCatalogAbiVersion,
             limits.SoftwareIdentityCatalog
             ?? throw Missing("build_specialize.capacity_limits.software_identity_catalog"),
             nativeCoreBinary);
         var softwareIdentityResolutionBuild = CompileSoftwareIdentityResolutionBuild(
-            source.SoftwareIdentityResolutionAbiVersion,
             limits.SoftwareIdentityResolution
             ?? throw Missing("build_specialize.capacity_limits.software_identity_resolution"),
             nativeCoreBinary);
         var reportCoordinatorBuild = CompileReportCoordinatorBuild(
-            source.ReportCoordinatorAbiVersion,
             limits.ReportCoordinator
             ?? throw Missing("build_specialize.capacity_limits.report_coordinator"),
             nativeCoreBinary);
         var fileQueryBuild = CompileFileQueryBuild(
-            source.FileQueryAbiVersion,
             limits.FileQuery
             ?? throw Missing("build_specialize.capacity_limits.file_query"),
             nativeCoreBinary);
         var publicServiceCoordinatorBuild = CompilePublicServiceCoordinatorBuild(
-            source.PublicServiceCoordinatorAbiVersion,
             limits.PublicServiceCoordinator
                 ?? throw Missing(
                     "build_specialize.capacity_limits.public_service_coordinator"),
             nativeCoreBinary);
         var displayCoordinatorBuild = CompileDisplayCoordinatorBuild(
-            source.DisplayCoordinatorAbiVersion,
             limits.DisplayCoordinator
                 ?? throw Missing(
-                    "build_specialize.capacity_limits.display_coordinator"),
-            modules.ToHashSet(StringComparer.Ordinal));
+                    "build_specialize.capacity_limits.display_coordinator"));
         var operationCoordinatorBuild = CompileOperationCoordinatorBuild(
-            source.OperationCoordinatorAbiVersion,
             limits.OperationCoordinator
                 ?? throw Missing(
                     "build_specialize.capacity_limits.operation_coordinator"),
             nativeCoreBinary);
         var metricSnapshotBuild = CompileMetricSnapshotBuild(
-            source.MetricSnapshotAbiVersion,
             limits.MetricSnapshot
                 ?? throw Missing(
-                    "build_specialize.capacity_limits.metric_snapshot"),
-            modules.ToHashSet(StringComparer.Ordinal));
+                    "build_specialize.capacity_limits.metric_snapshot"));
 
         return new CompiledHostManagerBuildSpecializePlan(
-            targetOperatingSystem,
-            targetArchitecture,
-            source.SharedResourceAbiVersion,
-            source.ResourceSchedulerAbiVersion,
-            source.AdapterPrivateResourceLedgerAbiVersion,
-            source.AdapterInstanceLeaseAbiVersion,
             smartCoordinatorBuild,
-            source.MemoryCleanupAbiVersion,
-            source.PlacementCoordinatorAbiVersion,
-            source.AppliedOwnershipAbiVersion,
-            source.TransactionJournalAbiVersion,
             samplingSubscriptionBuild,
             portableSoftwareRegistryBuild,
             softwareIdentityCatalogBuild,
@@ -948,14 +702,8 @@ public sealed partial class HostManagerPlanCompiler
             displayCoordinatorBuild,
             operationCoordinatorBuild,
             metricSnapshotBuild,
-            source.ProcessPolicyExecutorAbiVersion,
-            source.PdhCollectorAbiVersion,
-            modules,
             nativeBinaries,
             new CompiledHostManagerCapacityLimits(
-                limits.SharedResourceCapacity,
-                limits.SharedSubscriptionCapacity,
-                limits.SharedTaskCapacity,
                 limits.SchedulerTargetCapacity,
                 limits.SchedulerResourceCapacity,
                 limits.SchedulerPendingCapacity,
@@ -986,18 +734,15 @@ public sealed partial class HostManagerPlanCompiler
                 limits.TransactionJournalRecordCapacity,
                 limits.TransactionJournalResidentByteBudget,
                 limits.TransactionJournalPayloadCount,
-                limits.TransactionJournalPayloadByteBudget),
-            true);
+                limits.TransactionJournalPayloadByteBudget));
     }
 
-    private static ImmutableArray<CompiledHostManagerNativeBinaryIdentity> CompileNativeBinaryIdentities(
-        ImmutableArray<string> configuredModules)
+    private static ImmutableArray<CompiledHostManagerNativeBinaryIdentity> CompileNativeBinaryIdentities()
     {
         ImmutableArray<string> adapterModules =
         [
             "adapter_private_resource_ledger",
-            "resource_scheduler",
-            "shared_resource"
+            "resource_scheduler"
         ];
         ImmutableArray<string> nativeCoreModules =
         [
@@ -1020,17 +765,6 @@ public sealed partial class HostManagerPlanCompiler
             "software_identity_resolution",
             "transaction_journal"
         ];
-        var assignedModules = adapterModules
-            .Concat(nativeCoreModules)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-        if (!assignedModules.SequenceEqual(
-                configuredModules.Order(StringComparer.Ordinal),
-                StringComparer.Ordinal))
-        {
-            throw new InvalidDataException(
-                "build_specialize.native_modules must be fully assigned to the deployed Zig binaries.");
-        }
 
         return
         [

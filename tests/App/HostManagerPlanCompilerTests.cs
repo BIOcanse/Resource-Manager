@@ -4,7 +4,6 @@ using System.Text.Json.Nodes;
 using ResourceManager.Adapter;
 using ResourceManager.Adapter.NativeScheduling;
 using ResourceManager.Adapter.NativeLedger;
-using ResourceManager.Adapter.SharedMemory;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.Optimization.Scoring;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -70,19 +69,8 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal(64, plan.BuildSha256.Length);
         Assert.Equal(64, plan.RecreateSha256.Length);
         Assert.Equal(64, plan.HotPublishSha256.Length);
-        Assert.True(plan.BuildSpecialize.IsCompatible);
-        Assert.Equal("windows", plan.BuildSpecialize.TargetOperatingSystem);
-        Assert.Equal("x64", plan.BuildSpecialize.TargetArchitecture);
-        Assert.Equal(SharedResourceProtocol.Version, plan.BuildSpecialize.SharedResourceAbiVersion);
-        Assert.Equal(ResourceSchedulerProtocol.Version, plan.BuildSpecialize.ResourceSchedulerAbiVersion);
-        Assert.Equal(AdapterPrivateResourceLedgerProtocol.Version, plan.BuildSpecialize.AdapterPrivateResourceLedgerAbiVersion);
-        Assert.Equal(NativeAdapterInstanceLeaseAbi.Version, plan.BuildSpecialize.AdapterInstanceLeaseAbiVersion);
         Assert.Equal(NativeSmartCoordinatorAbi.Version, plan.BuildSpecialize.SmartCoordinator.AbiVersion);
         Assert.Equal("smart_coordinator", plan.BuildSpecialize.SmartCoordinator.NativeModule);
-        Assert.Equal(0x0001_0004U, plan.BuildSpecialize.MemoryCleanupAbiVersion);
-        Assert.Equal(NativePlacementCoordinatorAbi.Version, plan.BuildSpecialize.PlacementCoordinatorAbiVersion);
-        Assert.Equal(0x0002_0000U, plan.BuildSpecialize.AppliedOwnershipAbiVersion);
-        Assert.Equal(0x0005_0000U, plan.BuildSpecialize.TransactionJournalAbiVersion);
         Assert.Equal(NativeSamplingSubscriptionAbi.Version, plan.BuildSpecialize.SamplingSubscription.AbiVersion);
         Assert.Equal(NativePortableSoftwareRegistryAbi.Version, plan.BuildSpecialize.PortableSoftwareRegistry.AbiVersion);
         Assert.Equal(NativeReportCoordinatorAbi.Version, plan.BuildSpecialize.ReportCoordinator.AbiVersion);
@@ -96,10 +84,16 @@ public sealed class HostManagerPlanCompilerTests
             NativeMetricSnapshotAbi.Version,
             plan.BuildSpecialize.MetricSnapshot.AbiVersion);
         Assert.Equal("metric_snapshot", plan.BuildSpecialize.MetricSnapshot.NativeModule);
-        Assert.Equal(0x0002_0000U, plan.BuildSpecialize.ProcessPolicyExecutorAbiVersion);
-        Assert.Equal(0x0002_0000U, plan.BuildSpecialize.PdhCollectorAbiVersion);
-        Assert.Equal<string>(
-            [
+        Assert.Equal(2, plan.BuildSpecialize.NativeBinaries.Length);
+        Assert.All(plan.BuildSpecialize.NativeBinaries, static binary =>
+        {
+            Assert.True(binary.IsPublished);
+            Assert.Equal(64, binary.Sha256.Length);
+            Assert.True(binary.LengthBytes > 0);
+        });
+        Assert.Equal(
+            new[]
+            {
                 "adapter_private_resource_ledger",
                 "adapter_instance_lease",
                 "applied_ownership",
@@ -116,37 +110,14 @@ public sealed class HostManagerPlanCompilerTests
                 "pdh_collector",
                 "process_policy_executor",
                 "resource_scheduler",
-                "shared_resource",
                 "software_identity_catalog",
                 "software_identity_portable_registry",
                 "software_identity_resolution",
                 "transaction_journal"
-            ],
-            plan.BuildSpecialize.NativeModules);
-        Assert.Equal(2, plan.BuildSpecialize.NativeBinaries.Length);
-        Assert.All(plan.BuildSpecialize.NativeBinaries, static binary =>
-        {
-            Assert.True(binary.IsPublished);
-            Assert.Equal(64, binary.Sha256.Length);
-            Assert.True(binary.LengthBytes > 0);
-        });
-        Assert.Equal(
-            plan.BuildSpecialize.NativeModules.Order(StringComparer.Ordinal),
+            }.Order(StringComparer.Ordinal),
             plan.BuildSpecialize.NativeBinaries
                 .SelectMany(static binary => binary.Modules)
                 .Order(StringComparer.Ordinal));
-        Assert.Equal(256, plan.HostRecreate.SharedResources.ResourceCapacity);
-        Assert.Equal(1024, plan.HostRecreate.SharedResources.SubscriptionCapacity);
-        Assert.Equal(2048, plan.HostRecreate.SharedResources.TaskCapacity);
-        Assert.Equal(
-            30_000,
-            plan.HostRecreate.SharedResources.MaximumSubscriptionLeaseDurationMilliseconds);
-        Assert.Equal(
-            30_000,
-            plan.HostRecreate.SharedResources.MaximumQueueDurationMilliseconds);
-        Assert.Equal(
-            30_000,
-            plan.HostRecreate.SharedResources.MaximumGrantDurationMilliseconds);
         Assert.Equal(512, plan.HostRecreate.ResourceScheduler.TargetCapacity);
         Assert.Equal(8192, plan.HostRecreate.ResourceScheduler.PrivateResourceCapacity);
         Assert.Equal(2048, plan.HostRecreate.ResourceScheduler.PendingCapacity);
@@ -241,10 +212,6 @@ public sealed class HostManagerPlanCompilerTests
                 StringComparison.Ordinal)
                 && policy.SourceRole == 1
                 && policy.CapabilityMask == 8192);
-
-        var shared = plan.HotPublish.SharedResources;
-        Assert.Equal(0.25, shared.SubscriptionCoefficient);
-        Assert.Equal(1000, shared.MaintenanceIntervalMilliseconds);
 
         var resourceScheduler = plan.HotPublish.ResourceScheduler;
         var configuration = Assert.IsType<ResourceSchedulerConfig>(resourceScheduler.Configuration);
@@ -367,8 +334,8 @@ public sealed class HostManagerPlanCompilerTests
             "duplicate.json"));
 
         var wrongType = source.Replace(
-            "\"resource_capacity\": 256",
-            "\"resource_capacity\": \"256\"",
+            "\"adapter_instance_lease_capacity\": 65536",
+            "\"adapter_instance_lease_capacity\": \"65536\"",
             StringComparison.Ordinal);
         Assert.NotEqual(source, wrongType);
         Assert.Throws<InvalidDataException>(() => StrictHostManagerProfileLoader.LoadBytes(

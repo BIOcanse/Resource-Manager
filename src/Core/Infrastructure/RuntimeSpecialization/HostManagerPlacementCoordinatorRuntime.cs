@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
@@ -12,7 +13,7 @@ public sealed class HostManagerPlacementCoordinatorRuntime(
         var hostPlan = runtimePlanProvider.Current.HostManager.RequirePublished();
         return new PlacementCoordinatorRuntimePlan(
             hostPlan,
-            hostPlan.BuildSpecialize.PlacementCoordinatorAbiVersion,
+            NativePlacementCoordinatorAbi.Version,
             hostPlan.HostRecreate.PlacementCoordinator,
             hostPlan.HotPublish.PlacementCoordinator);
     }

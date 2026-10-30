@@ -7,23 +7,10 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerMetricSnapshotBuildPlan CompileMetricSnapshotBuild(
-        uint abiVersion,
-        HostManagerMetricSnapshotCapacityProfile source,
-        IReadOnlySet<string> nativeModules)
+        HostManagerMetricSnapshotCapacityProfile source)
     {
-        if (abiVersion != NativeMetricSnapshotAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.metric_snapshot_abi_version must match the native metric-snapshot ABI.");
-        }
-        if (!nativeModules.Contains("metric_snapshot"))
-        {
-            throw new InvalidDataException(
-                "build_specialize.native_modules must include metric_snapshot.");
-        }
-
         return new CompiledHostManagerMetricSnapshotBuildPlan(
-            abiVersion,
+            NativeMetricSnapshotAbi.Version,
             "metric_snapshot",
             CompileMetricSnapshotCapacity(
                 source,

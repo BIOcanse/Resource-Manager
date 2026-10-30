@@ -61,7 +61,6 @@ public sealed class RuntimeSpecializationPlanTests
 
         Assert.Equal("limited", memoryOnly.Mode);
         Assert.True(memoryOnly.SchedulingEnabled);
-        Assert.False(memoryOnly.ExternalAdaptedMemoryActionsEnabled);
         Assert.True(memoryOnly.ResourceManagerSelfMemoryActionsEnabled);
         Assert.True(memoryOnly.AutomaticMemoryCleanupEnabled);
         Assert.Equal(0, (byte)memoryOnly.Capabilities & (1 << 2));
@@ -70,7 +69,6 @@ public sealed class RuntimeSpecializationPlanTests
         Assert.False(memoryOnly.HardwarePlacementEnabled);
         Assert.True(memoryOnly.NonAdaptedMemoryPriorityEnabled);
 
-        Assert.False(smart.ExternalAdaptedMemoryActionsEnabled);
         Assert.True(smart.ResourceManagerSelfMemoryActionsEnabled);
         Assert.True(smart.AutomaticMemoryCleanupEnabled);
         Assert.Equal(0, (byte)smart.Capabilities & (1 << 2));

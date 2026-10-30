@@ -22,7 +22,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             automaticMemoryCleanupEnabled: false,
             editFreedomPoints: root => FreedomPointTestFactory.Point(root,
                 BackendFreedomPointPaths.SchedulerSamplingInterval)["value"] = 100);
-        fixture.PublicResourceManager.Available = false;
         var broken = 1;
         var failures = 0;
         var failedCycles = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -66,7 +65,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.False(lifetime.ApplicationStopping.IsCancellationRequested);
             Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
             Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-            Assert.Equal(0U, fixture.PublicResourceManager.NewEffectAttemptCount);
             Assert.Equal(0, fixture.GraphicsPreferenceStore.TotalCalls);
         }
         finally

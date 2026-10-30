@@ -30,12 +30,10 @@ export interface BackendStartupCapabilities {
   profileId: string;
   readOnly: boolean;
   mutablePersistence: boolean;
-  legacyPersistenceImport: boolean;
   gpuLaunchInterceptionReconciliation: boolean;
   runtimeEffectOwners: boolean;
   publicServiceCoordination: boolean;
   optimizationRuntime: boolean;
-  sharedResourceOwnership: boolean;
 }
 export type ManagementRole = "dependency" | "support";
 export type ManagementKind = "Dependency" | "Support" | "adapted" | "controlled" | "Unconfirmed" | "Unclassified" | "game" | "high_performance" | "other";

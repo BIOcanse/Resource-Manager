@@ -6,15 +6,9 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerFileQueryBuildPlan CompileFileQueryBuild(
-        uint abiVersion,
         HostManagerFileQueryBuildCapacityProfile source,
         CompiledHostManagerNativeBinaryIdentity binary)
     {
-        if (abiVersion != NativeFileQueryAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.file_query_abi_version does not match the binary.");
-        }
         ArgumentNullException.ThrowIfNull(source);
         ValidatePositive(
             source.MaximumQuerySessionCount,
@@ -28,7 +22,7 @@ public sealed partial class HostManagerPlanCompiler
             "build_specialize.capacity_limits.file_query.per_session");
 
         return new CompiledHostManagerFileQueryBuildPlan(
-            abiVersion,
+            NativeFileQueryAbi.Version,
             "file_query",
             binary.FileName,
             binary.Sha256,

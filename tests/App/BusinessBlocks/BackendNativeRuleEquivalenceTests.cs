@@ -207,7 +207,6 @@ public sealed class BackendNativeRuleEquivalenceTests
             BackendUids.PortableSoftwareDiscoveryService => T(BackendItems.PortableDiscoveryEnabled),
             BackendUids.TrustedAccessRequestOwner => T(BackendItems.TrustedRequestsPending),
             BackendUids.HostManagerPublicServiceCoordinatorOwner => T(BackendItems.PublicServiceEnabled) || T(BackendItems.PublicServiceTasksPending),
-            BackendUids.SharedResourceSubscriptionMaintenanceService => T(BackendItems.SharedResourceActivityExists),
             BackendUids.HostManagerOperationCoordinatorOwner => T(BackendItems.OperationsPending),
             _ => true
         };

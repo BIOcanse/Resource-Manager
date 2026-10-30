@@ -195,9 +195,6 @@ public sealed class HostManagerSchedulingAuthorityCutoverTests
             Count(registration, "services.AddSingleton<HostManagerSchedulingAuthority>();"));
         Assert.Equal(
             1,
-            Count(registration, "services.AddSingleton<IHostManagerSchedulingAuthoritySource>"));
-        Assert.Equal(
-            1,
             Count(registration, "ProductBaselineHostManagerMemoryModePolicySource"));
         Assert.Equal(
             1,

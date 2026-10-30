@@ -9,8 +9,7 @@ internal enum HostManagerCycleEffectKind : byte
     ExitedOwnershipReconciliation = 5,
     NativeActionTransaction = 6,
     AutomaticMemoryCleanup = 7,
-    PublicResourceLifecycle = 8,
-    NativeWorkspaceLifecycle = 9
+    NativeWorkspaceLifecycle = 8
 }
 
 internal enum HostManagerCycleEffectBudgetLane : byte
@@ -218,8 +217,7 @@ internal readonly struct HostManagerCycleEffectPermit
         if (state is null || kind is not (
             HostManagerCycleEffectKind.NonAdaptedMemoryTransaction or
             HostManagerCycleEffectKind.NativeActionTransaction or
-            HostManagerCycleEffectKind.AutomaticMemoryCleanup or
-            HostManagerCycleEffectKind.PublicResourceLifecycle))
+            HostManagerCycleEffectKind.AutomaticMemoryCleanup))
         {
             throw new InvalidOperationException(
                 $"The Host Manager cycle effect permit does not authorize new PONR reservation for {kind}.");
@@ -231,8 +229,7 @@ internal readonly struct HostManagerCycleEffectPermit
         if (state is null || kind is not (
             HostManagerCycleEffectKind.NativeTransactionRecovery or
             HostManagerCycleEffectKind.LegacyPlacementRestore or
-            HostManagerCycleEffectKind.ExitedOwnershipReconciliation or
-            HostManagerCycleEffectKind.PublicResourceLifecycle))
+            HostManagerCycleEffectKind.ExitedOwnershipReconciliation))
         {
             throw new InvalidOperationException(
                 $"The Host Manager cycle effect permit does not authorize recovery reservation for {kind}.");

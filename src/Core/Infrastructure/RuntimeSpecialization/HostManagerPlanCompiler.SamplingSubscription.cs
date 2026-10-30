@@ -8,18 +8,11 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerSamplingSubscriptionBuildPlan CompileSamplingSubscriptionBuild(
-        uint abiVersion,
         HostManagerSamplingSubscriptionRoleCapacityProfile[]? source,
         CompiledHostManagerNativeBinaryIdentity binary)
     {
-        if (abiVersion != NativeSamplingSubscriptionAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.sampling_subscription_abi_version does not match the binary.");
-        }
-
         return new CompiledHostManagerSamplingSubscriptionBuildPlan(
-            abiVersion,
+            NativeSamplingSubscriptionAbi.Version,
             "sampling_subscription",
             binary.FileName,
             binary.Sha256,

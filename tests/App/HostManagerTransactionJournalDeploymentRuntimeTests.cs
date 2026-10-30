@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
@@ -25,7 +26,7 @@ public sealed class HostManagerTransactionJournalDeploymentRuntimeTests
 
         Assert.Same(hostPlan, desired.HostPlan);
         Assert.Equal(
-            hostPlan.BuildSpecialize.TransactionJournalAbiVersion,
+            NativeTransactionJournalAbi.Version,
             desired.AbiVersion);
         Assert.Same(hostPlan.HostRecreate.TransactionJournal, desired.Recreate);
         Assert.Same(hostPlan.HotPublish.TransactionJournal, desired.HotPublish);

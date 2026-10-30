@@ -7,7 +7,6 @@ using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Optimization.Scheduling;
 using ResourceManager.App.Application.Optimization.MemoryCleanup;
-using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
@@ -22,7 +21,6 @@ using ResourceManager.App.Infrastructure.GpuPlacement.Preparation;
 using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.Optimization.NativeScheduling;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
-using ResourceManager.App.Infrastructure.PublicResources;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -51,7 +49,6 @@ public sealed partial class HostManagerSmartCoordinator(
     IDebugDiagnosticLogWriter debugDiagnosticLogWriter,
     ILogger<HostManagerSmartCoordinator> logger,
     ResourceManagerSelfLocalResourceManager selfLocalResourceManager,
-    IHostPublicResourceSelfManager hostPublicResourceSelfManager,
     HostManagerSchedulingAuthority schedulingAuthority,
     HostManagerMemoryModePolicyAuthority memoryModePolicyAuthority,
     HostManagerProcessEffectValidationScopeAuthority processEffectValidationScopeAuthority,
@@ -87,11 +84,6 @@ public sealed partial class HostManagerSmartCoordinator(
     private readonly ResourceManagerSelfLocalResourceManager selfLocalResourceManagerOwner =
         selfLocalResourceManager ?? throw new ArgumentNullException(
             nameof(selfLocalResourceManager));
-    private readonly IHostPublicResourceSelfManager hostPublicResourceSelfManagerOwner =
-        hostPublicResourceSelfManager ?? throw new ArgumentNullException(
-            nameof(hostPublicResourceSelfManager));
-    private readonly HostPublicResourceNormalReleaseEvidenceTracker
-        hostPublicResourceNormalReleaseEvidence = new();
     private readonly HostManagerSchedulingAuthority schedulingAuthorityOwner =
         schedulingAuthority ?? throw new ArgumentNullException(nameof(schedulingAuthority));
     private readonly HostManagerMemoryModePolicyAuthority memoryModePolicyAuthorityOwner =

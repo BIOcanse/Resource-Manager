@@ -1,6 +1,5 @@
 using System.Runtime.ExceptionServices;
 using ResourceManager.App.Infrastructure.NativeCore;
-using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
@@ -53,7 +52,6 @@ public sealed partial class HostManagerSmartCoordinator
     private int lifecycleState;
     private int baseDisposeStarted;
     private RuntimePlanProvider? runtimePlanNotifications;
-    private IHostPublicResourcePublicationNotifier? publicResourceNotifications;
 
     internal HostManagerSmartCoordinatorLifecycleState LifecycleState
         => (HostManagerSmartCoordinatorLifecycleState)Volatile.Read(ref lifecycleState);
@@ -93,12 +91,8 @@ public sealed partial class HostManagerSmartCoordinator
             try
             {
                 runtimePlanNotifications = runtimePlanProvider as RuntimePlanProvider;
-                publicResourceNotifications =
-                    hostPublicResourceSelfManagerOwner as IHostPublicResourcePublicationNotifier;
                 if (runtimePlanNotifications is not null)
                     runtimePlanNotifications.Published += OnRuntimePlanPublished;
-                if (publicResourceNotifications is not null)
-                    publicResourceNotifications.HostResourcePublished += OnHostResourcePublished;
                 return base.StartAsync(cancellationToken);
             }
             catch
@@ -152,9 +146,6 @@ public sealed partial class HostManagerSmartCoordinator
     private void OnRuntimePlanPublished(CompiledRuntimePlan _)
         => WakeFromRunningPublication();
 
-    private void OnHostResourcePublished()
-        => WakeFromRunningPublication();
-
     private void WakeFromRunningPublication()
     {
         lock (lifecycleSync)
@@ -170,11 +161,6 @@ public sealed partial class HostManagerSmartCoordinator
         {
             runtimePlanNotifications.Published -= OnRuntimePlanPublished;
             runtimePlanNotifications = null;
-        }
-        if (publicResourceNotifications is not null)
-        {
-            publicResourceNotifications.HostResourcePublished -= OnHostResourcePublished;
-            publicResourceNotifications = null;
         }
     }
 

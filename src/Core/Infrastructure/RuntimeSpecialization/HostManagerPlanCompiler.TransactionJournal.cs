@@ -4,8 +4,6 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 public sealed partial class HostManagerPlanCompiler
 {
-    private const uint TransactionJournalAbiVersion = 0x0005_0000;
-
     private static CompiledHostManagerTransactionJournalRecreatePlan CompileTransactionJournalRecreate(
         HostManagerTransactionJournalRecreateProfile source,
         CompiledHostManagerCapacityLimits limits)

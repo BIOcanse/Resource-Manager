@@ -6,9 +6,9 @@ namespace ResourceManager.App.Domain.RuntimeSpecialization;
 public enum OptimizationModeCapabilities : byte
 {
     None = 0,
-    ExternalAdaptedMemoryActions = 1 << 0,
+    // Bits 0 and 2 belonged to unused external adapted-memory and central VRAM action capabilities;
+    // preserve the remaining wire positions.
     AutomaticMemoryCleanup = 1 << 1,
-    // Bit 2 belonged to an unused central VRAM action capability; preserve the remaining wire positions.
     // Bit 3 belonged to retired software-level grade dispatch.
     AutomaticProcessPolicies = 1 << 4,
     HardwarePlacement = 1 << 5,
@@ -48,8 +48,6 @@ public sealed record CompiledOptimizationModePlan(
     public bool GpuSchedulingEnabled => HasDomain(OptimizationDomains.Gpu);
     public bool CpuPlacementEnabled => CpuSchedulingEnabled && HardwarePlacementEnabled;
     public bool GpuPlacementEnabled => GpuSchedulingEnabled && HardwarePlacementEnabled;
-    public bool ExternalAdaptedMemoryActionsEnabled =>
-        Has(OptimizationModeCapabilities.ExternalAdaptedMemoryActions);
     public bool ResourceManagerSelfMemoryActionsEnabled =>
         Has(OptimizationModeCapabilities.ResourceManagerSelfMemoryActions);
     public bool AutomaticMemoryCleanupEnabled => Has(OptimizationModeCapabilities.AutomaticMemoryCleanup);

@@ -75,7 +75,6 @@ public sealed class StrictHostManagerProfileLoader(HostManagerProfileSource sour
         RequireReference(metricBuild, "build_capacity");
         RequireReference(recreate?["metric_snapshot"], "recreate", true);
         RequireReference(hot?["metric_snapshot"], "hot_publish");
-        RequireReference(build?["pdh_collector_abi_version"], "pdh.abi_version");
         RequireReference(recreate?["pdh_collector"], "pdh.recreate");
         RequireReference(hot?["pdh_collector"], "pdh.hot_publish");
         var path = Clone(recreate!["metric_snapshot"]!["persistence_relative_path"]);
@@ -88,7 +87,6 @@ public sealed class StrictHostManagerProfileLoader(HostManagerProfileSource sour
         recreate["metric_snapshot"] = hostRecreate;
         hot!["metric_snapshot"] = Clone(defaults["hot_publish"]);
         var pdh = defaults["pdh"]!.AsObject();
-        build!["pdh_collector_abi_version"] = Clone(pdh["abi_version"]);
         recreate["pdh_collector"] = new JsonObject { ["baseline_reset_interval_ms"] = Clone(pdh["baseline_reset_interval_ms"]) };
         hot["pdh_collector"] = new JsonObject { ["frame_reuse_window_ms"] = Clone(pdh["frame_reuse_window_ms"]),
             ["last_good_lifetime_ms"] = Clone(pdh["last_good_lifetime_ms"]) };

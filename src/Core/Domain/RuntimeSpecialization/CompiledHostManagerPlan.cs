@@ -155,13 +155,6 @@ public sealed record CompiledHostManagerPlan(
         CompiledHostManagerBindingProvenance.Unpublished,
         CompiledHostManagerBuildSpecializePlan.Unpublished,
         new CompiledHostManagerRecreatePlan(
-            new CompiledHostManagerSharedResourceRecreatePlan(
-                0,
-                0,
-                0,
-                0,
-                0,
-                0),
             new CompiledHostManagerResourceSchedulerRecreatePlan(
                 0,
                 0,
@@ -190,9 +183,6 @@ public sealed record CompiledHostManagerPlan(
             CompiledHostManagerMetricSnapshotRecreatePlan.Unpublished,
             new CompiledHostManagerPdhCollectorRecreatePlan(0)),
         new CompiledHostManagerHotPublishPlan(
-            new CompiledHostManagerSharedResourceHotPublishPlan(
-                0,
-                0),
             new CompiledHostManagerResourceSchedulerHotPublishPlan(
                 null,
                 false,
@@ -293,7 +283,6 @@ public sealed record CompiledHostManagerBindingProvenance(
 }
 
 public sealed record CompiledHostManagerDeploymentDigests(
-    CompiledHostManagerModuleDigests SharedResources,
     CompiledHostManagerModuleDigests ResourceScheduler,
     CompiledHostManagerModuleDigests AdapterPrivateResourceLedger,
     CompiledHostManagerModuleDigests SmartCoordinator,
@@ -314,8 +303,7 @@ public sealed record CompiledHostManagerDeploymentDigests(
     CompiledHostManagerModuleDigests ProcessPolicyExecutor,
     CompiledHostManagerModuleDigests PdhCollector)
 {
-    public bool IsPublished => SharedResources.IsPublished
-        && ResourceScheduler.IsPublished
+    public bool IsPublished => ResourceScheduler.IsPublished
         && AdapterPrivateResourceLedger.IsPublished
         && SmartCoordinator.IsPublished
         && MemoryCleanup.IsPublished
@@ -354,7 +342,6 @@ public sealed record CompiledHostManagerDeploymentDigests(
         CompiledHostManagerModuleDigests.Unpublished,
         CompiledHostManagerModuleDigests.Unpublished,
         CompiledHostManagerModuleDigests.Unpublished,
-        CompiledHostManagerModuleDigests.Unpublished,
         CompiledHostManagerModuleDigests.Unpublished);
 }
 
@@ -373,17 +360,7 @@ public sealed record CompiledHostManagerModuleDigests(
 }
 
 public sealed record CompiledHostManagerBuildSpecializePlan(
-    string TargetOperatingSystem,
-    string TargetArchitecture,
-    uint SharedResourceAbiVersion,
-    uint ResourceSchedulerAbiVersion,
-    uint AdapterPrivateResourceLedgerAbiVersion,
-    uint AdapterInstanceLeaseAbiVersion,
     CompiledHostManagerSmartCoordinatorBuildPlan SmartCoordinator,
-    uint MemoryCleanupAbiVersion,
-    uint PlacementCoordinatorAbiVersion,
-    uint AppliedOwnershipAbiVersion,
-    uint TransactionJournalAbiVersion,
     CompiledHostManagerSamplingSubscriptionBuildPlan SamplingSubscription,
     CompiledHostManagerPortableSoftwareRegistryBuildPlan PortableSoftwareRegistry,
     CompiledHostManagerSoftwareIdentityCatalogBuildPlan SoftwareIdentityCatalog,
@@ -394,17 +371,10 @@ public sealed record CompiledHostManagerBuildSpecializePlan(
     CompiledHostManagerDisplayCoordinatorBuildPlan DisplayCoordinator,
     CompiledHostManagerOperationCoordinatorBuildPlan OperationCoordinator,
     CompiledHostManagerMetricSnapshotBuildPlan MetricSnapshot,
-    uint ProcessPolicyExecutorAbiVersion,
-    uint PdhCollectorAbiVersion,
-    ImmutableArray<string> NativeModules,
     ImmutableArray<CompiledHostManagerNativeBinaryIdentity> NativeBinaries,
-    CompiledHostManagerCapacityLimits CapacityLimits,
-    bool IsCompatible)
+    CompiledHostManagerCapacityLimits CapacityLimits)
 {
-    public bool IsPublished => IsCompatible
-        && SmartCoordinator.IsPublished
-        && AppliedOwnershipAbiVersion == 0x0002_0000U
-        && TransactionJournalAbiVersion == 0x0005_0000U
+    public bool IsPublished => SmartCoordinator.IsPublished
         && SamplingSubscription.IsPublished
         && PortableSoftwareRegistry.IsPublished
         && SoftwareIdentityCatalog.IsPublished
@@ -415,22 +385,11 @@ public sealed record CompiledHostManagerBuildSpecializePlan(
         && DisplayCoordinator.IsPublished
         && OperationCoordinator.IsPublished
         && MetricSnapshot.IsPublished
-        && !NativeModules.IsDefaultOrEmpty
         && NativeBinaries.Length == 2
         && NativeBinaries.All(static binary => binary.IsPublished);
 
     public static CompiledHostManagerBuildSpecializePlan Unpublished { get; } = new(
-        string.Empty,
-        string.Empty,
-        0,
-        0,
-        0,
-        0,
         CompiledHostManagerSmartCoordinatorBuildPlan.Unpublished,
-        0,
-        0,
-        0,
-        0,
         CompiledHostManagerSamplingSubscriptionBuildPlan.Unpublished,
         CompiledHostManagerPortableSoftwareRegistryBuildPlan.Unpublished,
         CompiledHostManagerSoftwareIdentityCatalogBuildPlan.Unpublished,
@@ -441,12 +400,8 @@ public sealed record CompiledHostManagerBuildSpecializePlan(
         CompiledHostManagerDisplayCoordinatorBuildPlan.Unpublished,
         CompiledHostManagerOperationCoordinatorBuildPlan.Unpublished,
         CompiledHostManagerMetricSnapshotBuildPlan.Unpublished,
-        0,
-        0,
         [],
-        [],
-        new CompiledHostManagerCapacityLimits(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        false);
+        new CompiledHostManagerCapacityLimits(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 }
 
 public sealed record CompiledHostManagerNativeBinaryIdentity(
@@ -463,9 +418,6 @@ public sealed record CompiledHostManagerNativeBinaryIdentity(
 }
 
 public sealed record CompiledHostManagerCapacityLimits(
-    int SharedResourceCapacity,
-    int SharedSubscriptionCapacity,
-    int SharedTaskCapacity,
     int SchedulerTargetCapacity,
     int SchedulerResourceCapacity,
     int SchedulerPendingCapacity,
@@ -499,7 +451,6 @@ public sealed record CompiledHostManagerCapacityLimits(
     long TransactionJournalPayloadByteBudget);
 
 public sealed record CompiledHostManagerRecreatePlan(
-    CompiledHostManagerSharedResourceRecreatePlan SharedResources,
     CompiledHostManagerResourceSchedulerRecreatePlan ResourceScheduler,
     CompiledHostManagerAdapterPrivateResourceRecreatePlan AdapterPrivateResourceLedger,
     CompiledHostManagerAdapterInstanceLeaseRecreatePlan AdapterInstanceLease,
@@ -520,14 +471,6 @@ public sealed record CompiledHostManagerRecreatePlan(
     CompiledHostManagerMetricSnapshotRecreatePlan MetricSnapshot,
     CompiledHostManagerPdhCollectorRecreatePlan PdhCollector);
 
-public sealed record CompiledHostManagerSharedResourceRecreatePlan(
-    int ResourceCapacity,
-    int SubscriptionCapacity,
-    int TaskCapacity,
-    int MaximumSubscriptionLeaseDurationMilliseconds,
-    int MaximumQueueDurationMilliseconds,
-    int MaximumGrantDurationMilliseconds);
-
 public sealed record CompiledHostManagerResourceSchedulerRecreatePlan(
     int TargetCapacity,
     int PrivateResourceCapacity,
@@ -544,7 +487,6 @@ public sealed record CompiledHostManagerAdapterInstanceLeaseRecreatePlan(
     int MaximumAttestationAgeMilliseconds);
 
 public sealed record CompiledHostManagerHotPublishPlan(
-    CompiledHostManagerSharedResourceHotPublishPlan SharedResources,
     CompiledHostManagerResourceSchedulerHotPublishPlan ResourceScheduler,
     CompiledHostManagerAdapterPrivateResourceHotPublishPlan AdapterPrivateResourceLedger,
     CompiledHostManagerSmartCoordinatorHotPublishPlan SmartCoordinator,
@@ -563,10 +505,6 @@ public sealed record CompiledHostManagerHotPublishPlan(
     CompiledHostManagerMetricSnapshotHotPublishPlan MetricSnapshot,
     CompiledHostManagerProcessPolicyExecutorHotPublishPlan ProcessPolicyExecutor,
     CompiledHostManagerPdhCollectorHotPublishPlan PdhCollector);
-
-public sealed record CompiledHostManagerSharedResourceHotPublishPlan(
-    double SubscriptionCoefficient,
-    int MaintenanceIntervalMilliseconds);
 
 public sealed record CompiledHostManagerResourceSchedulerHotPublishPlan(
     ResourceSchedulerConfig? Configuration,

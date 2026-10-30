@@ -216,13 +216,6 @@
       "comment": "Produces graphics API history for processes, used for GPU placement."
     },
     {
-      "uid": 26,
-      "kind": "block",
-      "process": "backend",
-      "name": "SharedResourceSubscriptionMaintenanceService",
-      "comment": "Maintains shared resource subscriptions and their expiration."
-    },
-    {
       "uid": 27,
       "kind": "block",
       "process": "backend",
@@ -800,7 +793,7 @@
       "kind": "block",
       "process": "backend",
       "name": "PublicServices",
-      "comment": "Groups public services, model tasks and shared resource subscription maintenance."
+      "comment": "Groups public services and model tasks."
     },
     {
       "uid": 84,
@@ -1491,21 +1484,6 @@
       "changeEvent": "PendingTasksChanged"
     },
     {
-      "uid": 132,
-      "kind": "item",
-      "process": "backend",
-      "name": "SharedResourceActivityExists",
-      "comment": "Current authoritative SharedResourceActivityExists fact; any no-value read is false.",
-      "storage": "reference",
-      "type": "bool",
-      "owner": {
-        "component": "SharedMemoryPublicResourceBroker"
-      },
-      "perBlock": false,
-      "trigger": "event",
-      "changeEvent": "ActivityChanged"
-    },
-    {
       "uid": 133,
       "kind": "item",
       "process": "backend",
@@ -2085,27 +2063,6 @@
       "conditions": [],
       "children": [],
       "decides": 12
-    },
-    {
-      "uid": 158,
-      "kind": "condition",
-      "process": "backend",
-      "name": "SharedResourceShouldRun",
-      "comment": "Explicit host admission and precise business facts for SharedResourceSubscriptionMaintenanceService; absent ordinary facts are false.",
-      "perBlock": false,
-      "node": 83,
-      "items": [
-        {
-          "item": 8,
-          "block": 26
-        },
-        {
-          "item": 132
-        }
-      ],
-      "conditions": [],
-      "children": [],
-      "decides": 26
     },
     {
       "uid": 159,

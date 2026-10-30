@@ -7,7 +7,6 @@ using ResourceManager.App.Infrastructure.Control.Writers;
 using ResourceManager.App.Infrastructure.Diagnostics;
 using ResourceManager.App.Infrastructure.Operations;
 using ResourceManager.App.Infrastructure.Optimization;
-using ResourceManager.App.Infrastructure.PublicResources;
 using ResourceManager.App.Infrastructure.PublicServices;
 using ResourceManager.App.Infrastructure.Security;
 using ResourceManager.App.StateItems;
@@ -81,9 +80,6 @@ internal sealed class BackendDecisionStateBindings(IServiceProvider services,
             Bind(StateItemUids.PublicServiceTasksPending, () => publicService.HasPendingTasks,
                 callback => publicService.PendingTasksChanged += callback, callback => publicService.PendingTasksChanged -= callback);
         }
-        if (services.GetService<SharedMemoryPublicResourceBroker>() is { } shared)
-            Bind(StateItemUids.SharedResourceActivityExists, () => shared.HasActivity,
-                callback => shared.ActivityChanged += callback, callback => shared.ActivityChanged -= callback);
         if (services.GetService<HostManagerOperationCoordinatorOwner>() is { } operations)
         {
             BindRead(StateItemUids.OperationsPending, () => operations.PendingOperationsPublication,

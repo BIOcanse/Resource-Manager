@@ -20,8 +20,7 @@ public sealed partial class HostManagerSmartCoordinator
         CancellationToken cancellationToken,
         bool placementStateAvailable = true,
         bool gpuControlAvailable = true,
-        bool forShutdown = false,
-        Action? runPublicResourceLifecycle = null)
+        bool forShutdown = false)
     {
         if (!(forShutdown && LifecycleState == HostManagerSmartCoordinatorLifecycleState.Closing)
             && !string.Equals(
@@ -48,11 +47,6 @@ public sealed partial class HostManagerSmartCoordinator
                  Action: (NativeSmartCoordinatorAction?)action)))
             .Append((Kind: NormalRestoreWorkKind.Placement, Record: default,
                 Action: (NativeSmartCoordinatorAction?)null))
-            .Concat(runPublicResourceLifecycle is null ? [] : new[]
-            {
-                (Kind: NormalRestoreWorkKind.PublicResource, Record: default(NativeAppliedOwnershipRecord),
-                    Action: (NativeSmartCoordinatorAction?)null)
-            })
             .OrderBy(item => NormalRestoreWorkKey(item.Kind, item.Record.Primary))
             .ToArray();
         // Rotate the first admitted opportunity each cycle, even when its write failed unchanged.
@@ -68,13 +62,6 @@ public sealed partial class HostManagerSmartCoordinator
         {
             cancellationToken.ThrowIfCancellationRequested();
             var item = restoreWork[(start + offset) % restoreWork.Length];
-            if (item.Kind == NormalRestoreWorkKind.PublicResource)
-            {
-                if (effectAdmission.NewPointOfNoReturnRemaining != 0)
-                    nextTarget ??= NormalRestoreWorkKey(item.Kind, item.Record.Primary);
-                runPublicResourceLifecycle!();
-                continue;
-            }
             if (item.Kind == NormalRestoreWorkKind.Placement)
             {
                 if (!forShutdown && runtimeCpuLeases.HasLeases)
@@ -153,14 +140,13 @@ public sealed partial class HostManagerSmartCoordinator
             && placementsRestored;
     }
 
-    private enum NormalRestoreWorkKind { Placement, Memory, Native, PublicResource }
+    private enum NormalRestoreWorkKind { Placement, Memory, Native }
 
     private static (uint Scope, uint ProcessId, ulong StartKey, ulong Target, ulong Software)
         NormalRestoreWorkKey(NormalRestoreWorkKind kind, NativeAppliedOwnershipPrimaryIdentity identity)
         => kind switch
         {
             NormalRestoreWorkKind.Placement => (0, 0, 0, 0, 0),
-            NormalRestoreWorkKind.PublicResource => (3, 0, 0, 0, 0),
             _ => (identity.Scope, identity.ProcessId, identity.ProcessStartKey,
                 identity.TargetId, identity.SoftwareId)
         };

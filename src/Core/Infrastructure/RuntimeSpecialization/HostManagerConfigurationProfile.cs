@@ -36,9 +36,6 @@ internal sealed class HostManagerConfigurationProfile
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed class HostManagerRecreateProfile
 {
-    [JsonPropertyName("shared_resources")]
-    public required HostManagerSharedResourceRecreateProfile SharedResources { get; init; }
-
     [JsonPropertyName("resource_scheduler")]
     public required HostManagerResourceSchedulerRecreateProfile ResourceScheduler { get; init; }
 
@@ -98,29 +95,6 @@ internal sealed class HostManagerRecreateProfile
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-internal sealed class HostManagerSharedResourceRecreateProfile
-{
-    [JsonPropertyName("resource_capacity")]
-    public required int ResourceCapacity { get; init; }
-
-    [JsonPropertyName("subscription_capacity")]
-    public required int SubscriptionCapacity { get; init; }
-
-    [JsonPropertyName("task_capacity")]
-    public required int TaskCapacity { get; init; }
-
-    [JsonPropertyName("maximum_subscription_lease_duration_ms")]
-    public required int MaximumSubscriptionLeaseDurationMilliseconds { get; init; }
-
-    [JsonPropertyName("maximum_queue_duration_ms")]
-    public required int MaximumQueueDurationMilliseconds { get; init; }
-
-    [JsonPropertyName("maximum_grant_duration_ms")]
-    public required int MaximumGrantDurationMilliseconds { get; init; }
-
-}
-
-[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed class HostManagerAdapterInstanceLeaseRecreateProfile
 {
     [JsonPropertyName("capacity")]
@@ -136,78 +110,6 @@ internal sealed class HostManagerAdapterInstanceLeaseRecreateProfile
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed class HostManagerBuildSpecializeProfile
 {
-    [JsonPropertyName("target_os")]
-    public required string TargetOperatingSystem { get; init; }
-
-    [JsonPropertyName("target_architecture")]
-    public required string TargetArchitecture { get; init; }
-
-    [JsonPropertyName("shared_resource_abi_version")]
-    public required uint SharedResourceAbiVersion { get; init; }
-
-    [JsonPropertyName("resource_scheduler_abi_version")]
-    public required uint ResourceSchedulerAbiVersion { get; init; }
-
-    [JsonPropertyName("adapter_private_resource_ledger_abi_version")]
-    public required uint AdapterPrivateResourceLedgerAbiVersion { get; init; }
-
-    [JsonPropertyName("adapter_instance_lease_abi_version")]
-    public required uint AdapterInstanceLeaseAbiVersion { get; init; }
-
-    [JsonPropertyName("smart_coordinator_abi_version")]
-    public required uint SmartCoordinatorAbiVersion { get; init; }
-
-    [JsonPropertyName("memory_cleanup_abi_version")]
-    public required uint MemoryCleanupAbiVersion { get; init; }
-
-    [JsonPropertyName("placement_coordinator_abi_version")]
-    public required uint PlacementCoordinatorAbiVersion { get; init; }
-
-    [JsonPropertyName("applied_ownership_abi_version")]
-    public required uint AppliedOwnershipAbiVersion { get; init; }
-
-    [JsonPropertyName("transaction_journal_abi_version")]
-    public required uint TransactionJournalAbiVersion { get; init; }
-
-    [JsonPropertyName("sampling_subscription_abi_version")]
-    public required uint SamplingSubscriptionAbiVersion { get; init; }
-
-    [JsonPropertyName("portable_software_registry_abi_version")]
-    public required uint PortableSoftwareRegistryAbiVersion { get; init; }
-
-    [JsonPropertyName("software_identity_catalog_abi_version")]
-    public required uint SoftwareIdentityCatalogAbiVersion { get; init; }
-
-    [JsonPropertyName("software_identity_resolution_abi_version")]
-    public required uint SoftwareIdentityResolutionAbiVersion { get; init; }
-
-    [JsonPropertyName("report_coordinator_abi_version")]
-    public required uint ReportCoordinatorAbiVersion { get; init; }
-
-    [JsonPropertyName("file_query_abi_version")]
-    public required uint FileQueryAbiVersion { get; init; }
-
-    [JsonPropertyName("public_service_coordinator_abi_version")]
-    public required uint PublicServiceCoordinatorAbiVersion { get; init; }
-
-    [JsonPropertyName("display_coordinator_abi_version")]
-    public required uint DisplayCoordinatorAbiVersion { get; init; }
-
-    [JsonPropertyName("operation_coordinator_abi_version")]
-    public required uint OperationCoordinatorAbiVersion { get; init; }
-
-    [JsonPropertyName("metric_snapshot_abi_version")]
-    public required uint MetricSnapshotAbiVersion { get; init; }
-
-    [JsonPropertyName("process_policy_executor_abi_version")]
-    public required uint ProcessPolicyExecutorAbiVersion { get; init; }
-
-    [JsonPropertyName("pdh_collector_abi_version")]
-    public required uint PdhCollectorAbiVersion { get; init; }
-
-    [JsonPropertyName("native_modules")]
-    public required string[] NativeModules { get; init; }
-
     [JsonPropertyName("capacity_limits")]
     public required HostManagerCapacityLimitsProfile CapacityLimits { get; init; }
 }
@@ -215,15 +117,6 @@ internal sealed class HostManagerBuildSpecializeProfile
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed class HostManagerCapacityLimitsProfile
 {
-    [JsonPropertyName("shared_resource_capacity")]
-    public required int SharedResourceCapacity { get; init; }
-
-    [JsonPropertyName("shared_subscription_capacity")]
-    public required int SharedSubscriptionCapacity { get; init; }
-
-    [JsonPropertyName("shared_task_capacity")]
-    public required int SharedTaskCapacity { get; init; }
-
     [JsonPropertyName("scheduler_target_capacity")]
     public required int SchedulerTargetCapacity { get; init; }
 
@@ -351,9 +244,6 @@ internal sealed class HostManagerCapacityLimitsProfile
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed class HostManagerHotPublishProfile
 {
-    [JsonPropertyName("shared_resources")]
-    public required HostManagerSharedResourceHotPublishProfile SharedResources { get; init; }
-
     [JsonPropertyName("resource_scheduler")]
     public required HostManagerResourceSchedulerHotPublishProfile ResourceScheduler { get; init; }
 
@@ -407,15 +297,4 @@ internal sealed class HostManagerHotPublishProfile
 
     [JsonPropertyName("pdh_collector")]
     public required HostManagerPdhCollectorHotPublishProfile PdhCollector { get; init; }
-}
-
-[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-internal sealed class HostManagerSharedResourceHotPublishProfile
-{
-    [JsonPropertyName("subscription_coefficient")]
-    public required double SubscriptionCoefficient { get; init; }
-
-    [JsonPropertyName("maintenance_interval_ms")]
-    public required int MaintenanceIntervalMilliseconds { get; init; }
-
 }

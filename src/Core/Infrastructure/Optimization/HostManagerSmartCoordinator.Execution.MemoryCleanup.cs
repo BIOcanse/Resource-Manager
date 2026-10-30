@@ -72,7 +72,7 @@ public sealed partial class HostManagerSmartCoordinator
             candidateProjection.Candidates);
         var executionPhysicalMemoryFreeRatio =
             initialCapacity.PhysicalMemoryFreeRatio;
-        var result = (await ExecuteMemoryCleanupCoreAsync(
+        var result = await ExecuteMemoryCleanupCoreAsync(
             permit,
             processEffectValidationScope,
             request,
@@ -99,8 +99,7 @@ public sealed partial class HostManagerSmartCoordinator
                 }
                 return admission;
             },
-            cancellationToken))
-            .StampCompletion(timeProvider.GetUtcNow());
+            cancellationToken);
         memoryCleanupHostedAdmissionBaseline = currentAdmissionBaseline;
         if (result.RequestedCount > 0)
         {

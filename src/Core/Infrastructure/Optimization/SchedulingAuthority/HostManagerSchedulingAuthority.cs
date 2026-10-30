@@ -28,21 +28,13 @@ internal sealed record HostManagerSchedulingAuthoritySnapshot(
         "not-attempted");
 }
 
-internal interface IHostManagerSchedulingAuthoritySource
-{
-    HostManagerSchedulingAuthoritySnapshot Capture();
-}
-
-public sealed class HostManagerSchedulingAuthority : IHostManagerSchedulingAuthoritySource
+public sealed class HostManagerSchedulingAuthority
 {
     private HostManagerSchedulingAuthoritySnapshot current =
         HostManagerSchedulingAuthoritySnapshot.Empty;
 
     internal HostManagerSchedulingAuthoritySnapshot Capture()
         => Volatile.Read(ref current);
-
-    HostManagerSchedulingAuthoritySnapshot IHostManagerSchedulingAuthoritySource.Capture()
-        => Capture();
 
     internal void PublishUnavailable(
         ulong roundNumber,

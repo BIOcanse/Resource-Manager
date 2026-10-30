@@ -81,9 +81,9 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         {
             Assert.True(admission.TryAcquire(kind, out var permit));
             permit.Require(kind);
-            var differentKind = kind == HostManagerCycleEffectKind.PublicResourceLifecycle
-                ? HostManagerCycleEffectKind.SelfLedgerMaintenance
-                : HostManagerCycleEffectKind.PublicResourceLifecycle;
+            var differentKind = kind == HostManagerCycleEffectKind.SelfLedgerMaintenance
+                ? HostManagerCycleEffectKind.NativeTransactionRecovery
+                : HostManagerCycleEffectKind.SelfLedgerMaintenance;
             Assert.Throws<InvalidOperationException>(() => permit.Require(differentKind));
         }
     }
@@ -124,8 +124,7 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         {
             HostManagerCycleEffectKind.SelfLedgerMaintenance,
             HostManagerCycleEffectKind.LegacyPlacementRestore,
-            HostManagerCycleEffectKind.AutomaticMemoryCleanup,
-            HostManagerCycleEffectKind.PublicResourceLifecycle
+            HostManagerCycleEffectKind.AutomaticMemoryCleanup
         })
         {
             Assert.False(admission.TryAcquire(kind, out _));
@@ -267,8 +266,7 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         foreach (var kind in new[]
         {
             HostManagerCycleEffectKind.SelfLedgerMaintenance,
-            HostManagerCycleEffectKind.LegacyPlacementRestore,
-            HostManagerCycleEffectKind.PublicResourceLifecycle
+            HostManagerCycleEffectKind.LegacyPlacementRestore
         })
         {
             Assert.False(admission.TryAcquire(kind, out _));
@@ -498,8 +496,7 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
             "ReconcileExitedProcessOwnershipAsync",
             "ExecuteNativeTransactionsAsync",
             "ApplyAutomaticMemoryCleanupAsync",
-            "ExecuteMemoryCleanup",
-            "RunHostPublicResourceSelfManager"
+            "ExecuteMemoryCleanup"
         };
         foreach (var methodName in permitEntrypoints)
         {
@@ -513,7 +510,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         {
             "RecoverNativeTransactionsAsync",
             "PrepareLegacyStateAsync",
-            "CreateNativeExternalEffectCycle",
             "RunNativePlanningAndActionsAsync"
         };
         foreach (var methodName in admissionEntrypoints)
@@ -533,7 +529,7 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
     {
         var sink = new CountingExternalEffectSink();
 
-        await RunExternalBranchesAsync(
+        await HostManagerNativeExternalEffectDispatcher.RunAsync(
             HostManagerCycleEffectAdmission.Create(scoreOnly: true),
             automaticMemoryCleanupEnabled,
             sink);
@@ -543,7 +539,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         Assert.Equal(0, sink.ProcessBatchApplyCalls);
         Assert.Equal(0, sink.MemoryJournalMarkUnknownCalls);
         Assert.Equal(0, sink.MemoryJournalSettleCalls);
-        Assert.Equal(0, sink.PublicResourceTickCalls);
     }
 
     [Theory]
@@ -558,7 +553,7 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         var modePlan = CompiledOptimizationModePlan.Compile(mode);
         var sink = new CountingExternalEffectSink(memoryFreeRatio);
 
-        await RunExternalBranchesAsync(
+        await HostManagerNativeExternalEffectDispatcher.RunAsync(
             HostManagerCycleEffectAdmission.Create(scoreOnly: true),
             modePlan.AutomaticMemoryCleanupEnabled,
             sink);
@@ -569,7 +564,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         Assert.Equal(0, sink.ProcessBatchApplyCalls);
         Assert.Equal(0, sink.MemoryJournalMarkUnknownCalls);
         Assert.Equal(0, sink.MemoryJournalSettleCalls);
-        Assert.Equal(0, sink.PublicResourceTickCalls);
         Assert.Equal(memoryFreeRatio, sink.MemoryFreeRatio);
     }
 
@@ -582,7 +576,7 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
     {
         var sink = new CountingExternalEffectSink();
 
-        await RunExternalBranchesAsync(
+        await HostManagerNativeExternalEffectDispatcher.RunAsync(
             HostManagerCycleEffectAdmission.Create(scoreOnly: false),
             automaticMemoryCleanupEnabled,
             sink);
@@ -592,30 +586,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         Assert.Equal(expectedMemoryCalls, sink.ProcessBatchApplyCalls);
         Assert.Equal(expectedMemoryCalls, sink.MemoryJournalMarkUnknownCalls);
         Assert.Equal(expectedMemoryCalls, sink.MemoryJournalSettleCalls);
-        Assert.Equal(1, sink.PublicResourceTickCalls);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ExternalBranchesShareTheSameRemainingNewPonrBudget(bool cleanupFirst)
-    {
-        var admission = HostManagerCycleEffectAdmission.Create(scoreOnly: false);
-        admission.InitializeBudgets(
-            newPointOfNoReturnCapacity: 1,
-            recoveryCapacity: 1);
-        var sink = new BudgetConsumingExternalEffectSink();
-
-        await RunExternalBranchesAsync(
-            admission,
-            automaticMemoryCleanupEnabled: true,
-            sink,
-            cleanupFirst);
-
-        Assert.Equal(cleanupFirst ? 1 : 0, sink.MemoryPonrCount);
-        Assert.Equal(cleanupFirst ? 0 : 1, sink.PublicPonrCount);
-        Assert.Equal(0U, admission.NewPointOfNoReturnRemaining);
-        Assert.Equal(1U, admission.RecoveryRemaining);
     }
 
     [Fact]
@@ -629,8 +599,7 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         {
             HostManagerCycleEffectKind.NonAdaptedMemoryTransaction,
             HostManagerCycleEffectKind.NativeActionTransaction,
-            HostManagerCycleEffectKind.AutomaticMemoryCleanup,
-            HostManagerCycleEffectKind.PublicResourceLifecycle
+            HostManagerCycleEffectKind.AutomaticMemoryCleanup
         };
         var admitted = 0U;
 
@@ -708,29 +677,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
     }
 
 
-    private static async Task RunExternalBranchesAsync<TSink>(
-        HostManagerCycleEffectAdmission admission,
-        bool automaticMemoryCleanupEnabled,
-        TSink sink,
-        bool cleanupFirst = false)
-        where TSink : class, IHostManagerNativeExternalEffectSink
-    {
-        var kinds = new[]
-        {
-            HostManagerCycleEffectKind.PublicResourceLifecycle,
-            HostManagerCycleEffectKind.AutomaticMemoryCleanup
-        };
-        if (cleanupFirst)
-        {
-            Array.Reverse(kinds);
-        }
-        foreach (var kind in kinds)
-        {
-            await HostManagerNativeExternalEffectDispatcher.RunAsync(
-                admission, automaticMemoryCleanupEnabled, kind, sink);
-        }
-    }
-
     private sealed class SingleServiceProvider(HostManagerSmartCoordinator owner) : IServiceProvider
     {
         private NativeEtwLifetimeService? nativeLifetime;
@@ -755,7 +701,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         internal int ProcessBatchApplyCalls { get; private set; }
         internal int MemoryJournalMarkUnknownCalls { get; private set; }
         internal int MemoryJournalSettleCalls { get; private set; }
-        internal int PublicResourceTickCalls { get; private set; }
 
         public ValueTask RunAutomaticMemoryCleanupAsync(HostManagerCycleEffectPermit permit)
         {
@@ -766,38 +711,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
             MemoryJournalMarkUnknownCalls++;
             MemoryJournalSettleCalls++;
             return ValueTask.CompletedTask;
-        }
-
-        public void RunPublicResourceLifecycle(HostManagerCycleEffectPermit permit)
-        {
-            permit.Require(HostManagerCycleEffectKind.PublicResourceLifecycle);
-            PublicResourceTickCalls++;
-        }
-    }
-
-    private sealed class BudgetConsumingExternalEffectSink
-        : IHostManagerNativeExternalEffectSink
-    {
-        internal int MemoryPonrCount { get; private set; }
-        internal int PublicPonrCount { get; private set; }
-
-        public ValueTask RunAutomaticMemoryCleanupAsync(HostManagerCycleEffectPermit permit)
-        {
-            permit.Require(HostManagerCycleEffectKind.AutomaticMemoryCleanup);
-            if (permit.TryReserveNewPointOfNoReturn(1, out _))
-            {
-                MemoryPonrCount++;
-            }
-            return ValueTask.CompletedTask;
-        }
-
-        public void RunPublicResourceLifecycle(HostManagerCycleEffectPermit permit)
-        {
-            permit.Require(HostManagerCycleEffectKind.PublicResourceLifecycle);
-            if (permit.TryReserveNewPointOfNoReturn(1, out _))
-            {
-                PublicPonrCount++;
-            }
         }
     }
 }

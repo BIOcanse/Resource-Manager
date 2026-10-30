@@ -22,12 +22,10 @@ try {
       profileId: "test",
       readOnly: false,
       mutablePersistence: true,
-      legacyPersistenceImport: false,
       gpuLaunchInterceptionReconciliation: false,
       runtimeEffectOwners: false,
       publicServiceCoordination: false,
-      optimizationRuntime: false,
-      sharedResourceOwnership: false
+      optimizationRuntime: false
     }), {
       status: 200,
       headers: { "Content-Type": "application/json" }

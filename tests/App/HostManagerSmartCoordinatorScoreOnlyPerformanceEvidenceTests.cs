@@ -55,9 +55,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         fixture.DebugLogWriter.Records.Clear();
         fixture.DebugLogWriter.PrepareRecordCapacity(measuredCycleCount);
-        var normalReleaseEvidenceBefore = CapturePrivateState(
-            fixture.Coordinator,
-            "hostPublicResourceNormalReleaseEvidence");
         var nativeWorkspaceBefore =
             ReadPrivateField<NativeSmartCoordinatorWorkspace>(
                 fixture.Coordinator,
@@ -131,11 +128,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             $"Managed retained growth {managedRetainedGrowthBytes} exceeded the " +
             $"{ScoreOnlyPerformanceMaximumManagedRetainedGrowthBytes}-byte score-only budget.");
         Assert.Equal(durableBefore, CaptureDurableFiles(fixture.Root));
-        Assert.Equal(
-            normalReleaseEvidenceBefore,
-            CapturePrivateState(
-                fixture.Coordinator,
-                "hostPublicResourceNormalReleaseEvidence"));
         fixture.AssertNoEffectCollaboratorCalls();
 
         if (!string.IsNullOrWhiteSpace(evidenceRoot))

@@ -2,11 +2,8 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Hosting;
-using ResourceManager.App.Infrastructure.PublicResources;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace Resource_Manager_APP.Tests;
@@ -60,36 +57,35 @@ public sealed class BusinessBlockHostedCancellationTests
     }
 
     [Fact]
-    public async Task LateFailureObserverIgnoresNormalMaintenanceCancellationAndEndsWhenHostStops()
+    public async Task LateFailureObserverIgnoresNormalRunCancellationAndEndsWhenHostStops()
     {
-        var maintenance = new Maintenance();
-        var service = new SharedResourceSubscriptionMaintenanceService(maintenance,
-            NullLogger<SharedResourceSubscriptionMaintenanceService>.Instance);
+        // Any gated block with no inputs works here; the network attribution reader is one.
+        var service = new WaitingBackgroundService();
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(
-                    BackendUids.SharedResourceSubscriptionMaintenanceService, _ => service);
+                services.AddBusinessBlockHostedService<WaitingBackgroundService>(
+                    BackendUids.EtwNetworkTcpIpAttributionReader, _ => service);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var alias = host.Services.GetServices<IHostedService>()
-            .OfType<NonOwningHostedService<SharedResourceSubscriptionMaintenanceService>>().Single();
+            .OfType<NonOwningHostedService<WaitingBackgroundService>>().Single();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
-        var activity = scheduler.Authority.ClaimCell<bool>(BackendItems.SharedResourceActivityExists);
+        var activity = scheduler.Authority.ClaimCell<bool>(BackendItems.NetworkAttributionInUse);
         await activity.PublishAsync(true, BusinessBlockTestSupport.Reason());
         try
         {
             await alias.StartAsync(CancellationToken.None).WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await maintenance.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
+            await service.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await host.Services.GetRequiredService<BackendHostPermitFacts>().SetAsync(
-                BackendUids.SharedResourceSubscriptionMaintenanceService, false, BusinessBlockTestSupport.Reason());
-            await BusinessBlockTestSupport.State(scheduler, BackendUids.SharedResourceSubscriptionMaintenanceService, BusinessBlockState.Stopped);
+                BackendUids.EtwNetworkTcpIpAttributionReader, false, BusinessBlockTestSupport.Reason());
+            await BusinessBlockTestSupport.State(scheduler, BackendUids.EtwNetworkTcpIpAttributionReader, BusinessBlockState.Stopped);
             Assert.True(service.ExecuteTask!.IsCanceled);
 
             // A normal stopped run is not a host failure. A late failure observer stays
             // active across runs and finishes only when its own host token is canceled.
-            var observer = typeof(NonOwningHostedService<SharedResourceSubscriptionMaintenanceService>)
+            var observer = typeof(NonOwningHostedService<WaitingBackgroundService>)
                 .GetMethod("ExecuteAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
             using var observationStop = new CancellationTokenSource();
             var observed = (Task)observer.Invoke(alias, [observationStop.Token])!;
@@ -105,14 +101,14 @@ public sealed class BusinessBlockHostedCancellationTests
         }
     }
 
-    private sealed class Maintenance : ISharedResourceSubscriptionMaintenance
+    private sealed class WaitingBackgroundService : BackgroundService
     {
         internal TaskCompletionSource Entered { get; } = BusinessBlockTestSupport.Signal();
-        public int MaintenanceIntervalMilliseconds
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            get { Entered.TrySetResult(); return Timeout.Infinite; }
+            Entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, stoppingToken);
         }
-        public SharedResourceMaintenanceResult Refresh(ulong timestamp) => default;
     }
 
     private sealed class GatedCleanup : IHostedService

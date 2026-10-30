@@ -7,23 +7,10 @@ public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerDisplayCoordinatorBuildPlan
         CompileDisplayCoordinatorBuild(
-            uint abiVersion,
-            HostManagerDisplayCoordinatorCapacityProfile source,
-            IReadOnlySet<string> nativeModules)
+            HostManagerDisplayCoordinatorCapacityProfile source)
     {
-        if (abiVersion != NativeDisplayCoordinatorAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.display_coordinator_abi_version must match the native display-coordinator ABI.");
-        }
-        if (!nativeModules.Contains("display_coordinator"))
-        {
-            throw new InvalidDataException(
-                "build_specialize.native_modules must include display_coordinator.");
-        }
-
         return new CompiledHostManagerDisplayCoordinatorBuildPlan(
-            abiVersion,
+            NativeDisplayCoordinatorAbi.Version,
             "display_coordinator",
             CompileDisplayCoordinatorCapacity(
                 source,

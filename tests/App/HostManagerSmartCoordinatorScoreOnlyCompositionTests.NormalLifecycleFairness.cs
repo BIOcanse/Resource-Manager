@@ -11,7 +11,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
     [Fact]
-    public async Task NormalFailedCpuRestoreAllowsPublicResourceEffectsAndKeepsItsExactOwner()
+    public async Task NormalFailedCpuRestoreKeepsRecoveryOpportunitiesAndItsExactOwner()
     {
         const int processId = 24_350;
         var started = DateTimeOffset.UtcNow.AddMinutes(-5);
@@ -47,22 +47,16 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 new(ProcessResourcePolicyBatchFields.PowerThrottling, false, "denied unchanged")
             ])];
         };
-        fixture.PublicResourceManager.PendingNewEffectCandidates = 3;
-        var publicAttemptsBefore = fixture.PublicResourceManager.NewEffectAttemptCount;
 
         for (var cycle = 0; cycle < 6; cycle++)
         {
             var cpuBefore = cpuAttempts;
-            var publicBefore = fixture.PublicResourceManager.NewEffectAttemptCount;
             _ = await fixture.RunRealtimeCycleAsync();
             Assert.InRange(cpuAttempts - cpuBefore, 0, 1); // Recovery lane.
-            Assert.InRange(fixture.PublicResourceManager.NewEffectAttemptCount - publicBefore, 0U, 1U);
             Assert.Empty((await fixture.ReadJournalSnapshotAsync()).Records);
         }
 
         Assert.True(cpuAttempts >= 2, "The failed CPU owner must continue receiving recovery opportunities.");
-        Assert.Equal(publicAttemptsBefore + 3, fixture.PublicResourceManager.NewEffectAttemptCount);
-        Assert.Equal(0, fixture.PublicResourceManager.PendingNewEffectCandidates);
         var retained = Assert.Single((await fixture.NativeTransactions.AppliedOwnership
             .ReadSnapshotAsync(CancellationToken.None)).Records);
         Assert.Equal(seeded.Primary, retained.Primary);

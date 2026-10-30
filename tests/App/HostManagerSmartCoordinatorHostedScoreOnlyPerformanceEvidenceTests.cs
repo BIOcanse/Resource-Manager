@@ -142,9 +142,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var durableBeforeSha256 = ComputeHostedScoreOnlyIdentitySha256(durableBefore);
         var rollbackIncarnationBefore =
             fixture.StateStore.Current.NativeHostSessionIncarnation;
-        var normalReleaseEvidenceBefore = CapturePrivateState(
-            fixture.Coordinator,
-            "hostPublicResourceNormalReleaseEvidence");
         var workspaceBefore = fixture.Workspace;
         var capacityBefore = fixture.Workspace.Capacity;
         var lifecycleBefore = fixture.Coordinator.LifecycleState;
@@ -250,11 +247,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(0U, fixture.Workspace.Snapshot.SoftwareCount);
             Assert.Equal(0U, fixture.Workspace.Snapshot.ActionCount);
             Assert.Equal(durableBefore, CaptureDurableFiles(fixture.Root));
-            Assert.Equal(
-                normalReleaseEvidenceBefore,
-                CapturePrivateState(
-                    fixture.Coordinator,
-                    "hostPublicResourceNormalReleaseEvidence"));
 
             Assert.InRange(stopElapsed, TimeSpan.Zero, TimeSpan.FromSeconds(10));
             Assert.Equal(
@@ -273,11 +265,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var rollbackIncarnationAfter =
                 fixture.StateStore.Current.NativeHostSessionIncarnation;
             Assert.Equal(rollbackIncarnationBefore, rollbackIncarnationAfter);
-            Assert.Equal(
-                normalReleaseEvidenceBefore,
-                CapturePrivateState(
-                    fixture.Coordinator,
-                    "hostPublicResourceNormalReleaseEvidence"));
             var durableAfterStop = CaptureDurableFiles(fixture.Root);
             Assert.Equal(durableBefore, durableAfterStop);
 
@@ -1166,9 +1153,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         memoryCleanupCompleteAttempts = effectCounters.MemoryCleanupCompleteAttempts,
                         memoryCleanupCompleteCalls = effectCounters.MemoryCleanupCompleteCalls,
                         memoryCleanupCompletionHistoryCount = effectCounters.MemoryCleanupCompletionHistoryCount,
-                        publicResourceTickAttempts = effectCounters.PublicResourceTickAttempts,
-                        publicResourceTickCalls = effectCounters.PublicResourceTickCalls,
-                        publicResourceNewEffectAttemptCount = effectCounters.PublicResourceNewEffectAttemptCount,
                         graphicsTotalCalls = effectCounters.GraphicsTotalCalls
                     },
                     canonical = zeroEffectCanonical,
@@ -1512,9 +1496,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         int MemoryCleanupCompleteAttempts,
         int MemoryCleanupCompleteCalls,
         int MemoryCleanupCompletionHistoryCount,
-        int PublicResourceTickAttempts,
-        int PublicResourceTickCalls,
-        uint PublicResourceNewEffectAttemptCount,
         int GraphicsTotalCalls)
     {
         internal bool AllZero =>
@@ -1531,9 +1512,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             && MemoryCleanupCompleteAttempts == 0
             && MemoryCleanupCompleteCalls == 0
             && MemoryCleanupCompletionHistoryCount == 0
-            && PublicResourceTickAttempts == 0
-            && PublicResourceTickCalls == 0
-            && PublicResourceNewEffectAttemptCount == 0
             && GraphicsTotalCalls == 0;
 
         internal void AssertAllZero() => Assert.True(AllZero);
@@ -1555,9 +1533,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     $"memoryCleanupCompleteAttempts={MemoryCleanupCompleteAttempts}",
                     $"memoryCleanupCompleteCalls={MemoryCleanupCompleteCalls}",
                     $"memoryCleanupCompletionHistoryCount={MemoryCleanupCompletionHistoryCount}",
-                    $"publicResourceTickAttempts={PublicResourceTickAttempts}",
-                    $"publicResourceTickCalls={PublicResourceTickCalls}",
-                    $"publicResourceNewEffectAttemptCount={PublicResourceNewEffectAttemptCount}",
                     $"graphicsTotalCalls={GraphicsTotalCalls}"
                 ]);
     }

@@ -6,18 +6,11 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 public sealed partial class HostManagerPlanCompiler
 {
     private static CompiledHostManagerPortableSoftwareRegistryBuildPlan CompilePortableSoftwareRegistryBuild(
-        uint abiVersion,
         HostManagerPortableSoftwareRegistryCapacityProfile source,
         CompiledHostManagerNativeBinaryIdentity binary)
     {
-        if (abiVersion != NativePortableSoftwareRegistryAbi.Version)
-        {
-            throw new InvalidDataException(
-                "build_specialize.portable_software_registry_abi_version does not match the binary.");
-        }
-
         return new CompiledHostManagerPortableSoftwareRegistryBuildPlan(
-            abiVersion,
+            NativePortableSoftwareRegistryAbi.Version,
             "software_identity_portable_registry",
             binary.FileName,
             binary.Sha256,

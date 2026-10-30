@@ -54,13 +54,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             if (request.PowerControlMask is not null) fields.Add(new(ProcessResourcePolicyBatchFields.PowerThrottling, true, "restored"));
             return [new(request.ProcessId, fields)];
         };
-        var publicTicks = fixture.PublicResourceManager.TickCalls;
         for (var cycle = 0; cycle < 3; cycle++)
         {
             var before = attempts.Count;
             _ = await fixture.RunRealtimeCycleAsync();
             Assert.Equal(before + 1, attempts.Count);
-            Assert.Equal(publicTicks + cycle + 1, fixture.PublicResourceManager.TickCalls);
         }
         Assert.Equal(new[] { failedId, memoryPeerId, cpuPeerId }, attempts);
         Assert.Equal(3U, states[failedId].MemoryPriority);

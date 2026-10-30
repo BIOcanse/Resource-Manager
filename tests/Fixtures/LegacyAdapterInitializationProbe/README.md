@@ -1,18 +1,16 @@
 # Legacy Adapter contract initialization probe
 
 This finite Windows x64 executable initializes and disposes the current production
-managed `NativeSharedResourceSession`, `NativeResourceSchedulerSession`,
-`NativeAdapterResourceLedgerSession` and `NativeLocalResourceManagerSession`.
+managed `NativeResourceSchedulerSession`, `NativeAdapterResourceLedgerSession`
+and `NativeLocalResourceManagerSession`.
 Their real constructors perform the native version, structure size and layout
-fingerprint checks: Shared11, Scheduler12, Private3 and Local10 at present.
+fingerprint checks: Scheduler12, Private3 and Local10 at present.
 
-The shared session creates one uniquely named, page-backed Local mapping and mutex.
-All capacities are one. Its only PID is the probe's own PID as owner metadata.
-The other sessions own private memory. The probe does not publish a resource,
+All capacities are one and every session owns private memory. The probe does not
 register a capability/table, start a worker, submit a scheduler target/plan/action,
 or call an external PID. It does not use hardware, SCM, installation, IFEO, the
 Core host, or the independently migrated Ledger dev.2 owner. Local10 checks the
-fourth export module only; it does not select a different product ledger.
+third export module only; it does not select a different product ledger.
 
 The executable has a 20-second watchdog and must also be run inside the validation
 batch's bounded ExecutionJob. Build and execution are the responsibility of that
@@ -53,7 +51,7 @@ its expected SHA256. Both the original file and canonical probe-output copy must
 match before any session is created and after all sessions are disposed. Read-only
 file handles remain open through the checks and session lifetimes. On success,
 stdout contains one JSON object with the native input/output paths and hash, the
-actual managed assembly paths/hashes, and four initialized/disposed module records.
+actual managed assembly paths/hashes, and three initialized/disposed module records.
 The reported protocol versions are explicitly managed expectations, verified by
 the constructors against native contracts. Any mismatch or initialization/disposal
 exception exits nonzero with the exception on stderr; a watchdog exit is 124.

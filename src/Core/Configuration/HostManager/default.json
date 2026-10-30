@@ -3,58 +3,7 @@
   "profile_revision": 69,
   "profile_name": "default",
   "build_specialize": {
-    "target_os": "windows",
-    "target_architecture": "x64",
-    "shared_resource_abi_version": 11,
-    "resource_scheduler_abi_version": 12,
-    "adapter_private_resource_ledger_abi_version": 3,
-    "adapter_instance_lease_abi_version": 196608,
-    "smart_coordinator_abi_version": 786433,
-    "memory_cleanup_abi_version": 65540,
-    "placement_coordinator_abi_version": 131072,
-    "applied_ownership_abi_version": 131072,
-    "transaction_journal_abi_version": 327680,
-    "sampling_subscription_abi_version": 262144,
-    "portable_software_registry_abi_version": 65536,
-    "software_identity_catalog_abi_version": 327680,
-    "software_identity_resolution_abi_version": 65536,
-    "report_coordinator_abi_version": 524288,
-    "file_query_abi_version": 196608,
-    "public_service_coordinator_abi_version": 327680,
-    "display_coordinator_abi_version": 196608,
-    "operation_coordinator_abi_version": 131072,
-    "metric_snapshot_abi_version": 917504,
-    "process_policy_executor_abi_version": 131072,
-    "pdh_collector_abi_version": {
-      "$metric_snapshot_defaults": "pdh.abi_version"
-    },
-    "native_modules": [
-      "adapter_private_resource_ledger",
-      "adapter_instance_lease",
-      "applied_ownership",
-      "display_coordinator",
-      "file_query",
-      "memory_cleanup_planner",
-      "metric_snapshot",
-      "operation_coordinator",
-      "placement_coordinator",
-      "public_service_coordinator",
-      "report_coordinator",
-      "sampling_subscription",
-      "smart_coordinator",
-      "pdh_collector",
-      "process_policy_executor",
-      "resource_scheduler",
-      "shared_resource",
-      "software_identity_catalog",
-      "software_identity_portable_registry",
-      "software_identity_resolution",
-      "transaction_journal"
-    ],
     "capacity_limits": {
-      "shared_resource_capacity": 65536,
-      "shared_subscription_capacity": 262144,
-      "shared_task_capacity": 262144,
       "scheduler_target_capacity": 32768,
       "scheduler_resource_capacity": 1048576,
       "scheduler_pending_capacity": 65536,
@@ -275,14 +224,6 @@
     }
   },
   "host_recreate": {
-    "shared_resources": {
-      "resource_capacity": 256,
-      "subscription_capacity": 1024,
-      "task_capacity": 2048,
-      "maximum_subscription_lease_duration_ms": 30000,
-      "maximum_queue_duration_ms": 30000,
-      "maximum_grant_duration_ms": 30000
-    },
     "resource_scheduler": {
       "target_capacity": 512,
       "private_resource_capacity": 8192,
@@ -926,10 +867,6 @@
     }
   },
   "hot_publish": {
-    "shared_resources": {
-      "subscription_coefficient": 0.25,
-      "maintenance_interval_ms": 1000
-    },
     "resource_scheduler": {
       "configuration": {
         "bytes_per_megabyte": 1048576,
@@ -1439,15 +1376,6 @@
           "description": "Installed browser runtime inventory.",
           "setting": "always",
           "available": true
-        },
-        {
-          "handle": 6,
-          "payload_handle": 106,
-          "id": "public-resource-directory",
-          "display_name": "Public resource directory",
-          "description": "Shared public resource directory.",
-          "setting": "always",
-          "available": true
         }
       ],
       "routes": [
@@ -1524,19 +1452,6 @@
           "capability_handle": 5,
           "payload_handle": 206,
           "path": "/api/public/v1/browser-runtimes",
-          "methods": [
-            "GET",
-            "HEAD"
-          ],
-          "exact_path": false,
-          "catalog_route": false,
-          "bypass_rate_limit": false
-        },
-        {
-          "handle": 7,
-          "capability_handle": 6,
-          "payload_handle": 207,
-          "path": "/api/public/v1/resources",
           "methods": [
             "GET",
             "HEAD"

@@ -31,7 +31,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(fixture.MetricSampler.ReadLatestCalls > 0);
         Assert.NotNull(fixture.Coordinator.SchedulingAuthority.Compute?.Cpu);
         Assert.True(fixture.MemoryCleanupPlanner.PlanCalls > 0, fixture.DescribeMemoryCleanupState());
-        Assert.True(fixture.PublicResourceManager.TickCalls > 0);
         Assert.Equal(gpuPlacement, Assert.Single(fixture.StateStore.Current.AppliedPlacements));
         Assert.Equal(0, fixture.StateStore.SaveCalls);
         Assert.Equal(0, actions.PrepareCalls);

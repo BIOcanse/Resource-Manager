@@ -1,11 +1,9 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using ResourceManager.Adapter.LocalResources;
 using ResourceManager.Adapter.NativeLedger;
 using ResourceManager.Adapter.NativeScheduling;
-using ResourceManager.Adapter.SharedMemory;
 
 if (args.Length != 2 || !Path.IsPathFullyQualified(args[0]) || args[1].Length != 64
     || !args[1].All(Uri.IsHexDigit))
@@ -35,19 +33,6 @@ try
     RequireHash(candidateFile, expected, "probe output native candidate");
     var sessions = new List<SessionResult>();
 
-    var nonce = Guid.NewGuid().ToString("N");
-    using (var ownProcess = Process.GetCurrentProcess())
-    using (var shared = NativeSharedResourceSession.Create(
-        $"Local\\ResourceManager.LegacyInitialization.Ledger.{nonce}",
-        $"Local\\ResourceManager.LegacyInitialization.Mutex.{nonce}",
-        new(1, 1, 1, 0.25, 1, Environment.ProcessId, ownProcess.StartTime.ToUniversalTime(),
-            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30))))
-    {
-        if (shared.Descriptor.ResourceCapacity != 1 || shared.Descriptor.MappingSizeBytes <= 0)
-            throw new InvalidOperationException("Shared-resource initialization returned invalid owned capacity.");
-    }
-    sessions.Add(new("shared-resource", SharedResourceProtocol.Version, true, true));
-
     using (var scheduler = new NativeResourceSchedulerSession(1, 1, 1, 0, SchedulerConfiguration.Create(), 1))
     {
         if (scheduler.TargetCapacity != 1 || scheduler.ResidentBytes == 0)
@@ -64,7 +49,7 @@ try
     }
     sessions.Add(new("private-resource-ledger", AdapterPrivateResourceLedgerProtocol.Version, true, true));
 
-    // This covers the fourth ABI exported by the multi-ABI DLL. It does not
+    // This covers the third ABI exported by the multi-ABI DLL. It does not
     // replace or exercise the independently migrated Ledger dev.2 product owner.
     using (var local = new NativeLocalResourceManagerSession(LocalResourceManagerConfiguration.CreateDefault(1, 1)))
     {
@@ -75,7 +60,7 @@ try
 
     RequireHash(inputFile, expected, "AdapterNativeOutput after disposal");
     RequireHash(candidateFile, expected, "probe output native candidate after disposal");
-    var managed = new[] { typeof(NativeSharedResourceSession).Assembly.Location,
+    var managed = new[] { typeof(NativeResourceSchedulerSession).Assembly.Location,
         typeof(ResourceManager.Adapter.AdapterResourceProtocol).Assembly.Location,
         typeof(SessionResult).Assembly.Location }.Select(path =>
         {

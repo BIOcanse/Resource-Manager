@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
@@ -14,12 +15,12 @@ public sealed class HostManagerRuntimePlanConfigurationIdentityTests
         };
         var first = new HostManagerAppliedOwnershipRuntimePlan(
             firstHostPlan,
-            firstHostPlan.BuildSpecialize.AppliedOwnershipAbiVersion,
+            NativeAppliedOwnershipAbi.Version,
             firstHostPlan.HostRecreate.AppliedOwnership,
             firstHostPlan.HotPublish.AppliedOwnership);
         var second = new HostManagerAppliedOwnershipRuntimePlan(
             secondHostPlan,
-            secondHostPlan.BuildSpecialize.AppliedOwnershipAbiVersion,
+            NativeAppliedOwnershipAbi.Version,
             secondHostPlan.HostRecreate.AppliedOwnership,
             secondHostPlan.HotPublish.AppliedOwnership);
 
@@ -41,12 +42,12 @@ public sealed class HostManagerRuntimePlanConfigurationIdentityTests
         };
         var first = new HostManagerTransactionJournalRuntimePlan(
             firstHostPlan,
-            firstHostPlan.BuildSpecialize.TransactionJournalAbiVersion,
+            NativeTransactionJournalAbi.Version,
             firstHostPlan.HostRecreate.TransactionJournal,
             firstHostPlan.HotPublish.TransactionJournal);
         var second = new HostManagerTransactionJournalRuntimePlan(
             secondHostPlan,
-            secondHostPlan.BuildSpecialize.TransactionJournalAbiVersion,
+            NativeTransactionJournalAbi.Version,
             secondHostPlan.HostRecreate.TransactionJournal,
             secondHostPlan.HotPublish.TransactionJournal);
 

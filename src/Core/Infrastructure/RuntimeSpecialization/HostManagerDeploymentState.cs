@@ -6,7 +6,6 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 public sealed class HostManagerDeploymentState : IHostManagerDeploymentState
 {
     private readonly object sync = new();
-    private readonly ModuleState sharedResources = new(HostManagerModuleKind.SharedResources);
     private readonly ModuleState resourceScheduler = new(HostManagerModuleKind.ResourceScheduler);
     private readonly ModuleState adapterPrivateResourceLedger = new(HostManagerModuleKind.AdapterPrivateResourceLedger);
     private readonly ModuleState smartCoordinator = new(HostManagerModuleKind.SmartCoordinator);
@@ -215,12 +214,6 @@ public sealed class HostManagerDeploymentState : IHostManagerDeploymentState
         ulong nextPublicationSequence,
         DateTimeOffset observedAtUtc)
     {
-        sharedResources.ObserveDesired(
-            plan,
-            nextPublicationSequence,
-            plan.DeploymentDigests.SharedResources.RecreateSha256,
-            plan.DeploymentDigests.SharedResources.HotPublishSha256,
-            observedAtUtc);
         resourceScheduler.ObserveDesired(
             plan,
             nextPublicationSequence,
@@ -345,7 +338,6 @@ public sealed class HostManagerDeploymentState : IHostManagerDeploymentState
             plan.Version,
             plan.HostManager.PlanEpoch,
             capturedAtUtc,
-            sharedResources.CreateSnapshot(),
             resourceScheduler.CreateSnapshot(),
             adapterPrivateResourceLedger.CreateSnapshot(),
             smartCoordinator.CreateSnapshot(),
@@ -370,7 +362,6 @@ public sealed class HostManagerDeploymentState : IHostManagerDeploymentState
     private ModuleState Get(HostManagerModuleKind module)
         => module switch
         {
-            HostManagerModuleKind.SharedResources => sharedResources,
             HostManagerModuleKind.ResourceScheduler => resourceScheduler,
             HostManagerModuleKind.AdapterPrivateResourceLedger => adapterPrivateResourceLedger,
             HostManagerModuleKind.SmartCoordinator => smartCoordinator,
@@ -397,7 +388,6 @@ public sealed class HostManagerDeploymentState : IHostManagerDeploymentState
     {
         state = module switch
         {
-            HostManagerModuleKind.SharedResources => sharedResources,
             HostManagerModuleKind.ResourceScheduler => resourceScheduler,
             HostManagerModuleKind.AdapterPrivateResourceLedger => adapterPrivateResourceLedger,
             HostManagerModuleKind.SmartCoordinator => smartCoordinator,
@@ -427,7 +417,6 @@ public sealed class HostManagerDeploymentState : IHostManagerDeploymentState
         CompiledHostManagerPlan plan)
         => module switch
         {
-            HostManagerModuleKind.SharedResources => plan.DeploymentDigests.SharedResources.RecreateSha256,
             HostManagerModuleKind.ResourceScheduler => plan.DeploymentDigests.ResourceScheduler.RecreateSha256,
             HostManagerModuleKind.AdapterPrivateResourceLedger => plan.DeploymentDigests.AdapterPrivateResourceLedger.RecreateSha256,
             HostManagerModuleKind.SmartCoordinator => plan.DeploymentDigests.SmartCoordinator.RecreateSha256,
@@ -455,7 +444,6 @@ public sealed class HostManagerDeploymentState : IHostManagerDeploymentState
         CompiledHostManagerPlan plan)
         => module switch
         {
-            HostManagerModuleKind.SharedResources => plan.DeploymentDigests.SharedResources.HotPublishSha256,
             HostManagerModuleKind.ResourceScheduler => plan.DeploymentDigests.ResourceScheduler.HotPublishSha256,
             HostManagerModuleKind.AdapterPrivateResourceLedger => plan.DeploymentDigests.AdapterPrivateResourceLedger.HotPublishSha256,
             HostManagerModuleKind.SmartCoordinator => plan.DeploymentDigests.SmartCoordinator.HotPublishSha256,

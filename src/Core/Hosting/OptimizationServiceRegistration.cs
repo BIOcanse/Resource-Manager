@@ -9,11 +9,9 @@ using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Infrastructure.Optimization.NativeScheduling;
-using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Application.SoftwareIssues;
 using ResourceManager.App.Infrastructure.Optimization.Reports;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
-using ResourceManager.App.Infrastructure.Persistence.Legacy;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.SoftwareIssues;
 using ResourceManager.App.Hosting.StartupCapabilities;
@@ -50,8 +48,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<SqliteHostManagerSmartRecordHistoryStore>());
         services.AddSingleton<IHostManagerRollbackStateStore, JsonHostManagerRollbackStateStore>();
         services.AddSingleton<HostManagerSchedulingAuthority>();
-        services.AddSingleton<IHostManagerSchedulingAuthoritySource>(static provider =>
-            provider.GetRequiredService<HostManagerSchedulingAuthority>());
         services.AddSingleton<IHostManagerMemoryModePolicySource,
             ProductBaselineHostManagerMemoryModePolicySource>();
         services.AddSingleton(static provider =>

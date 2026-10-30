@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
@@ -20,7 +21,7 @@ public sealed class HostManagerTransactionJournalDeploymentRuntime(
 
         return new HostManagerTransactionJournalRuntimePlan(
             hostPlan,
-            hostPlan.BuildSpecialize.TransactionJournalAbiVersion,
+            NativeTransactionJournalAbi.Version,
             recreate,
             hotPublish);
     }

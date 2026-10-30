@@ -33,31 +33,10 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
     int PlannedCount,
     int RequestedCount,
     int TerminalCount,
-    int SucceededCount,
-    long CompletedAtUtcTicks)
+    int SucceededCount)
 {
     internal bool HasUnresolvedCurrentEffects =>
         Disposition is HostManagerMemoryCleanupRoundDisposition.ValidationEvidenceSettlementFailed;
-
-    internal bool CompletedNormalReleaseRound =>
-        CandidateCount >= 0
-        && (Disposition switch
-        {
-            HostManagerMemoryCleanupRoundDisposition.CompleteNoDecision =>
-                PlannedCount == 0
-                && RequestedCount == 0
-                && TerminalCount == 0
-                && SucceededCount == 0,
-            HostManagerMemoryCleanupRoundDisposition.CompleteKnownFull =>
-                PlannerStateRevision > 0
-                && PlannedCount > 0
-                && PlannedCount <= CandidateCount
-                && RequestedCount == PlannedCount
-                && TerminalCount == RequestedCount
-                && SucceededCount >= 0
-                && SucceededCount <= TerminalCount,
-            _ => false
-        });
 
     internal static HostManagerMemoryCleanupExecutionResult NotRun(
         HostManagerMemoryCleanupRoundDisposition disposition)
@@ -68,8 +47,7 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
             PlannedCount: 0,
             RequestedCount: 0,
             TerminalCount: 0,
-            SucceededCount: 0,
-            CompletedAtUtcTicks: 0);
+            SucceededCount: 0);
 
     internal static HostManagerMemoryCleanupExecutionResult CompleteNoDecision(
         int candidateCount,
@@ -81,8 +59,7 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
             PlannedCount: 0,
             RequestedCount: 0,
             TerminalCount: 0,
-            SucceededCount: 0,
-            CompletedAtUtcTicks: 0);
+            SucceededCount: 0);
 
     internal static HostManagerMemoryCleanupExecutionResult CompleteKnownFull(
         int candidateCount,
@@ -96,8 +73,7 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
             count,
             count,
             count,
-            succeededCount,
-            CompletedAtUtcTicks: 0);
+            succeededCount);
 
     internal static HostManagerMemoryCleanupExecutionResult Incomplete(
         HostManagerMemoryCleanupRoundDisposition disposition =
@@ -115,12 +91,5 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
             plannedCount,
             requestedCount,
             terminalCount,
-            succeededCount,
-            CompletedAtUtcTicks: 0);
-
-    internal HostManagerMemoryCleanupExecutionResult StampCompletion(
-        DateTimeOffset completedAt)
-        => CompletedNormalReleaseRound && completedAt.UtcTicks > 0
-            ? this with { CompletedAtUtcTicks = completedAt.UtcTicks }
-            : this;
+            succeededCount);
 }

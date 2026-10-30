@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.Adapter.NativeLedger;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -16,7 +17,7 @@ public sealed class HostManagerAdapterPrivateResourceRuntime(
         var plan = runtimePlanProvider.Current.HostManager.RequirePublished();
         return new AdapterPrivateResourceRuntimePlan(
             plan,
-            plan.BuildSpecialize.AdapterPrivateResourceLedgerAbiVersion,
+            AdapterPrivateResourceLedgerProtocol.Version,
             plan.HostRecreate.AdapterPrivateResourceLedger,
             plan.HotPublish.AdapterPrivateResourceLedger);
     }
@@ -266,7 +267,7 @@ public sealed class HostManagerProcessPolicyExecutorRuntime(
         var plan = runtimePlanProvider.Current.HostManager.RequirePublished();
         return new ProcessPolicyExecutorRuntimePlan(
             plan,
-            plan.BuildSpecialize.ProcessPolicyExecutorAbiVersion,
+            NativeProcessPolicyBatchAbi.Version,
             plan.HotPublish.ProcessPolicyExecutor);
     }
 
@@ -316,7 +317,7 @@ public sealed class HostManagerPdhCollectorRuntime(
         return new(runtimePlan.Version, plan.BuildSha256,
             plan.DeploymentDigests.PdhCollector.RecreateSha256,
             plan.DeploymentDigests.PdhCollector.HotPublishSha256,
-            plan.BuildSpecialize.PdhCollectorAbiVersion,
+            NativeCoreAbi.Version,
             plan.HostRecreate.PdhCollector.BaselineResetIntervalMilliseconds,
             plan.HotPublish.PdhCollector.FrameReuseWindowMilliseconds,
             plan.HotPublish.PdhCollector.LastGoodLifetimeMilliseconds, plan);
@@ -340,7 +341,7 @@ public sealed class HostManagerPdhCollectorRuntime(
         return new PdhCollectorRuntimePlan(
             runtimePlan.Version,
             plan,
-            plan.BuildSpecialize.PdhCollectorAbiVersion,
+            NativeCoreAbi.Version,
             plan.HostRecreate.PdhCollector,
             plan.HotPublish.PdhCollector);
     }

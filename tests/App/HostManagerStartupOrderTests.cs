@@ -1,7 +1,6 @@
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Hosting;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.Adaptation;
@@ -60,6 +59,5 @@ public sealed class HostManagerStartupOrderTests
         var selfLocalManager = host.Services.GetRequiredService<
             ResourceManagerSelfLocalResourceManager>();
         Assert.False(selfLocalManager.IsBackgroundWorkerRunning);
-        Assert.NotNull(host.Services.GetService<IHostPublicResourceSelfManager>());
     }
 }

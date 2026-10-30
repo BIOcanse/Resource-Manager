@@ -6,7 +6,6 @@ public static class LocalPublicServiceCapabilityIds
     public const string SqliteDatabase = "sqlite-database";
     public const string AiModelCatalog = "ai-model-catalog";
     public const string BrowserRuntimeCatalog = "browser-runtime-catalog";
-    public const string PublicResourceDirectory = "public-resource-directory";
 }
 
 public sealed record LocalPublicServiceEndpoint(
