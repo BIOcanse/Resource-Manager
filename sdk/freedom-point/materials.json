@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "scope": "RM dev.47 Core/Generators/SourceTracking; Ledger dev.5 build-time dev.39 Core/Generators",
+  "scope": "RM dev.47 Core/Generators/SourceTracking; Ledger dev.6 build-time dev.39 Core/Generators",
   "firstPartyLicenseId": "Apache-2.0",
   "firstPartyCopyrightOwner": "BIOcanse",
   "firstPartyPublicLicensePending": false,
@@ -12,7 +12,7 @@
       "fileName": "FreedomPoint.Core.0.1.0-dev.39.nupkg",
       "bytes": 66137,
       "sha256": "6E914DD4AEE911B26850A79156DCE3CDD68467A2BB910F15445689DD5739CBD7",
-      "use": "Ledger dev.5 build",
+      "use": "Ledger dev.6 build",
       "nuspecSha256": "1E5455B7CF64C5FBF25F296CDC312AB1FE97D05C7DA1F297AE7EDEBB46E1460A",
       "oldNuspecContainsLicense": false,
       "dependencies": [],
@@ -36,7 +36,7 @@
       "fileName": "FreedomPoint.Generators.0.1.0-dev.39.nupkg",
       "bytes": 28880,
       "sha256": "5B48217611A902F877E4CC3DCF7F8DC5642F4BD6C91A242D4B595012599296C1",
-      "use": "Ledger dev.5 build generation",
+      "use": "Ledger dev.6 build generation",
       "nuspecSha256": "06F29957DD12B62A818BE9D6656EC8B48875E4BB2009F68ABE4783B552F31978",
       "oldNuspecContainsLicense": false,
       "dependencies": [

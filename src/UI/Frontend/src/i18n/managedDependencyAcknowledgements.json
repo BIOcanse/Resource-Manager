@@ -442,7 +442,7 @@
   },
   {
     "name": "ResourceManager.Ledger",
-    "version": "0.1.0-dev.5",
+    "version": "0.1.0-dev.6",
     "license": "Not declared in package metadata",
     "authors": "BIOcanse",
     "kind": "managed dependency"

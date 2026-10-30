@@ -264,7 +264,7 @@ try {
         baselineScope = @{ nativeCore = 'Accepted binary plus original NativeCore source lock rechecked before/after'
             adlx = 'Rebuilt from projected current source; accepted package binary was not substituted'
             dumpAnalysis = 'Only accepted prerequisite binary checked; not rebuilt and no new source proof'
-            ledger = 'Independent dev.5 consumer pair remains supplied by product Ledger build target' }
+            ledger = 'Independent dev.6 consumer pair remains supplied by product Ledger build target' }
         completedUtc = [DateTime]::UtcNow.ToString('O') }
     Write-Json (Join-Path $work 'native-result.json') $result
     Write-Json $contextPath $result
