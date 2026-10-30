@@ -472,8 +472,12 @@ public sealed class MemoryCpuTierTests
             """{"memoryCpuTier":null}""",
         })
         {
+            // A patch error with a field path is rejected before commit (409), like every other settings section.
             using var rejected = await fixture.PatchAsync(malformed);
-            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+            var body = (await rejected.Content.ReadFromJsonAsync<JsonObject>())!;
+            Assert.Equal("rejectedBeforeCommit", body["runtimeApplicationDisposition"]!.GetValue<string>());
+            Assert.Equal("invalid-settings-value-type", body["runtimeFailureCode"]!.GetValue<string>());
         }
         listed = (await fixture.Client.GetFromJsonAsync<JsonObject>("/api/settings/memory-cpu-tier"))!;
         Assert.Equal(2, listed["tier"]!.GetValue<int>());

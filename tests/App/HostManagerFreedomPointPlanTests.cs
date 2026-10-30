@@ -40,8 +40,8 @@ public sealed class HostManagerFreedomPointPlanTests
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();
         var points = plan.FreedomPoints.EnumeratePoints().ToArray();
-        Assert.Equal(46, points.Length);
-        Assert.Equal(40, points.Count(point => point.Status == "active"));
+        Assert.Equal(58, points.Length);
+        Assert.Equal(52, points.Count(point => point.Status == "active"));
         Assert.Equal(6, points.Count(point => point.Status == "pending"));
         var kernelLimits = Assert.Single(points, point => point.Address == BackendFreedomPointPaths.KernelEtwLimits);
         Assert.Equal("active", kernelLimits.Status);

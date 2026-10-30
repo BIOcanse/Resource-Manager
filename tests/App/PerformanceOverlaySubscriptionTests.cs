@@ -81,6 +81,7 @@ public sealed class PerformanceOverlaySubscriptionTests
         builder.Services.AddSingleton<IResourceBreakdownObservationSource>(resourceSource);
         builder.Services.AddSingleton<IMetricSnapshotObservationSource>(metricSource);
         builder.Services.AddSingleton(catalog);
+        builder.Services.AddSingleton<ResourceManager.App.Application.Software.ISoftwareRegistryView>(new EmptySoftwareRegistry());
         await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         typeof(ResourceManagerEndpointRouteBuilderExtensions)
             .GetMethod("MapSubscriptionChannelEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
@@ -327,6 +328,7 @@ public sealed class PerformanceOverlaySubscriptionTests
             builder.Services.AddSingleton<IResourceBreakdownObservationSource>(resources);
             builder.Services.AddSingleton<IMetricSnapshotObservationSource>(metrics);
             builder.Services.AddSingleton(new HardwareMetricCatalogState());
+            builder.Services.AddSingleton<ResourceManager.App.Application.Software.ISoftwareRegistryView>(new EmptySoftwareRegistry());
             builder.Services.AddSingleton<ITargetedRecordingItemCatalog>(new ItemCatalog());
             var app = TrustedAccessEndpointTestAuthentication.Build(builder);
             typeof(ResourceManagerEndpointRouteBuilderExtensions)
@@ -515,5 +517,15 @@ public sealed class PerformanceOverlaySubscriptionTests
     private sealed class Lease(Action release) : IDisposable
     {
         public void Dispose() => release();
+    }
+
+    // No registered records: the overlay target is the requested software id itself.
+    private sealed class EmptySoftwareRegistry : ResourceManager.App.Application.Software.ISoftwareRegistryView
+    {
+        public Task<IReadOnlyList<ResourceManager.App.Domain.Software.SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<ResourceManager.App.Domain.Software.SoftwareRecord>>([]);
+
+        public Task<IReadOnlyList<ResourceManager.App.Domain.Software.SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken)
+            => GetSoftwareAsync(cancellationToken);
     }
 }

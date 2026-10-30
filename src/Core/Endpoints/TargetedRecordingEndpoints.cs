@@ -52,15 +52,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         app.MapGet("/api/targeted-recordings/targets", async (
             TargetedRecordingService recordings, CancellationToken cancellationToken) =>
-            Results.Ok(await recordings.ListTargetsAsync(cancellationToken)));
+            Results.Ok((await recordings.ListTargetsAsync(cancellationToken)).ToArray()));
 
         app.MapGet("/api/targeted-recordings/items/catalog", async (
             TargetedRecordingService recordings, CancellationToken cancellationToken) =>
-            Results.Ok(await recordings.ReadItemCatalogAsync(cancellationToken)));
+            Results.Ok((await recordings.ReadItemCatalogAsync(cancellationToken)).ToArray()));
 
         app.MapGet("/api/targeted-recordings/profiles", async (
             [FromServices] TargetedRecordingProfileService profiles, CancellationToken cancellationToken) =>
-            Results.Ok(await profiles.ReadProfilesAsync(cancellationToken)));
+            Results.Ok((await profiles.ReadProfilesAsync(cancellationToken)).ToArray()));
 
         app.MapPost("/api/targeted-recordings/profiles", async (
             TargetedRecordingProfileCreateRequest request, [FromServices] TargetedRecordingProfileService profiles,
