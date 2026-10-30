@@ -9,7 +9,6 @@ internal sealed record FrontendAppearance
     public string UiStyle { get; init; } = FrontendPoints.UiStyle;
     public string Theme { get; init; } = FrontendPoints.Theme;
     public string AnimationStyle { get; init; } = FrontendPoints.AnimationStyle;
-    public bool AutoDisableAnimations { get; init; } = FrontendPoints.AutoDisableAnimations;
     public string ResourceBarFrameRateMode { get; init; } = FrontendPoints.BarFrameRateMode;
     public int ResourceBarFrameRate { get; init; } = FrontendPoints.BarFrameRate;
     public string BarColorMode { get; init; } = FrontendPoints.BarColorMode;

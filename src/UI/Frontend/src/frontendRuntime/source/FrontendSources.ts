@@ -48,12 +48,6 @@ import type { DeviceTopologyInformationSnapshot, DeviceTopologySnapshotState } f
 import type { BackendStartupCapabilities } from "../../types.ts";
 import { getRuntimeCapabilities } from "../../data/runtimeCapabilities/runtimeCapabilitiesApi.ts";
 import {
-  buildResourceManagerSelfSchedulingSubscriptionUrl,
-  type ResourceManagerSelfSchedulingSnapshot
-} from "../../data/selfScheduling/resourceManagerSelfSchedulingApi.ts";
-import { resourceManagerSelfSchedulingDecoder } from
-  "../../data/selfScheduling/resourceManagerSelfSchedulingDecoder.ts";
-import {
   buildOperationsSubscriptionUrl,
   type HostManagerOperationsState
 } from "../../data/operations/operationsApi.ts";
@@ -201,7 +195,6 @@ export interface FrontendSources {
   readonly resourceProcessDetails: PushValueSourceFamily<ResourceBreakdownQuery, ResourceProcessDetailsSnapshot>;
   readonly appSettings: SourceHandle<CommittedAppSettingsResult>;
   readonly runtimeCapabilities: SourceHandle<BackendStartupCapabilities>;
-  readonly selfScheduling: PushValueSource<ResourceManagerSelfSchedulingSnapshot>;
   readonly localSystemStatus: PushValueSource<LocalSystemStatus>;
   readonly controlActualState: PushValueSource<ControlActualState>;
   /** 设备拓扑的结构与健康：后端初次推当前值，之后只在变化时推；informationFields 只有 Fixed 与 EventDriven 字段。 */
@@ -307,12 +300,6 @@ export function createFrontendSources(
       key: "runtime.capabilities",
       load: (signal) => getRuntimeCapabilities(requestClient, signal),
       canRetainStale: () => false
-    }),
-    selfScheduling: new BackendPushValueSource<ResourceManagerSelfSchedulingSnapshot>({
-      key: "resource-manager.self-scheduling",
-      channel: subscriptionChannel,
-      buildUrl: buildResourceManagerSelfSchedulingSubscriptionUrl,
-      decoder: resourceManagerSelfSchedulingDecoder
     }),
     localSystemStatus: new BackendPushValueSource<LocalSystemStatus>({
       key: "local-system.status",

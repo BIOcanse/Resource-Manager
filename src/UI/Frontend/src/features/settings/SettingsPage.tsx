@@ -78,7 +78,6 @@ interface SettingsPageProps {
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
   onThemeChange: (theme: AppPalette) => void;
   onAnimationStyleChange: (style: AnimationStyleId) => void;
-  onAutoDisableAnimationsChange: (enabled: boolean) => void;
   onResourceBarFrameRateModeChange: (mode: AppResourceBarFrameRateMode) => void;
   onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
@@ -363,7 +362,6 @@ export function SettingsPage(props: SettingsPageProps) {
               onUiStyleChange={props.onUiStyleChange}
               onThemeChange={props.onThemeChange}
               onAnimationStyleChange={props.onAnimationStyleChange}
-              onAutoDisableAnimationsChange={props.onAutoDisableAnimationsChange}
               onResourceBarFrameRateModeChange={props.onResourceBarFrameRateModeChange}
               onResourceBarFrameRateChange={props.onResourceBarFrameRateChange}
               onBarColorModeChange={props.onBarColorModeChange}

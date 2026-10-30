@@ -16,7 +16,7 @@ export default async function resourceBarInteractionJourney(page, baseUrl) {
   await setScenario(page, baseUrl, { resourceSoftwareMix: "audit", resourceBreakdownGeneration: 0 });
   await seedFrontendPreferences(page, (value) => {
     value.appearance.theme = "light";
-    value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false;
+    value.appearance.animationStyle = "desktop";
   });
   await page.setViewportSize({ width: 1100, height: 800 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });

@@ -71,7 +71,7 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
   let lastDrawnSegments: ResourcePaintSegment[] = [];
   // 画布样式跟外观走：外观（对象按内容比较，只在真变了时换新）不变就沿用，不随每次数据更新重读计算样式、重量字。
   let paintStyle: { presentation: ResourceBarPresentation; style: CanvasPaintStyle } | null = null;
-  // 按内容比较：属性被写成同样的值时（App 的外观副作用随自调度快照重跑，每次都会写）观察器也会通知，
+  // 按内容比较：属性被写成同样的值时（App 的外观副作用重跑时会再写一遍同样的值）观察器也会通知，
   // 这时外观没变，不能当成变化去重画，否则正在走的过渡被直接画成末帧。
   const [presentation, setPresentation] = createSignal(readResourceBarPresentation(), { equals: samePresentation });
 

@@ -7,7 +7,6 @@ function createSettingsStore(options: Parameters<typeof createActualSettingsStor
   }) });
 }
 import { frontendRefreshIntervals } from "./fixtures/frontendRefreshIntervalFixture.ts";
-import { resolveSelfCpuRuntimePlan } from "../src/app/selfScheduling/resolveSelfCpuRuntimePlan.ts";
 import { updateReportRuleField } from "../src/features/settings/reportRuleSettingsModel.ts";
 import { RequestProblem } from "../src/frontendRuntime/request/RequestProblem.ts";
 import assert from "node:assert/strict";
@@ -524,11 +523,8 @@ await new Promise<void>((resolve, reject) => {
   });
 });
 
-// The frontend selects a fully expanded context; it never expands settings.
-assert.equal(resolveSelfCpuRuntimePlan(frontendRefreshIntervals, "optimize", false), frontendRefreshIntervals.backgroundOptimized);
-assert.equal(resolveSelfCpuRuntimePlan(frontendRefreshIntervals, "optimize", true), frontendRefreshIntervals.foreground);
-assert.equal(resolveSelfCpuRuntimePlan(frontendRefreshIntervals, "normal", false), frontendRefreshIntervals.foreground);
-assert.equal(resolveSelfCpuRuntimePlan(null, "normal", true), null);
+// The refresh plan has exactly one resolved context: the user's manual settings, with no background profile.
+assert.deepEqual(Object.keys(frontendRefreshIntervals).sort(), ["defaults", "presets", "resolved"]);
 
 function result(
   revision: string,
@@ -658,13 +654,11 @@ await new Promise<void>((resolve, reject) => {
       assert.deepEqual(store.frontendRefreshIntervals(), frontendRefreshIntervals);
       store.updateLogicRefreshInterval("monitor", { mode: "custom", preset: "balanced", customValue: 1750 });
       const next = { ...result("intervals-b", "normal", "system"), frontendRefreshIntervals: { ...frontendRefreshIntervals,
-        foreground: { monitor: 2345, resourceTable: 3456, localSystem: 4567 },
-        backgroundOptimized: { monitor: 5678, resourceTable: 6789, localSystem: 7890 } } };
+        resolved: { monitor: 2345, resourceTable: 3456, localSystem: 4567 } } };
       await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(next);
       await new Promise<void>(resolve => setImmediate(resolve));
-      assert.equal(store.frontendRefreshIntervals()!.foreground.monitor, frontendRefreshIntervals.foreground.monitor);
-      assert.equal(resolveSelfCpuRuntimePlan(store.frontendRefreshIntervals(), "optimize", false)!.monitor, frontendRefreshIntervals.backgroundOptimized.monitor);
+      assert.equal(store.frontendRefreshIntervals()!.resolved.monitor, frontendRefreshIntervals.resolved.monitor);
       assert.equal(store.draftSettings().performance!.monitorRefreshIntervalMs.customValue, 1750);
       assert.equal(store.isDirty(), true);
       store.resetDraftToDefaults("appearance");

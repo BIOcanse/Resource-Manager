@@ -6,9 +6,6 @@ import { AppShell } from "./app/AppShell";
 import { useRuntimeReadContext } from "./app/useRuntimeReadContext";
 import { useShellResizeBinding } from "./app/useShellResizeBinding";
 import { useManagementInventory } from "./features/management/useManagementInventory";
-import { resolveSelfGpuRuntimePlan } from "./app/selfScheduling/resolveSelfGpuRuntimePlan";
-import { createAnimationStyleSelection } from "./app/selfScheduling/createAnimationStyleSelection";
-import { subscribeInteractionInput } from "./interactions/solid/lodestone.ts";
 import { useSoftwareActions } from "./app/useSoftwareActions";
 import { ConfirmDialogHost, ToastHost } from "./components/AppFeedback";
 import { ManualSoftwareModal } from "./features/management/components/ManualSoftwareModal";
@@ -32,8 +29,8 @@ import { createMonitorStore, type MonitorStore } from "./stores/monitorStore";
 import { createOptimizationStore } from "./stores/optimizationStore";
 import {
   createSettingsStore,
-  normalizeAutoDisableAnimations,
-  normalizeBarColorMode
+  normalizeBarColorMode,
+  resolveEffectiveFontSmoothing
 } from "./stores/settingsStore";
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
 import { AccessRequestSnapshotProvider } from "./features/trustedAccess/AccessRequestSnapshotContext.tsx";
@@ -91,7 +88,6 @@ export default function App() {
   useShellResizeBinding();
   const readContext = useRuntimeReadContext({
     localSystemSource: frontendRuntime.sources.localSystemStatus,
-    selfSchedulingSource: frontendRuntime.sources.selfScheduling,
     frontendWork,
     refreshIntervals: settings.frontendRefreshIntervals
   });
@@ -116,15 +112,15 @@ export default function App() {
     reportSource: frontendRuntime.sources.optimizationReports,
     statusSource: frontendRuntime.sources.smartCoordinatorStatus,
     statusActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationSmartStatus),
-    statusIntervalMs: () => readContext.cpuRuntimePlan()?.monitor ?? null,
+    statusIntervalMs: () => readContext.readIntervals()?.monitor ?? null,
     reportsActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationReports),
     requestClient: frontendRuntime.requestClient,
     confirmDialog
   });
   const metricSnapshotIntervalMs = createMemo(() =>
-    readContext.cpuRuntimePlan()?.monitor ?? null);
+    readContext.readIntervals()?.monitor ?? null);
   const resourceTableIntervalMs = createMemo(() =>
-    readContext.cpuRuntimePlan()?.resourceTable ?? null);
+    readContext.readIntervals()?.resourceTable ?? null);
   const monitor: MonitorStore = createMonitorStore({
     visibleDashboardCardIds: () =>
       frontendWork.activeVisibilitySourceIds(frontendVisibilitySourceKinds.monitorCard),
@@ -274,18 +270,8 @@ export default function App() {
   const pageTitle = createMemo(() => navigation.page(activePage()).label());
   const preciseGpuPlacementEnabled = createMemo(() => settings.settings().performance?.preciseGpuPlacementEnabled === true);
   const systemUptime = readContext.systemUptime;
-  const currentSelfScheduling = readContext.selfScheduling;
-  const animationSelection = createAnimationStyleSelection({
-    style: () => animationStyle(settings.settings().appearance?.animationStyle).id,
-    autoDisable: () => normalizeAutoDisableAnimations(settings.settings().appearance?.autoDisableAnimations),
-    foreground: readContext.foregroundInteractive,
-    gpuGrade: () => currentSelfScheduling()?.gpuGrade ?? "normal",
-    now: () => performance.now()
-  });
-  onCleanup(subscribeInteractionInput(animationSelection.recordInput));
-  const gpuRuntimePlan = createMemo(() => resolveSelfGpuRuntimePlan(
-    settings.settings().appearance,
-    animationSelection.effectiveStyle()));
+  // 动画风格只按用户在设置里的选择（docs/animation_style_2026-10-26.md）。
+  const selectedAnimationStyle = createMemo(() => animationStyle(settings.settings().appearance?.animationStyle).id);
 
   createEffect(() => {
     const page = activePage();
@@ -305,11 +291,6 @@ export default function App() {
   });
 
   createEffect(() => {
-    document.body.dataset.selfCpuGrade = currentSelfScheduling()?.cpuGrade ?? "normal";
-    document.body.dataset.selfGpuGrade = currentSelfScheduling()?.gpuGrade ?? "normal";
-  });
-
-  createEffect(() => {
     document.body.dataset.frontendFocused = readContext.frontendFocused() ? "yes" : "no";
   });
 
@@ -324,7 +305,7 @@ export default function App() {
   });
 
   createEffect(() => {
-    publishAnimationStyle(animationStyle(animationSelection.effectiveStyle()));
+    publishAnimationStyle(animationStyle(selectedAnimationStyle()));
   });
 
   createEffect(() => {
@@ -336,7 +317,8 @@ export default function App() {
   });
 
   createEffect(() => {
-    document.body.dataset.fontSmoothing = gpuRuntimePlan().fontSmoothing;
+    document.body.dataset.fontSmoothing = resolveEffectiveFontSmoothing(
+      settings.settings().appearance?.fontSmoothing, selectedAnimationStyle());
   });
 
   onMount(() => {
@@ -405,7 +387,7 @@ export default function App() {
   return (
     <FrontendWorkProvider controller={frontendWork}>
       <AccessRequestSnapshotProvider>
-      <FrontendReadIntervalsProvider configuration={settings.frontendRefreshIntervals} current={readContext.cpuRuntimePlan}>
+      <FrontendReadIntervalsProvider configuration={settings.frontendRefreshIntervals} current={readContext.readIntervals}>
       <>
       <AppShell
         activePage={activePage}
@@ -419,7 +401,7 @@ export default function App() {
         onPageTargetFocused={(title) => {
           title.scrollIntoView({
             block: "start",
-            behavior: animationStyleMoves(gpuRuntimePlan().animations) ? "smooth" : "auto"
+            behavior: animationStyleMoves(selectedAnimationStyle()) ? "smooth" : "auto"
           });
           setAccessRequestsFocusRequested(false);
         }}
@@ -435,7 +417,7 @@ export default function App() {
       >
         <AppRoutes
           onTrustedAccessFocusTargetChange={setTrustedAccessFocusTarget}
-          animationStyle={gpuRuntimePlan().animations}
+          animationStyle={selectedAnimationStyle()}
           activePage={activePage}
           detailsTab={detailsNavigation.selected}
           monitor={monitor}

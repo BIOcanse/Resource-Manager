@@ -43,7 +43,6 @@ export default async function interactionParityJourney(page, baseUrl) {
   await seedFrontendPreferences(page, value => {
     value.appearance.language = "zh-CN";
     value.appearance.animationStyle = "none";
-    value.appearance.autoDisableAnimations = false;
   });
   try {
     for (const style of STYLES) {
@@ -58,7 +57,6 @@ export default async function interactionParityJourney(page, baseUrl) {
         await writeFrontendPreferences(page, value => {
           value.appearance.language = "zh-CN";
           value.appearance.animationStyle = style;
-          value.appearance.autoDisableAnimations = false;
         });
         await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
         await page.waitForFunction(id => document.body.dataset.animations === id

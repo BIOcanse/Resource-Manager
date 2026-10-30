@@ -89,8 +89,6 @@ export type AppLanguageMode =
   | "th-TH";
 export type AppOptimizationMode = "normal" | "limited" | "cpu" | "gpu"
   | "memory+cpu" | "memory+gpu" | "cpu+gpu" | "smart";
-export type ResourceManagerSelfCpuGrade = "normal" | "optimize";
-export type ResourceManagerSelfGpuGrade = "normal" | "optimize";
 export type AppPresetNumericSettingMode = "aotu" | "preset" | "custom";
 export type AppLogicRefreshIntervalPreset = "responsive" | "balanced" | "lowPower" | "quiet";
 export type AppLogicRefreshIntervalKey =
@@ -498,9 +496,8 @@ export interface AppAppearanceSettings {
   uiStyle: AppUiStyle;
   // 当前风格下的配色。
   theme: AppPalette;
-  // 动画风格（目录 presentation/animationStyle.ts）和“按自调度自动关闭动画”（docs/animation_style_2026-10-26.md）。
+  // 动画风格（目录 presentation/animationStyle.ts，docs/animation_style_2026-10-26.md）。
   animationStyle?: AnimationStyleId;
-  autoDisableAnimations?: boolean;
   resourceBarFrameRateMode?: AppResourceBarFrameRateMode;
   // custom 时的帧/秒（10–240）；display 时保留不用。
   resourceBarFrameRate?: number;
@@ -534,8 +531,8 @@ export interface AppDebugSettings {
 
 export type FrontendReadIntervals = Readonly<Record<AppLogicRefreshIntervalKey, number>>;
 export interface FrontendRefreshIntervals {
-  readonly foreground: FrontendReadIntervals;
-  readonly backgroundOptimized: FrontendReadIntervals;
+  /** 按用户刷新设置解析出的读取间隔：自定义值、所选档位，或自动时的自动前台档位。 */
+  readonly resolved: FrontendReadIntervals;
   readonly presets: Readonly<Record<AppLogicRefreshIntervalKey, Readonly<Record<AppLogicRefreshIntervalPreset, number>>>>;
   readonly defaults: Readonly<Record<AppLogicRefreshIntervalKey, AppPresetNumericSetting>>;
 }

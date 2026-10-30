@@ -1,5 +1,4 @@
 import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
-import { AUTO_ANIMATION_OPTIMIZE_STYLE } from "../../src/app/selfScheduling/createAnimationStyleSelection.ts";
 
 const normalSettleMinimumMs = 400;
 const disabledMotionObservationMs = 600;
@@ -36,46 +35,30 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     const value = item?.querySelector(".resource-breakdown-header span")?.textContent?.trim();
     return Number.parseFloat(value ?? "") === Number.parseFloat(expected);
   }, displayValue, { timeout: 6000 });
-  const installMotionObserver = async (switchWhenMoving = false) => page.evaluate((switchOnMoving) => {
+  const installMotionObserver = async () => page.evaluate(() => {
     const track = document.querySelector('[data-metric-id="cpu.usage"].resource-bar-track');
     if (!(track instanceof HTMLElement)) {
       throw new Error("CPU resource track is unavailable.");
     }
     const events = [];
-    const probe = { track, events, observer: null, modeSwitch: null };
+    const probe = { track, events, observer: null };
     const observer = new MutationObserver(() => {
-      const moving = track.classList.contains("moving");
-      events.push({ moving, at: performance.now() });
-      if (switchOnMoving && moving && !probe.modeSwitch) {
-        // 在真正开始运动的浏览器回调中切到后台再回到前台，排除 Playwright 往返和轮询延迟：
-        // 进后台不改风格，回到前台（不活跃、需要节省）的那一刻选无动画，正在走的过渡当场走完。
-        probe.modeSwitch = { startedAt: performance.now(), movingBefore: moving };
-        window.dispatchEvent(new Event("blur"));
-        probe.modeSwitch.modeInBackground = document.body.dataset.animations;
-        window.dispatchEvent(new Event("focus"));
-        Object.assign(probe.modeSwitch, {
-          returnedAt: performance.now(),
-          movingAfter: track.classList.contains("moving"),
-          modeAfter: document.body.dataset.animations
-        });
-      }
+      events.push({ moving: track.classList.contains("moving"), at: performance.now() });
     });
     observer.observe(track, { attributes: true, attributeFilter: ["class"] });
     probe.observer = observer;
     window.__resourceLayoutMotionProbe = probe;
-  }, switchWhenMoving);
+  });
   const readMotion = () => page.evaluate(() => {
     const probe = window.__resourceLayoutMotionProbe;
     return {
       events: probe?.events ?? [],
-      moving: probe?.track?.classList.contains("moving") ?? null,
-      modeSwitch: probe?.modeSwitch ?? null
+      moving: probe?.track?.classList.contains("moving") ?? null
     };
   });
-  // 动画风格和自动关闭是前端偏好：像用户保存过一样写前端缓存，随后 reload 生效。这里用桌面常规（固定时长）。
-  const setAnimations = (style, autoDisable = false) => writeFrontendPreferences(page, (value) => {
+  // 动画风格是前端偏好：像用户保存过一样写前端缓存，随后 reload 生效。这里用桌面常规（固定时长）。
+  const setAnimations = (style) => writeFrontendPreferences(page, (value) => {
     value.appearance.animationStyle = style;
-    value.appearance.autoDisableAnimations = autoDisable;
   });
   const disposeMotionObserver = () => page.evaluate(() => {
     window.__resourceLayoutMotionProbe?.observer?.disconnect();
@@ -119,48 +102,6 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
   `Normal layout transition did not settle through the task lifecycle: ${JSON.stringify(normal)}`);
   await disposeMotionObserver();
 
-  await setScenario({
-    gpuGrade: "optimize",
-    resourceBreakdownGeneration: 4
-  });
-  await setAnimations("desktop", true);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await track.waitFor({ state: "visible", timeout: 7000 });
-  await page.waitForFunction(() => document.body.dataset.selfGpuGrade === "optimize", null, {
-    timeout: 6500
-  });
-  await page.waitForFunction(() => document.body.dataset.animations === "desktop");
-  await installMotionObserver(true);
-  await setScenario({ resourceBreakdownGeneration: 5 });
-  await waitForCpuTotal("38%");
-  await page.waitForFunction(() =>
-    window.__resourceLayoutMotionProbe?.events.some((event) => event.moving === true),
-  null,
-  { timeout: 3000 });
-  await page.waitForFunction(tier => document.body.dataset.animations === tier, AUTO_ANIMATION_OPTIMIZE_STYLE, {
-    timeout: 3000
-  });
-  await page.waitForFunction(() => {
-    const events = window.__resourceLayoutMotionProbe?.events ?? [];
-    const movingIndex = events.findIndex((event) => event.moving === true);
-    return movingIndex >= 0
-      && events.slice(movingIndex + 1).some((event) => event.moving === false);
-  }, null, { timeout: 3000 });
-  const reactive = await readMotion();
-  const modeSwitch = reactive.modeSwitch;
-  const reactiveMoving = reactive.events.find((event) => event.moving === true);
-  const reactiveSettled = reactive.events.find(
-    (event) => reactiveMoving && event.at > reactiveMoving.at && event.moving === false);
-  assert(reactive.moving === false
-    && reactiveMoving
-    && reactiveSettled
-    && modeSwitch?.movingBefore === true
-    && modeSwitch.modeInBackground === "desktop"
-    && modeSwitch.modeAfter === AUTO_ANIMATION_OPTIMIZE_STYLE
-    && modeSwitch.movingAfter === false,
-  `Animation-mode change on foreground return did not settle before dispatch returned: ${JSON.stringify(reactive)}`);
-  await disposeMotionObserver();
-
   await setScenario({ resourceBreakdownGeneration: 2 });
   await setAnimations("none");
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -177,12 +118,9 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     && disabled.events.every((event) => event.moving === false),
   `Disabled motion entered a moving state: ${JSON.stringify(disabled)}`);
   await disposeMotionObserver();
-  await setScenario({
-    gpuGrade: "normal",
-    resourceBreakdownGeneration: 0
-  });
+  await setScenario({ resourceBreakdownGeneration: 0 });
 
   assert(pageErrors.length === 0 && consoleErrors.length === 0,
     `Resource layout browser errors: ${JSON.stringify({ pageErrors, consoleErrors })}`);
-  return { normal, reactive, modeSwitch, disabled, pageErrors, consoleErrors };
+  return { normal, disabled, pageErrors, consoleErrors };
 }

@@ -2615,7 +2615,6 @@ const deDeAppCopy: AppCopy = {
     resourceBreakdownReadFailed: "Das Lesen der Ressourcennutzung ist fehlgeschlagen, versuchen Sie es später erneut",
     resourceMonitorReadFailed: "Das Lesen der Ressourcenüberwachung ist fehlgeschlagen, versuchen Sie es später erneut",
     runtimeCapabilityReadFailed: "Die Laufzeitfunktionen dieses Startprofils konnten nicht gelesen werden",
-    selfSchedulingReadFailed: "Das Lesen des Planungsstatus des Ressourcen-Managers ist fehlgeschlagen, versuchen Sie es später erneut",
     softwareMetadataReadFailed: "Das Lesen der Softwarebeschreibung ist fehlgeschlagen, versuchen Sie es später erneut",
     settingsNotCommitted: "Der Dienst hat die Einstellungen nicht übernommen",
     close: "Schließen",

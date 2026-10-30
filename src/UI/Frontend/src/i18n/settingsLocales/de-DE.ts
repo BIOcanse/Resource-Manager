@@ -163,7 +163,7 @@ export default createSettingsLocale("de-DE", {
       {
         "id": "aotu",
         "label": "Automatisch",
-        "description": "Aktualisierungsrate anhand des Leistungsmodus und Fensterzustands wählen."
+        "description": "Die integrierte automatische Vorgabe verwenden."
       },
       {
         "id": "preset",
@@ -224,8 +224,6 @@ export default createSettingsLocale("de-DE", {
     "themeDescription": "Wählen Sie ein Farbschema des aktuellen Stils. System folgt der hellen oder dunklen Windows-Einstellung.",
     "animationStyleTitle": "Animationsstil",
     "animationStyleDescription": "Legt fest, wie Übergänge ablaufen und wie Bedienelemente an ihren Platz gelangen. Höchste Leistung entfernt zusätzlich Schatten, Glanz und Unschärfe.",
-    "autoDisableAnimationsTitle": "Animationen durch Selbstplanung automatisch deaktivieren",
-    "autoDisableAnimationsDescription": "Wenn aktiviert: Kehrt die Oberfläche ohne kürzliche Eingabe in den Vordergrund zurück und verlangt das Ergebnis der Selbstplanung Einsparungen, wird Keine Animationen verwendet, andernfalls der gewählte Stil. Während der Bedienung im Vordergrund wird nicht gewechselt. Bei Keine Animationen oder Höchste Leistung ohne Wirkung.",
     "animationStyleOptions": {
       "smooth": { "label": "Fließend", "description": "Wie macOS und mobile Systeme: Federbewegung, die die Geschwindigkeit der Geste übernimmt, jederzeit abgefangen werden kann und an Bildlaufrändern zurückfedert" },
       "desktop": { "label": "Desktop-Standard", "description": "Wie übliche Windows-Desktopsoftware: kurze, abbremsende Übergänge ohne übernommene Geschwindigkeit und ohne Zurückfedern" },

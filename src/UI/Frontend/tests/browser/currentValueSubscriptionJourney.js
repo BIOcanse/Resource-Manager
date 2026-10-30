@@ -8,8 +8,6 @@ export default async function currentValueSubscriptionJourney(
 ) {
   const localStreamPath = "/api/local-system/status/subscribe";
   const localDirectPath = "/api/local-system/status";
-  const schedulingStreamPath = "/api/adapters/resource-manager/scheduling/subscribe";
-  const schedulingDirectPath = "/api/adapters/resource-manager/scheduling";
   const channelPath = "/api/subscriptions/stream";
   const pageErrors = [];
   // A shared-channel membership change resends unchanged leases. A new owner
@@ -34,10 +32,7 @@ export default async function currentValueSubscriptionJourney(
   // 首个发布在 1 秒对齐边界到达，不必等默认前台 30 秒。
   await seedFrontendPreferences(page, value => { value.refresh.localSystem = customRefresh(1_000); });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
-  await Promise.all([
-    waitForStarted(page, localStreamPath),
-    waitForStarted(page, schedulingStreamPath)
-  ]);
+  await waitForStarted(page, localStreamPath);
   await page.waitForFunction(() => {
     const value = document.querySelector("#captureTime")?.textContent?.trim();
     return Boolean(value && value !== "--");
@@ -45,10 +40,8 @@ export default async function currentValueSubscriptionJourney(
 
   const initial = {
     local: await readTelemetry(page, localStreamPath),
-    scheduling: await readTelemetry(page, schedulingStreamPath),
     channel: await readTelemetry(page, channelPath),
     localDirect: await readTelemetry(page, localDirectPath),
-    schedulingDirect: await readTelemetry(page, schedulingDirectPath),
     uptime: await page.locator("#captureTime").textContent()
   };
   // Server close delivery can lag a replacement request. Strict browser concurrency
@@ -60,13 +53,9 @@ export default async function currentValueSubscriptionJourney(
     * subscriptionPathMaximum(initial.channel.subscriptionSets, localStreamPath));
   assert(initial.local.queries.every(query => new URLSearchParams(query).get("intervalMs") === "1000"),
     `Local-system subscription ignored the saved 1 s refresh choice: ${JSON.stringify(initial.local.queries)}`);
-  assertSingleActiveSubscription(initial.scheduling, "self scheduling", initial.browserChannel.maxInFlight
-    * subscriptionPathMaximum(initial.channel.subscriptionSets, schedulingStreamPath));
   assertSinglePhysicalChannel(initial.channel, "physical callback channel");
   assert(initial.localDirect.started === 0,
     `Local-system value used periodic/direct GET: ${JSON.stringify(initial.localDirect)}`);
-  assert(initial.schedulingDirect.started === 0,
-    `Self-scheduling value used periodic/direct GET: ${JSON.stringify(initial.schedulingDirect)}`);
 
   await resetTelemetry(page);
   // Full real-server 1.2 s window checks stable leases and absence of direct GETs;
@@ -74,15 +63,12 @@ export default async function currentValueSubscriptionJourney(
   await page.waitForTimeout(1_200);
   const settled = {
     local: await readTelemetry(page, localStreamPath),
-    scheduling: await readTelemetry(page, schedulingStreamPath),
     channel: await readTelemetry(page, channelPath),
-    localDirect: await readTelemetry(page, localDirectPath),
-    schedulingDirect: await readTelemetry(page, schedulingDirectPath)
+    localDirect: await readTelemetry(page, localDirectPath)
   };
   assertStableStream(settled.local, "settled local system");
-  assertStableStream(settled.scheduling, "settled self scheduling");
   assertStablePhysicalChannel(settled.channel, "settled physical callback channel");
-  assert(settled.localDirect.started === 0 && settled.schedulingDirect.started === 0,
+  assert(settled.localDirect.started === 0,
     `Direct GET reappeared after subscription: ${JSON.stringify(settled)}`);
 
   await resetTelemetry(page);

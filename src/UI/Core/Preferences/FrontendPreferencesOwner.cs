@@ -165,6 +165,11 @@ internal sealed partial class FrontendPreferencesOwner
     //   in-app update notice had shown; since 2026-10-29 both channels follow the notification sequence
     //   (docs/notifications_2026-10-29.md), so the record is dropped. Delete once every supported upgrade starts after
     //   that release.
+    // - frontend-preferences-self-scheduling-options-v1: on 2026-10-29 the user removed Resource Manager
+    //   self-scheduling and the frontend option it triggered: appearance.autoDisableAnimations (turn animation off by
+    //   self-scheduling) is dropped, and animation follows only the selected style. The other removed option, the
+    //   automatic refresh background preset, was a build point and was never written to this cache. Delete once every
+    //   supported upgrade starts after the 2026-10-29 release.
     private bool cacheFieldsMigrated;
 
     private void MigrateCacheFields()
@@ -185,6 +190,7 @@ internal sealed partial class FrontendPreferencesOwner
                 // 2026-10-26 删除读数来源设置，在严格读取前丢弃旧字段。
                 changed |= appearance.Remove("readingSourceMode");
                 changed |= MigrateAnimationAppearance(appearance);
+                changed |= appearance.Remove("autoDisableAnimations");
             }
             changed |= MigrateNvmlFbUsedField(root);
             changed |= root?["notifications"] is JsonObject notifications && notifications.Remove("updateInAppNotifiedVersion");
@@ -195,12 +201,11 @@ internal sealed partial class FrontendPreferencesOwner
 
     // Migration frontend-preferences-animation-style-v1 (docs/animation_style_2026-10-26.md).
     // Appearance written before 2026-10-26 carries animations (auto, normal, none, ultra) and
-    // motionFeel (standard, smooth, crisp). They become animationStyle and autoDisableAnimations:
-    // auto -> switch on, normal -> switch off, style from the feel (smooth -> smooth; standard,
-    // crisp or no feel -> desktop); none and ultra are copied as the style with the switch at its
-    // point default. A value that already has animationStyle only loses the old fields. The
-    // frontend's browser-storage reader applies the same mapping. Delete with the next release
-    // that no longer reads caches older than this one.
+    // motionFeel (standard, smooth, crisp). They become animationStyle: none and ultra are copied
+    // as the style; auto and normal take the style from the feel (smooth -> smooth; standard,
+    // crisp or no feel -> desktop). A value that already has animationStyle only loses the old
+    // fields. The frontend's browser-storage reader applies the same mapping. Delete with the next
+    // release that no longer reads caches older than this one.
     private static bool MigrateAnimationAppearance(JsonObject appearance)
     {
         if (!appearance.ContainsKey("animations") && !appearance.ContainsKey("motionFeel")) return false;
@@ -209,14 +214,8 @@ internal sealed partial class FrontendPreferencesOwner
         appearance.Remove("animations");
         appearance.Remove("motionFeel");
         if (appearance.ContainsKey("animationStyle")) return true;
-        if (animations is "none" or "ultra")
-        {
-            appearance["animationStyle"] = animations;
-            appearance["autoDisableAnimations"] = FrontendPoints.AutoDisableAnimations;
-            return true;
-        }
-        appearance["animationStyle"] = feel == "smooth" ? "smooth" : "desktop";
-        appearance["autoDisableAnimations"] = animations != "normal";
+        appearance["animationStyle"] = animations is "none" or "ultra" ? animations
+            : feel == "smooth" ? "smooth" : "desktop";
         return true;
     }
 

@@ -20,7 +20,7 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
     for (const column of columns) if (column.id === "memory") column.source = "process_all_private_commit_actual";
   }
   preferences.dashboard = dashboard;
-  preferences.appearance.animationStyle = "desktop"; preferences.appearance.autoDisableAnimations = false;
+  preferences.appearance.animationStyle = "desktop";
   await page.addInitScript(([key, text]) => {
     if (location.origin !== "null" && localStorage.getItem(key) === null) localStorage.setItem(key, text);
   }, ["resource-manager:frontend-preferences:v1", JSON.stringify(preferences)]);
@@ -284,7 +284,7 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   // 动画风格的所有者是前端偏好；直接写 body 会被 App 的运行方案 effect 在测量窗口里改回。
   // 用已保存偏好重新加载，让无动画的展开处于真实的 none 状态，测完恢复原偏好。
   const reloadWithAnimations = async (animations) => {
-    await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = animations; value.appearance.autoDisableAnimations = false; });
+    await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = animations; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await visibleRows("software").first().waitFor({ timeout: 15_000 });
     await panel.evaluate((element) => element.scrollIntoView({ block: "start" }));

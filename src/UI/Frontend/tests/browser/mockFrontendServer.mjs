@@ -87,8 +87,6 @@ const defaultScenario = {
   // 整机 BIOS 版本（snapshot.system.biosVersion）：只在整机图里显示，改它是一次不动清单和详情的结构变化。
   deviceTopologyBiosVersion: null,
   displayEdid: "off",
-  gpuGrade: "normal",
-  cpuGrade: "normal",
   resourceBreakdownGeneration: 0,
   resourceSegmentCount: 1,
   // "audit"：资源条换成一组混合数据（各展示分组、很小的段、系统/驱动保留残差），值随 resourceBreakdownGeneration 变；
@@ -1144,19 +1142,6 @@ async function handleApi(request, response, url) {
   if (path === "/api/device-topology/state") {
     await delay(normalizeDelay(scenario.deviceTopologyDelayMs));
     return json(response, 200, fixtureDeviceTopologyState(now()));
-  }
-  if (path === "/api/adapters/resource-manager/scheduling") {
-    return json(response, 200, {
-      cpuGrade: scenario.cpuGrade,
-      gpuGrade: scenario.gpuGrade,
-      cpuUpdatedAt: now(),
-      gpuUpdatedAt: now(),
-      cpuPolicyId: "frontend-harness",
-      gpuPolicyId: "frontend-harness",
-      cpuReason: "frontend harness",
-      gpuReason: "frontend harness",
-      sources: []
-    });
   }
   if (path === "/api/gpu-placement/process-history/observe" && request.method === "POST") {
     return json(response, 200, { softwareId: mockSoftware.id, softwareName: mockSoftware.name, processes: [] });
@@ -3678,7 +3663,6 @@ const subscriptionChannelSelectors = new Set([
   "/api/metrics/gpu-specialized/subscribe",
   "/api/resource-monitor/subscribe",
   "/api/resource-facts/subscribe",
-  "/api/adapters/resource-manager/scheduling/subscribe",
   "/api/local-system/status/subscribe",
   "/api/device-topology/state/subscribe",
   "/api/device-topology/fields/subscribe",
@@ -3914,18 +3898,6 @@ function subscriptionPayloadFactory(url, fields) {
         capturedAt: publishedAt,
         bootedAt: new Date(Date.parse(publishedAt) - 3_600_000).toISOString(),
         uptimeSeconds: 3_600
-      });
-    case "/api/adapters/resource-manager/scheduling/subscribe":
-      return (publishedAt) => ({
-        cpuGrade: scenario.cpuGrade,
-        gpuGrade: scenario.gpuGrade,
-        cpuUpdatedAt: publishedAt,
-        gpuUpdatedAt: publishedAt,
-        cpuPolicyId: "frontend-harness",
-        gpuPolicyId: "frontend-harness",
-        cpuReason: "frontend harness",
-        gpuReason: "frontend harness",
-        sources: []
       });
     case "/api/optimization/smart/state/subscribe":
       return () => ({

@@ -162,7 +162,7 @@ export default createSettingsLocale("ja-JP", {
       {
         "id": "aotu",
         "label": "自動",
-        "description": "現在の性能モードとウィンドウ状態に合わせて更新頻度を選びます。"
+        "description": "組み込みの自動プリセットを使用します。"
       },
       {
         "id": "preset",
@@ -223,8 +223,6 @@ export default createSettingsLocale("ja-JP", {
     "themeDescription": "現在のスタイルの配色から選びます。「システム」は Windows のライト/ダーク設定に従います。",
     "animationStyleTitle": "アニメーションスタイル",
     "animationStyleDescription": "画面の切り替えやコントロールが収まるときの動き方を選びます。超高性能は、アニメーションなしに加えて影、ハイライト、ぼかしも無効にします。",
-    "autoDisableAnimationsTitle": "自己スケジューリングでアニメーションを自動的に無効化",
-    "autoDisableAnimationsDescription": "オンの場合、画面が前面に戻った時点で最近の操作がなく、自己スケジューリングの結果が節約を求めているときはアニメーションなしに切り替え、それ以外は選択したスタイルを使います。前面で操作している間は切り替えません。アニメーションなしまたは超高性能を選んでいる場合は効果がありません。",
     "animationStyleOptions": {
       "smooth": { "label": "なめらか", "description": "macOS やモバイル端末の OS のように、ばねの動きで操作の速度を引き継ぎ、いつでも受け止められ、スクロールの端で跳ね返ります" },
       "desktop": { "label": "デスクトップ標準", "description": "一般的な Windows デスクトップソフトウェアと同じく、短い減速トランジションで、速度を引き継がず跳ね返りもありません" },

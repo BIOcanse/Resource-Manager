@@ -2615,7 +2615,6 @@ const frFrAppCopy: AppCopy = {
     resourceBreakdownReadFailed: "Échec de la lecture de l'utilisation des ressources, réessayez plus tard",
     resourceMonitorReadFailed: "Échec de la lecture de la surveillance des ressources, réessayez plus tard",
     runtimeCapabilityReadFailed: "Impossible de lire les capacités d'exécution de ce profil de démarrage",
-    selfSchedulingReadFailed: "Échec de la lecture de l'état de planification du Gestionnaire de ressources, réessayez plus tard",
     softwareMetadataReadFailed: "Échec de la lecture de la description du logiciel, réessayez plus tard",
     settingsNotCommitted: "Le service n'a pas validé les paramètres",
     close: "Fermer",

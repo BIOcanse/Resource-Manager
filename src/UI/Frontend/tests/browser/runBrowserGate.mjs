@@ -97,7 +97,6 @@ const allJourneys = [
   ["placeholder-sizes", async (...args) => (await import("./placeholderSizesJourney.js")).default(...args)],
   ["own-tooltips", async (...args) => (await import("./ownTooltipsJourney.js")).default(...args)],
   ["interface-number-locale", async (...args) => (await import("./interfaceNumberLocaleJourney.js")).default(...args)],
-  ["automatic-animation", async (...args) => (await import("./automaticAnimationJourney.js")).default(...args)],
   ["shell-title-selection", async (...args) => (await import("./shellTitleSelectionJourney.js")).default(...args)],
   ["dashboard-preferences", async (...args) => (await import("./dashboardPreferencesJourney.js")).default(...args)],
   ["service-recovery-settings", serviceRecoverySettingsJourney],

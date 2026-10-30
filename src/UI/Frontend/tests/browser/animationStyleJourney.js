@@ -6,15 +6,14 @@ import { waitForStableRendering } from "./journeyWaits.js";
 
 /**
  * 动画风格（docs/animation_style_2026-10-26.md「验证」），简体中文，真实点击和保存。
- * - 设置 → 外观：一行「动画风格」五个选项，下面一行开关「按自调度自动关闭动画」；旧的两行没有了；默认流畅平滑、开关开。
+ * - 设置 → 外观：一行「动画风格」五个选项，下面直接是资源条帧率；按自调度自动关闭动画的开关（2026-10-29 删除）和旧的两行都没有了；默认流畅平滑。
  * - 每种风格：开关（键盘切换）、弹窗（任务中心）开和关、换设置分区（含很快换回去的反向）的实际过渡，逐帧在页面里读。
  *   所有风格交互先到（「总原则」）：点击处理完新分区已在终态几何上可点；关弹窗那一刻对话框已不在，原处不命中幽灵。
  *   流畅平滑带速度、能接住（动画中再按一次，滑块先顺着原来的方向走一点再回头）；桌面常规按固定时长、不带速度；
  *   终端顿挫按固定步数跳（拖着时连续）；无动画、超高性能在按键的同一个任务里就到终态。
  * - 滚动区边缘回弹：流畅平滑里滚到顶还往上滚，内容按橡皮筋偏出去再回到边缘，滚动区本身不动；其余风格不偏。
  * - 平面移动（「总原则」第二类）：回弹偏出去的内容在画出来的地方命中；动画风格那组分段选择的指示条每一帧画在哪里，那里命中的就是画在那里的选项。
- * - 刷新后保持；旧偏好（animations、motionFeel）按迁移读成新的两项。
- * 自动关闭在回到前台时的选择由 automatic-animation 旅程查。
+ * - 刷新后保持；旧偏好（animations、motionFeel）按迁移读成动画风格，旧缓存里的自动关闭开关读到时丢弃。
  */
 export default async function animationStyleJourney(page, baseUrl) {
   const failures = [];
@@ -24,7 +23,6 @@ export default async function animationStyleJourney(page, baseUrl) {
   const settings = await loadSettingsText("zh-CN");
   const label = (id) => settings.animationStyleOptions.find((option) => option.id === id).label;
   const styleGroup = page.getByRole("radiogroup", { name: settings.appearance.animationStyleTitle, exact: true });
-  const autoSwitch = page.getByRole("checkbox", { name: settings.appearance.autoDisableAnimationsTitle, exact: true });
   const openSection = (section) => page.getByRole("button", { name: settings.sections[section], exact: true }).click();
   const openSettings = async () => {
     await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
@@ -44,13 +42,15 @@ export default async function animationStyleJourney(page, baseUrl) {
   // ---- 设置行 ----
   const rows = await page.locator(".settings-row strong").allTextContents();
   const styleRow = rows.indexOf(settings.appearance.animationStyleTitle);
-  if (styleRow < 0 || rows[styleRow + 1] !== settings.appearance.autoDisableAnimationsTitle) fail(`the switch row is not right under the style row: ${JSON.stringify(rows)}`);
-  for (const old of ["动画效果", "手感"]) if (rows.includes(old)) fail(`the old row ${old} is still there`);
+  if (styleRow < 0 || rows[styleRow + 1] !== settings.appearance.resourceBarFrameRateTitle) fail(`the bar frame rate row is not right under the style row: ${JSON.stringify(rows)}`);
+  for (const old of ["动画效果", "手感", "按自调度自动关闭动画"]) if (rows.includes(old)) fail(`the removed row ${old} is still there`);
+  const appearanceSwitches = await styleGroup.locator("xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' settings-section-panel ')][1]")
+    .getByRole("checkbox").count();
+  if (appearanceSwitches !== 0) fail(`the appearance section still has ${appearanceSwitches} switch(es)`);
   const optionLabels = (await styleGroup.getByRole("radio").allTextContents()).map((text) => text.trim());
   if (JSON.stringify(optionLabels) !== JSON.stringify(settings.animationStyleOptions.map((option) => option.label))) fail(`style options ${JSON.stringify(optionLabels)}`);
   const defaultChoice = (await styleGroup.getByRole("radio", { checked: true }).textContent())?.trim();
   if (defaultChoice !== label("smooth")) fail(`default style is ${defaultChoice}`);
-  if (!(await autoSwitch.isChecked()) || await autoSwitch.isDisabled()) fail("the auto switch is not on and enabled by default");
   if (await page.evaluate(() => document.body.dataset.animations) !== "smooth") fail("the default effective style is not smooth");
 
   /** 页面里的读数：开关滑块的 translate、任务中心对话框的不透明度和变换、设置分区内容层的内联变换和不透明度。 */
@@ -472,21 +472,19 @@ export default async function animationStyleJourney(page, baseUrl) {
   const cached = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "null")?.appearance, frontendPreferencesKey);
   if (cached?.animationStyle !== "terminal" || "animations" in cached || "motionFeel" in cached) fail(`the cache holds ${JSON.stringify(cached)}`);
 
-  // ---- 旧偏好迁移：normal + smooth → 流畅平滑、开关关；auto + crisp → 桌面常规、开关开 ----
+  // ---- 旧偏好迁移：normal + smooth → 流畅平滑；auto + crisp → 桌面常规；旧缓存里的自动关闭开关丢弃，不改风格 ----
   const migrations = [];
-  for (const [animations, motionFeel, style, autoDisable] of [["normal", "smooth", "smooth", false], ["auto", "crisp", "desktop", true]]) {
+  for (const [animations, motionFeel, style] of [["normal", "smooth", "smooth"], ["auto", "crisp", "desktop"]]) {
     await writeFrontendPreferences(page, (value) => {
       delete value.appearance.animationStyle;
-      delete value.appearance.autoDisableAnimations;
-      Object.assign(value.appearance, { animations, motionFeel });
+      Object.assign(value.appearance, { animations, motionFeel, autoDisableAnimations: true });
     });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction((id) => document.body.dataset.animations === id, style, { timeout: 5000 });
     await openSettings();
     const shown = (await styleGroup.getByRole("radio", { checked: true }).textContent())?.trim();
-    const switchOn = await autoSwitch.isChecked();
-    migrations.push({ from: { animations, motionFeel }, shown, switchOn });
-    if (shown !== label(style) || switchOn !== autoDisable) fail(`${animations}/${motionFeel} migrated to ${shown}, switch ${switchOn}`);
+    migrations.push({ from: { animations, motionFeel }, shown });
+    if (shown !== label(style)) fail(`${animations}/${motionFeel} migrated to ${shown}`);
   }
 
   if (failures.length) throw new Error(`${failures.join("\n")}\n${JSON.stringify(results)}`);

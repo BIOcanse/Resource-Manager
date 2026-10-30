@@ -32,7 +32,6 @@ export namespace ResourceManager {
       readonly UiStyle: __fpDeepReadonly<"standard" | "classic" | "soft" | "outline" | "terminal">;
       readonly Theme: __fpDeepReadonly<"system" | "light" | "dark" | "lowContrast" | "paper" | "graphite" | "blueprint" | "phosphor" | "amber" | "ice">;
       readonly AnimationStyle: __fpDeepReadonly<"smooth" | "desktop" | "terminal" | "none" | "ultra">;
-      readonly AutoDisableAnimations: __fpDeepReadonly<boolean>;
       readonly BarFrameRateMode: __fpDeepReadonly<"display" | "custom">;
       readonly BarColorMode: __fpDeepReadonly<"type" | "distinct">;
       readonly FontSmoothing: __fpDeepReadonly<"auto" | "system" | "grayscale" | "disabled">;
@@ -46,7 +45,6 @@ export namespace ResourceManager {
       readonly ResourceTablePresets: __fpDeepReadonly<{ readonly responsive: number; readonly balanced: number; readonly lowPower: number; readonly quiet: number }>;
       readonly LocalSystemPresets: __fpDeepReadonly<{ readonly responsive: number; readonly balanced: number; readonly lowPower: number; readonly quiet: number }>;
       readonly AutoForegroundPreset: __fpDeepReadonly<"responsive" | "balanced" | "lowPower" | "quiet">;
-      readonly AutoBackgroundPreset: __fpDeepReadonly<"responsive" | "balanced" | "lowPower" | "quiet">;
       readonly KeptPages: __fpDeepReadonly<readonly ("monitor" | "components" | "optimization" | "diskUsage" | "control" | "details" | "settings")[]>;
       readonly FontSizePx: number;
       readonly RegionWidthRatio: number;

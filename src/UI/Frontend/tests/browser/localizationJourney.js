@@ -161,10 +161,8 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     const settings = await loadSettingsText(option.id);
     await liveText(page, settings.appearance.settingsLanguageDescription).waitFor();
     await page.getByRole("button", { name: settings.appearance.languageSelectLabel, exact: true }).waitFor();
-    // 动画风格这一行和自动关闭开关：标题、说明和五个风格名都是这种语言的。
+    // 动画风格这一行：标题、说明和五个风格名都是这种语言的。
     await liveText(page, settings.appearance.animationStyleDescription).waitFor();
-    await liveText(page, settings.appearance.autoDisableAnimationsDescription).waitFor();
-    await page.getByRole("checkbox", { name: settings.appearance.autoDisableAnimationsTitle, exact: true }).waitFor();
     const styleGroup = page.getByRole("radiogroup", { name: settings.appearance.animationStyleTitle, exact: true });
     const styleLabels = (await styleGroup.getByRole("radio").allTextContents()).map(text => text.trim());
     if (JSON.stringify(styleLabels) !== JSON.stringify(settings.animationStyleOptions.map(option => option.label))) {

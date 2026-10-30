@@ -43,7 +43,7 @@ try {
   browser = await chromium.launch({ headless: true, executablePath });
   const context = await browser.newContext({ locale: "zh-CN", viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
   // 动画风格：像用户在设置里保存过一样写前端偏好缓存（自动关闭关掉，模拟后端的自调度结果不影响取证）。
-  await seedFrontendPreferences(context, (value) => { value.appearance.animationStyle = style; value.appearance.autoDisableAnimations = false; });
+  await seedFrontendPreferences(context, (value) => { value.appearance.animationStyle = style; });
   const page = await context.newPage();
   await page.goto(baseUrl);
   await page.locator(".shell-pages").waitFor();

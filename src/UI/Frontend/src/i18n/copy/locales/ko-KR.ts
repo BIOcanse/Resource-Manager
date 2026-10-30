@@ -2614,7 +2614,6 @@ const koKrAppCopy: AppCopy = {
     resourceBreakdownReadFailed: "리소스 사용량을 읽지 못했습니다. 잠시 후 다시 시도하세요",
     resourceMonitorReadFailed: "리소스 모니터링을 읽지 못했습니다. 잠시 후 다시 시도하세요",
     runtimeCapabilityReadFailed: "이 시작 프로필의 런타임 기능을 읽지 못했습니다",
-    selfSchedulingReadFailed: "리소스 관리자 스케줄링 상태를 읽지 못했습니다. 잠시 후 다시 시도하세요",
     softwareMetadataReadFailed: "소프트웨어 설명을 읽지 못했습니다. 잠시 후 다시 시도하세요",
     settingsNotCommitted: "서비스가 설정을 확정하지 않았습니다",
     close: "닫기",

@@ -2615,7 +2615,6 @@ const jaJpAppCopy: AppCopy = {
     resourceBreakdownReadFailed: "リソース使用量の読み取りに失敗しました。しばらくしてから再試行してください",
     resourceMonitorReadFailed: "リソース監視の読み取りに失敗しました。しばらくしてから再試行してください",
     runtimeCapabilityReadFailed: "この起動プロファイルのランタイム機能を読み取れませんでした",
-    selfSchedulingReadFailed: "リソース マネージャーのスケジューリング状態の読み取りに失敗しました。しばらくしてから再試行してください",
     softwareMetadataReadFailed: "ソフトウェアの説明の読み取りに失敗しました。しばらくしてから再試行してください",
     settingsNotCommitted: "サービスが設定を確定しませんでした",
     close: "閉じる",

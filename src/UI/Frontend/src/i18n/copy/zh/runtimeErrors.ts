@@ -118,7 +118,6 @@ export const zhRuntimeErrorsCopy = {
     resourceBreakdownReadFailed: "资源占用读取失败，请稍后重试",
     resourceMonitorReadFailed: "资源监控读取失败，请稍后重试",
     runtimeCapabilityReadFailed: "无法读取当前启动配置的运行能力",
-    selfSchedulingReadFailed: "读取资源管理器调度状态失败，请稍后重试",
     softwareMetadataReadFailed: "读取软件说明失败，请稍后重试",
     settingsNotCommitted: "服务端未提交设置",
     close: "关闭",

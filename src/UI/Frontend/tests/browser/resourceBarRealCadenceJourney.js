@@ -25,7 +25,7 @@ export default async function resourceBarRealCadenceJourney(page, baseUrl) {
   await setScenario(page, baseUrl, { resourceSoftwareMix: "audit", resourceBreakdownGeneration: 6, resourceUnavailableBarIds: [] });
   await seedFrontendPreferences(page, (value) => {
     value.appearance.theme = "light";
-    value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false;
+    value.appearance.animationStyle = "desktop";
     value.appearance.language = "zh-CN";
   });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -83,7 +83,6 @@ export default async function resourceBarRealCadenceJourney(page, baseUrl) {
         if (rewrite) {
           setTimeout(() => {
             document.body.dataset.animations = document.body.dataset.animations;
-            document.body.dataset.selfCpuGrade = document.body.dataset.selfCpuGrade;
             document.documentElement.dataset.theme = document.documentElement.dataset.theme;
           }, 120);
         }

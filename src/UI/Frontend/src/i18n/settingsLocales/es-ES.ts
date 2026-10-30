@@ -163,7 +163,7 @@ export default createSettingsLocale("es-ES", {
       {
         "id": "aotu",
         "label": "Automático",
-        "description": "Elegir la frecuencia según el modo de rendimiento y el estado de la ventana."
+        "description": "Usar el preajuste automático integrado."
       },
       {
         "id": "preset",
@@ -224,8 +224,6 @@ export default createSettingsLocale("es-ES", {
     "themeDescription": "Elige una paleta del estilo actual. Sistema sigue el ajuste claro u oscuro de Windows.",
     "animationStyleTitle": "Estilo de animación",
     "animationStyleDescription": "Elige cómo se reproducen las transiciones y cómo se colocan los controles. Máximo rendimiento elimina además las sombras, los reflejos y el desenfoque.",
-    "autoDisableAnimationsTitle": "Desactivar animaciones según la autoplanificación",
-    "autoDisableAnimationsDescription": "Si está activado, en el momento en que la interfaz vuelve al primer plano sin entradas recientes y el resultado de la autoplanificación requiere ahorro, se usa Sin animaciones; en caso contrario, se aplica el estilo elegido. No cambia mientras se usa la interfaz. No tiene efecto con Sin animaciones o Máximo rendimiento.",
     "animationStyleOptions": {
       "smooth": { "label": "Fluido", "description": "Como macOS y los sistemas móviles: movimiento de resorte que conserva la velocidad del gesto, se puede detener en cualquier momento y rebota en los bordes del desplazamiento" },
       "desktop": { "label": "Escritorio estándar", "description": "Como el software de escritorio habitual de Windows: transiciones breves con desaceleración, sin conservar la velocidad ni rebotes" },

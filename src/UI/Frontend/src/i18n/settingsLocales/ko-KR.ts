@@ -162,7 +162,7 @@ export default createSettingsLocale("ko-KR", {
       {
         "id": "aotu",
         "label": "자동",
-        "description": "현재 성능 모드와 창 상태에 따라 갱신 빈도를 선택합니다."
+        "description": "기본 제공 자동 프리셋을 사용합니다."
       },
       {
         "id": "preset",
@@ -223,8 +223,6 @@ export default createSettingsLocale("ko-KR", {
     "themeDescription": "현재 스타일의 색 구성 중에서 선택합니다. 시스템은 Windows의 밝게/어둡게 설정을 따릅니다.",
     "animationStyleTitle": "애니메이션 스타일",
     "animationStyleDescription": "전환이 재생되는 방식과 컨트롤이 제자리에 놓이는 방식을 선택합니다. 초고성능은 애니메이션 없음에 더해 그림자, 하이라이트, 흐림 효과도 끕니다.",
-    "autoDisableAnimationsTitle": "자체 스케줄링에 따라 애니메이션 자동 끄기",
-    "autoDisableAnimationsDescription": "켜면 화면이 전면으로 돌아온 순간 최근 입력이 없고 자체 스케줄링 결과가 절약이 필요하다고 판단하면 애니메이션 없음으로 바꾸고, 그렇지 않으면 선택한 스타일을 사용합니다. 전면에서 사용하는 동안에는 바꾸지 않습니다. 애니메이션 없음이나 초고성능을 선택하면 효과가 없습니다.",
     "animationStyleOptions": {
       "smooth": { "label": "부드러움", "description": "macOS와 모바일 운영체제처럼 스프링 동작으로 조작 속도를 이어 가고, 언제든 붙잡을 수 있으며, 스크롤 끝에서 튕겨 돌아옵니다" },
       "desktop": { "label": "데스크톱 표준", "description": "일반적인 Windows 데스크톱 소프트웨어처럼 짧게 감속하는 전환이며, 속도를 이어 가지 않고 튕김도 없습니다" },

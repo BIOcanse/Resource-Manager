@@ -75,7 +75,7 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
             var expected = new FrontendPreferences
             {
                 Appearance = new() { Theme = "dark", Language = "de-DE",
-                    AnimationStyle = "smooth", AutoDisableAnimations = false },
+                    AnimationStyle = "smooth" },
                 Refresh = new() { Monitor = new("custom", "quiet", 4321) }
             };
             var node = JsonSerializer.SerializeToNode(expected, FrontendPreferencesOwner.Json)!.AsObject();
@@ -84,7 +84,6 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
             if (oldAnimation)
             {
                 appearance.Remove("animationStyle");
-                appearance.Remove("autoDisableAnimations");
                 appearance["animations"] = "normal";
                 appearance["motionFeel"] = "smooth";
             }
@@ -167,9 +166,9 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal("dark", imported.Appearance.Theme);
         Assert.DoesNotContain("readingSourceMode", Serialize(imported));
         Assert.DoesNotContain("readingSourceMode", File.ReadAllText(Cache));
-        // The legacy "animations":"normal" goes through the animation-style migration: desktop, switch off.
+        // The legacy "animations":"normal" goes through the animation-style migration: desktop.
         Assert.Equal("desktop", imported.Appearance.AnimationStyle);
-        Assert.False(imported.Appearance.AutoDisableAnimations);
+        Assert.DoesNotContain("autoDisableAnimations", File.ReadAllText(Cache));
         Assert.Equal(4321, imported.Refresh.Monitor.CustomValue);
         Assert.DoesNotContain("smartMonitoringMode", File.ReadAllText(Cache));
         Assert.Equal(24, imported.Overlays["game"].FontSizePx);
@@ -266,49 +265,82 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     }
 
     [Fact]
-    public void AnimationStyleAndAutoDisableSurviveRestartAndInvalidStylesAreRejected()
+    public void AnimationStyleSurvivesRestartAndInvalidStylesAreRejected()
     {
-        // 动画风格和按自调度自动关闭动画是 2026-10-26 的前端自由点（docs/animation_style_2026-10-26.md）。
+        // 动画风格是 2026-10-26 的前端自由点（docs/animation_style_2026-10-26.md）。
         var owner = Owner();
         Assert.Equal(FrontendPoints.AnimationStyle, owner.Read().Appearance.AnimationStyle);
-        Assert.Equal(FrontendPoints.AutoDisableAnimations, owner.Read().Appearance.AutoDisableAnimations);
-        owner.SaveGlobal(owner.Read() with { Appearance = new() { AnimationStyle = "terminal", AutoDisableAnimations = false } });
+        owner.SaveGlobal(owner.Read() with { Appearance = new() { AnimationStyle = "terminal" } });
         Assert.Equal("terminal", Owner().Read().Appearance.AnimationStyle);
-        Assert.False(Owner().Read().Appearance.AutoDisableAnimations);
         Assert.Throws<InvalidDataException>(() => owner.Save(new() { Appearance = new() { AnimationStyle = "normal" } }));
         Assert.Equal("terminal", Owner().Read().Appearance.AnimationStyle);
     }
 
     [Theory]
-    [InlineData("auto", "standard", "desktop", true)]
-    [InlineData("auto", "crisp", "desktop", true)]
-    [InlineData("auto", "smooth", "smooth", true)]
-    [InlineData("auto", null, "desktop", true)]
-    [InlineData("normal", "standard", "desktop", false)]
-    [InlineData("normal", "smooth", "smooth", false)]
-    [InlineData("normal", null, "desktop", false)]
-    [InlineData("none", "smooth", "none", null)]
-    [InlineData("ultra", "crisp", "ultra", null)]
+    [InlineData("auto", "standard", "desktop")]
+    [InlineData("auto", "crisp", "desktop")]
+    [InlineData("auto", "smooth", "smooth")]
+    [InlineData("auto", null, "desktop")]
+    [InlineData("normal", "standard", "desktop")]
+    [InlineData("normal", "smooth", "smooth")]
+    [InlineData("normal", null, "desktop")]
+    [InlineData("none", "smooth", "none")]
+    [InlineData("ultra", "crisp", "ultra")]
     public void CacheFromBeforeTheAnimationStyleMigratesOnceAndKeepsItsOtherChoices(
-        string animations, string? motionFeel, string style, bool? autoDisable)
+        string animations, string? motionFeel, string style)
     {
-        // Migration frontend-preferences-animation-style-v1: auto → 自动关闭开，normal → 关，风格按原手感；none、ultra 照搬。
+        // Migration frontend-preferences-animation-style-v1: auto、normal 的风格按原手感；none、ultra 照搬。
         var saved = JsonSerializer.SerializeToNode(new FrontendPreferences { Appearance = new() { Theme = "dark" } },
             FrontendPreferencesOwner.Json)!.AsObject();
         var appearance = saved["appearance"]!.AsObject();
         appearance.Remove("animationStyle");
-        appearance.Remove("autoDisableAnimations");
         appearance["animations"] = animations;
         if (motionFeel is not null) appearance["motionFeel"] = motionFeel;
         File.WriteAllText(Cache, saved.ToJsonString(FrontendPreferencesOwner.Json));
         var current = Owner().Read();
         Assert.Equal(style, current.Appearance.AnimationStyle);
-        Assert.Equal(autoDisable ?? FrontendPoints.AutoDisableAnimations, current.Appearance.AutoDisableAnimations);
         Assert.Equal("dark", current.Appearance.Theme);
         var text = File.ReadAllText(Cache);
         Assert.DoesNotContain("\"animations\"", text);
         Assert.DoesNotContain("motionFeel", text);
+        Assert.DoesNotContain("autoDisableAnimations", text);
         Assert.Equal(Serialize(current), Serialize(Owner().Read()));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RemovedAutomaticAnimationSwitchIsDroppedBeforeStrictCacheValidation(bool autoDisableAnimations)
+    {
+        // Migration frontend-preferences-self-scheduling-options-v1: the user removed RM self-scheduling and the switch it
+        // triggered on 2026-10-29. An old cache still holds appearance.autoDisableAnimations; the strict reader would reject
+        // it, so it is dropped before the read, the file is written back without it and later saves do not write it.
+        var expected = new FrontendPreferences
+        {
+            Appearance = new() { Theme = "dark", AnimationStyle = "terminal" },
+            Refresh = new() { Monitor = new("custom", "quiet", 4321) }
+        };
+        var saved = JsonSerializer.SerializeToNode(expected, FrontendPreferencesOwner.Json)!.AsObject();
+        saved["appearance"]!.AsObject()["autoDisableAnimations"] = autoDisableAnimations;
+        File.WriteAllText(Cache, saved.ToJsonString(FrontendPreferencesOwner.Json));
+        var owner = Owner();
+        var loaded = owner.Read();
+        Assert.Equal(Serialize(expected), Serialize(loaded));
+        Assert.DoesNotContain("autoDisableAnimations", File.ReadAllText(Cache));
+        owner.SaveGlobal(loaded);
+        Assert.DoesNotContain("autoDisableAnimations", File.ReadAllText(Cache));
+        Assert.Equal(Serialize(expected), Serialize(Owner().Read()));
+    }
+
+    [Fact]
+    public void StrictReaderRejectsTheRemovedAnimationSwitchWithoutTheReadMigration()
+    {
+        // Without the read migration the strict reader rejects the field: it is not part of the cache model any more.
+        var node = JsonSerializer.SerializeToNode(new FrontendPreferences(), FrontendPreferencesOwner.Json)!.AsObject();
+        Assert.False(node["appearance"]!.AsObject().ContainsKey("autoDisableAnimations"));
+        node["appearance"]!.AsObject()["autoDisableAnimations"] = true;
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<FrontendPreferences>(
+            node.ToJsonString(FrontendPreferencesOwner.Json), FrontendPreferencesOwner.Json));
     }
 
     [Fact]

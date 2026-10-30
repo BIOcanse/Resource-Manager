@@ -26,16 +26,14 @@ public static class @FrontendPoints
     [global::FreedomPoint.FreedomPointBinding(0x0001000200350002UL)]
     public static readonly string @AnimationStyle = @FrontendPointsValues.@__fpValue_AnimationStyle;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200350003UL)]
-    public static readonly bool @AutoDisableAnimations = @FrontendPointsValues.@__fpValue_AutoDisableAnimations;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200350004UL)]
     public static readonly string @BarFrameRateMode = @FrontendPointsValues.@__fpValue_BarFrameRateMode;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200350005UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200350004UL)]
     public static readonly string @BarColorMode = @FrontendPointsValues.@__fpValue_BarColorMode;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200350006UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200350005UL)]
     public static readonly string @FontSmoothing = @FrontendPointsValues.@__fpValue_FontSmoothing;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200350007UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200350006UL)]
     public static readonly string @Language = @FrontendPointsValues.@__fpValue_Language;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200350008UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200350007UL)]
     public static readonly string @ByteUnitMode = @FrontendPointsValues.@__fpValue_ByteUnitMode;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200380000UL)]
     public const int @VisibilityCooldownMs = @FrontendPointsValues.@__fpValue_VisibilityCooldownMs;
@@ -54,8 +52,6 @@ public static class @FrontendPoints
     [global::FreedomPoint.FreedomPointBinding(0x0001000200390006UL)]
     public static readonly string @AutoForegroundPreset = @FrontendPointsValues.@__fpValue_AutoForegroundPreset;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200390007UL)]
-    public static readonly string @AutoBackgroundPreset = @FrontendPointsValues.@__fpValue_AutoBackgroundPreset;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200390008UL)]
     public static readonly ImmutableArray<string> @KeptPages = @FrontendPointsValues.@__fpValue_KeptPages;
     [global::FreedomPoint.FreedomPointBinding(0x00010002003C0000UL)]
     public const int @FontSizePx = @FrontendPointsValues.@__fpValue_FontSizePx;

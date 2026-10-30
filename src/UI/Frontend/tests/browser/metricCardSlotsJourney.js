@@ -32,7 +32,6 @@ export default async function metricCardSlotsJourney(page, baseUrl) {
     preferences.appearance.uiStyle = "standard";
     preferences.appearance.theme = "light";
     preferences.appearance.animationStyle = style;
-    preferences.appearance.autoDisableAnimations = false;
     preferences.dashboard = { ...preferences.dashboard, version: 16, cards, resourceBars: [],
       resourceTableColumns: tableColumns, resourceTableProcessColumns: tableColumns };
     return JSON.stringify(preferences);

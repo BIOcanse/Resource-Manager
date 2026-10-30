@@ -2615,7 +2615,6 @@ const ruRuAppCopy: AppCopy = {
     resourceBreakdownReadFailed: "Не удалось прочитать использование ресурсов, повторите попытку позже",
     resourceMonitorReadFailed: "Не удалось прочитать мониторинг ресурсов, повторите попытку позже",
     runtimeCapabilityReadFailed: "Не удалось прочитать возможности среды выполнения этого профиля запуска",
-    selfSchedulingReadFailed: "Не удалось прочитать состояние планирования диспетчера ресурсов, повторите попытку позже",
     softwareMetadataReadFailed: "Не удалось прочитать описание программы, повторите попытку позже",
     settingsNotCommitted: "Служба не зафиксировала параметры",
     close: "Закрыть",

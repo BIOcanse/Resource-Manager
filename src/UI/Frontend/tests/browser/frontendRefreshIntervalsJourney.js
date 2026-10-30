@@ -9,7 +9,7 @@ export default async function frontendRefreshIntervalsJourney(page, baseUrl) {
   page.on("request", request => {
     if (new URL(request.url()).pathname.startsWith("/api/control/") && !["GET", "HEAD"].includes(request.method())) controlWrites.push(request.url());
   });
-  await patch({ cpuGrade: "optimize", gpuPressureFixture: true, optimizationRuntime: true });
+  await patch({ gpuPressureFixture: true, optimizationRuntime: true });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const navigation = page.getByRole("navigation", { name: "页面切换" });
   const checks = [];
@@ -28,7 +28,7 @@ export default async function frontendRefreshIntervalsJourney(page, baseUrl) {
   await navigation.getByRole("button", { name: "控制面", exact: true }).click();
   await check("control", ["/api/control/actual/subscribe"]);
   // Explicit custom choices arrive as a new committed publication and keep
-  // their meaning when the automatic foreground context changes.
+  // their meaning whether or not the window has focus.
   await navigation.getByRole("button", { name: "设置", exact: true }).click();
   const text = await loadSettingsText("zh-CN");
   await page.getByRole("button", { name: text.sections.appearance, exact: true }).click();
@@ -41,7 +41,6 @@ export default async function frontendRefreshIntervalsJourney(page, baseUrl) {
   }
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")?.refresh.monitor.customValue === 1700);
-  await wait(telemetry => activeAt(telemetry["/api/adapters/resource-manager/scheduling/subscribe"], 1700));
   // This check needs cards, bars and the table to own visible demand together.
   // A short viewport legitimately retires the offscreen table subscription.
   await page.setViewportSize({ width: 1280, height: 1600 });
@@ -58,12 +57,13 @@ export default async function frontendRefreshIntervalsJourney(page, baseUrl) {
   assert.deepEqual(errors, []);
   return { checks, intervalChangesOnlyReconfigureReads: true };
 
+  // The read intervals follow only the manual settings (the automatic mode is the automatic foreground preset):
+  // focus and blur change nothing.
   async function check(name, paths) {
+    const expected = frontendRefreshIntervals.resolved;
     for (const foreground of [true, false, true]) {
       await page.evaluate(value => window.dispatchEvent(new Event(value ? "focus" : "blur")), foreground);
-      const expected = foreground ? frontendRefreshIntervals.foreground : frontendRefreshIntervals.backgroundOptimized;
       await wait(telemetry => paths.every(path => activeAt(telemetry[path], expected.monitor))
-        && activeAt(telemetry["/api/adapters/resource-manager/scheduling/subscribe"], frontendRefreshIntervals.foreground.monitor)
         && activeAt(telemetry["/api/local-system/status/subscribe"], expected.localSystem));
     }
     checks.push(name);

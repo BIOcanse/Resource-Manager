@@ -62,8 +62,6 @@ assert.match(sources, /smartCoordinatorState:\s*new BackendPushValueSource/);
 assert.doesNotMatch(sources, /retryPolicy/);
 assert.match(sources, /runtimeCapabilities:\s*sourceRegistry\.define/);
 assert.match(sources, /key:\s*"runtime\.capabilities"[\s\S]*canRetainStale:\s*\(\) => false/);
-assert.match(sources, /selfScheduling:\s*new BackendPushValueSource/);
-assert.match(sources, /key:\s*"resource-manager\.self-scheduling"/);
 assert.match(sources, /appSettings:\s*sourceRegistry\.define/);
 assert.match(sources, /aiGatewayCredentials:\s*sourceRegistry\.define/);
 const gatewayManager = readSource("features/settings/components/AiGatewayKeyManager.tsx");
@@ -116,12 +114,10 @@ assert.match(
   /onRefresh=\{\(\) => \{[\s\S]*refreshReports\(true\)[\s\S]*refreshHostManagerStatus\(\)/);
 
 assert.match(scheduler, /usePushSource\(options\.localSystemSource/);
-assert.match(scheduler, /usePushSource\(options\.selfSchedulingSource/);
 assert.doesNotMatch(
   scheduler,
-  /useSource\(|SourceSnapshot|\.refresh\(|setInterval\(|selfSchedulingObservation|localSystemObservation/);
+  /useSource\(|SourceSnapshot|\.refresh\(|setInterval\(|localSystemObservation/);
 assert.doesNotMatch(scheduler, /getLocalSystemStatus|refreshLocalSystemStatus/);
-assert.doesNotMatch(scheduler, /getResourceManagerSelfScheduling|refreshSelfScheduling/);
 
 assert.match(deviceStore, /usePushSource\(runtime\.sources\.deviceTopology/);
 assert.match(deviceStore, /frontendWork\.isNeeded\(frontendWorkIds\.detailsDeviceTopology\)/);

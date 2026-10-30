@@ -147,20 +147,19 @@ for (const style of animationStyles) {
   assert.equal(page.outputSteps.value, style.lodestone.outputSteps, `${style.id}: output steps follow the style`);
 }
 
-// 4. 前端自由点：风格 choice 的选项就是目录、默认流畅平滑；自动关闭是 boolean、默认开；不认识的值取点的默认。
+// 4. 前端自由点：风格 choice 的选项就是目录、默认流畅平滑；按自调度自动关闭动画的点 2026-10-29 删除；不认识的值取点的默认。
 const points = JSON.parse(readFileSync(resolve(here, "../preferences.points.json"), "utf8")).points as Array<{ name: string; type: string; options?: string[]; value: unknown }>;
 const stylePoint = points.find((entry) => entry.name === "appearance-animation_style");
 assert.ok(stylePoint && stylePoint.type === "choice");
 assert.deepEqual(stylePoint.options, [...animationStyleIds]);
 assert.equal(stylePoint.value, "smooth");
-const autoPoint = points.find((entry) => entry.name === "appearance-auto_disable_animations");
-assert.ok(autoPoint && autoPoint.type === "boolean" && autoPoint.value === true);
-assert.ok(!points.some((entry) => entry.name === "appearance-motion_feel" || entry.name === "appearance-animation_mode"), "old points are deleted");
+assert.ok(!points.some((entry) => entry.name === "appearance-motion_feel" || entry.name === "appearance-animation_mode"
+  || entry.name === "appearance-auto_disable_animations"), "old points are deleted");
 assert.equal(animationStyle(undefined).id, "smooth");
 assert.equal(animationStyle("normal").id, "smooth");
 assert.equal(animationStyle("terminal").id, "terminal");
 
-// 5. 九语：行名、开关名和说明、五个风格名和说明都有；不是基础语言原文（繁中对简中，其余对英文），非中日文不含汉字。
+// 5. 九语：行名和说明、五个风格名和说明都有；不是基础语言原文（繁中对简中，其余对英文），非中日文不含汉字。
 const languages: ConcreteAppLanguageMode[] = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU"];
 const texts = new Map(await Promise.all(languages.map(async (language) => [language, await loadSettingsText(language)] as const)));
 for (const language of languages) {
@@ -168,7 +167,6 @@ for (const language of languages) {
   assert.equal(text.language, language, `${language}: settings text fell back to another language`);
   assert.deepEqual(text.animationStyleOptions.map((option) => option.id), [...animationStyleIds], `${language}: options follow the catalog`);
   const own = [text.appearance.animationStyleTitle, text.appearance.animationStyleDescription,
-    text.appearance.autoDisableAnimationsTitle, text.appearance.autoDisableAnimationsDescription,
     ...text.animationStyleOptions.flatMap((option) => [option.label, option.description])];
   for (const value of own) {
     assert.ok(typeof value === "string" && value.trim().length > 0, `${language}: empty animation style text`);
@@ -178,7 +176,6 @@ for (const language of languages) {
   const base = language === "zh-CN" || language === "en-US" ? null : texts.get(language === "zh-TW" ? "zh-CN" : "en-US")!;
   if (!base) continue;
   const baseOwn = [base.appearance.animationStyleTitle, base.appearance.animationStyleDescription,
-    base.appearance.autoDisableAnimationsTitle, base.appearance.autoDisableAnimationsDescription,
     ...base.animationStyleOptions.flatMap((option) => [option.label, option.description])];
   own.forEach((value, index) => assert.notEqual(value, baseOwn[index], `${language}: text ${index} left in the base language: ${value}`));
 }

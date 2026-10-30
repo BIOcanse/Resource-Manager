@@ -54,7 +54,7 @@ internal static partial class Program
         var declarationPath = Path.Combine(root, "src/UI/Frontend/preferences.points.json");
         using var document = JsonDocument.Parse(File.ReadAllBytes(declarationPath));
         var definitions = document.RootElement.GetProperty("points").EnumerateArray().Select(value => value.Clone()).ToArray();
-        if (definitions.Length != 38) throw new InvalidDataException("Expected 38 frontend points.");
+        if (definitions.Length != 36) throw new InvalidDataException("Expected 36 frontend points.");
         var style = definitions.Single(item => item.GetProperty("symbol").GetString() == "UiStyle").GetProperty("value").GetString()!;
         var theme = definitions.Single(item => item.GetProperty("symbol").GetString() == "Theme").GetProperty("value").GetString()!;
         var appearance = UiStyleCatalog.Normalize(style, theme);

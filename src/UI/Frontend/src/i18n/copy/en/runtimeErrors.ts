@@ -122,7 +122,6 @@ export const enRuntimeErrorsCopy: Pick<
     resourceBreakdownReadFailed: "Reading resource usage failed, please try again later",
     resourceMonitorReadFailed: "Reading resource monitoring failed, please try again later",
     runtimeCapabilityReadFailed: "Could not read the runtime capabilities of this startup profile",
-    selfSchedulingReadFailed: "Reading Resource Manager scheduling state failed, please try again later",
     softwareMetadataReadFailed: "Reading the software description failed, please try again later",
     settingsNotCommitted: "The service did not commit the settings",
     close: "Close",

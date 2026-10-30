@@ -166,7 +166,7 @@ async function withPage(options, run) {
   preferences.appearance.theme = options.theme;
   preferences.appearance.language = options.language;
   if (options.barColorMode) preferences.appearance.barColorMode = options.barColorMode;
-  if (options.animations) { preferences.appearance.animationStyle = options.animations; preferences.appearance.autoDisableAnimations = false; }
+  if (options.animations) { preferences.appearance.animationStyle = options.animations; }
   await context.addInitScript(([key, text]) => {
     if (location.origin !== "null" && localStorage.getItem(key) === null) localStorage.setItem(key, text);
   }, [frontendPreferencesKey, JSON.stringify(preferences)]);

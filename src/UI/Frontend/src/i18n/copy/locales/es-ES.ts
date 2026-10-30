@@ -2615,7 +2615,6 @@ const esEsAppCopy: AppCopy = {
     resourceBreakdownReadFailed: "No se pudo leer el uso de recursos, inténtalo de nuevo más tarde",
     resourceMonitorReadFailed: "No se pudo leer la supervisión de recursos, inténtalo de nuevo más tarde",
     runtimeCapabilityReadFailed: "No se pudieron leer las capacidades de ejecución de este perfil de inicio",
-    selfSchedulingReadFailed: "No se pudo leer el estado de planificación del Administrador de recursos, inténtalo de nuevo más tarde",
     softwareMetadataReadFailed: "No se pudo leer la descripción del software, inténtalo de nuevo más tarde",
     settingsNotCommitted: "El servicio no confirmó la configuración",
     close: "Cerrar",

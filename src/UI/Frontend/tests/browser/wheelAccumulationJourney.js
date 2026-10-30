@@ -25,7 +25,7 @@ export default async function wheelAccumulationJourney(page, baseUrl) {
       return draw.apply(this, args);
     };
   });
-  await seedFrontendPreferences(page, (value) => { value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false; });
+  await seedFrontendPreferences(page, (value) => { value.appearance.animationStyle = "desktop"; });
   const copy = await loadAppCopy("zh-CN");
 
   // ---------- 磁盘方格图 ----------
@@ -103,7 +103,7 @@ export default async function wheelAccumulationJourney(page, baseUrl) {
   const still = await wheel(canvas, [-100], 0, 300);
   assert(still.draws.length > 0 && still.draws.every((entry) => Math.abs(entry.scale - 1.2) < 0.012),
     `No motion still animates the wheel zoom: ${describe(still)}`);
-  await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false; });
+  await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = "desktop"; });
 
   // ---------- 资源条 ----------
   const bars = await page.request.post(`${baseUrl}/__test/scenario`, { data: { diskUsageMultiRoot: false, resourceSegmentCount: 8 } });

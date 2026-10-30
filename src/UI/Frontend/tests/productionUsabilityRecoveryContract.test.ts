@@ -32,8 +32,6 @@ const cpuModel = readSource("features/details/CpuTopologyDiagram.tsx");
 const api = readSource("api.ts");
 const httpTransport = readSource("api/httpTransport.ts");
 const adapterEndpoints = readAppSource("Endpoints/AdapterEndpoints.cs");
-const frontendStateEndpoints = readAppSource("Endpoints/FrontendRuntimeStateEndpoints.cs");
-const endpointMap = readAppSource("Endpoints/ResourceManagerEndpointRouteBuilderExtensions.cs");
 
 // Capability discovery remains fail-closed, but a failed request must be visible and retryable.
 assert.match(capabilities, /useSource\(handle/);
@@ -43,9 +41,8 @@ assert.match(capabilities, /failedObservation\(/);
 assert.doesNotMatch(capabilities, /getRuntimeCapabilities|createSignal|setCurrent/);
 assert.match(frontendSources, /runtimeCapabilities:\s*sourceRegistry\.define/);
 assert.match(frontendSources, /canRetainStale:\s*\(\) => false/);
-assert.match(frontendSources, /selfScheduling:\s*new BackendPushValueSource/);
 assert.match(frontendSources, /localSystemStatus:\s*new BackendPushValueSource/);
-assert.doesNotMatch(appShell, /selfSchedulingObservation|localSystemObservation|自调度状态|运行时长不可用/);
+assert.doesNotMatch(appShell, /localSystemObservation|自调度状态|运行时长不可用/);
 assert.match(appShell, /label=\{uiText\.shell\.runtimeCapability\}/);
 assert.match(appShell, /runtimeCapabilities\.refresh\(\)/);
 
@@ -87,7 +84,6 @@ assert.match(settingsPage, /settingsReady\(\) && !readOnlySections\.has\(props\.
 assert.match(settingsPage, /readOnlySections: ReadonlySet<SettingsSection> = new Set\(\["performanceOverlay", "trustedAccess", "credits"\]\)/);
 for (const control of [
   "onAnimationStyleChange",
-  "onAutoDisableAnimationsChange",
   "onFontSmoothingChange"
 ]) {
   assert.match(appearanceSettings, new RegExp(`onChange=\\{props\\.${control}\\}`));
@@ -100,7 +96,7 @@ assert.match(appearanceSettings, /value=\{appearance\(\)\.barColorMode \?\? poin
 assert.match(appearanceSettings, /options=\{props\.text\.barColorOptions\}/);
 assert.match(appearanceSettings, /onChange=\{props\.onBarColorModeChange\}/);
 assert.match(app, /document\.body\.dataset\.barColor = normalizeBarColorMode\(settings\.settings\(\)\.appearance\?\.barColorMode\)/);
-// The app publishes the effective animation style (the auto switch resolved at foreground return) into data-animations.
+// The app publishes the selected animation style into data-animations.
 assert.match(resourcePaintPlane, /attributeFilter: \["data-animations", "data-bar-color", "data-resource-bar-frame-rate"\]/);
 assert.match(resourcePaintPlane, /presentation\.barColor === "distinct"\s*\? segment\.distinctColor \?\? segment\.color\s*: segment\.color/);
 // 两种配色都画分隔线（异色区分时相邻两种颜色也要分开），不按配色关掉。
@@ -192,12 +188,7 @@ assert.match(cpuModel, /!props\.runtimeEffectsEnabled \|\| !snapshot\(\)/);
 assert.match(cpuModel, /const topologySummary = createMemo\([\s\S]*?snapshot\(\)/);
 assert.match(cpuModel, /<Show when=\{topologySummary\(\)\}/);
 
-// Process-local frontend/self state has a dedicated endpoint owner; persistent adapter writes stay separate.
-assert.match(endpointMap, /MapFrontendRuntimeStateEndpoints\(\)/);
-assert.match(frontendStateEndpoints, /transient self-scheduling state/);
-assert.match(frontendStateEndpoints, /MapPost\("\/api\/adapters\/resource-manager\/scheduling"/);
-assert.doesNotMatch(frontendStateEndpoints, /visible-regions|ResourceManagerVisibleRegion/);
-assert.doesNotMatch(adapterEndpoints, /resource-manager\/scheduling/);
+// Adapter registration endpoints carry no Resource Manager visible-region state.
 assert.doesNotMatch(adapterEndpoints, /resource-manager\/visible-regions/);
 
 // A hung or malformed local response must settle through the shared bounded transport.

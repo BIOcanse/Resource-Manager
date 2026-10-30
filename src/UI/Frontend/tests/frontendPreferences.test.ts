@@ -38,26 +38,28 @@ test("frontend changes survive restart; reset restores presentation while retain
   assert.equal(pointOverlayPresentation().mode, "external");
 });
 
-test("every refresh preset and custom interval resolve locally in both foreground/background profiles", () => {
+test("every refresh preset and custom interval resolve locally from the manual setting only", () => {
   for (const key of ["monitor", "resourceTable", "localSystem"] as const) {
     for (const preset of ["responsive", "balanced", "lowPower", "quiet"] as const) {
       const defaults = pointPreferences();
       defaults.refresh[key] = { mode: "preset", preset, customValue: 1234 };
       const result = resolveFrontendRefresh(defaults.refresh);
-      assert.equal(result.foreground[key], result.presets[key][preset]);
-      assert.equal(result.backgroundOptimized[key], result.presets[key][preset]);
+      assert.equal(result.resolved[key], result.presets[key][preset]);
     }
     for (const customValue of [500, 4321, 300000]) {
       const defaults = pointPreferences();
       defaults.refresh[key] = { mode: "custom", preset: "balanced", customValue };
       const result = resolveFrontendRefresh(defaults.refresh);
-      assert.equal(result.foreground[key], customValue);
-      assert.equal(result.backgroundOptimized[key], customValue);
+      assert.equal(result.resolved[key], customValue);
     }
   }
+  // The automatic mode resolves to the automatic foreground preset; there is no second (background) profile.
   const result = resolveFrontendRefresh(pointPreferences().refresh);
-  assert.equal(result.foreground.localSystem, points.LocalSystemPresets[points.AutoForegroundPreset]);
-  assert.equal(result.backgroundOptimized.localSystem, points.LocalSystemPresets[points.AutoBackgroundPreset]);
+  for (const key of ["monitor", "resourceTable", "localSystem"] as const) {
+    assert.equal(pointPreferences().refresh[key].mode, "aotu");
+    assert.equal(result.resolved[key], result.presets[key][points.AutoForegroundPreset]);
+  }
+  assert.deepEqual(Object.keys(result).sort(), ["defaults", "presets", "resolved"]);
   assert.deepEqual(result.defaults.localSystem, points.LocalSystem);
 });
 
@@ -193,29 +195,47 @@ test("the notification section and the access-request notice are translated in a
 });
 
 test("animation choices saved before the animation style migrate once (docs/animation_style_2026-10-26.md)", async () => {
-  // auto → 自动关闭开，normal → 关，风格按原手感（smooth → smooth；standard、crisp、没有手感 → desktop）；none、ultra 照搬。
-  const cases: Array<[string, string | undefined, string, boolean]> = [
-    ["auto", "standard", "desktop", true], ["auto", "crisp", "desktop", true], ["auto", "smooth", "smooth", true], ["auto", undefined, "desktop", true],
-    ["normal", "standard", "desktop", false], ["normal", "smooth", "smooth", false], ["normal", undefined, "desktop", false],
-    ["none", "smooth", "none", points.AutoDisableAnimations], ["ultra", "crisp", "ultra", points.AutoDisableAnimations]
+  // auto、normal 的风格按原手感（smooth → smooth；standard、crisp、没有手感 → desktop）；none、ultra 照搬。不再写自动关闭动画。
+  const cases: Array<[string, string | undefined, string]> = [
+    ["auto", "standard", "desktop"], ["auto", "crisp", "desktop"], ["auto", "smooth", "smooth"], ["auto", undefined, "desktop"],
+    ["normal", "standard", "desktop"], ["normal", "smooth", "smooth"], ["normal", undefined, "desktop"],
+    ["none", "smooth", "none"], ["ultra", "crisp", "ultra"]
   ];
-  for (const [animations, motionFeel, style, autoDisable] of cases) {
+  for (const [animations, motionFeel, style] of cases) {
     const disk = storage();
-    const { animationStyle: _style, autoDisableAnimations: _auto, ...appearance } = { ...pointPreferences().appearance, theme: "dark" as const };
+    const { animationStyle: _style, ...appearance } = { ...pointPreferences().appearance, theme: "dark" as const };
     disk.setItem("resource-manager:frontend-preferences:v1",
       JSON.stringify({ ...pointPreferences(), appearance: { ...appearance, animations, ...(motionFeel ? { motionFeel } : {}) } }));
     const loaded = (await createFrontendPreferencesClient(disk).read()).appearance;
     assert.equal(loaded.animationStyle, style, `${animations}/${motionFeel}`);
-    assert.equal(loaded.autoDisableAnimations, autoDisable, `${animations}/${motionFeel}`);
+    assert.equal("autoDisableAnimations" in loaded, false, `${animations}/${motionFeel}`);
     assert.equal(loaded.theme, "dark");
     assert.equal("animations" in loaded || "motionFeel" in loaded, false, "old fields are dropped");
   }
   // A cache that already has the style only loses the old fields.
   const disk = storage();
   disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify({ ...pointPreferences(),
-    appearance: { ...pointPreferences().appearance, animationStyle: "terminal", autoDisableAnimations: false, animations: "auto", motionFeel: "smooth" } }));
+    appearance: { ...pointPreferences().appearance, animationStyle: "terminal", animations: "auto", motionFeel: "smooth" } }));
   const kept = (await createFrontendPreferencesClient(disk).read()).appearance;
-  assert.deepEqual([kept.animationStyle, kept.autoDisableAnimations, "animations" in kept], ["terminal", false, false]);
+  assert.deepEqual([kept.animationStyle, "animations" in kept], ["terminal", false]);
+});
+
+test("the removed self-scheduling animation switch is dropped on cache read and not written back", async () => {
+  // Migration frontend-preferences-self-scheduling-options-v1: an old cache still holds autoDisableAnimations; it reads
+  // without error, the value is ignored, the style stays the user's choice and a later save does not write it back.
+  for (const autoDisableAnimations of [true, false]) {
+    const disk = storage();
+    const expected = { ...pointPreferences(), appearance: { ...pointPreferences().appearance, animationStyle: "terminal" as const } };
+    disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify({ ...expected,
+      appearance: { ...expected.appearance, autoDisableAnimations } }));
+    const client = createFrontendPreferencesClient(disk);
+    const loaded = await client.read();
+    assert.deepEqual(loaded, expected);
+    await client.save(loaded, "global");
+    assert.equal(disk.getItem("resource-manager:frontend-preferences:v1")!.includes("autoDisableAnimations"), false);
+    assert.deepEqual(await createFrontendPreferencesClient(disk).read(), expected);
+  }
+  assert.equal("autoDisableAnimations" in pointPreferences().appearance, false);
 });
 
 test("the retired NVML v2 used field name is renamed in card slots and overlay sources on cache read", async () => {
@@ -270,13 +290,12 @@ test("retired reading-source choices are dropped on cache read and subsequent sa
       const disk = storage();
       const expected = { ...pointPreferences(), appearance: { ...pointPreferences().appearance, theme: "dark" as const } };
       const appearance = oldAnimation
-        ? { ...expected.appearance, animationStyle: undefined, autoDisableAnimations: undefined, animations: "normal", motionFeel: "smooth" }
+        ? { ...expected.appearance, animationStyle: undefined, animations: "normal", motionFeel: "smooth" }
         : expected.appearance;
       disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify({ ...expected,
         appearance: { ...appearance, readingSourceMode } }));
       if (oldAnimation) {
         expected.appearance.animationStyle = "smooth";
-        expected.appearance.autoDisableAnimations = false;
       }
       const client = createFrontendPreferencesClient(disk);
       const loaded = await client.read();

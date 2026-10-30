@@ -163,7 +163,7 @@ export default createSettingsLocale("fr-FR", {
       {
         "id": "aotu",
         "label": "Automatique",
-        "description": "Choisir une fréquence selon le mode de performance et l’état de la fenêtre."
+        "description": "Utiliser le préréglage automatique intégré."
       },
       {
         "id": "preset",
@@ -224,8 +224,6 @@ export default createSettingsLocale("fr-FR", {
     "themeDescription": "Choisissez une palette du style actuel. Système suit le réglage clair ou sombre de Windows.",
     "animationStyleTitle": "Style d’animation",
     "animationStyleDescription": "Choisit la manière dont les transitions se déroulent et dont les commandes se mettent en place. Très hautes performances supprime en outre les ombres, les reflets et le flou.",
-    "autoDisableAnimationsTitle": "Désactiver les animations selon l’auto-ordonnancement",
-    "autoDisableAnimationsDescription": "Lorsque cette option est activée et que l’interface revient au premier plan sans saisie récente, un résultat de l’auto-ordonnancement qui demande des économies applique Aucune animation ; sinon, le style choisi s’applique. Aucun changement n’a lieu pendant l’utilisation de l’interface. Sans effet avec Aucune animation ou Très hautes performances.",
     "animationStyleOptions": {
       "smooth": { "label": "Fluide", "description": "Comme macOS et les systèmes mobiles : mouvement à ressort qui conserve la vitesse du geste, peut être rattrapé à tout moment et rebondit en bord de défilement" },
       "desktop": { "label": "Bureau classique", "description": "Comme les logiciels de bureau Windows courants : transitions courtes et décélérées, sans vitesse conservée ni rebond" },

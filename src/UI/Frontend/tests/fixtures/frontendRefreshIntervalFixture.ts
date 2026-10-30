@@ -12,8 +12,7 @@ export function mockFrontendRefreshIntervals(performance?: Partial<AppPerformanc
     const setting = performance?.[`${key}RefreshIntervalMs`];
     if (setting?.mode === "custom" || setting?.mode === "preset") {
       const value = setting.mode === "custom" ? setting.customValue : publication.presets[key][setting.preset];
-      (publication.foreground as Record<string, number>)[key] = value;
-      (publication.backgroundOptimized as Record<string, number>)[key] = value;
+      (publication.resolved as Record<string, number>)[key] = value;
     }
   }
   return publication;

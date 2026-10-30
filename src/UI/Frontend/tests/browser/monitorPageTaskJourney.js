@@ -29,7 +29,7 @@ export default async function monitorPageTaskJourney(page, baseUrl) {
   const trials = requestedTrial === undefined ? TRIALS : [Number(requestedTrial)];
   const results = [];
   for (const mode of MODES) {
-    await writeFrontendPreferences(page, preferences => { preferences.appearance.animationStyle = mode; preferences.appearance.autoDisableAnimations = false; });
+    await writeFrontendPreferences(page, preferences => { preferences.appearance.animationStyle = mode; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.locator(`body[data-animations='${mode}']`).waitFor();
     for (const id of ["monitor", "control", "details", "monitor"]) {

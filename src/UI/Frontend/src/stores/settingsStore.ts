@@ -116,7 +116,6 @@ export interface SettingsStore {
   updateUiStyle: (uiStyle: AppUiStyle) => void;
   updateTheme: (theme: AppPalette) => void;
   updateAnimationStyle: (style: AnimationStyleId) => void;
-  updateAutoDisableAnimations: (enabled: boolean) => void;
   updateResourceBarFrameRateMode: (mode: AppResourceBarFrameRateMode) => void;
   updateResourceBarFrameRate: (framesPerSecond: number) => void;
   updateBarColorMode: (barColorMode: AppBarColorMode) => void;
@@ -565,15 +564,6 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         }
       }));
     },
-    updateAutoDisableAnimations: (enabled) => {
-      updateDraft((currentSettings) => ({
-        ...currentSettings,
-        appearance: {
-          ...normalizeAppSettings(currentSettings).appearance!,
-          autoDisableAnimations: enabled
-        }
-      }));
-    },
     updateResourceBarFrameRateMode: (mode) => {
       updateDraft((currentSettings) => ({
         ...currentSettings,
@@ -983,10 +973,6 @@ function assignLogicRefreshInterval(
 }
 
 
-export function normalizeAutoDisableAnimations(enabled?: boolean | null): boolean {
-  return typeof enabled === "boolean" ? enabled : ResourceManager.FrontendPoints.AutoDisableAnimations;
-}
-
 export function normalizeBarColorMode(barColorMode?: string | null): AppBarColorMode {
   return barColorMode === "distinct" || barColorMode === "type" ? barColorMode : ResourceManager.FrontendPoints.BarColorMode;
 }
@@ -1029,7 +1015,6 @@ function normalizeAppearanceSettings(
   return {
     ...normalizeUiAppearance(settings?.uiStyle, settings?.theme),
     animationStyle: animationStyle(settings?.animationStyle).id,
-    autoDisableAnimations: normalizeAutoDisableAnimations(settings?.autoDisableAnimations),
     resourceBarFrameRateMode: normalizeResourceBarFrameRateMode(settings?.resourceBarFrameRateMode),
     resourceBarFrameRate: normalizeResourceBarFrameRate(settings?.resourceBarFrameRate),
     barColorMode: normalizeBarColorMode(settings?.barColorMode),

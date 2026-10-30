@@ -163,7 +163,6 @@ export default async function ownTooltipsJourney(page, baseUrl) {
     value.appearance.language = "zh-CN";
     value.appearance.theme = "light";
     value.appearance.animationStyle = "none";
-    value.appearance.autoDisableAnimations = false;
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });

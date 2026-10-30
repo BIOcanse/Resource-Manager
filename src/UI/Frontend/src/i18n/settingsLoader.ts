@@ -116,8 +116,6 @@ export const loadingSettingsText: SettingsTextBundle = {
     themeDescription: "",
     animationStyleTitle: "",
     animationStyleDescription: "",
-    autoDisableAnimationsTitle: "",
-    autoDisableAnimationsDescription: "",
     animationStyleOptions: {
       smooth: { label: "", description: "" },
       desktop: { label: "", description: "" },

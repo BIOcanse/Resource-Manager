@@ -40,7 +40,7 @@ export function pointPreferences(): FrontendPreferencesCache {
   return {
     overlaySelectionVersion: 1, appearance: {
       uiStyle: points.UiStyle, theme: points.Theme,
-      animationStyle: points.AnimationStyle, autoDisableAnimations: points.AutoDisableAnimations,
+      animationStyle: points.AnimationStyle,
       resourceBarFrameRateMode: points.BarFrameRateMode, resourceBarFrameRate: points.BarFrameRate,
       barColorMode: points.BarColorMode, fontSmoothing: points.FontSmoothing, language: points.Language,
       byteUnitMode: points.ByteUnitMode
@@ -60,8 +60,8 @@ export function pointPreferences(): FrontendPreferencesCache {
 /**
  * Migration frontend-preferences-animation-style-v1（docs/animation_style_2026-10-26.md「归属」）。
  * 2026-10-26 之前写下的外观段有 animations（auto、normal、none、ultra）和 motionFeel（standard、smooth、crisp），
- * 一次换成 animationStyle 和 autoDisableAnimations：auto → 自动关闭开、风格按原手感；normal → 自动关闭关、风格按原手感；
- * none、ultra 照搬（自动关闭取点的默认，对它们不起作用）。原手感 smooth → smooth，standard、crisp 和没有手感（手感之前的缓存，当时就是标准）→ desktop。
+ * 一次换成 animationStyle：none、ultra 照搬；auto、normal 按原手感。原手感 smooth → smooth，standard、crisp 和没有手感
+ * （手感之前的缓存，当时就是标准）→ desktop。
  * 原生壳的 FrontendPreferencesOwner 对它的缓存文件做同一份迁移。删除条件：下一个不再读旧版本缓存的发行。
  */
 export function migrateAnimationAppearance(appearance: AppAppearanceSettings): AppAppearanceSettings {
@@ -69,11 +69,8 @@ export function migrateAnimationAppearance(appearance: AppAppearanceSettings): A
   if (!("animations" in legacy) && !("motionFeel" in legacy)) return appearance;
   const { animations, motionFeel, ...rest } = legacy;
   if (rest.animationStyle !== undefined) return rest;
-  const feelStyle = motionFeel === "smooth" ? "smooth" : "desktop";
-  if (animations === "none" || animations === "ultra") {
-    return { ...rest, animationStyle: animations, autoDisableAnimations: points.AutoDisableAnimations };
-  }
-  return { ...rest, animationStyle: feelStyle, autoDisableAnimations: animations !== "normal" };
+  return { ...rest, animationStyle: animations === "none" || animations === "ultra" ? animations
+    : motionFeel === "smooth" ? "smooth" : "desktop" };
 }
 
 /**
@@ -116,14 +113,14 @@ export function pointOverlayPresentation(): OverlayPresentation {
 export function resolveFrontendRefresh(refresh: FrontendRefresh): FrontendRefreshIntervals {
   const presets = { monitor: points.MonitorPresets, resourceTable: points.ResourceTablePresets,
     localSystem: points.LocalSystemPresets };
-  const resolve = (key: "monitor" | "resourceTable" | "localSystem", background: boolean) => {
+  // 只按用户的手动设置：自定义取自定义值，档位取那一档，自动取自动前台档位（refresh-auto_foreground_preset）。
+  const resolve = (key: "monitor" | "resourceTable" | "localSystem") => {
     const setting = refresh[key];
-    return setting.mode === "custom" ? setting.customValue : presets[key][setting.mode === "preset"
-      ? setting.preset : background ? points.AutoBackgroundPreset : points.AutoForegroundPreset];
+    return setting.mode === "custom" ? setting.customValue
+      : presets[key][setting.mode === "preset" ? setting.preset : points.AutoForegroundPreset];
   };
   return {
-    foreground: { monitor: resolve("monitor", false), resourceTable: resolve("resourceTable", false), localSystem: resolve("localSystem", false) },
-    backgroundOptimized: { monitor: resolve("monitor", true), resourceTable: resolve("resourceTable", true), localSystem: resolve("localSystem", true) },
+    resolved: { monitor: resolve("monitor"), resourceTable: resolve("resourceTable"), localSystem: resolve("localSystem") },
     presets,
     defaults: { monitor: { ...points.Monitor }, resourceTable: { ...points.ResourceTable }, localSystem: { ...points.LocalSystem } }
   };
@@ -199,6 +196,11 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     const appearance = value.appearance ? migrateAnimationAppearance(value.appearance) : undefined;
     // 2026-10-26 删除读数来源设置；旧缓存只丢弃这一项，后续保存不再写回。
     if (appearance) delete (appearance as AppAppearanceSettings & { readingSourceMode?: unknown }).readingSourceMode;
+    // Migration frontend-preferences-self-scheduling-options-v1（与原生壳 FrontendPreferencesOwner 同名迁移相同）：
+    // 2026-10-29 用户删除 RM 自调度和它触发的「按自调度自动关闭动画」，动画只按选中的风格；旧缓存的这一项读到时丢弃，
+    // 后续保存不再写回。另一个删掉的选项（刷新自动档的后台档位）是构建点值，从未写进缓存。
+    // 删除条件：所有受支持的升级都从 2026-10-29 之后的发行开始。
+    if (appearance) delete (appearance as AppAppearanceSettings & { autoDisableAnimations?: unknown }).autoDisableAnimations;
     // Migration frontend-preferences-notified-version-v1（与原生壳 FrontendPreferencesOwner 同名迁移相同）：界面内更新提示
     // 2026-10-29 起跟随通知序号，旧缓存的已提示版本记录丢弃。删除条件：下一个不再读旧版本缓存的发行。
     const { updateInAppNotifiedVersion: _notified, ...notifications } =

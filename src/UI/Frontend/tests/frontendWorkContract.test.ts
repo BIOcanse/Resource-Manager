@@ -214,10 +214,6 @@ for (const [section, workId, consumers] of [
 const refreshSchedulerSource = readSource("app/useRuntimeReadContext.ts");
 assert.match(
   refreshSchedulerSource,
-  /usePushSource\(options\.selfSchedulingSource,/,
-  "self-scheduling must be one backend current-value subscription");
-assert.match(
-  refreshSchedulerSource,
   /usePushSource\(options\.localSystemSource,/,
   "local system status must be one independent backend current-value subscription");
 assert.match(
@@ -245,8 +241,6 @@ for (const relativePath of [
   "App.tsx",
   "stores/settingsStore.ts",
   "app/useRuntimeReadContext.ts",
-  "app/selfScheduling/resolveSelfCpuRuntimePlan.ts",
-  "app/selfScheduling/resolveSelfGpuRuntimePlan.ts",
   "features/settings/SettingsPage.tsx",
   "features/settings/SettingsWorkspace.tsx",
   "features/settings/components/RuntimePolicySettingsSection.tsx",
@@ -277,9 +271,9 @@ assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorMetrics
 assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorBars\)/);
 assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorTable\)/);
 assert.match(monitorStoreSource, /options\.resourceTableActive\(\)\s*&& resourceTableMode\(\) !== "performance"/);
-// 监控和资源表按刷新调度器算好的间隔订阅，“自动调度”才看得到本程序 CPU 档位和窗口前台状态。
-assert.match(appSource, /readContext\.cpuRuntimePlan\(\)\?\.monitor/);
-assert.match(appSource, /readContext\.cpuRuntimePlan\(\)\?\.resourceTable/);
+// 监控和资源表按读取上下文给出的间隔订阅：间隔只按用户的刷新设置解析，没有按程序档位或窗口状态切换的第二套。
+assert.match(appSource, /readContext\.readIntervals\(\)\?\.monitor/);
+assert.match(appSource, /readContext\.readIntervals\(\)\?\.resourceTable/);
 
 for (const relativePath of [
   "types.ts",

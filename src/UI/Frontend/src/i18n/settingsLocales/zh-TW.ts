@@ -160,8 +160,8 @@ export default createSettingsLocale("zh-TW", {
     "presetNumericModeOptions": [
       {
         "id": "aotu",
-        "label": "自動排程",
-        "description": "按效能模式和視窗狀態自動選。"
+        "label": "自動",
+        "description": "使用內建的自動預設。"
       },
       {
         "id": "preset",
@@ -222,8 +222,6 @@ export default createSettingsLocale("zh-TW", {
     "themeDescription": "選擇目前風格提供的配色。跟隨系統會依 Windows 的淺色或深色設定切換。",
     "animationStyleTitle": "動畫風格",
     "animationStyleDescription": "選擇介面過渡與控制項到位的方式。超高效能在無動畫之外，再去除陰影、高光與模糊。",
-    "autoDisableAnimationsTitle": "依自動排程自動關閉動畫",
-    "autoDisableAnimationsDescription": "開啟時，介面回到前景的那一刻若近期沒有操作、自動排程結果為需要節省，就改用無動畫，否則使用所選風格；在前景操作期間不切換。選擇無動畫或超高效能時不起作用。",
     "animationStyleOptions": {
       "smooth": { "label": "流暢平滑", "description": "類似 macOS 與行動裝置系統：彈簧動畫，保留手勢的速度，隨時可以接住，捲動到邊緣時回彈" },
       "desktop": { "label": "一般桌面", "description": "一般 Windows 桌面軟體的動畫：短促的減速過渡，不保留速度，沒有回彈" },

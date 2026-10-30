@@ -63,7 +63,6 @@ export default async function helpHintJourney(page, baseUrl) {
   await seedFrontendPreferences(page, (value) => {
     value.appearance.language = "zh-CN";
     value.appearance.animationStyle = "smooth";
-    value.appearance.autoDisableAnimations = false;
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });

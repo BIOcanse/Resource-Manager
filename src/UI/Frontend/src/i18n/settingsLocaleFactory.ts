@@ -96,7 +96,7 @@ const zhCnSettingsCopy: SettingsCopy = {
     refreshCadenceTitle: "信息更新频率",
     refreshCadenceDescription: "越快越费资源。",
     presetNumericModeOptions: [
-      { id: "aotu", label: "自动调度", description: "按性能模式和窗口状态自动选。" },
+      { id: "aotu", label: "自动", description: "使用内置的自动预设。" },
       { id: "preset", label: "锁定预设", description: "用右侧选的预设。" },
       { id: "custom", label: "自定义", description: "用手填的毫秒值。" }
     ],
@@ -123,8 +123,6 @@ const zhCnSettingsCopy: SettingsCopy = {
     themeDescription: "选择当前风格提供的配色。跟随系统会按 Windows 的浅色或深色设置切换。",
     animationStyleTitle: "动画风格",
     animationStyleDescription: "选择界面过渡和控件到位的方式。超高性能在无动画之外，再去掉阴影、高光和模糊。",
-    autoDisableAnimationsTitle: "按自调度自动关闭动画",
-    autoDisableAnimationsDescription: "打开时，界面回到前台的那一刻若近期没有操作、自调度结果为需要节省，就改用无动画，否则使用选中的风格；在前台操作期间不切换。选中无动画或超高性能时不起作用。",
     animationStyleOptions: {
       smooth: { label: "流畅平滑", description: "类似 macOS 与移动设备系统：弹簧动画，保留手势的速度，随时可以接住，滚动到边缘时回弹" },
       desktop: { label: "桌面常规", description: "一般 Windows 桌面软件的动画：短促的减速过渡，不保留速度，没有回弹" },
@@ -533,7 +531,7 @@ const enSettingsCopy: SettingsCopy = {
     refreshCadenceTitle: "Information update frequency",
     refreshCadenceDescription: "Control how quickly monitoring information and status are updated. Faster updates use slightly more resources.",
     presetNumericModeOptions: [
-      { id: "aotu", label: "Automatic", description: "Choose a refresh rate for the current performance mode and window state." },
+      { id: "aotu", label: "Automatic", description: "Use the built-in automatic preset." },
       { id: "preset", label: "Lock preset", description: "Always use the selected preset cadence." },
       { id: "custom", label: "Custom", description: "Always use the manually entered millisecond value." }
     ],
@@ -560,8 +558,6 @@ const enSettingsCopy: SettingsCopy = {
     themeDescription: "Choose one of the current style's palettes. System follows the Windows light or dark setting.",
     animationStyleTitle: "Animation style",
     animationStyleDescription: "Choose how transitions play and how controls settle. Ultra performance also removes shadows, highlights and blur.",
-    autoDisableAnimationsTitle: "Turn off animation by self-scheduling",
-    autoDisableAnimationsDescription: "When on, at the moment the interface returns to the foreground without recent input, a self-scheduling result that calls for saving switches to No animation; otherwise the selected style applies. It never switches while you are using the interface. Has no effect with No animation or Ultra performance.",
     animationStyleOptions: {
       smooth: { label: "Smooth", description: "Like macOS and mobile systems: spring motion that keeps the speed of your gesture, can be caught at any time and bounces at scroll edges" },
       desktop: { label: "Desktop", description: "Like typical Windows desktop software: short decelerating transitions without carried speed or bounce" },

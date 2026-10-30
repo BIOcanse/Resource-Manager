@@ -159,8 +159,6 @@ export interface SettingsCopy {
     themeDescription: string;
     animationStyleTitle: string;
     animationStyleDescription: string;
-    autoDisableAnimationsTitle: string;
-    autoDisableAnimationsDescription: string;
     animationStyleOptions: Record<AnimationStyleId, { label: string; description: string }>;
     resourceBarFrameRateTitle: string;
     resourceBarFrameRateDescription: string;

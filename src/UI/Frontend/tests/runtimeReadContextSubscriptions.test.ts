@@ -6,7 +6,6 @@ import { BackendPushValueSource, type PushValueSource } from "../src/frontendRun
 import { BackendSessionOwner } from "../src/frontendRuntime/session/BackendSessionOwner.ts";
 import { defineResponseDecoder } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 import type { LocalSystemStatus } from "../src/data/localSystem/localSystemStatusDecoder.ts";
-import type { ResourceManagerSelfSchedulingSnapshot } from "../src/data/selfScheduling/resourceManagerSelfSchedulingDecoder.ts";
 import type { FrontendRefreshIntervals } from "../src/types.ts";
 import { frontendRefreshIntervals } from "./fixtures/frontendRefreshIntervalFixture.ts";
 
@@ -64,16 +63,14 @@ function source<T>(key: string): PushValueSource<T> {
 }
 const localBindings = () => bindings.filter(binding => binding.key === "local-system");
 const savedSettings = structuredClone(frontendRefreshIntervals);
-// This is the journey's saved custom choice, equal in both CPU contexts.
-(savedSettings.foreground as { localSystem: number }).localSystem = 1000;
-(savedSettings.backgroundOptimized as { localSystem: number }).localSystem = 1000;
+// This is the journey's saved custom choice.
+(savedSettings.resolved as { localSystem: number }).localSystem = 1000;
 const [visible, setVisible] = createSignal(true);
 const [settings, setSettings] = createSignal<FrontendRefreshIntervals | null>(null);
 let dispose = () => {};
-const scheduler = createRoot(stop => {
+const readContext = createRoot(stop => {
   dispose = stop;
   return useRuntimeReadContext({
-    selfSchedulingSource: source<ResourceManagerSelfSchedulingSnapshot>("scheduling"),
     localSystemSource: source<LocalSystemStatus>("local-system"),
     frontendWork: { frontendVisible: visible },
     refreshIntervals: settings
@@ -89,28 +86,27 @@ const waitForStreams = async (count: number) => {
 try {
   await flush();
   assert.equal(streams.length, 0, "startup waits for the saved refresh preferences");
-  assert.equal(bindings.length, 0, "neither owner opens a provisional subscription");
+  assert.equal(bindings.length, 0, "the owner opens no provisional subscription");
   setSettings(savedSettings);
   await flush();
   assert.equal(streams.length, 1);
   assert.deepEqual(localBindings(), [{ key: "local-system", intervalMs: 1000, released: false }]);
+  assert.deepEqual(bindings.map(binding => binding.key), ["local-system"], "no other read subscription is opened");
   streams[0].publish("/api/local-system/", { uptimeSeconds: 3600 });
-  streams[0].publish("/api/scheduling/", { cpuGrade: "normal" });
   await flush();
-  assert.equal(scheduler.systemUptime(), "01:00:00");
+  assert.equal(readContext.systemUptime(), "01:00:00");
+  assert.deepEqual(readContext.readIntervals(), savedSettings.resolved, "the read intervals are the manual settings");
 
-  // The first scheduling result and actual focus/grade changes may recompute
-  // the CPU plan, but an unchanged local interval must retain its owner lease.
-  for (const grade of ["normal", "optimize", "normal", "optimize"]) {
-    streams[0].publish("/api/scheduling/", { cpuGrade: grade });
-    await flush();
+  // Focus changes never change the read intervals, so the local owner keeps its lease.
+  for (let round = 0; round < 2; round++) {
     for (const event of ["blur", "focus"]) {
       assert.ok(focusListeners.has(event));
       focusListeners.get(event)!();
       await flush();
       assert.equal(streams.length, 1);
       assert.deepEqual(localBindings(), [{ key: "local-system", intervalMs: 1000, released: false }],
-        `${grade}/${event} must not replace the local-system subscription`);
+        `${event} must not replace the local-system subscription`);
+      assert.deepEqual(readContext.readIntervals(), savedSettings.resolved);
     }
   }
 
@@ -120,26 +116,25 @@ try {
     await flush();
     assert.equal(streams.length, 1, "equivalent settings must keep the physical channel");
     assert.equal(streams[0].signal.aborted, false);
-    assert.equal(scheduler.systemUptime(), "01:00:00");
+    assert.equal(readContext.systemUptime(), "01:00:00");
     assert.equal(localBindings().length, 1);
     assert.equal(localBindings()[0].released, false);
   }
   const changed = structuredClone(savedSettings);
-  (changed.foreground as { monitor: number }).monitor += 1000;
+  (changed.resolved as { monitor: number }).monitor += 1000;
   setSettings(changed);
-  await waitForStreams(2);
-  assert.equal(streams.length, 2, "a real cadence change must replace the binding");
-  assert.equal(streams[0].signal.aborted, true);
-  assert.deepEqual(scheduler.selfScheduling(), { cpuGrade: "optimize" }, "Cadence change retains the same entry current value");
+  await flush();
+  assert.equal(readContext.readIntervals()!.monitor, changed.resolved.monitor, "a manual change takes effect directly");
+  assert.equal(streams.length, 1, "a sibling's cadence does not touch the local-system transport");
   assert.deepEqual(localBindings(), [{ key: "local-system", intervalMs: 1000, released: false }],
-    "a sibling's cadence replaces the shared transport, not the local owner lease");
+    "a sibling's cadence does not replace the local owner lease");
 
   const localChanged = structuredClone(changed);
-  (localChanged.foreground as { localSystem: number }).localSystem = 2300;
-  (localChanged.backgroundOptimized as { localSystem: number }).localSystem = 2300;
+  (localChanged.resolved as { localSystem: number }).localSystem = 2300;
   setSettings(localChanged);
-  await waitForStreams(3);
-  assert.equal(streams.length, 3);
+  await waitForStreams(2);
+  assert.equal(streams.length, 2);
+  assert.equal(streams[0].signal.aborted, true);
   assert.deepEqual(localBindings(), [
     { key: "local-system", intervalMs: 1000, released: true },
     { key: "local-system", intervalMs: 2300, released: false }
@@ -149,14 +144,13 @@ try {
   await flush();
   assert.equal(inFlight, 0, "hidden window must release all subscriptions immediately");
   assert.ok(bindings.every(binding => binding.released));
-  assert.equal(scheduler.systemUptime(), "01:00:00");
+  assert.equal(readContext.systemUptime(), "01:00:00");
   setVisible(true);
-  await waitForStreams(4);
-  assert.equal(streams.length, 4);
-  assert.deepEqual(scheduler.selfScheduling(), { cpuGrade: "optimize" });
+  await waitForStreams(3);
+  assert.equal(streams.length, 3);
   assert.equal(localBindings().length, 3);
   assert.deepEqual(localBindings()[2], { key: "local-system", intervalMs: 2300, released: false });
-  assert.equal(scheduler.systemUptime(), "01:00:00", "Reactivation synchronously displays the current value");
+  assert.equal(readContext.systemUptime(), "01:00:00", "Reactivation synchronously displays the current value");
   assert.equal(maxInFlight, 1);
 } finally {
   dispose(); channel.dispose(); session.dispose();
@@ -164,4 +158,4 @@ try {
 assert.equal(inFlight, 0);
 assert.ok(bindings.every(binding => binding.released));
 assert.equal(focusListeners.size, 0);
-console.log("Runtime read subscriptions: saved startup cadence opens once; equivalent settings, grade, focus and sibling channel changes retain the lease; cadence and visibility replace it.");
+console.log("Runtime read subscriptions: saved startup cadence opens once; the read intervals are the manual settings; equivalent settings, focus and sibling cadence changes retain the lease; local cadence and visibility replace it.");

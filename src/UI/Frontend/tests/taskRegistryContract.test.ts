@@ -32,7 +32,7 @@ assert.match(resourceBreakdown, /props\.animationStyle/);
 assert.match(resourceBreakdown, /<For each=\{snapshotBarIds\(\)\}>/);
 assert.doesNotMatch(resourceBreakdown, /<For each=\{props\.snapshotBars\}>/);
 assert.doesNotMatch(resourceBreakdown, /document\.body\.dataset\.animations === "normal"/);
-assert.match(app, /animationStyle=\{gpuRuntimePlan\(\)\.animations\}/);
+assert.match(app, /animationStyle=\{selectedAnimationStyle\(\)\}/);
 assert.match(app, /frontendRuntime\.taskCenter\.subscribe/);
 assert.match(app, /<TaskCenterDialog/);
 assert.match(appShell, /id="taskCenterButton"/);
