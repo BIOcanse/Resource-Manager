@@ -1,3 +1,4 @@
+using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Domain.Messages;
@@ -15,6 +16,7 @@ public sealed partial class WindowsStorageSensorsMonitoringZone
     private readonly WindowsStorageOwner owner;
 
     public WindowsStorageSensorsMonitoringZone(ResourceManager.Shared.BusinessBlocks.State.StateAuthority? authority = null)
+        : base(MonitoringSourceZoneIds.WindowsStorageSensors)
         => owner = CreateOwner(authority: authority);
 
     internal WindowsStorageSensorsMonitoringZone(Func<string, string, QueryResult> query,

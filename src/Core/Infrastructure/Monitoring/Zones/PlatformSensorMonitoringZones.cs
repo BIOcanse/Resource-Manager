@@ -6,10 +6,6 @@ namespace ResourceManager.App.Infrastructure.Monitoring;
 
 public sealed partial class WindowsStorageSensorsMonitoringZone : MonitoringSourceZone
 {
-    public WindowsStorageSensorsMonitoringZone()
-        : base(MonitoringSourceZoneIds.WindowsStorageSensors)
-    {
-    }
 }
 
 public sealed partial class HardwareMonitorWmiMonitoringZone : MonitoringSourceZone, IDisposable
