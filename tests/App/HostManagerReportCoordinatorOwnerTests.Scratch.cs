@@ -79,6 +79,11 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         await using var owner = ScratchOwner(persistence, ledger.CreateScratch, resources, out _);
         await owner.StartAsync(CancellationToken.None);
         await owner.StopAsync(CancellationToken.None);
+        // The run's first evaluation may be canceled by the immediate stop (it is under load), which would leave the
+        // published rule counts unevaluated. Complete one evaluation first, so the failure is compared against a
+        // published evaluation, not against the pre-evaluation counts.
+        var evaluated = await owner.RefreshReportsAsync(CancellationToken.None);
+        Assert.Equal("completed", evaluated.Status.EvaluationState);
         var before = await inner.LoadAsync(CancellationToken.None);
         var status = owner.GetStatus();
         persistence.FailNext = true;
