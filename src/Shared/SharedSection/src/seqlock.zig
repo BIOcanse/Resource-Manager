@@ -1,5 +1,6 @@
 //! Per-source sequence (seqlock) rounds over a laid-out region: writing, reading
-//! with a retry limit, the row-version rule for columns, and `end`.
+//! selected sources with a retry limit, the row-version rule for columns, and
+//! `end`.
 //!
 //! A source's sequence is even while its positions are stable and odd while its
 //! writer is inside a round; `layout.ended_bit` marks it ended. Only the source's
@@ -25,6 +26,7 @@ const layout = @import("layout.zig");
 const Layout = layout.Layout;
 const Error = layout.Error;
 const Failure = layout.Failure;
+const Header = layout.Header;
 const PositionEntry = layout.PositionEntry;
 const PositionSpec = layout.PositionSpec;
 const SourceState = layout.SourceState;
@@ -252,11 +254,10 @@ fn copyAs(comptime U: type, from: []const u8, to: []u8) void {
     for (0..from.len / width) |i| std.mem.writeInt(U, to[i * width ..][0..width], @atomicLoad(U, &elements[i], .acquire), .little);
 }
 
-/// What a reader holds for a source. `none`: nothing read yet; `failed`: this
-/// round's read failed and `reason` holds the `Failure` code.
+/// What a reader holds for a selected source. `none`: nothing read yet;
+/// `failed`: this round's read failed and `reason` holds the `Failure` code.
 pub const CopyStatus = enum(u32) { none = 0, has_value = 1, unavailable = 2, ended = 3, failed = 4, _ };
 
-/// Zero-initialized means nothing read yet.
 pub const SourceCopy = extern struct {
     /// The sequence the held copy was taken at, unless status is none or failed.
     sequence: u64 = 0,
@@ -264,39 +265,136 @@ pub const SourceCopy = extern struct {
     status: CopyStatus = .none,
     /// The source's reason when unavailable; the `Failure` code when failed.
     reason: u32 = 0,
+    /// The selected source's index in the region's source table.
+    source: u32 = 0,
 };
 
-/// Caller memory that reads copy into. `data` mirrors the data area at the same
-/// offsets. `positions` holds each position's checked layout and the length and
-/// identity sequence copied with it; `sources` holds each source's result.
-/// Lengths are element counts; data needs at least the data capacity. Zeroed
-/// `sources` and `positions` mean nothing read yet.
-pub const Copy = extern struct {
+/// One position of a selected source.
+pub const SelectedPosition = extern struct {
+    /// The checked layout from setup; the length and identity sequence of the
+    /// last copy.
+    entry: PositionEntry,
+    /// Where its value sits in the selection's data: `entry.spec.size` bytes.
+    offset: u64,
+    /// Its index in the region's position table.
+    index: u32,
+};
+
+/// What a selection of sources needs.
+pub const SelectionSize = extern struct {
+    /// Bytes of selection data.
+    data_bytes: u64 = 0,
+    /// `SelectedPosition` entries.
+    position_count: u32 = 0,
+};
+
+/// A reader of a fixed set of sources, in caller memory, set up once by
+/// `init` and read with `read`. `data` holds only the selected sources'
+/// positions, laid out compactly: in position-table order, each position at the
+/// next multiple of 8, with its full reserved size, so offsets never move
+/// between reads. `positions` is the table of where each value is
+/// (`positionValue` looks it up); `held` is the per-source result, ascending by
+/// source.
+pub const Selection = extern struct {
+    /// The header the selection was set up against. A read whose region header
+    /// differs fails with `layout_changed`.
+    header: Header = std.mem.zeroes(Header),
+    held: ?[*]SourceCopy = null,
+    positions: ?[*]SelectedPosition = null,
     data: ?[*]u8 = null,
     data_length: u64 = 0,
-    sources: ?[*]SourceCopy = null,
-    positions: ?[*]PositionEntry = null,
-    source_length: u32 = 0,
+    held_length: u32 = 0,
     position_length: u32 = 0,
 
-    pub fn init(data: []u8, sources: []SourceCopy, positions: []PositionEntry) Copy {
-        @memset(sources, .{});
-        @memset(std.mem.sliceAsBytes(positions), 0);
-        return .{ .data = data.ptr, .data_length = data.len, .sources = sources.ptr, .positions = positions.ptr, .source_length = @intCast(sources.len), .position_length = @intCast(positions.len) };
+    /// Sets up a reader of `sources` (strictly ascending source indexes):
+    /// checks the region's whole position table, lays the selected positions
+    /// out in `data` and records them in `positions`. `held` needs one entry per
+    /// selected source; `selectionSize` gives the other two sizes. Every row
+    /// column's identity position must belong to a selected source: the reader
+    /// pairs a column only with rows it holds itself.
+    pub fn init(region: []align(8) const u8, sources: []const u32, held: []SourceCopy, positions: []SelectedPosition, data: []u8) Error!Selection {
+        const view = try Layout.load(region);
+        if (held.len < sources.len) return error.CopyTooSmall;
+        const size = try walk(view, region, sources, positions);
+        if (size.data_bytes > data.len) return error.CopyTooSmall;
+        for (held[0..sources.len], sources) |*slot, source| slot.* = .{ .source = source };
+        return .{
+            .header = view.header,
+            .held = held.ptr,
+            .positions = positions.ptr,
+            .data = data.ptr,
+            .data_length = data.len,
+            .held_length = @intCast(sources.len),
+            .position_length = size.position_count,
+        };
     }
-    pub fn dataSlice(self: *const Copy) []u8 {
-        const base = self.data orelse return &.{};
-        return base[0..@intCast(self.data_length)];
+    pub fn heldSlice(self: *const Selection) []SourceCopy {
+        const base = self.held orelse return &.{};
+        return base[0..self.held_length];
     }
-    pub fn sourceSlice(self: *const Copy) []SourceCopy {
-        const base = self.sources orelse return &.{};
-        return base[0..self.source_length];
-    }
-    pub fn positionSlice(self: *const Copy) []PositionEntry {
+    pub fn positionSlice(self: *const Selection) []SelectedPosition {
         const base = self.positions orelse return &.{};
         return base[0..self.position_length];
     }
+    pub fn dataSlice(self: *const Selection) []u8 {
+        const base = self.data orelse return &.{};
+        return base[0..@intCast(self.data_length)];
+    }
 };
+
+/// What `Selection.init` needs for `sources` over `region`.
+pub fn selectionSize(region: []align(8) const u8, sources: []const u32) Error!SelectionSize {
+    return walk(try Layout.load(region), region, sources, null);
+}
+
+/// The one layout rule, shared by `selectionSize` and `Selection.init`. Checks
+/// the source list and the whole position table; records each selected
+/// position into `record` (null only measures), failing before it overflows.
+fn walk(view: Layout, region: []align(8) const u8, sources: []const u32, record: ?[]SelectedPosition) Error!SelectionSize {
+    for (sources, 0..) |source, index| {
+        if (source >= view.header.source_count) return error.SourceIndex;
+        if (index > 0 and sources[index - 1] >= source) return error.SelectionOrder;
+    }
+    var size = SelectionSize{};
+    var index: u32 = 0;
+    while (index < view.header.position_count) : (index += 1) {
+        const spec = try view.checkedSpec(region, index);
+        if (find(u32, sources, spec.source, sourceOf) == null) continue;
+        if (spec.identity != none) {
+            const rows = layout.loadSpec(view.position(region, spec.identity));
+            if (find(u32, sources, rows.source, sourceOf) == null) return error.IdentityNotSelected;
+        }
+        if (record) |slots| {
+            if (size.position_count >= slots.len) return error.CopyTooSmall;
+            slots[size.position_count] = .{ .entry = .{ .spec = spec }, .offset = size.data_bytes, .index = index };
+        }
+        size.data_bytes = std.mem.alignForward(u64, size.data_bytes + spec.size, 8);
+        size.position_count += 1;
+    }
+    return size;
+}
+
+fn sourceOf(source: u32) u32 {
+    return source;
+}
+fn heldSource(held: SourceCopy) u32 {
+    return held.source;
+}
+fn recordIndex(record: SelectedPosition) u32 {
+    return record.index;
+}
+/// Binary search over items ascending by `keyOf`; bounded, no recursion.
+fn find(comptime T: type, items: []const T, key: u32, comptime keyOf: fn (T) u32) ?usize {
+    var low: usize = 0;
+    var high: usize = items.len;
+    while (low < high) {
+        const middle = low + (high - low) / 2;
+        const at = keyOf(items[middle]);
+        if (at == key) return middle;
+        if (at < key) low = middle + 1 else high = middle;
+    }
+    return null;
+}
 
 pub const SourceRead = union(enum) {
     /// Same sequence as the held copy: nothing was copied, nothing to decode.
@@ -305,46 +403,48 @@ pub const SourceRead = union(enum) {
     value: u64,
     /// The source wrote unavailable with this reason.
     unavailable: u32,
-    /// The source has ended; the copy holds no data for it.
+    /// The source has ended; the selection holds no data for it.
     ended,
-    /// This round's read failed: malformed content or the retry limit.
+    /// This round's read failed: malformed content, a changed layout or the
+    /// retry limit.
     failed: Failure,
 };
 
-/// Reads source `source` into `copy`, its positions landing at their data area
-/// offsets. An unchanged sequence returns at once. Otherwise copies, loads the
-/// sequence again and retries, at most `retry_limit` times; past that the
-/// source is failed for this round. Region contents are untrusted: a malformed
-/// region fails with a reason and is never read out of bounds.
-/// `copy.sources[source]` keeps the result for `positionValue`.
-pub fn read(region: []align(8) const u8, copy: *Copy, source: u32, retry_limit: u32) SourceRead {
-    const sources = copy.sourceSlice();
-    const view = Layout.load(region) catch |err| return fail(sources, source, layout.failureOf(err));
-    const header = view.header;
-    if (source >= header.source_count) return fail(sources, source, .source_index);
-    const positions = copy.positionSlice();
-    if (copy.dataSlice().len < header.data_capacity or sources.len < header.source_count or positions.len < header.position_count)
-        return fail(sources, source, .copy_too_small);
-    const held = &sources[source];
+/// Reads selected source `source` into `selection`. An unchanged sequence
+/// returns at once and copies nothing. Otherwise checks that the region still
+/// has the layout the selection was set up with, copies the source's state and
+/// written rows to their places in the selection's data, loads the sequence
+/// again and retries, at most `retry_limit` times; past that the source is
+/// failed for this round. Region contents are untrusted: anything malformed
+/// fails with a reason and is never read out of bounds. The held entry keeps
+/// the result for `positionValue`.
+pub fn read(region: []align(8) const u8, selection: *Selection, source: u32, retry_limit: u32) SourceRead {
+    const all_held = selection.heldSlice();
+    const held = &all_held[find(SourceCopy, all_held, source, heldSource) orelse return .{ .failed = .not_selected }];
+    const view = Layout.load(region) catch |err| return fail(held, layout.failureOf(err));
+    if (!std.meta.eql(view.header, selection.header)) return fail(held, .layout_changed);
+    if (source >= view.header.source_count) return fail(held, .source_index);
     const sequence_field = &view.source(region, source).sequence;
     var sequence = @atomicLoad(u64, sequence_field, .acquire);
     // An unchanged source costs this one load.
     if (holds(held.status) and sequence == held.sequence) return .unchanged;
-    // The position table is checked once per changed read, into the copy.
-    var index: u32 = 0;
-    while (index < header.position_count) : (index += 1) {
-        positions[index].spec = view.checkedSpec(region, index) catch |err| return fail(sources, source, layout.failureOf(err));
+    // The source's positions must be the ones checked at setup. With the
+    // header unchanged, equal fields are within the region.
+    for (selection.positionSlice()) |selected| {
+        if (selected.entry.spec.source != source) continue;
+        if (selected.index >= view.header.position_count) return fail(held, .layout_changed);
+        if (!std.meta.eql(layout.loadSpec(view.position(region, selected.index)), selected.entry.spec)) return fail(held, .layout_changed);
     }
     held.status = .none; // the held copy is about to be overwritten
     var attempt: u32 = 0;
     while (true) : (sequence = @atomicLoad(u64, sequence_field, .acquire)) {
-        if (sequence & ended_bit != 0) return settleEnded(copy, header.position_count, source, sequence);
+        if (sequence & ended_bit != 0) return settleEnded(selection, held, sequence);
         if (sequence & 1 == 0) {
-            const round = copyRound(view, region, copy, source);
+            const round = copyRound(view, region, selection, source);
             // The re-check. Equal: the copy, and any fault found in it, is one round's content.
-            if (@atomicLoad(u64, sequence_field, .acquire) == sequence) return settle(copy, header.position_count, source, sequence, round);
+            if (@atomicLoad(u64, sequence_field, .acquire) == sequence) return settle(selection, held, sequence, round);
         }
-        if (attempt == retry_limit) return fail(sources, source, .retry_limit);
+        if (attempt == retry_limit) return fail(held, .retry_limit);
         attempt += 1;
         std.atomic.spinLoopHint();
     }
@@ -354,16 +454,16 @@ fn holds(status: CopyStatus) bool {
     return status == .has_value or status == .unavailable or status == .ended;
 }
 
-fn fail(sources: []SourceCopy, source: u32, failure: Failure) SourceRead {
-    if (source < sources.len) sources[source] = .{ .status = .failed, .reason = @intFromEnum(failure) };
+fn fail(held: *SourceCopy, failure: Failure) SourceRead {
+    held.* = .{ .status = .failed, .reason = @intFromEnum(failure), .source = held.source };
     return .{ .failed = failure };
 }
 
 const Round = struct { state: SourceState, reason: u32, write_time_unix_ms: i64, failure: ?Failure = null };
 
-/// One attempt: the source's state, then, with a value, each own position's
-/// length and elements. Only checked layout from the copy bounds the accesses.
-fn copyRound(view: Layout, region: []align(8) const u8, copy: *Copy, source: u32) Round {
+/// One attempt: the source's state, then, with a value, each of its positions'
+/// length and elements.
+fn copyRound(view: Layout, region: []align(8) const u8, selection: *Selection, source: u32) Round {
     const entry = view.source(region, source);
     var round = Round{
         .state = @atomicLoad(SourceState, &entry.state, .acquire),
@@ -379,87 +479,91 @@ fn copyRound(view: Layout, region: []align(8) const u8, copy: *Copy, source: u32
         },
     }
     const from = view.dataArea(region);
-    const to = copy.dataSlice();
-    const positions = copy.positionSlice();
-    var index: u32 = 0;
-    while (index < view.header.position_count) : (index += 1) {
-        const slot = &positions[index];
-        if (slot.spec.source != source) continue;
-        const width = slot.spec.element_width;
-        const capacity = slot.spec.size / width;
-        const position = view.position(region, index);
-        const length = if (slot.spec.kind == .scalar) capacity else @atomicLoad(u32, &position.length, .acquire);
+    const to = selection.dataSlice();
+    for (selection.positionSlice()) |*selected| {
+        const spec = selected.entry.spec;
+        if (spec.source != source) continue;
+        // Selection memory is the caller's: its offsets are checked too.
+        if (@as(u64, spec.offset) + spec.size > from.len or selected.offset + spec.size > to.len) {
+            round.failure = .copy_too_small;
+            return round;
+        }
+        const width = spec.element_width;
+        const capacity = spec.size / width;
+        const position = view.position(region, selected.index);
+        const length = if (spec.kind == .scalar) capacity else @atomicLoad(u32, &position.length, .acquire);
         if (length > capacity) {
             round.failure = .length_over_capacity;
             return round;
         }
-        slot.length = length;
-        slot.identity_sequence = @atomicLoad(u64, &position.identity_sequence, .acquire);
+        selected.entry.length = length;
+        selected.entry.identity_sequence = @atomicLoad(u64, &position.identity_sequence, .acquire);
         const span = @as(usize, length) * width;
-        const source_bytes = from[slot.spec.offset..][0..span];
-        const target = to[slot.spec.offset..][0..span];
+        const source_bytes = from[spec.offset..][0..span];
+        const target = to[@intCast(selected.offset)..][0..span];
         switch (width) {
             1 => copyAs(u8, source_bytes, target),
             2 => copyAs(u16, source_bytes, target),
             4 => copyAs(u32, source_bytes, target),
             8 => copyAs(u64, source_bytes, target),
-            else => unreachable,
+            else => unreachable, // checked at setup and compared since
         }
     }
     return round;
 }
 
-fn settle(copy: *Copy, count: u32, source: u32, sequence: u64, round: Round) SourceRead {
-    const sources = copy.sourceSlice();
-    if (round.failure) |failure| return fail(sources, source, failure);
+fn settle(selection: *Selection, held: *SourceCopy, sequence: u64, round: Round) SourceRead {
+    if (round.failure) |failure| return fail(held, failure);
     switch (round.state) {
         // An ended state without the ended bit is still ended.
-        .ended => return settleEnded(copy, count, source, sequence),
+        .ended => return settleEnded(selection, held, sequence),
         .unavailable => {
-            sources[source] = .{ .sequence = sequence, .write_time_unix_ms = round.write_time_unix_ms, .status = .unavailable, .reason = round.reason };
+            held.* = .{ .sequence = sequence, .write_time_unix_ms = round.write_time_unix_ms, .status = .unavailable, .reason = round.reason, .source = held.source };
             return .{ .unavailable = round.reason };
         },
         else => {},
     }
-    if (checkStrings(copy, count, source)) |failure| return fail(sources, source, failure);
-    sources[source] = .{ .sequence = sequence, .write_time_unix_ms = round.write_time_unix_ms, .status = .has_value };
+    if (checkStrings(selection, held.source)) |failure| return fail(held, failure);
+    held.* = .{ .sequence = sequence, .write_time_unix_ms = round.write_time_unix_ms, .status = .has_value, .source = held.source };
     return .{ .value = sequence };
 }
 
-/// "No data": the copy keeps nothing of an ended source.
-fn settleEnded(copy: *Copy, count: u32, source: u32, sequence: u64) SourceRead {
-    const data = copy.dataSlice();
-    for (copy.positionSlice()[0..count]) |*slot| {
-        if (slot.spec.source != source) continue;
-        @memset(data[slot.spec.offset..][0..slot.spec.size], 0);
-        slot.length = 0;
-        slot.identity_sequence = 0;
+/// "No data": the selection keeps nothing of an ended source.
+fn settleEnded(selection: *Selection, held: *SourceCopy, sequence: u64) SourceRead {
+    const data = selection.dataSlice();
+    for (selection.positionSlice()) |*selected| {
+        if (selected.entry.spec.source != held.source) continue;
+        if (selected.offset + selected.entry.spec.size <= data.len) @memset(data[@intCast(selected.offset)..][0..selected.entry.spec.size], 0);
+        selected.entry.length = 0;
+        selected.entry.identity_sequence = 0;
     }
-    copy.sourceSlice()[source] = .{ .sequence = sequence, .status = .ended };
+    held.* = .{ .sequence = sequence, .status = .ended, .source = held.source };
     return .ended;
 }
 
 /// Every string row of the source lies inside its table's copied bytes. The
 /// column and its table belong to this source, so one round copied both.
-fn checkStrings(copy: *const Copy, count: u32, source: u32) ?Failure {
-    const data = copy.dataSlice();
-    const positions = copy.positionSlice();
-    for (positions[0..count]) |column| {
-        if (column.spec.source != source or column.spec.kind != .string_column) continue;
-        const table = positions[column.spec.strings];
-        const rows = data[column.spec.offset..][0 .. @as(usize, column.length) * 8];
-        for (0..column.length) |row| {
+fn checkStrings(selection: *const Selection, source: u32) ?Failure {
+    const data = selection.dataSlice();
+    const selected_positions = selection.positionSlice();
+    for (selected_positions) |column| {
+        if (column.entry.spec.source != source or column.entry.spec.kind != .string_column) continue;
+        const table = selected_positions[find(SelectedPosition, selected_positions, column.entry.spec.strings, recordIndex) orelse return .position_strings];
+        const rows = data[@intCast(column.offset)..][0 .. @as(usize, column.entry.length) * 8];
+        for (0..column.entry.length) |row| {
             const value = std.mem.readInt(u64, rows[row * 8 ..][0..8], .little);
-            if ((value & 0xFFFF_FFFF) + (value >> 32) > table.length) return .string_range;
+            if ((value & 0xFFFF_FFFF) + (value >> 32) > table.entry.length) return .string_range;
         }
     }
     return null;
 }
 
 pub const Value = struct {
-    /// In the copy's data: a scalar's whole size, a column's or string column's
-    /// written rows, a string table's written bytes.
+    /// In the selection's data: a scalar's whole size, a column's or string
+    /// column's written rows, a string table's written bytes.
     bytes: []const u8,
+    /// Where `bytes` starts in the selection's data.
+    offset: u64,
     /// Elements for a scalar, rows for a column or string column, bytes for a
     /// string table.
     length: u32,
@@ -468,7 +572,7 @@ pub const Value = struct {
 pub const PositionValue = union(enum) {
     value: Value,
     /// Nothing read yet, or a column written against identity rows other than
-    /// the ones the copy holds: the column has not arrived for this round.
+    /// the ones the selection holds: the column has not arrived for this round.
     not_arrived,
     /// The owning source wrote unavailable with this reason.
     unavailable: u32,
@@ -476,16 +580,15 @@ pub const PositionValue = union(enum) {
     failed: Failure,
 };
 
-/// The value of `position` in `copy`. A column with an identity position is
-/// used only when its identity sequence equals the sequence of the identity
-/// source's held copy, so old rows are never paired with new values.
-pub fn positionValue(copy: *const Copy, position: u32) PositionValue {
-    const positions = copy.positionSlice();
-    const sources = copy.sourceSlice();
-    if (position >= positions.len) return .{ .failed = .position_index };
-    const slot = positions[position];
-    if (slot.spec.source >= sources.len) return .{ .failed = .position_source };
-    const owner = sources[slot.spec.source];
+/// The value of `position` (its index in the region's position table) in
+/// `selection`. A column with an identity position is used only when its
+/// identity sequence equals the sequence of the identity source's held copy,
+/// so old rows are never paired with new values.
+pub fn positionValue(selection: *const Selection, position: u32) PositionValue {
+    const selected_positions = selection.positionSlice();
+    const held = selection.heldSlice();
+    const selected = selected_positions[find(SelectedPosition, selected_positions, position, recordIndex) orelse return .{ .failed = .not_selected }];
+    const owner = held[find(SourceCopy, held, selected.entry.spec.source, heldSource) orelse return .{ .failed = .not_selected }];
     switch (owner.status) {
         .has_value => {},
         .unavailable => return .{ .unavailable = owner.reason },
@@ -493,30 +596,29 @@ pub fn positionValue(copy: *const Copy, position: u32) PositionValue {
         .failed => return .{ .failed = @enumFromInt(owner.reason) },
         else => return .not_arrived,
     }
-    if (slot.spec.identity != none) {
-        if (slot.spec.identity >= positions.len) return .{ .failed = .position_identity };
-        const rows = positions[slot.spec.identity];
-        if (rows.spec.source >= sources.len) return .{ .failed = .position_source };
-        const rows_source = sources[rows.spec.source];
-        if (rows_source.status != .has_value or rows_source.sequence != slot.identity_sequence) return .not_arrived;
-        if (rows.length != slot.length) return .{ .failed = .rows_mismatch };
+    if (selected.entry.spec.identity != none) {
+        const rows = selected_positions[find(SelectedPosition, selected_positions, selected.entry.spec.identity, recordIndex) orelse return .{ .failed = .identity_not_selected }];
+        const rows_source = held[find(SourceCopy, held, rows.entry.spec.source, heldSource) orelse return .{ .failed = .identity_not_selected }];
+        if (rows_source.status != .has_value or rows_source.sequence != selected.entry.identity_sequence) return .not_arrived;
+        if (rows.entry.length != selected.entry.length) return .{ .failed = .rows_mismatch };
     }
-    const data = copy.dataSlice();
-    const span = @as(u64, slot.length) * slot.spec.element_width;
-    if (@as(u64, slot.spec.offset) + span > data.len) return .{ .failed = .position_range };
-    return .{ .value = .{ .bytes = data[slot.spec.offset..][0..@intCast(span)], .length = slot.length } };
+    const data = selection.dataSlice();
+    const span = @as(u64, selected.entry.length) * selected.entry.spec.element_width;
+    if (selected.offset + span > data.len) return .{ .failed = .copy_too_small };
+    return .{ .value = .{ .bytes = data[@intCast(selected.offset)..][0..@intCast(span)], .offset = selected.offset, .length = selected.entry.length } };
 }
 
 /// Row `row` of string column `column`; null when the column has no value this
 /// round or the row is out of range.
-pub fn stringAt(copy: *const Copy, column: u32, row: u32) ?[]const u8 {
-    const rows = switch (positionValue(copy, column)) {
+pub fn stringAt(selection: *const Selection, column: u32, row: u32) ?[]const u8 {
+    const rows = switch (positionValue(selection, column)) {
         .value => |found| found,
         else => return null,
     };
-    const spec = copy.positionSlice()[column].spec;
+    const selected_positions = selection.positionSlice();
+    const spec = selected_positions[find(SelectedPosition, selected_positions, column, recordIndex).?].entry.spec;
     if (spec.kind != .string_column or row >= rows.length) return null;
-    const table = switch (positionValue(copy, spec.strings)) {
+    const table = switch (positionValue(selection, spec.strings)) {
         .value => |found| found,
         else => return null,
     };

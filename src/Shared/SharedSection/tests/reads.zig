@@ -43,7 +43,7 @@ test "an unchanged sequence reports unchanged and copies nothing" {
     try testing.expect(second > first and second % 2 == 0);
     try testing.expectEqual(ss.SourceRead{ .value = second }, f.read(support.rows_source));
     try expectU64s(&.{4}, try f.bytesOf(support.ids));
-    try testing.expectEqualStrings("d", ss.stringAt(&f.copy, support.names, 0).?);
+    try testing.expectEqualStrings("d", ss.stringAt(&f.selection, support.names, 0).?);
 }
 
 test "a column is used only when written against the identity rows the copy holds" {
@@ -54,7 +54,7 @@ test "a column is used only when written against the identity rows the copy hold
     _ = try sequenceOf(f.read(support.rows_source));
     _ = try sequenceOf(f.read(support.metrics_source));
     try expectU32s(&.{ 1, 2, 3 }, try f.bytesOf(support.cpu));
-    try testing.expectEqualStrings("y", ss.stringAt(&f.copy, support.names, 1).?);
+    try testing.expectEqualStrings("y", ss.stringAt(&f.selection, support.names, 1).?);
 
     // New rows: the cpu column still belongs to the old ones.
     const r2 = try f.writeRows(&.{ 10, 20, 30, 40 }, &.{ "x", "y", "z", "w" });
@@ -101,11 +101,11 @@ test "string columns read through their own string table" {
     try f.init();
     _ = try f.writeRows(&.{ 1, 2, 3 }, &.{ "explorer", "", "ゲーム" });
     _ = try sequenceOf(f.read(support.rows_source));
-    try testing.expectEqualStrings("explorer", ss.stringAt(&f.copy, support.names, 0).?);
-    try testing.expectEqualStrings("", ss.stringAt(&f.copy, support.names, 1).?);
-    try testing.expectEqualStrings("ゲーム", ss.stringAt(&f.copy, support.names, 2).?);
-    try testing.expectEqual(@as(?[]const u8, null), ss.stringAt(&f.copy, support.names, 3));
-    try testing.expectEqual(@as(?[]const u8, null), ss.stringAt(&f.copy, support.ids, 0));
+    try testing.expectEqualStrings("explorer", ss.stringAt(&f.selection, support.names, 0).?);
+    try testing.expectEqualStrings("", ss.stringAt(&f.selection, support.names, 1).?);
+    try testing.expectEqualStrings("ゲーム", ss.stringAt(&f.selection, support.names, 2).?);
+    try testing.expectEqual(@as(?[]const u8, null), ss.stringAt(&f.selection, support.names, 3));
+    try testing.expectEqual(@as(?[]const u8, null), ss.stringAt(&f.selection, support.ids, 0));
     try testing.expectEqualStrings("explorerゲーム", try f.bytesOf(support.name_table));
 }
 
@@ -125,8 +125,8 @@ test "a writer that keeps the sequence odd makes the reader give up at the limit
     try f.init();
     var writer = try ss.Writer.begin(f.bytes(), support.metrics_source);
     try writer.store(u64, support.totals, 0, &.{ 1, 2 });
-    try testing.expectEqual(ss.SourceRead{ .failed = .retry_limit }, ss.read(f.bytes(), &f.copy, support.metrics_source, 0));
-    try testing.expectEqual(ss.SourceRead{ .failed = .retry_limit }, ss.read(f.bytes(), &f.copy, support.metrics_source, 5));
+    try testing.expectEqual(ss.SourceRead{ .failed = .retry_limit }, ss.read(f.bytes(), &f.selection, support.metrics_source, 0));
+    try testing.expectEqual(ss.SourceRead{ .failed = .retry_limit }, ss.read(f.bytes(), &f.selection, support.metrics_source, 5));
     try testing.expectEqual(ss.SourceRead{ .failed = .retry_limit }, f.read(support.metrics_source));
     try testing.expectEqual(ss.CopyStatus.failed, f.sources[support.metrics_source].status);
     try testing.expectEqual(ss.PositionValue{ .failed = .retry_limit }, f.value(support.totals));

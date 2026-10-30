@@ -79,11 +79,31 @@ test "every C ABI function round-trips" {
     try testing.expectEqual(@as(u32, 0), ss.rm_shared_section_write_length(&writer, support.cpu, 2, rows_sequence));
     try testing.expectEqual(@as(u32, 0), ss.rm_shared_section_write_end(&writer, @intFromEnum(ss.SourceState.has_value), 0, 200));
 
-    // Reads into caller memory.
+    // Sizing and setting up selections in caller memory.
+    var size: ss.SelectionSize = .{};
+    const rows_only = [_]u32{support.rows_source};
+    try testing.expectEqual(@as(u32, 0), ss.rm_shared_section_selection_size(&region, length, &rows_only, 1, &size));
+    try testing.expectEqual(ss.SelectionSize{ .data_bytes = 256, .position_count = 3 }, size);
+    try testing.expectEqual(@as(u32, 0), ss.rm_shared_section_selection_size(&region, length, &support.both_sources, 2, &size));
+    try testing.expectEqual(ss.SelectionSize{ .data_bytes = support.data_capacity, .position_count = 5 }, size);
+    const metrics_only = [_]u32{support.metrics_source};
+    try testing.expectEqual(code(.identity_not_selected), ss.rm_shared_section_selection_size(&region, length, &metrics_only, 1, &size));
+    try testing.expectEqual(code(.selection_order), ss.rm_shared_section_selection_size(&region, length, &[_]u32{ 1, 0 }, 2, &size));
+    try testing.expectEqual(code(.invalid_argument), ss.rm_shared_section_selection_size(&region, length, null, 2, &size));
+    try testing.expectEqual(code(.invalid_argument), ss.rm_shared_section_selection_size(&region, length, &rows_only, 1, null));
+
     var data: [support.data_capacity]u8 = undefined;
     var sources: [2]ss.SourceCopy = undefined;
-    var entries: [5]ss.PositionEntry = undefined;
-    var copy = ss.Copy.init(&data, &sources, &entries);
+    var entries: [5]ss.SelectedPosition = undefined;
+    var copy = ss.Selection{ .held = &sources, .held_length = 2, .positions = &entries, .position_length = 5, .data = &data, .data_length = data.len - 1 };
+    try testing.expectEqual(code(.copy_too_small), ss.rm_shared_section_select(&region, length, &support.both_sources, 2, &copy));
+    copy.data_length = data.len;
+    try testing.expectEqual(@as(u32, 0), ss.rm_shared_section_select(&region, length, &support.both_sources, 2, &copy));
+    try testing.expectEqual(@as(u32, 5), copy.position_length);
+    try testing.expectEqual(support.metrics_source, sources[1].source);
+    try testing.expectEqual(code(.invalid_argument), ss.rm_shared_section_select(&region, length, &support.both_sources, 2, null));
+
+    // Reads.
     try testing.expectEqual(@intFromEnum(ss.ReadStatus.has_value), ss.rm_shared_section_read(&region, length, &copy, support.rows_source, ss.default_retry_limit));
     try testing.expectEqual(@intFromEnum(ss.ReadStatus.has_value), ss.rm_shared_section_read(&region, length, &copy, support.metrics_source, ss.default_retry_limit));
     try testing.expectEqual(@intFromEnum(ss.ReadStatus.unchanged), ss.rm_shared_section_read(&region, length, &copy, support.metrics_source, ss.default_retry_limit));
@@ -103,7 +123,8 @@ test "every C ABI function round-trips" {
     try testing.expectEqualSlices(u8, std.mem.sliceAsBytes(row_ids[0..]), data[@intCast(value.offset)..][0..@intCast(value.byte_length)]);
     try testing.expectEqual(@intFromEnum(ss.PositionStatus.not_arrived), ss.rm_shared_section_position_value(&copy, support.names, &value));
     try testing.expectEqual(@intFromEnum(ss.PositionStatus.failed), ss.rm_shared_section_position_value(&copy, 9, &value));
-    try testing.expectEqual(code(.position_index), value.reason);
+    try testing.expectEqual(code(.not_selected), value.reason);
+    try testing.expectEqual(@intFromEnum(ss.ReadStatus.failed), ss.rm_shared_section_read(&region, length, &copy, 2, 1));
     try testing.expectEqual(@intFromEnum(ss.PositionStatus.failed), ss.rm_shared_section_position_value(null, 0, &value));
     try testing.expectEqual(code(.invalid_argument), value.reason);
     try testing.expectEqual(@intFromEnum(ss.PositionStatus.failed), ss.rm_shared_section_position_value(&copy, 0, null));
@@ -131,8 +152,10 @@ test "every C ABI function round-trips" {
 
 test "C ABI structs have the documented sizes" {
     try testing.expectEqual(@as(usize, 40), @sizeOf(ss.LayoutSpec));
-    try testing.expectEqual(@as(usize, 40), @sizeOf(ss.Copy));
-    try testing.expectEqual(@as(usize, 24), @sizeOf(ss.SourceCopy));
+    try testing.expectEqual(@as(usize, 72), @sizeOf(ss.Selection));
+    try testing.expectEqual(@as(usize, 56), @sizeOf(ss.SelectedPosition));
+    try testing.expectEqual(@as(usize, 16), @sizeOf(ss.SelectionSize));
+    try testing.expectEqual(@as(usize, 32), @sizeOf(ss.SourceCopy));
     try testing.expectEqual(@as(usize, 32), @sizeOf(ss.Writer));
     try testing.expectEqual(@as(usize, 32), @sizeOf(ss.ValueView));
 }

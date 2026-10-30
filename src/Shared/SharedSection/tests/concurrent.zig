@@ -5,19 +5,21 @@ const testing = std.testing;
 fn word(bytes: []const u8, index: usize) u64 {
     return std.mem.readInt(u64, bytes[index * 8 ..][0..8], .little);
 }
-fn valueOf(copy: *const ss.Copy, position: u32) !ss.Value {
-    return switch (ss.positionValue(copy, position)) {
+fn valueOf(selection: *const ss.Selection, position: u32) !ss.Value {
+    return switch (ss.positionValue(selection, position)) {
         .value => |found| found,
         else => error.NoValue,
     };
 }
 
-// One source writes a 512-row column whose every element is the round number
-// and a pair {round, ~round}. A torn copy would mix rounds.
+// Source 1 writes a 512-row column whose every element is the round number and
+// a pair {round, ~round}; a torn copy would mix rounds. Source 0 is never
+// written and the reader does not select it.
 const rows = 512;
+const writer_source: u32 = 1;
 const column: u32 = 0;
 const pair: u32 = 1;
-const torn_data_capacity: u32 = rows * 8 + 16;
+const torn_data_capacity: u32 = rows * 8 + 16 + 8;
 
 const RoundWriter = struct {
     region: []align(8) u8,
@@ -34,7 +36,7 @@ const RoundWriter = struct {
         var round: u64 = 1;
         while (round <= self.rounds) : (round += 1) {
             @memset(&values, round);
-            var writer = try ss.Writer.begin(self.region, 0);
+            var writer = try ss.Writer.begin(self.region, writer_source);
             try writer.store(u64, column, 0, &values);
             try writer.setLength(column, rows, writer.roundSequence());
             try writer.store(u64, pair, 0, &.{ round, ~round });
@@ -44,14 +46,22 @@ const RoundWriter = struct {
 };
 
 test "a reader concurrent with a writer never returns a torn round" {
-    var region: [@intCast(ss.requiredSize(1, 2, torn_data_capacity))]u8 align(8) = undefined;
-    const identity = [_]ss.SourceIdentity{try ss.SourceIdentity.init("round-writer", 1, 0, 0)};
-    const positions = [_]ss.PositionSpec{ ss.PositionSpec.column(0, 0, rows, 8, ss.none), ss.PositionSpec.scalar(0, rows * 8, 16, 8) };
-    try ss.initialize(&region, 1, 1, 2, torn_data_capacity, &identity, &positions);
-    var data: [torn_data_capacity]u8 = undefined;
+    var region: [@intCast(ss.requiredSize(2, 3, torn_data_capacity))]u8 align(8) = undefined;
+    const identity = [_]ss.SourceIdentity{ try ss.SourceIdentity.init("idle", 1, 0, 0), try ss.SourceIdentity.init("round-writer", 1, 0, 0) };
+    const positions = [_]ss.PositionSpec{
+        ss.PositionSpec.column(writer_source, 0, rows, 8, ss.none),
+        ss.PositionSpec.scalar(writer_source, rows * 8, 16, 8),
+        ss.PositionSpec.scalar(0, rows * 8 + 16, 8, 8),
+    };
+    try ss.initialize(&region, 1, 2, 3, torn_data_capacity, &identity, &positions);
+    // The selection's buffer holds only the writer's two positions.
+    const selected = [_]u32{writer_source};
+    const size = try ss.selectionSize(&region, &selected);
+    try testing.expectEqual(ss.SelectionSize{ .data_bytes = rows * 8 + 16, .position_count = 2 }, size);
+    var data: [rows * 8 + 16]u8 = undefined;
     var sources: [1]ss.SourceCopy = undefined;
-    var entries: [2]ss.PositionEntry = undefined;
-    var copy = ss.Copy.init(&data, &sources, &entries);
+    var entries: [2]ss.SelectedPosition = undefined;
+    var copy = try ss.Selection.init(&region, &selected, &sources, &entries, &data);
 
     var writer = RoundWriter{ .region = &region, .rounds = 20_000 };
     const thread = try std.Thread.spawn(.{}, RoundWriter.run, .{&writer});
@@ -62,7 +72,7 @@ test "a reader concurrent with a writer never returns a torn round" {
     while (!finished) {
         // One more read after the writer is done.
         finished = writer.done.load(.acquire);
-        switch (ss.read(&region, &copy, 0, ss.default_retry_limit)) {
+        switch (ss.read(&region, &copy, writer_source, ss.default_retry_limit)) {
             .value => {},
             // Before the first round the source is still not written.
             .unchanged, .unavailable => continue,
@@ -124,10 +134,11 @@ const PairingWriters = struct {
         self.columns_done.store(true, .release);
     }
     fn writeColumns(self: *PairingWriters) !void {
-        var data: [pairing_data_capacity]u8 = undefined;
-        var sources: [2]ss.SourceCopy = undefined;
-        var entries: [2]ss.PositionEntry = undefined;
-        var copy = ss.Copy.init(&data, &sources, &entries);
+        // The column writer selects only the rows source.
+        var data: [id_rows * 8]u8 = undefined;
+        var sources: [1]ss.SourceCopy = undefined;
+        var entries: [1]ss.SelectedPosition = undefined;
+        var copy = try ss.Selection.init(self.region, &.{0}, &sources, &entries, &data);
         var values: [id_rows]u64 = undefined;
         while (true) {
             // A pass that starts after the rows are final writes against them and stops.
@@ -156,8 +167,8 @@ test "a reader concurrent with two sources never pairs a column with other rows"
     try ss.initialize(&region, 2, 2, 2, pairing_data_capacity, &identity, &positions);
     var data: [pairing_data_capacity]u8 = undefined;
     var sources: [2]ss.SourceCopy = undefined;
-    var entries: [2]ss.PositionEntry = undefined;
-    var copy = ss.Copy.init(&data, &sources, &entries);
+    var entries: [2]ss.SelectedPosition = undefined;
+    var copy = try ss.Selection.init(&region, &.{ 0, 1 }, &sources, &entries, &data);
 
     var writers = PairingWriters{ .region = &region, .rounds = 20_000 };
     const rows_thread = try std.Thread.spawn(.{}, PairingWriters.runRows, .{&writers});

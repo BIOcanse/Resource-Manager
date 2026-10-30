@@ -33,7 +33,10 @@ pub const Outcome = seqlock.Outcome;
 pub const Writer = seqlock.Writer;
 pub const CopyStatus = seqlock.CopyStatus;
 pub const SourceCopy = seqlock.SourceCopy;
-pub const Copy = seqlock.Copy;
+pub const SelectedPosition = seqlock.SelectedPosition;
+pub const SelectionSize = seqlock.SelectionSize;
+pub const Selection = seqlock.Selection;
+pub const selectionSize = seqlock.selectionSize;
 pub const SourceRead = seqlock.SourceRead;
 pub const Value = seqlock.Value;
 pub const PositionValue = seqlock.PositionValue;
@@ -45,9 +48,9 @@ pub const end = seqlock.end;
 // C ABI. Fixed-width arguments; nothing is allocated and nothing is kept
 // between calls, so every result goes to caller memory. Functions return 0 or
 // a `Failure` code, except `read` and `position_value`, which return a status.
-// A region pointer must be 8-byte aligned. `Writer` and `Copy` are caller
-// memory: a writer comes from `write_begin`; a copy's arrays are zeroed before
-// the first read and its lengths count elements.
+// A region pointer must be 8-byte aligned. `Writer` and `Selection` are caller
+// memory: a writer comes from `write_begin`; a selection from `select`, after
+// the caller sized its arrays with `selection_size`.
 
 /// Input to `rm_shared_section_initialize`.
 pub const LayoutSpec = extern struct {
@@ -61,14 +64,15 @@ pub const LayoutSpec = extern struct {
     position_count: u32,
 };
 
-/// Returned by `rm_shared_section_read`; details are in `copy.sources[source]`.
+/// Returned by `rm_shared_section_read`; details are in the selection's held
+/// entry for the source.
 pub const ReadStatus = enum(u32) { unchanged = 0, has_value = 1, unavailable = 2, ended = 3, failed = 4 };
 
 /// Returned by `rm_shared_section_position_value`, also in `ValueView.status`.
 pub const PositionStatus = enum(u32) { has_value = 1, unavailable = 2, ended = 3, failed = 4, not_arrived = 5 };
 
 pub const ValueView = extern struct {
-    /// Byte offset of the value in the copy's data, and its byte length.
+    /// Byte offset of the value in the selection's data, and its byte length.
     offset: u64 = 0,
     byte_length: u64 = 0,
     /// Elements for a scalar, rows for a column or string column, bytes for a
@@ -172,12 +176,38 @@ pub export fn rm_shared_section_write_end(writer: ?*Writer, state: u32, reason: 
     return statusOf(open.end(outcome, write_time_unix_ms));
 }
 
-/// Reads one source into `copy` (`seqlock.read`). Returns a `ReadStatus`.
-pub export fn rm_shared_section_read(region: ?[*]const u8, length: u64, copy: ?*Copy, source: u32, retry_limit: u32) u32 {
-    const target = copy orelse return @intFromEnum(ReadStatus.failed);
+/// Layout query for a reader: what `select` needs for `sources` (strictly
+/// ascending, `source_count` entries) over the region.
+pub export fn rm_shared_section_selection_size(region: ?[*]const u8, length: u64, sources: ?[*]const u32, source_count: u32, size: ?*SelectionSize) u32 {
+    const out = size orelse return failureCode(error.InvalidArgument);
+    const list = tableOf(u32, sources, source_count) catch |err| return failureCode(err);
+    out.* = selectionSize(regionOf(region, length) catch |err| return failureCode(err), list) catch |err| return failureCode(err);
+    return 0;
+}
+
+/// Sets up `selection` (`Selection.init`). The caller fills its `held`,
+/// `positions` and `data` pointers and lengths, sized with `selection_size`;
+/// this fills the rest and sets `position_length` to the entries used.
+pub export fn rm_shared_section_select(region: ?[*]const u8, length: u64, sources: ?[*]const u32, source_count: u32, selection: ?*Selection) u32 {
+    const out = selection orelse return failureCode(error.InvalidArgument);
+    return statusOf(selectInto(region, length, sources, source_count, out));
+}
+fn selectInto(region: ?[*]const u8, length: u64, sources: ?[*]const u32, source_count: u32, out: *Selection) Error!void {
+    const list = try tableOf(u32, sources, source_count);
+    const held: []SourceCopy = if (out.held) |base| base[0..out.held_length] else &.{};
+    const positions: []SelectedPosition = if (out.positions) |base| base[0..out.position_length] else &.{};
+    const data: []u8 = if (out.data) |base| base[0 .. std.math.cast(usize, out.data_length) orelse return error.InvalidArgument] else &.{};
+    out.* = try Selection.init(try regionOf(region, length), list, held, positions, data);
+}
+
+/// Reads one selected source into `selection` (`seqlock.read`). Returns a
+/// `ReadStatus`.
+pub export fn rm_shared_section_read(region: ?[*]const u8, length: u64, selection: ?*Selection, source: u32, retry_limit: u32) u32 {
+    const target = selection orelse return @intFromEnum(ReadStatus.failed);
     const bytes = regionOf(region, length) catch |err| {
-        const sources = target.sourceSlice();
-        if (source < sources.len) sources[source] = .{ .status = .failed, .reason = failureCode(err) };
+        for (target.heldSlice()) |*held| {
+            if (held.source == source) held.* = .{ .status = .failed, .reason = failureCode(err), .source = source };
+        }
         return @intFromEnum(ReadStatus.failed);
     };
     const status: ReadStatus = switch (read(bytes, target, source, retry_limit)) {
@@ -190,18 +220,18 @@ pub export fn rm_shared_section_read(region: ?[*]const u8, length: u64, copy: ?*
     return @intFromEnum(status);
 }
 
-/// The value of `position` in `copy` (`seqlock.positionValue`). Returns a
-/// `PositionStatus` and fills `value`.
-pub export fn rm_shared_section_position_value(copy: ?*const Copy, position: u32, value: ?*ValueView) u32 {
+/// The value of `position` (its index in the region's position table) in
+/// `selection` (`seqlock.positionValue`). Returns a `PositionStatus` and fills
+/// `value`; a value's offset indexes the selection's data.
+pub export fn rm_shared_section_position_value(selection: ?*const Selection, position: u32, value: ?*ValueView) u32 {
     const out = value orelse return @intFromEnum(PositionStatus.failed);
-    const source = copy orelse {
+    const source = selection orelse {
         out.* = .{ .status = .failed, .reason = failureCode(error.InvalidArgument) };
         return @intFromEnum(out.status);
     };
     out.* = switch (positionValue(source, position)) {
-        // A value implies `position` is in the copy's table.
         .value => |found| .{
-            .offset = source.positionSlice()[position].spec.offset,
+            .offset = found.offset,
             .byte_length = found.bytes.len,
             .length = found.length,
             .status = .has_value,

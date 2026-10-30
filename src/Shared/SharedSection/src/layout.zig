@@ -183,7 +183,7 @@ pub const Failure = enum(u32) {
     rows_mismatch = 20,
     /// The sequence was odd or changed during every attempt.
     retry_limit = 21,
-    /// The caller's copy is smaller than the region's tables or data area.
+    /// The caller's selection memory is smaller than the selection needs.
     copy_too_small = 22,
     /// The position belongs to another source.
     not_owner = 23,
@@ -198,6 +198,15 @@ pub const Failure = enum(u32) {
     /// The source or the region has ended.
     ended = 29,
     invalid_argument = 30,
+    /// The source or position is not in the reader's selection.
+    not_selected = 31,
+    /// A selected row column's identity position belongs to an unselected source.
+    identity_not_selected = 32,
+    /// The region's header or a read source's positions differ from the layout
+    /// the selection was set up with.
+    layout_changed = 33,
+    /// Selected source indexes are not strictly ascending.
+    selection_order = 34,
     _,
 };
 
@@ -227,6 +236,9 @@ pub const Error = error{
     NotWriting,
     Ended,
     InvalidArgument,
+    CopyTooSmall,
+    IdentityNotSelected,
+    SelectionOrder,
 };
 
 pub fn failureOf(err: Error) Failure {
@@ -256,6 +268,9 @@ pub fn failureOf(err: Error) Failure {
         error.NotWriting => .not_writing,
         error.Ended => .ended,
         error.InvalidArgument => .invalid_argument,
+        error.CopyTooSmall => .copy_too_small,
+        error.IdentityNotSelected => .identity_not_selected,
+        error.SelectionOrder => .selection_order,
     };
 }
 

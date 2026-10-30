@@ -42,7 +42,7 @@ test "end marks every source ended and zeroes the data area" {
     for (0..5) |position| try testing.expectEqual(@as(ss.PositionValue, .ended), f.value(@intCast(position)));
     // The reader's copy keeps nothing either.
     try expectZero(&f.data);
-    try testing.expectEqual(@as(?[]const u8, null), ss.stringAt(&f.copy, support.names, 0));
+    try testing.expectEqual(@as(?[]const u8, null), ss.stringAt(&f.selection, support.names, 0));
     try testing.expectEqual(@as(ss.SourceRead, .unchanged), f.read(support.rows_source));
 
     try testing.expectError(error.Ended, ss.Writer.begin(f.bytes(), support.rows_source));
@@ -58,7 +58,7 @@ test "a round open during end fails and leaves no values" {
     var writer = try ss.Writer.begin(f.bytes(), support.metrics_source);
     try writer.store(u64, support.totals, 0, &.{ 1, 2 });
     // A reader during the open round, then end.
-    try testing.expectEqual(ss.SourceRead{ .failed = .retry_limit }, ss.read(f.bytes(), &f.copy, support.metrics_source, 3));
+    try testing.expectEqual(ss.SourceRead{ .failed = .retry_limit }, ss.read(f.bytes(), &f.selection, support.metrics_source, 3));
     try ss.end(f.bytes(), 1);
     try testing.expectError(error.Ended, writer.store(u64, support.totals, 0, &.{ 3, 4 }));
     try testing.expectError(error.Ended, writer.setLength(support.cpu, 1, 0));
@@ -92,6 +92,6 @@ test "a source that ends itself zeroes its positions and cannot begin again" {
     // The other source keeps its value.
     try testing.expectEqual(@as(ss.SourceRead, .unchanged), f.read(support.rows_source));
     try testing.expect(f.value(support.ids) == .value);
-    try testing.expectEqualStrings("b", ss.stringAt(&f.copy, support.names, 1).?);
+    try testing.expectEqualStrings("b", ss.stringAt(&f.selection, support.names, 1).?);
     try testing.expect(f.read(support.metrics_source) == .unchanged);
 }

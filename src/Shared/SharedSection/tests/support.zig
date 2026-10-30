@@ -45,27 +45,31 @@ pub fn dataField(offset: u32) usize {
     return @as(usize, @intCast(ss.layout.dataOffset(2, 5))) + offset;
 }
 
+/// Both sources selected: the compact layout then equals the data area's, since
+/// the fixture's positions are contiguous in table order.
+pub const both_sources = [_]u32{ rows_source, metrics_source };
+
 pub const Fixture = struct {
     region: [region_size]u8 align(8) = undefined,
     data: [data_capacity]u8 = undefined,
     sources: [2]ss.SourceCopy = undefined,
-    positions: [5]ss.PositionEntry = undefined,
-    copy: ss.Copy = .{},
+    positions: [5]ss.SelectedPosition = undefined,
+    selection: ss.Selection = .{},
 
-    /// The fixture must not move afterwards: the copy points into it.
+    /// The fixture must not move afterwards: the selection points into it.
     pub fn init(self: *Fixture) !void {
         const sources = try identities();
         try ss.initialize(&self.region, data_kind, 2, 5, data_capacity, &sources, &positions);
-        self.copy = ss.Copy.init(&self.data, &self.sources, &self.positions);
+        self.selection = try ss.Selection.init(&self.region, &both_sources, &self.sources, &self.positions, &self.data);
     }
     pub fn bytes(self: *Fixture) []align(8) u8 {
         return &self.region;
     }
     pub fn read(self: *Fixture, source: u32) ss.SourceRead {
-        return ss.read(&self.region, &self.copy, source, ss.default_retry_limit);
+        return ss.read(&self.region, &self.selection, source, ss.default_retry_limit);
     }
     pub fn value(self: *Fixture, position: u32) ss.PositionValue {
-        return ss.positionValue(&self.copy, position);
+        return ss.positionValue(&self.selection, position);
     }
     pub fn bytesOf(self: *Fixture, position: u32) ![]const u8 {
         return switch (self.value(position)) {

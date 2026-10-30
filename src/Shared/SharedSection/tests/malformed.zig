@@ -44,14 +44,18 @@ test "a malformed header fails every read with its reason" {
 test "a region shorter than its header or its capacities fails" {
     var f = support.Fixture{};
     try written(&f);
-    try testing.expectEqual(ss.SourceRead{ .failed = .region_too_small }, ss.read(f.region[0..16], &f.copy, 0, 1));
-    try testing.expectEqual(ss.SourceRead{ .failed = .region_too_small }, ss.read(f.region[0 .. support.region_size - 8], &f.copy, 0, 1));
-    try testing.expectEqual(ss.SourceRead{ .failed = .region_too_small }, ss.read(f.region[0..0], &f.copy, 1, 1));
+    try testing.expectEqual(ss.SourceRead{ .failed = .region_too_small }, ss.read(f.region[0..16], &f.selection, 0, 1));
+    try testing.expectEqual(ss.SourceRead{ .failed = .region_too_small }, ss.read(f.region[0 .. support.region_size - 8], &f.selection, 0, 1));
+    try testing.expectEqual(ss.SourceRead{ .failed = .region_too_small }, ss.read(f.region[0..0], &f.selection, 1, 1));
     try testing.expectError(error.RegionTooSmall, ss.Writer.begin(f.region[0..100], 0));
     try testing.expectError(error.RegionTooSmall, ss.end(f.region[0..100], 0));
 }
 
-test "a malformed position table fails every read with its reason" {
+fn expectFailure(expected: ss.Failure, result: anytype) !void {
+    if (result) |_| return error.TestUnexpectedResult else |err| try testing.expectEqual(expected, ss.failureOf(err));
+}
+
+test "a malformed position table is refused at setup and fails the reads it affects" {
     const cases = [_]struct { position: u32, field: []const u8, number: u32, failure: ss.Failure }{
         .{ .position = support.cpu, .field = "offset", .number = 1000, .failure = .position_range },
         .{ .position = support.cpu, .field = "offset", .number = 260, .failure = .position_range },
@@ -79,7 +83,18 @@ test "a malformed position table fails every read with its reason" {
         var f = support.Fixture{};
         try written(&f);
         f.poke32(support.specField(case.position, case.field), case.number);
-        try expectFailed(&f, case.failure);
+        // A new selection and the size query refuse the table with its reason.
+        var held: [2]ss.SourceCopy = undefined;
+        var records: [5]ss.SelectedPosition = undefined;
+        var data: [support.data_capacity]u8 = undefined;
+        try expectFailure(case.failure, ss.Selection.init(f.bytes(), &support.both_sources, &held, &records, &data));
+        try expectFailure(case.failure, ss.selectionSize(f.bytes(), &support.both_sources));
+        // The selection set up before the change: the source owning the changed
+        // position fails, the other source still reads.
+        const owner = support.positions[case.position].source;
+        try testing.expectEqual(ss.SourceRead{ .failed = .layout_changed }, f.read(owner));
+        try testing.expectEqual(ss.PositionValue{ .failed = .layout_changed }, f.value(case.position));
+        try testing.expect(f.read(1 - owner) == .value);
         if (ss.describePosition(f.bytes(), case.position)) |_| {} else |err| try testing.expectEqual(case.failure, ss.failureOf(err));
         // A writer refuses a malformed position too.
         var writer = try ss.Writer.begin(f.bytes(), support.metrics_source);
@@ -138,20 +153,33 @@ test "malformed dynamic content fails the source that wrote it" {
     }
 }
 
-test "a bad source index or a short copy fails without touching other sources" {
+test "a selection reads only its own sources and is set up only with enough memory" {
     var f = support.Fixture{};
     try written(&f);
     try testing.expect(f.read(support.rows_source) == .value);
-    try testing.expectEqual(ss.SourceRead{ .failed = .source_index }, f.read(2));
-    try testing.expectEqual(ss.SourceRead{ .failed = .source_index }, f.read(ss.none));
+    try testing.expectEqual(ss.SourceRead{ .failed = .not_selected }, f.read(2));
+    try testing.expectEqual(ss.SourceRead{ .failed = .not_selected }, f.read(ss.none));
     try testing.expect(f.value(support.ids) == .value);
-    var short = ss.Copy.init(f.data[0..100], &f.sources, &f.positions);
-    try testing.expectEqual(ss.SourceRead{ .failed = .copy_too_small }, ss.read(f.bytes(), &short, 0, 1));
-    var few = ss.Copy.init(&f.data, f.sources[0..1], &f.positions);
-    try testing.expectEqual(ss.SourceRead{ .failed = .copy_too_small }, ss.read(f.bytes(), &few, 0, 1));
-    var empty = ss.Copy{};
-    try testing.expectEqual(ss.SourceRead{ .failed = .copy_too_small }, ss.read(f.bytes(), &empty, 0, 1));
-    try testing.expectEqual(ss.PositionValue{ .failed = .position_index }, ss.positionValue(&empty, 0));
+    try testing.expectEqual(ss.PositionValue{ .failed = .not_selected }, f.value(5));
+
+    var held: [2]ss.SourceCopy = undefined;
+    var records: [5]ss.SelectedPosition = undefined;
+    var data: [support.data_capacity]u8 = undefined;
+    var rows_only = try ss.Selection.init(f.bytes(), &.{support.rows_source}, &held, &records, &data);
+    try testing.expectEqual(ss.SourceRead{ .failed = .not_selected }, ss.read(f.bytes(), &rows_only, support.metrics_source, 1));
+    try testing.expectEqual(ss.PositionValue{ .failed = .not_selected }, ss.positionValue(&rows_only, support.cpu));
+    try testing.expect(ss.read(f.bytes(), &rows_only, support.rows_source, 1) == .value);
+
+    try testing.expectError(error.SourceIndex, ss.Selection.init(f.bytes(), &.{ 0, 2 }, &held, &records, &data));
+    try testing.expectError(error.SelectionOrder, ss.Selection.init(f.bytes(), &.{ 1, 0 }, &held, &records, &data));
+    try testing.expectError(error.SelectionOrder, ss.Selection.init(f.bytes(), &.{ 0, 0 }, &held, &records, &data));
+    try testing.expectError(error.CopyTooSmall, ss.Selection.init(f.bytes(), &support.both_sources, held[0..1], &records, &data));
+    try testing.expectError(error.CopyTooSmall, ss.Selection.init(f.bytes(), &support.both_sources, &held, records[0..4], &data));
+    try testing.expectError(error.CopyTooSmall, ss.Selection.init(f.bytes(), &support.both_sources, &held, &records, data[0 .. support.data_capacity - 1]));
+
+    var empty = ss.Selection{};
+    try testing.expectEqual(ss.SourceRead{ .failed = .not_selected }, ss.read(f.bytes(), &empty, 0, 1));
+    try testing.expectEqual(ss.PositionValue{ .failed = .not_selected }, ss.positionValue(&empty, 0));
 }
 
 fn expectRejected(expected: ss.Error, region: []align(8) u8, sources: []const ss.SourceIdentity, positions: []const ss.PositionSpec, source_capacity: u32, data_capacity: u32) !void {
@@ -206,14 +234,29 @@ test "random corruption of a written region never crashes a reader, writer or en
         for (0..flips) |_| f.region[random.uintLessThan(usize, support.region_size)] = random.int(u8);
         const length = if (random.uintLessThan(u8, 4) == 0) random.uintLessThan(usize, support.region_size + 1) else support.region_size;
         const region = f.region[0..length];
-        for (0..3) |source| _ = ss.read(region, &f.copy, @intCast(source), 2);
+        for (0..3) |source| _ = ss.read(region, &f.selection, @intCast(source), 2);
         for (0..6) |position| {
-            _ = ss.positionValue(&f.copy, @intCast(position));
-            for (0..support.row_capacity + 1) |row| _ = ss.stringAt(&f.copy, @intCast(position), @intCast(row));
+            _ = ss.positionValue(&f.selection, @intCast(position));
+            for (0..support.row_capacity + 1) |row| _ = ss.stringAt(&f.selection, @intCast(position), @intCast(row));
         }
         _ = ss.describe(region) catch {};
         for (0..3) |source| _ = ss.describeSource(region, @intCast(source)) catch {};
         for (0..6) |position| _ = ss.describePosition(region, @intCast(position)) catch {};
+        // A selection set up on the corrupted region, of a random subset.
+        const subsets = [_][]const u32{ &.{0}, &.{1}, &.{ 0, 1 } };
+        const subset = subsets[random.uintLessThan(usize, subsets.len)];
+        _ = ss.selectionSize(region, subset) catch {};
+        var held: [2]ss.SourceCopy = undefined;
+        var records: [5]ss.SelectedPosition = undefined;
+        var data: [support.data_capacity]u8 = undefined;
+        if (ss.Selection.init(region, subset, &held, &records, &data)) |fresh| {
+            var selection = fresh;
+            for (0..3) |source| _ = ss.read(region, &selection, @intCast(source), 2);
+            for (0..6) |position| {
+                _ = ss.positionValue(&selection, @intCast(position));
+                for (0..support.row_capacity + 1) |row| _ = ss.stringAt(&selection, @intCast(position), @intCast(row));
+            }
+        } else |_| {}
         if (ss.Writer.begin(region, random.uintLessThan(u32, 3))) |opened| {
             var writer = opened;
             for (0..6) |position| {
@@ -225,6 +268,6 @@ test "random corruption of a written region never crashes a reader, writer or en
             writer.end(.has_value, 0) catch {};
         } else |_| {}
         if (random.boolean()) ss.end(region, 0) catch {};
-        for (0..3) |source| _ = ss.read(region, &f.copy, @intCast(source), 2);
+        for (0..3) |source| _ = ss.read(region, &f.selection, @intCast(source), 2);
     }
 }
