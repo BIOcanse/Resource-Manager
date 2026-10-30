@@ -8,9 +8,12 @@
 namespace OverlayProtocol
 {
 constexpr uint32_t Magic = 0x564F4D52;
-constexpr uint32_t Version = 1;
-constexpr uint32_t HeaderBytes = 80;
+constexpr uint32_t Version = 2;
+constexpr uint32_t HeaderBytes = 88;
 constexpr uint32_t MaximumPixelBytes = 64u * 1024u * 1024u;
+// Handshake keeps only the header for per-present size feedback. Disable must
+// retire even a never-published section while its publisher process stays alive.
+constexpr LONG Handshake = 0, Enabled = 1, Disabled = -1;
 
 struct alignas(8) Header
 {
@@ -29,10 +32,12 @@ struct alignas(8) Header
     volatile LONG enabled;
     volatile LONG swapChainWidth;
     volatile LONG swapChainHeight;
+    uint32_t publisherProcessId;
 };
 static_assert(sizeof(Header) == HeaderBytes);
 static_assert(offsetof(Header, generation) == 16);
 static_assert(offsetof(Header, swapChainWidth) == 72);
+static_assert(offsetof(Header, publisherProcessId) == 80);
 
 inline bool SectionName(wchar_t (&name)[96])
 {

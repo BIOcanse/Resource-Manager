@@ -28,6 +28,9 @@ struct DeviceState
     PFN_vkGetDeviceProcAddr next;
     VkPhysicalDeviceMemoryProperties memory;
     std::vector<VkQueueFlags> queueFlags;
+    // Cleanup reads this after a reported device loss; pending GPU/WSI use then
+    // no longer prevents destruction. Copies are not the authoritative value.
+    bool lost = false;
 };
 struct FrameResources
 {
@@ -37,6 +40,14 @@ struct FrameResources
     VkCommandBuffer command = VK_NULL_HANDLE;
     VkFence fence = VK_NULL_HANDLE;
     VkSemaphore signal = VK_NULL_HANDLE;
+    // DestroyOverlay retains WSI-owned signals; SubmitOverlay replaces a signal
+    // whose last submission completed without handing it to presentation.
+    bool presented = false;
+};
+struct RetiredSignal
+{
+    uint32_t image;
+    VkSemaphore signal;
 };
 struct SwapchainState
 {
@@ -64,6 +75,13 @@ struct SwapchainState
     uint32_t textureWidth = 0, textureHeight = 0;
     uint64_t uploadedGeneration = 0;
     std::vector<FrameResources> frames;
+    // Acquire completion reaps these per image. A submit fence cannot prove that
+    // the presentation engine has stopped using the semaphore.
+    std::vector<RetiredSignal> retiredSignals;
+    // Acquire hooks retry a failed wait before starting another acquisition;
+    // otherwise a temporary fence still being signaled would be freed or leaked.
+    VkFence acquireFence = VK_NULL_HANDLE;
+    uint32_t acquiredImage = UINT32_MAX;
 };
 std::mutex stateMutex;
 std::unordered_map<void*, InstanceState> instances;
@@ -97,6 +115,32 @@ template <typename T> T Proc(const DeviceState& state, const char* name)
 }
 #define VK_FN(state, name) Proc<PFN_##name>(state, #name)
 
+bool DeviceLost(const DeviceState& state)
+{
+    const auto found = devices.find(Key(state.device));
+    return found != devices.end() && found->second.lost;
+}
+
+void MarkDeviceLost(const DeviceState& state)
+{
+    const auto found = devices.find(Key(state.device));
+    if (found != devices.end()) found->second.lost = true;
+}
+
+void ReapSignals(const DeviceState& device, SwapchainState& chain, uint32_t image, bool lost = false)
+{
+    for (auto found = chain.retiredSignals.begin(); found != chain.retiredSignals.end();)
+    {
+        if (lost || found->image == image)
+        {
+            VK_FN(device, vkDestroySemaphore)(device.device, found->signal, nullptr);
+            found = chain.retiredSignals.erase(found);
+        }
+        else ++found;
+    }
+    if (chain.retiredSignals.empty()) std::vector<RetiredSignal>().swap(chain.retiredSignals);
+}
+
 uint32_t MemoryType(const DeviceState& state, uint32_t bits, VkMemoryPropertyFlags required)
 {
     for (uint32_t i = 0; i < state.memory.memoryTypeCount; ++i)
@@ -121,18 +165,37 @@ void DestroyBitmap(const DeviceState& device, SwapchainState& chain)
     chain.uploadedGeneration = 0;
 }
 
-void DestroyOverlay(const DeviceState& device, SwapchainState& chain)
+bool DestroyOverlay(const DeviceState& device, SwapchainState& chain, bool retired = false)
 {
-    if (chain.pool || chain.pipeline || chain.texture) VK_FN(device, vkDeviceWaitIdle)(device.device);
+    bool lost = DeviceLost(device);
+    // Retirement callers already completed all image use. Swapchain retirement
+    // follows downstream destruction and releases its last signals without a cache.
+    // These fences cover our submissions on every queue previously used. A
+    // device-wide idle would race the application's unrelated queue submissions.
+    for (const auto& frame : chain.frames)
+    {
+        if (!lost && !retired && frame.fence)
+        {
+            const VkResult waited = VK_FN(device, vkWaitForFences)(device.device, 1, &frame.fence, VK_TRUE, UINT64_MAX);
+            if (waited == VK_ERROR_DEVICE_LOST) { MarkDeviceLost(device); lost = true; }
+            else if (waited != VK_SUCCESS) return false;
+        }
+    }
     DestroyBitmap(device, chain);
+    uint32_t image = 0;
     for (auto& frame : chain.frames)
     {
         if (frame.framebuffer) VK_FN(device, vkDestroyFramebuffer)(device.device, frame.framebuffer, nullptr);
         if (frame.view) VK_FN(device, vkDestroyImageView)(device.device, frame.view, nullptr);
         if (frame.fence) VK_FN(device, vkDestroyFence)(device.device, frame.fence, nullptr);
-        if (frame.signal) VK_FN(device, vkDestroySemaphore)(device.device, frame.signal, nullptr);
+        if (frame.signal)
+        {
+            if (frame.presented && !lost && !retired) chain.retiredSignals.push_back({image, frame.signal});
+            else VK_FN(device, vkDestroySemaphore)(device.device, frame.signal, nullptr);
+        }
+        ++image;
     }
-    chain.frames.clear();
+    std::vector<FrameResources>().swap(chain.frames);
     if (chain.pool) VK_FN(device, vkDestroyCommandPool)(device.device, chain.pool, nullptr);
     if (chain.pipeline) VK_FN(device, vkDestroyPipeline)(device.device, chain.pipeline, nullptr);
     if (chain.pipelineLayout) VK_FN(device, vkDestroyPipelineLayout)(device.device, chain.pipelineLayout, nullptr);
@@ -149,6 +212,14 @@ void DestroyOverlay(const DeviceState& device, SwapchainState& chain)
     chain.sampler = VK_NULL_HANDLE;
     chain.descriptor = VK_NULL_HANDLE;
     chain.ready = false;
+    if (lost || retired)
+    {
+        ReapSignals(device, chain, 0, true);
+        if (chain.acquireFence) VK_FN(device, vkDestroyFence)(device.device, chain.acquireFence, nullptr);
+        chain.acquireFence = VK_NULL_HANDLE;
+        chain.acquiredImage = UINT32_MAX;
+    }
+    return true;
 }
 
 bool CreateRenderer(const DeviceState& device, VkSwapchainKHR handle, SwapchainState& chain, uint32_t family)
@@ -291,7 +362,6 @@ bool CreateRenderer(const DeviceState& device, VkSwapchainKHR handle, SwapchainS
     if (VK_FN(device, vkAllocateCommandBuffers)(device.device, &allocate, commands.data()) != VK_SUCCESS) return false;
     VkFenceCreateInfo fenceInfo{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    VkSemaphoreCreateInfo signalInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
     for (uint32_t i = 0; i < count; ++i)
     {
         auto& frame = chain.frames[i];
@@ -311,8 +381,7 @@ bool CreateRenderer(const DeviceState& device, VkSwapchainKHR handle, SwapchainS
         framebufferInfo.height = chain.extent.height;
         framebufferInfo.layers = 1;
         if (VK_FN(device, vkCreateFramebuffer)(device.device, &framebufferInfo, nullptr, &frame.framebuffer) != VK_SUCCESS
-            || VK_FN(device, vkCreateFence)(device.device, &fenceInfo, nullptr, &frame.fence) != VK_SUCCESS
-            || VK_FN(device, vkCreateSemaphore)(device.device, &signalInfo, nullptr, &frame.signal) != VK_SUCCESS) return false;
+            || VK_FN(device, vkCreateFence)(device.device, &fenceInfo, nullptr, &frame.fence) != VK_SUCCESS) return false;
     }
     VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 };
     VkDescriptorPoolCreateInfo descriptorPoolInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
@@ -336,7 +405,7 @@ bool CreateRenderer(const DeviceState& device, VkSwapchainKHR handle, SwapchainS
 
 bool PrepareBitmap(const DeviceState& device, SwapchainState& chain, const OverlaySection::Bitmap& bitmap)
 {
-    if (chain.uploadedGeneration == bitmap.generation) return true;
+    if (chain.uploadedGeneration == bitmap.uploadId) return true;
     for (const auto& frame : chain.frames)
         if (VK_FN(device, vkWaitForFences)(device.device, 1, &frame.fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return false;
     const VkDeviceSize bytes = VkDeviceSize(bitmap.stride) * bitmap.height;
@@ -410,14 +479,30 @@ bool PrepareBitmap(const DeviceState& device, SwapchainState& chain, const Overl
 bool SubmitOverlay(const DeviceState& device, VkQueue queue, SwapchainState& chain, uint32_t imageIndex,
     const OverlaySection::Bitmap& bitmap, const VkPresentInfoKHR& present, VkSemaphore& signal)
 {
+    // An acquire wait failure must not accumulate new presentation signals for
+    // an image whose previous signal still lacks completion evidence.
+    for (const auto& retired : chain.retiredSignals)
+        if (retired.image == imageIndex) return false;
     if (imageIndex >= chain.frames.size() || !PrepareBitmap(device, chain, bitmap)) return false;
     auto& frame = chain.frames[imageIndex];
     if (VK_FN(device, vkWaitForFences)(device.device, 1, &frame.fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS
         || VK_FN(device, vkResetCommandBuffer)(frame.command, 0) != VK_SUCCESS) return false;
+    if (frame.signal && !frame.presented)
+    {
+        // A rejected present did not consume this binary signal. Its completed
+        // submit fence permits destruction, not signaling the same payload again.
+        VK_FN(device, vkDestroySemaphore)(device.device, frame.signal, nullptr);
+        frame.signal = VK_NULL_HANDLE;
+    }
+    if (!frame.signal)
+    {
+        VkSemaphoreCreateInfo info{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+        if (VK_FN(device, vkCreateSemaphore)(device.device, &info, nullptr, &frame.signal) != VK_SUCCESS) return false;
+    }
     VkCommandBufferBeginInfo begin{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (VK_FN(device, vkBeginCommandBuffer)(frame.command, &begin) != VK_SUCCESS) return false;
-    const bool upload = chain.uploadedGeneration != bitmap.generation;
+    const bool upload = chain.uploadedGeneration != bitmap.uploadId;
     if (upload)
     {
         VkImageMemoryBarrier before{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
@@ -472,19 +557,114 @@ bool SubmitOverlay(const DeviceState& device, VkQueue queue, SwapchainState& cha
     submit.signalSemaphoreCount = 1;
     submit.pSignalSemaphores = &frame.signal;
     if (VK_FN(device, vkResetFences)(device.device, 1, &frame.fence) != VK_SUCCESS) return false;
-    if (VK_FN(device, vkQueueSubmit)(queue, 1, &submit, frame.fence) != VK_SUCCESS)
+    const VkResult submitted = VK_FN(device, vkQueueSubmit)(queue, 1, &submit, frame.fence);
+    if (submitted != VK_SUCCESS)
     {
+        if (submitted == VK_ERROR_DEVICE_LOST) MarkDeviceLost(device);
         VK_FN(device, vkDestroyFence)(device.device, frame.fence, nullptr);
+        frame.fence = VK_NULL_HANDLE;
         VkFenceCreateInfo fenceInfo{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-        VK_FN(device, vkCreateFence)(device.device, &fenceInfo, nullptr, &frame.fence);
+        if (VK_FN(device, vkCreateFence)(device.device, &fenceInfo, nullptr, &frame.fence) != VK_SUCCESS)
+            chain.ready = false;
         return false;
     }
-    chain.uploadedGeneration = bitmap.generation;
+    frame.presented = false;
+    chain.uploadedGeneration = bitmap.uploadId;
     signal = frame.signal;
-    section.Drew(bitmap.generation);
+    section.Drew(bitmap.generation, bitmap.uploadId);
     return true;
 }
+
+VkResult DrainAcquire(const DeviceState& device, VkSwapchainKHR handle)
+{
+    VkFence pending = VK_NULL_HANDLE;
+    uint32_t image = UINT32_MAX;
+    {
+        std::lock_guard<std::mutex> guard(stateMutex);
+        const auto found = swapchains.find(handle);
+        if (found == swapchains.end()) return VK_SUCCESS;
+        pending = found->second.acquireFence;
+        image = found->second.acquiredImage;
+    }
+    if (pending)
+    {
+        const VkResult waited = VK_FN(device, vkWaitForFences)(device.device, 1, &pending, VK_TRUE, UINT64_MAX);
+        std::lock_guard<std::mutex> guard(stateMutex);
+        const auto found = swapchains.find(handle);
+        if (waited == VK_ERROR_DEVICE_LOST)
+        {
+            MarkDeviceLost(device);
+            if (found != swapchains.end()) DestroyOverlay(device, found->second);
+            return waited;
+        }
+        if (waited != VK_SUCCESS) return waited;
+        if (found != swapchains.end())
+        {
+            auto& chain = found->second;
+            ReapSignals(device, chain, image);
+            VK_FN(device, vkDestroyFence)(device.device, pending, nullptr);
+            chain.acquireFence = VK_NULL_HANDLE;
+            chain.acquiredImage = UINT32_MAX;
+        }
+    }
+    return VK_SUCCESS;
+}
+
+VkResult PrepareAcquire(const DeviceState& device, VkSwapchainKHR handle, VkFence applicationFence,
+    VkFence& ownedFence, bool& tracked)
+{
+    const VkResult drained = DrainAcquire(device, handle);
+    if (drained != VK_SUCCESS) return drained;
+    {
+        std::lock_guard<std::mutex> guard(stateMutex);
+        const auto found = swapchains.find(handle);
+        tracked = found != swapchains.end() && !found->second.retiredSignals.empty();
+    }
+    if (tracked && !applicationFence)
+    {
+        VkFenceCreateInfo info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+        return VK_FN(device, vkCreateFence)(device.device, &info, nullptr, &ownedFence);
+    }
+    return VK_SUCCESS;
+}
+
+VkResult FinishAcquire(const DeviceState& device, VkSwapchainKHR handle, VkResult result,
+    uint32_t image, VkFence applicationFence, VkFence ownedFence, bool tracked)
+{
+    const bool acquired = result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR;
+    VkResult waited = VK_SUCCESS;
+    if (acquired && tracked)
+    {
+        const VkFence fence = ownedFence ? ownedFence : applicationFence;
+        waited = VK_FN(device, vkWaitForFences)(device.device, 1, &fence, VK_TRUE, UINT64_MAX);
+    }
+    std::lock_guard<std::mutex> guard(stateMutex);
+    const auto found = swapchains.find(handle);
+    if (result == VK_ERROR_DEVICE_LOST || waited == VK_ERROR_DEVICE_LOST)
+    {
+        MarkDeviceLost(device);
+        if (found != swapchains.end()) DestroyOverlay(device, found->second);
+    }
+    else if (acquired && tracked && found != swapchains.end())
+    {
+        auto& chain = found->second;
+        if (waited == VK_SUCCESS) ReapSignals(device, chain, image);
+        else if (ownedFence)
+        {
+            // Acquisition succeeded, so preserve its result and the caller's
+            // semaphore. This owned fence stays alive until a retry can drain it.
+            chain.acquireFence = ownedFence;
+            chain.acquiredImage = image;
+            ownedFence = VK_NULL_HANDLE;
+        }
+    }
+    // Failed acquisition leaves its fence unaffected; successful acquisition
+    // reaches here with completion proof, device loss, or ownership saved above.
+    if (ownedFence) VK_FN(device, vkDestroyFence)(device.device, ownedFence, nullptr);
+    return waited == VK_ERROR_DEVICE_LOST ? waited : result;
+}
+
 }
 
 LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance, const char*);
@@ -570,7 +750,8 @@ LAYER_EXPORT void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocation
         {
             if (found->second.device == device)
             {
-                DestroyOverlay(state, found->second);
+                // Valid device teardown has already completed all child use.
+                DestroyOverlay(state, found->second, true);
                 found = swapchains.erase(found);
             }
             else ++found;
@@ -641,14 +822,55 @@ LAYER_EXPORT void VKAPI_CALL vkDestroySwapchainKHR(VkDevice device, VkSwapchainK
     if (!state.next) return;
     {
         std::lock_guard<std::mutex> guard(stateMutex);
+        // VUID-vkDestroySwapchainKHR-swapchain-01282 requires the application to
+        // complete every use of acquired images. Let WSI retire its references
+        // first, then release our remaining signals and objects with the chain.
+        reinterpret_cast<PFN_vkDestroySwapchainKHR>(state.next(device, "vkDestroySwapchainKHR"))(device, swapchain, allocator);
         const auto found = swapchains.find(swapchain);
         if (found != swapchains.end())
         {
-            DestroyOverlay(state, found->second);
+            DestroyOverlay(state, found->second, true);
             swapchains.erase(found);
         }
     }
-    reinterpret_cast<PFN_vkDestroySwapchainKHR>(state.next(device, "vkDestroySwapchainKHR"))(device, swapchain, allocator);
+}
+
+LAYER_EXPORT VkResult VKAPI_CALL vkAcquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain,
+    uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t* image)
+{
+    const auto state = Device(device);
+    if (!state.next) return VK_ERROR_INITIALIZATION_FAILED;
+    const auto next = VK_FN(state, vkAcquireNextImageKHR);
+    if (!next) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    VkFence owned = VK_NULL_HANDLE;
+    bool tracked = false;
+    const VkResult prepared = PrepareAcquire(state, swapchain, fence, owned, tracked);
+    if (prepared != VK_SUCCESS)
+        return FinishAcquire(state, swapchain, prepared, UINT32_MAX, fence, owned, false);
+    // Neither the blocking acquisition nor its completion wait holds stateMutex.
+    const VkResult result = next(device, swapchain, timeout, semaphore, owned ? owned : fence, image);
+    const uint32_t acquired = (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) ? *image : UINT32_MAX;
+    return FinishAcquire(state, swapchain, result, acquired, fence, owned, tracked);
+}
+
+LAYER_EXPORT VkResult VKAPI_CALL vkAcquireNextImage2KHR(VkDevice device, const VkAcquireNextImageInfoKHR* info,
+    uint32_t* image)
+{
+    const auto state = Device(device);
+    if (!state.next) return VK_ERROR_INITIALIZATION_FAILED;
+    const auto next = VK_FN(state, vkAcquireNextImage2KHR);
+    if (!next) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    if (!info) return next(device, info, image);
+    VkFence owned = VK_NULL_HANDLE;
+    bool tracked = false;
+    const VkResult prepared = PrepareAcquire(state, info->swapchain, info->fence, owned, tracked);
+    if (prepared != VK_SUCCESS)
+        return FinishAcquire(state, info->swapchain, prepared, UINT32_MAX, info->fence, owned, false);
+    VkAcquireNextImageInfoKHR forwarded = *info;
+    if (owned) forwarded.fence = owned;
+    const VkResult result = next(device, &forwarded, image);
+    const uint32_t acquired = (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) ? *image : UINT32_MAX;
+    return FinishAcquire(state, info->swapchain, result, acquired, info->fence, owned, tracked);
 }
 
 LAYER_EXPORT void VKAPI_CALL vkGetDeviceQueue(VkDevice device, uint32_t family, uint32_t index, VkQueue* queue)
@@ -679,10 +901,11 @@ LAYER_EXPORT VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresen
 {
     const auto state = Device(queue);
     if (!state.next) return VK_ERROR_INITIALIZATION_FAILED;
+    std::lock_guard<std::mutex> guard(stateMutex);
     VkSemaphore signal = VK_NULL_HANDLE;
+    FrameResources* presentedFrame = nullptr;
     if (info && info->swapchainCount == 1 && info->pSwapchains && info->pImageIndices)
     {
-        std::lock_guard<std::mutex> guard(stateMutex);
         const auto found = swapchains.find(info->pSwapchains[0]);
         if (found != swapchains.end())
         {
@@ -692,32 +915,50 @@ LAYER_EXPORT VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresen
             if (bitmap && family != queueFamilies.end() && family->second < state.queueFlags.size()
                 && (state.queueFlags[family->second] & VK_QUEUE_GRAPHICS_BIT))
             {
-                if (!chain.ready)
+                if (!chain.ready && DestroyOverlay(state, chain))
                 {
-                    DestroyOverlay(state, chain);
-                    CreateRenderer(state, info->pSwapchains[0], chain, family->second);
+                    if (!CreateRenderer(state, info->pSwapchains[0], chain, family->second))
+                        DestroyOverlay(state, chain);
                 }
                 if (chain.ready && chain.queueFamily == family->second)
-                    SubmitOverlay(state, queue, chain, info->pImageIndices[0], *bitmap, *info, signal);
+                {
+                    if (SubmitOverlay(state, queue, chain, info->pImageIndices[0], *bitmap, *info, signal))
+                        presentedFrame = &chain.frames[info->pImageIndices[0]];
+                }
             }
+            else DestroyOverlay(state, chain);
         }
     }
     else if (info)
     {
-        std::lock_guard<std::mutex> guard(stateMutex);
         for (uint32_t i = 0; i < info->swapchainCount; ++i)
         {
             const auto found = swapchains.find(info->pSwapchains[i]);
             if (found != swapchains.end())
+            {
                 section.ObserveFrame(found->second.window, found->second.extent.width, found->second.extent.height);
+                DestroyOverlay(state, found->second);
+            }
         }
     }
     const auto next = VK_FN(state, vkQueuePresentKHR);
-    if (!signal) return next(queue, info);
+    if (!signal)
+    {
+        const VkResult result = next(queue, info);
+        if (result == VK_ERROR_DEVICE_LOST) MarkDeviceLost(state);
+        return result;
+    }
     VkPresentInfoKHR forwarded = *info;
     forwarded.waitSemaphoreCount = 1;
     forwarded.pWaitSemaphores = &signal;
-    return next(queue, &forwarded);
+    // Keep the mutex through forwarding so retirement never races this transfer
+    // to WSI. OOM leaves the present's semaphore operations unaffected.
+    presentedFrame->presented = true;
+    const VkResult result = next(queue, &forwarded);
+    if (result == VK_ERROR_OUT_OF_HOST_MEMORY || result == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+        presentedFrame->presented = false;
+    if (result == VK_ERROR_DEVICE_LOST) MarkDeviceLost(state);
+    return result;
 }
 
 LAYER_EXPORT VkResult VKAPI_CALL vkEnumerateInstanceLayerProperties(uint32_t* count, VkLayerProperties* output)
@@ -779,6 +1020,8 @@ LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance inst
     INSTANCE_PROC(vkDestroySurfaceKHR);
     INSTANCE_PROC(vkCreateSwapchainKHR);
     INSTANCE_PROC(vkDestroySwapchainKHR);
+    INSTANCE_PROC(vkAcquireNextImageKHR);
+    INSTANCE_PROC(vkAcquireNextImage2KHR);
     INSTANCE_PROC(vkQueuePresentKHR);
 #undef INSTANCE_PROC
 #undef GLOBAL_PROC
@@ -799,6 +1042,8 @@ LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, 
     DEVICE_PROC(vkGetDeviceQueue2);
     DEVICE_PROC(vkCreateSwapchainKHR);
     DEVICE_PROC(vkDestroySwapchainKHR);
+    DEVICE_PROC(vkAcquireNextImageKHR);
+    DEVICE_PROC(vkAcquireNextImage2KHR);
     DEVICE_PROC(vkQueuePresentKHR);
 #undef DEVICE_PROC
     return next;

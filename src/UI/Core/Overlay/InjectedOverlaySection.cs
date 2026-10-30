@@ -77,7 +77,8 @@ internal unsafe sealed class InjectedOverlaySection : IDisposable
                 CloseHandle(mapping);
                 throw new InvalidDataException("The existing overlay section has an incompatible header.");
             }
-            Interlocked.Exchange(ref header->Enabled, 0);
+            Interlocked.Exchange(ref header->Enabled, PerformanceOverlaySharedMemory.Handshake);
+            header->PublisherProcessId = checked((uint)Environment.ProcessId);
             SetTargetWindow(targetWindow);
             return;
         }
@@ -87,7 +88,9 @@ internal unsafe sealed class InjectedOverlaySection : IDisposable
             Version = PerformanceOverlaySharedMemory.Version,
             HeaderBytes = PerformanceOverlaySharedMemory.HeaderBytes,
             PixelCapacity = PerformanceOverlaySharedMemory.MaximumPixelBytes,
-            TargetWindow = checked((ulong)targetWindow)
+            Enabled = PerformanceOverlaySharedMemory.Handshake,
+            TargetWindow = checked((ulong)targetWindow),
+            PublisherProcessId = checked((uint)Environment.ProcessId)
         };
     }
 
@@ -96,7 +99,7 @@ internal unsafe sealed class InjectedOverlaySection : IDisposable
         Volatile.Read(ref header->SwapChainHeight));
 
     internal long Generation => Volatile.Read(ref header->Generation);
-    internal bool Enabled => Volatile.Read(ref header->Enabled) != 0;
+    internal bool Enabled => Volatile.Read(ref header->Enabled) == PerformanceOverlaySharedMemory.Enabled;
     internal long ConsumedGeneration => Volatile.Read(ref header->ConsumedGeneration);
     internal long DrawSuccessCounter => Volatile.Read(ref header->DrawSuccessCounter);
 
@@ -126,12 +129,12 @@ internal unsafe sealed class InjectedOverlaySection : IDisposable
         Marshal.Copy(image.Pixels, 0, view + PerformanceOverlaySharedMemory.HeaderBytes,
             image.Pixels.Length);
         Interlocked.Exchange(ref header->Generation, nextOdd + 1);
-        Interlocked.Exchange(ref header->Enabled, 1);
+        Interlocked.Exchange(ref header->Enabled, PerformanceOverlaySharedMemory.Enabled);
     }
 
     public void Disable()
     {
-        if (!disposed) Interlocked.Exchange(ref header->Enabled, 0);
+        if (!disposed) Interlocked.Exchange(ref header->Enabled, PerformanceOverlaySharedMemory.Disabled);
     }
 
     public void Dispose()

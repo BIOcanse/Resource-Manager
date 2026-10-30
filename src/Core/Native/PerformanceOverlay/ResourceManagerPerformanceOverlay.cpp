@@ -31,8 +31,18 @@ std::mutex installMutex;
 std::mutex d3dMutex;
 std::mutex glMutex;
 bool installed = false;
+// HookRelease must bypass overlay/runtime-internal releases while a D3D scope
+// owns the mutex, or it would clear in-use wrappers and reenter the same mutex.
+thread_local bool insideD3D = false;
+struct D3DScope
+{
+    bool previous = insideD3D;
+    D3DScope() { insideD3D = true; }
+    ~D3DScope() { insideD3D = previous; }
+};
 
 using PresentFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, UINT);
+using ReleaseFn = ULONG(STDMETHODCALLTYPE*)(IDXGISwapChain*);
 using Present1Fn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain1*, UINT, UINT, const DXGI_PRESENT_PARAMETERS*);
 using ResizeFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, UINT, UINT, DXGI_FORMAT, UINT);
 using Resize1Fn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain3*, UINT, UINT, UINT, DXGI_FORMAT, UINT, const UINT*, IUnknown* const*);
@@ -45,6 +55,7 @@ using CreateForCoreFn = HRESULT(STDMETHODCALLTYPE*)(IDXGIFactory2*, IUnknown*, I
 using CreateForCompositionFn = HRESULT(STDMETHODCALLTYPE*)(IDXGIFactory2*, IUnknown*,
     const DXGI_SWAP_CHAIN_DESC1*, IDXGIOutput*, IDXGISwapChain1**);
 PresentFn originalPresent = nullptr;
+ReleaseFn originalRelease = nullptr;
 Present1Fn originalPresent1 = nullptr;
 ResizeFn originalResize = nullptr;
 Resize1Fn originalResize1 = nullptr;
@@ -54,24 +65,36 @@ CreateForHwndFn originalCreateForHwnd = nullptr;
 CreateForCoreFn originalCreateForCore = nullptr;
 CreateForCompositionFn originalCreateForComposition = nullptr;
 
-struct D3D12Chain
+bool DrainD3D11(ID3D11Device* device)
 {
-    ID3D12CommandQueue* queue = nullptr;
-    ID3D11Device* device = nullptr;
     ID3D11DeviceContext* context = nullptr;
-    ID3D11On12Device* on12 = nullptr;
-    std::vector<ID3D11Texture2D*> buffers;
-    ~D3D12Chain() { Clear(); Drop(queue); Drop(on12); Drop(context); Drop(device); }
-    void Clear()
-    {
-        if (context) { context->ClearState(); context->Flush(); }
-        for (auto*& buffer : buffers) Drop(buffer);
-        buffers.clear();
-    }
-};
-// The DLL stays loaded for the target's lifetime. COM cleanup from static destructors
-// runs under the loader lock at process exit and can deadlock the graphics runtime.
-auto& d3d12Chains = *new std::unordered_map<IDXGISwapChain*, std::unique_ptr<D3D12Chain>>;
+    ID3D11Query* done = nullptr;
+    D3D11_QUERY_DESC desc{ D3D11_QUERY_EVENT, 0 };
+    if (FAILED(device->CreateQuery(&desc, &done))) return FAILED(device->GetDeviceRemovedReason());
+    device->GetImmediateContext(&context);
+    context->End(done);
+    context->Flush();
+    HRESULT result = S_FALSE;
+    while ((result = context->GetData(done, nullptr, 0, 0)) == S_FALSE) SwitchToThread();
+    Drop(done); Drop(context);
+    return SUCCEEDED(result) || FAILED(device->GetDeviceRemovedReason());
+}
+
+bool DrainD3D12(ID3D12CommandQueue* queue)
+{
+    ID3D12Device* device = nullptr;
+    if (FAILED(queue->GetDevice(__uuidof(ID3D12Device), reinterpret_cast<void**>(&device)))) return false;
+    ID3D12Fence* fence = nullptr;
+    HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    bool done = event && SUCCEEDED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+        __uuidof(ID3D12Fence), reinterpret_cast<void**>(&fence)))
+        && SUCCEEDED(queue->Signal(fence, 1)) && SUCCEEDED(fence->SetEventOnCompletion(1, event));
+    if (done) done = WaitForSingleObject(event, INFINITE) == WAIT_OBJECT_0;
+    done = done || FAILED(device->GetDeviceRemovedReason());
+    if (event) CloseHandle(event);
+    Drop(fence); Drop(device);
+    return done;
+}
 
 struct D3DResources
 {
@@ -86,7 +109,6 @@ struct D3DResources
     ID3D11Texture2D* texture = nullptr;
     ID3D11ShaderResourceView* textureView = nullptr;
     uint64_t uploadedGeneration = 0;
-    ~D3DResources() { Clear(); }
     void Clear()
     {
         Drop(textureView); Drop(texture); Drop(raster); Drop(depth); Drop(blend);
@@ -94,7 +116,37 @@ struct D3DResources
         uploadedGeneration = 0;
     }
 };
-D3DResources& d3d = *new D3DResources;
+
+struct D3D12Chain
+{
+    // PrepareD3D12Chain needs the creation queue to recreate on12 after disable;
+    // DXGI cannot return that queue. Retirement releases this final association.
+    ID3D12CommandQueue* queue = nullptr;
+    ID3D11Device* device = nullptr;
+    ID3D11DeviceContext* context = nullptr;
+    ID3D11On12Device* on12 = nullptr;
+    std::vector<ID3D11Texture2D*> buffers;
+    // DrawD3D uses this on12 device's upload; Clear must retire it with the wrappers.
+    D3DResources drawing;
+    ~D3D12Chain() { Drop(queue); }
+    bool Clear(bool releaseDevice = true)
+    {
+        if (!releaseDevice && buffers.empty()) return true;
+        if (!device && !context && !on12 && buffers.empty()) return true;
+        if (context) { context->ClearState(); context->Flush(); }
+        if (!DrainD3D12(queue)) return false;
+        if (releaseDevice) drawing.Clear();
+        for (auto*& buffer : buffers) Drop(buffer);
+        std::vector<ID3D11Texture2D*>().swap(buffers);
+        if (context) context->Flush();
+        if (releaseDevice) { Drop(on12); Drop(context); Drop(device); }
+        return true;
+    }
+};
+// Heap-root the containers to avoid process-exit COM work under loader lock.
+// Idle/resize/Release hooks explicitly drain and clear their live entries.
+auto& d3d12Chains = *new std::unordered_map<IDXGISwapChain*, std::unique_ptr<D3D12Chain>>;
+auto& d3d11Chains = *new std::unordered_map<IDXGISwapChain*, std::unique_ptr<D3DResources>>;
 
 const char* VertexSource = R"(
 cbuffer OverlaySize : register(b0) { float4 size; };
@@ -114,10 +166,11 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
     return bitmap.Sample(pointSampler, uv);
 })";
 
-bool PrepareD3D(ID3D11Device* device)
+bool PrepareD3D(D3DResources& d3d, ID3D11Device* device)
 {
     if (d3d.device == device && d3d.vertex && d3d.pixel && d3d.constants && d3d.sampler
         && d3d.blend && d3d.depth && d3d.raster) return true;
+    if (d3d.device && !DrainD3D11(d3d.device)) return false;
     d3d.Clear();
     d3d.device = device;
     device->AddRef();
@@ -176,9 +229,9 @@ bool PrepareD3D(ID3D11Device* device)
     return good;
 }
 
-bool UploadD3D(ID3D11Device* device, ID3D11DeviceContext* context, const OverlaySection::Bitmap& bitmap)
+bool UploadD3D(D3DResources& d3d, ID3D11Device* device, ID3D11DeviceContext* context, const OverlaySection::Bitmap& bitmap)
 {
-    if (d3d.uploadedGeneration == bitmap.generation && d3d.textureView) return true;
+    if (d3d.uploadedGeneration == bitmap.uploadId && d3d.textureView) return true;
     Drop(d3d.textureView);
     Drop(d3d.texture);
     D3D11_TEXTURE2D_DESC desc{};
@@ -195,7 +248,7 @@ bool UploadD3D(ID3D11Device* device, ID3D11DeviceContext* context, const Overlay
     source.SysMemPitch = bitmap.stride;
     if (FAILED(device->CreateTexture2D(&desc, &source, &d3d.texture))
         || FAILED(device->CreateShaderResourceView(d3d.texture, nullptr, &d3d.textureView))) return false;
-    d3d.uploadedGeneration = bitmap.generation;
+    d3d.uploadedGeneration = bitmap.uploadId;
     (void)context;
     return true;
 }
@@ -285,10 +338,10 @@ struct D3DState
     }
 };
 
-bool RenderD3D(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture2D* buffer,
+bool RenderD3D(D3DResources& d3d, ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture2D* buffer,
     const OverlaySection::Bitmap& bitmap, uint32_t width, uint32_t height)
 {
-    if (!PrepareD3D(device) || !UploadD3D(device, context, bitmap)) return false;
+    if (!PrepareD3D(d3d, device) || !UploadD3D(d3d, device, context, bitmap)) return false;
     ID3D11RenderTargetView* target = nullptr;
     if (FAILED(device->CreateRenderTargetView(buffer, nullptr, &target))) return false;
     D3DState state(context);
@@ -317,7 +370,7 @@ bool RenderD3D(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture
     context->Draw(6, 0);
     state.Restore(context);
     Drop(target);
-    section.Drew(bitmap.generation);
+    section.Drew(bitmap.generation, bitmap.uploadId);
     return true;
 }
 
@@ -328,6 +381,7 @@ bool PrepareD3D12Chain(IDXGISwapChain* chain, D3D12Chain& resources)
     if (!resources.queue) return false;
     if (!resources.on12)
     {
+        if ((resources.device || resources.context) && !resources.Clear()) return false;
         ID3D12Device* device12 = nullptr;
         if (FAILED(resources.queue->GetDevice(__uuidof(ID3D12Device), reinterpret_cast<void**>(&device12)))) return false;
         HMODULE d3d11Module = GetModuleHandleW(L"d3d11.dll");
@@ -342,7 +396,11 @@ bool PrepareD3D12Chain(IDXGISwapChain* chain, D3D12Chain& resources)
             nullptr, 0, queues, 1, 0, &resources.device, &resources.context, nullptr) : E_NOINTERFACE;
         Drop(device12);
         if (FAILED(result) || !resources.device || !resources.context
-            || FAILED(resources.device->QueryInterface(__uuidof(ID3D11On12Device), reinterpret_cast<void**>(&resources.on12)))) return false;
+            || FAILED(resources.device->QueryInterface(__uuidof(ID3D11On12Device), reinterpret_cast<void**>(&resources.on12))))
+        {
+            resources.Clear();
+            return false;
+        }
     }
     DXGI_SWAP_CHAIN_DESC desc{};
     if (FAILED(chain->GetDesc(&desc))) return false;
@@ -371,11 +429,36 @@ bool PrepareD3D12Chain(IDXGISwapChain* chain, D3D12Chain& resources)
 }
 
 // RuntimeRead: Sampled
+bool ClearD3D11Chain(IDXGISwapChain* chain)
+{
+    const auto found = d3d11Chains.find(chain);
+    if (found == d3d11Chains.end()) return true;
+    auto& resources = *found->second;
+    if (resources.device && !DrainD3D11(resources.device)) return false;
+    ID3D11DeviceContext* context = nullptr;
+    if (resources.device) resources.device->GetImmediateContext(&context);
+    resources.Clear();
+    if (context) context->Flush();
+    Drop(context);
+    d3d11Chains.erase(found);
+    return true;
+}
+
+// RuntimeRead: Sampled
 void DrawD3D(IDXGISwapChain* chain)
 {
     std::lock_guard<std::mutex> guard(d3dMutex);
+    D3DScope scope;
     DXGI_SWAP_CHAIN_DESC chainDesc{};
     if (FAILED(chain->GetDesc(&chainDesc))) return;
+    auto bitmap = section.Frame(chainDesc.OutputWindow, chainDesc.BufferDesc.Width, chainDesc.BufferDesc.Height);
+    if (!bitmap)
+    {
+        ClearD3D11Chain(chain);
+        const auto found = d3d12Chains.find(chain);
+        if (found != d3d12Chains.end()) found->second->Clear();
+        return;
+    }
     IDXGISwapChain3* chain3 = nullptr;
     const UINT index = SUCCEEDED(chain->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&chain3)))
         ? chain3->GetCurrentBackBufferIndex() : 0;
@@ -386,13 +469,7 @@ void DrawD3D(IDXGISwapChain* chain)
         auto found = d3d12Chains.find(chain);
         if (found == d3d12Chains.end() || !PrepareD3D12Chain(chain, *found->second))
         {
-            ID3D12Resource* buffer12 = nullptr;
-            if (SUCCEEDED(chain->GetBuffer(index, __uuidof(ID3D12Resource), reinterpret_cast<void**>(&buffer12))))
-            {
-                const auto desc = buffer12->GetDesc();
-                section.ObserveFrame(chainDesc.OutputWindow, static_cast<uint32_t>(desc.Width), desc.Height);
-            }
-            Drop(buffer12);
+            // Frame already recorded this present, even when composition is unavailable.
             return;
         }
         auto& resources = *found->second;
@@ -400,11 +477,9 @@ void DrawD3D(IDXGISwapChain* chain)
         ID3D11Texture2D* wrapped = resources.buffers[index];
         D3D11_TEXTURE2D_DESC desc{};
         wrapped->GetDesc(&desc);
-        auto bitmap = section.Frame(chainDesc.OutputWindow, desc.Width, desc.Height);
-        if (!bitmap) return;
         ID3D11Resource* base = wrapped;
         resources.on12->AcquireWrappedResources(&base, 1);
-        RenderD3D(resources.device, resources.context, wrapped, *bitmap, desc.Width, desc.Height);
+        RenderD3D(resources.drawing, resources.device, resources.context, wrapped, *bitmap, desc.Width, desc.Height);
         resources.on12->ReleaseWrappedResources(&base, 1);
         resources.context->Flush();
         return;
@@ -414,11 +489,11 @@ void DrawD3D(IDXGISwapChain* chain)
     { device->Release(); return; }
     D3D11_TEXTURE2D_DESC bufferDesc{};
     buffer->GetDesc(&bufferDesc);
-    auto bitmap = section.Frame(chainDesc.OutputWindow, bufferDesc.Width, bufferDesc.Height);
-    if (!bitmap) { Drop(buffer); Drop(device); return; }
     ID3D11DeviceContext* context = nullptr;
     device->GetImmediateContext(&context);
-    if (context) RenderD3D(device, context, buffer, *bitmap, bufferDesc.Width, bufferDesc.Height);
+    auto found = d3d11Chains.find(chain);
+    if (found == d3d11Chains.end()) found = d3d11Chains.emplace(chain, std::make_unique<D3DResources>()).first;
+    if (context) RenderD3D(*found->second, device, context, buffer, *bitmap, bufferDesc.Width, bufferDesc.Height);
     Drop(buffer); Drop(context); Drop(device);
 }
 
@@ -439,6 +514,7 @@ struct GlCoreFns
     PFNGLUNIFORM4FPROC uniform4f = nullptr;
     PFNGLUNIFORM1IPROC uniform1i = nullptr;
     PFNGLGENVERTEXARRAYSPROC genVertexArrays = nullptr;
+    PFNGLDELETEVERTEXARRAYSPROC deleteVertexArrays = nullptr;
     PFNGLBINDVERTEXARRAYPROC bindVertexArray = nullptr;
     PFNGLACTIVETEXTUREPROC activeTexture = nullptr;
     PFNGLBLENDFUNCSEPARATEPROC blendFuncSeparate = nullptr;
@@ -483,10 +559,14 @@ bool PrepareGlCore(GlTexture& texture)
     LOAD_GL(useProgram, "glUseProgram"); LOAD_GL(getUniformLocation, "glGetUniformLocation");
     LOAD_GL(uniform4f, "glUniform4f"); LOAD_GL(uniform1i, "glUniform1i");
     LOAD_GL(genVertexArrays, "glGenVertexArrays"); LOAD_GL(bindVertexArray, "glBindVertexArray");
+    LOAD_GL(deleteVertexArrays, "glDeleteVertexArrays");
     LOAD_GL(activeTexture, "glActiveTexture"); LOAD_GL(blendFuncSeparate, "glBlendFuncSeparate");
     LOAD_GL(blendEquationSeparate, "glBlendEquationSeparate");
     LOAD_GL(bindFramebuffer, "glBindFramebuffer"); LOAD_GL(bindBuffer, "glBindBuffer");
 #undef LOAD_GL
+    if (texture.vao) gl.deleteVertexArrays(1, &texture.vao);
+    if (texture.program) gl.deleteProgram(texture.program);
+    texture.vao = texture.program = 0;
     constexpr const char* vertexSource = R"(#version 330 core
 uniform vec4 size;
 out vec2 uv;
@@ -503,7 +583,12 @@ out vec4 color;
 void main() { color = texture(bitmap, uv); })";
     GLuint vertex = gl.createShader(GL_VERTEX_SHADER);
     GLuint fragment = gl.createShader(GL_FRAGMENT_SHADER);
-    if (!vertex || !fragment) return false;
+    if (!vertex || !fragment)
+    {
+        if (vertex) gl.deleteShader(vertex);
+        if (fragment) gl.deleteShader(fragment);
+        return false;
+    }
     gl.shaderSource(vertex, 1, &vertexSource, nullptr);
     gl.compileShader(vertex);
     gl.shaderSource(fragment, 1, &fragmentSource, nullptr);
@@ -567,7 +652,7 @@ void DrawGlCore(HGLRC current, const OverlaySection::Bitmap& bitmap, uint32_t wi
     gl.bindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     if (!texture.name) glGenTextures(1, &texture.name);
     glBindTexture(GL_TEXTURE_2D, texture.name);
-    if (texture.generation != bitmap.generation)
+    if (texture.generation != bitmap.uploadId)
     {
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, bitmap.stride / 4);
@@ -577,9 +662,9 @@ void DrawGlCore(HGLRC current, const OverlaySection::Bitmap& bitmap, uint32_t wi
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, bitmap.width, bitmap.height,
             0, GL_BGRA, GL_UNSIGNED_BYTE, bitmap.pixels.data());
-        if (glGetError() == GL_NO_ERROR) texture.generation = bitmap.generation;
+        if (glGetError() == GL_NO_ERROR) texture.generation = bitmap.uploadId;
     }
-    if (texture.generation == bitmap.generation)
+    if (texture.generation == bitmap.uploadId)
     {
         gl.bindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
@@ -596,7 +681,7 @@ void DrawGlCore(HGLRC current, const OverlaySection::Bitmap& bitmap, uint32_t wi
         gl.uniform1i(texture.bitmapLocation, 0);
         gl.bindVertexArray(texture.vao);
         glDrawArrays(GL_TRIANGLES, 0, 6);
-        if (glGetError() == GL_NO_ERROR) section.Drew(bitmap.generation);
+        if (glGetError() == GL_NO_ERROR) section.Drew(bitmap.generation, bitmap.uploadId);
     }
     gl.bindVertexArray(oldVao);
     gl.useProgram(oldProgram);
@@ -621,15 +706,34 @@ void DrawGlCore(HGLRC current, const OverlaySection::Bitmap& bitmap, uint32_t wi
     if (wasLogic) glEnable(GL_COLOR_LOGIC_OP); else glDisable(GL_COLOR_LOGIC_OP);
 }
 
+void ClearGl(HGLRC current)
+{
+    const auto found = glTextures.find(current);
+    if (found == glTextures.end()) return;
+    // Caller holds glMutex with this context current, outside loader lock.
+    glFinish();
+    auto& texture = found->second;
+    if (texture.name) glDeleteTextures(1, &texture.name);
+    if (texture.vao) texture.core.deleteVertexArrays(1, &texture.vao);
+    if (texture.program) texture.core.deleteProgram(texture.program);
+    glTextures.erase(found);
+}
+
 void DrawGl(HDC dc)
 {
     HGLRC current = wglGetCurrentContext();
     if (!current || wglGetCurrentDC() != dc) return;
     HWND window = WindowFromDC(dc);
     RECT bounds{};
-    if (!window || !GetClientRect(window, &bounds) || bounds.right <= 0 || bounds.bottom <= 0) return;
+    if (!window || !GetClientRect(window, &bounds)) return;
     auto bitmap = section.Frame(window, bounds.right, bounds.bottom);
-    if (!bitmap) return;
+    if (!bitmap)
+    {
+        std::lock_guard<std::mutex> guard(glMutex);
+        ClearGl(current);
+        return;
+    }
+    if (bounds.right <= 0 || bounds.bottom <= 0) return;
     const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
     if (version && version[0] >= '3' && version[0] <= '9')
     {
@@ -650,7 +754,7 @@ void DrawGl(HDC dc)
     glGetIntegerv(GL_MATRIX_MODE, &oldMatrix);
     if (!texture.name) glGenTextures(1, &texture.name);
     glBindTexture(GL_TEXTURE_2D, texture.name);
-    if (texture.generation != bitmap->generation)
+    if (texture.generation != bitmap->uploadId)
     {
         std::vector<uint8_t> packed;
         const uint8_t* pixels = bitmap->pixels.data();
@@ -669,9 +773,9 @@ void DrawGl(HDC dc)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bitmap->width, bitmap->height,
             0, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
-        if (glGetError() == GL_NO_ERROR) texture.generation = bitmap->generation;
+        if (glGetError() == GL_NO_ERROR) texture.generation = bitmap->uploadId;
     }
-    if (texture.generation == bitmap->generation)
+    if (texture.generation == bitmap->uploadId)
     {
         glViewport(0, 0, bounds.right, bounds.bottom);
         glDisable(GL_DEPTH_TEST); glDisable(GL_STENCIL_TEST); glDisable(GL_SCISSOR_TEST);
@@ -697,7 +801,7 @@ void DrawGl(HDC dc)
         glMatrixMode(GL_TEXTURE); glPopMatrix();
         glMatrixMode(GL_MODELVIEW); glPopMatrix();
         glMatrixMode(GL_PROJECTION); glPopMatrix();
-        if (success) section.Drew(bitmap->generation);
+        if (success) section.Drew(bitmap->generation, bitmap->uploadId);
     }
     glMatrixMode(oldMatrix);
     glPopClientAttrib();
@@ -712,6 +816,9 @@ void TrackD3D12Chain(IUnknown* source, IDXGISwapChain* chain)
     auto resources = std::make_unique<D3D12Chain>();
     resources->queue = queue;
     std::lock_guard<std::mutex> guard(d3dMutex);
+    D3DScope scope;
+    const auto found = d3d12Chains.find(chain);
+    if (found != d3d12Chains.end() && !found->second->Clear()) return;
     d3d12Chains[chain] = std::move(resources);
 }
 
@@ -756,12 +863,35 @@ HRESULT STDMETHODCALLTYPE HookPresent1(IDXGISwapChain1* chain, UINT interval, UI
     if (!(flags & DXGI_PRESENT_TEST)) { try { DrawD3D(chain); } catch (...) {} }
     return originalPresent1(chain, interval, flags, parameters);
 }
+ULONG STDMETHODCALLTYPE HookRelease(IDXGISwapChain* chain)
+{
+    if (insideD3D) return originalRelease(chain);
+    D3DScope scope;
+    {
+        std::lock_guard<std::mutex> guard(d3dMutex);
+        const auto found = d3d12Chains.find(chain);
+        // Wrapped backbuffers can themselves keep the swapchain alive. Drop
+        // them before forwarding an external Release, preserving the upload
+        // and shaders if the caller still owns other swapchain references.
+        if (found != d3d12Chains.end()) found->second->Clear(false);
+    }
+    const ULONG remaining = originalRelease(chain);
+    if (!remaining)
+    {
+        std::lock_guard<std::mutex> guard(d3dMutex);
+        ClearD3D11Chain(chain);
+        const auto found = d3d12Chains.find(chain);
+        if (found != d3d12Chains.end() && found->second->Clear()) d3d12Chains.erase(found);
+    }
+    return remaining;
+}
 HRESULT STDMETHODCALLTYPE HookResize(IDXGISwapChain* chain, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
 {
     {
         std::lock_guard<std::mutex> guard(d3dMutex);
+        D3DScope scope;
         const auto found = d3d12Chains.find(chain);
-        if (found != d3d12Chains.end()) found->second->Clear();
+        if (found != d3d12Chains.end() && !found->second->Clear(false)) return DXGI_ERROR_WAS_STILL_DRAWING;
     }
     return originalResize(chain, count, width, height, format, flags);
 }
@@ -770,8 +900,9 @@ HRESULT STDMETHODCALLTYPE HookResize1(IDXGISwapChain3* chain, UINT count, UINT w
 {
     {
         std::lock_guard<std::mutex> guard(d3dMutex);
+        D3DScope scope;
         const auto found = d3d12Chains.find(chain);
-        if (found != d3d12Chains.end()) found->second->Clear();
+        if (found != d3d12Chains.end() && !found->second->Clear(false)) return DXGI_ERROR_WAS_STILL_DRAWING;
     }
     return originalResize1(chain, count, width, height, format, flags, masks, queues);
 }
@@ -784,9 +915,15 @@ BOOL WINAPI HookDeleteContext(HGLRC context)
 {
     {
         std::lock_guard<std::mutex> guard(glMutex);
+        if (context == wglGetCurrentContext()) ClearGl(context);
+    }
+    const BOOL result = originalDeleteContext(context);
+    if (result)
+    {
+        std::lock_guard<std::mutex> guard(glMutex);
         glTextures.erase(context);
     }
-    return originalDeleteContext(context);
+    return result;
 }
 
 bool Hook(void* target, void* replacement, void** original)
@@ -850,7 +987,8 @@ bool Install()
         if (ready)
         {
             void** methods = *reinterpret_cast<void***>(chain3);
-            ready = PatchMethod(methods, 8, reinterpret_cast<void*>(&HookPresent), reinterpret_cast<void**>(&originalPresent))
+            ready = PatchMethod(methods, 2, reinterpret_cast<void*>(&HookRelease), reinterpret_cast<void**>(&originalRelease))
+                && PatchMethod(methods, 8, reinterpret_cast<void*>(&HookPresent), reinterpret_cast<void**>(&originalPresent))
                 && PatchMethod(methods, 13, reinterpret_cast<void*>(&HookResize), reinterpret_cast<void**>(&originalResize))
                 && PatchMethod(methods, 22, reinterpret_cast<void*>(&HookPresent1), reinterpret_cast<void**>(&originalPresent1))
                 && PatchMethod(methods, 39, reinterpret_cast<void*>(&HookResize1), reinterpret_cast<void**>(&originalResize1));

@@ -18,6 +18,7 @@ g++ -std=c++17 -O2 -Wall -Wextra -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -I"%MINHO
 if errorlevel 1 exit /b %ERRORLEVEL%
 g++ -shared -static -o "%OUT%\ResourceManager.PerformanceOverlay.dll" "%OBJ%\overlay.o" "%OBJ%\buffer.o" "%OBJ%\hook.o" "%OBJ%\trampoline.o" "%OBJ%\hde64.o" -ld3d11 -ldxgi -lopengl32 -lgdi32 -luser32
 if errorlevel 1 exit /b %ERRORLEVEL%
+if /i "%~1"=="d3d-only" exit /b 0
 g++ -std=c++17 -O2 -Wall -Wextra -Wno-missing-field-initializers -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -I"%VULKAN%" -shared -static "%SCRIPT_DIR%VulkanOverlayLayer.cpp" -o "%OUT%\ResourceManager.VulkanPerformanceOverlayLayer.dll" -luser32
 if errorlevel 1 exit /b %ERRORLEVEL%
 copy /y "%SCRIPT_DIR%ResourceManager.VulkanPerformanceOverlayLayer.json" "%OUT%\ResourceManager.VulkanPerformanceOverlayLayer.json" >nul

@@ -7,9 +7,21 @@ namespace ResourceManager.Shared.Overlay;
 public static class PerformanceOverlaySharedMemory
 {
     public const uint Magic = 0x564F4D52; // "RMOV" in little endian.
-    public const uint Version = 1;
-    public const int HeaderBytes = 80;
+    public const uint Version = 2;
+    public const int HeaderBytes = 88;
     public const int MaximumPixelBytes = 64 * 1024 * 1024;
+    // Handshake reports every present using only the header. Disabled also retires
+    // a never-published section, so its reader cannot keep it alive after Dispose.
+    public const int Handshake = 0, Enabled = 1, Disabled = -1;
+
+    static PerformanceOverlaySharedMemory()
+    {
+        if (Marshal.SizeOf<PerformanceOverlayHeader>() != HeaderBytes
+            || Marshal.OffsetOf<PerformanceOverlayHeader>(nameof(PerformanceOverlayHeader.Generation)).ToInt32() != 16
+            || Marshal.OffsetOf<PerformanceOverlayHeader>(nameof(PerformanceOverlayHeader.SwapChainWidth)).ToInt32() != 72
+            || Marshal.OffsetOf<PerformanceOverlayHeader>(nameof(PerformanceOverlayHeader.PublisherProcessId)).ToInt32() != 80)
+            throw new TypeLoadException("The performance overlay shared header layout is incompatible.");
+    }
 
     public static string SectionName(int processId, long creationFileTimeUtc)
     {
@@ -49,4 +61,6 @@ public struct PerformanceOverlayHeader
     public int Enabled;
     public int SwapChainWidth;
     public int SwapChainHeight;
+    // Reader opens a SYNCHRONIZE process handle once and drops its view on publisher exit.
+    public uint PublisherProcessId;
 }
