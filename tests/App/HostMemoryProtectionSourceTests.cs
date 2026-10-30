@@ -77,6 +77,40 @@ public sealed class HostMemoryProtectionSourceTests
     }
 
     [Fact]
+    public async Task CommitSubscriptionHoldsNoProcessDataAndProcessReadIsOneShot()
+    {
+        var fixture = new Fixture();
+        await using (var stream = fixture.Source.SubscribeCommitAsync(Holder, Interval, CancellationToken.None).GetAsyncEnumerator())
+        {
+            var pending = stream.MoveNextAsync().AsTask();
+            Assert.Equal(Holder + ":commit", await fixture.Metrics.Started.Reader.ReadAsync().AsTask().WaitAsync(Timeout));
+            Assert.Equal(Interval, fixture.Metrics.Active[Holder + ":commit"].Interval);
+            for (var cycle = 0; cycle < 3; cycle++)
+            {
+                fixture.Metrics.Publish(Holder + ":commit", CommitSnapshot());
+                Assert.True(await pending.WaitAsync(Timeout));
+                Assert.NotNull(stream.Current.Commit);
+                Assert.Null(stream.Current.Processes);
+                pending = stream.MoveNextAsync().AsTask();
+            }
+            Assert.Empty(fixture.Resources.Active);
+            Assert.Equal(0, fixture.Foundations.ReadCount);
+        }
+        Assert.Empty(fixture.Metrics.Active);
+
+        fixture.Foundations.Current = Foundation(Process(42, 100));
+        var read = fixture.Source.ReadProcessesOnceAsync(Holder, CancellationToken.None);
+        var holder = await fixture.Resources.Started.Reader.ReadAsync().AsTask().WaitAsync(Timeout);
+        Assert.Equal(Holder + ":processes", holder);
+        var request = fixture.Resources.Active[holder].Request;
+        Assert.Equal(new[] { PrivateCommit }, request.MetricIds);
+        Assert.Equal(new[] { SamplingDatasetIds.ProcessInventory, SamplingDatasetIds.ProcessAttribution }, request.PublicationDatasetIds);
+        fixture.Resources.Publish(holder, ResourceSnapshot(Row(42, "100", new(17))));
+        Assert.Equal(17UL, Assert.Single((await read.WaitAsync(Timeout))!).PrivateCommitBytes);
+        Assert.Empty(fixture.Resources.Active);
+    }
+
+    [Fact]
     public async Task CurrentCommitWaitsForOwnFreshSubscriptionAndPreservesUnsignedPrecision()
     {
         var fixture = new Fixture();

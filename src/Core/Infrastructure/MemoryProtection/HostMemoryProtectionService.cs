@@ -175,7 +175,8 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
             lock (gate) { current = settings; subscriptionCancellation = cancellation; }
             try
             {
-                await foreach (var reading in source.SubscribeAsync("host-memory-protection",
+                // Each check needs only the machine commit; per-process data is fetched once when the threshold is reached.
+                await foreach (var reading in source.SubscribeCommitAsync("host-memory-protection",
                     TimeSpan.FromSeconds(current.CheckIntervalSeconds), cancellation.Token))
                 {
                     // A buffered delivery from before the preceding action cannot trigger another action.
@@ -208,7 +209,6 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
             blocked = new(cannotOpen);
         }
         PublishStatus(reading.Commit, useReading: true, reading.At);
-        if (reading.Processes is null) return;
         lock (gate) if (!reserveAccepted) return;
         var excluded = blocked.Values.ToList();
         if (reading.Commit is null || reading.Commit.Percent < current.ThresholdPercent)
@@ -216,12 +216,14 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
             Finish(reading.Commit is null ? "commit-unavailable" : "below-threshold");
             return;
         }
+        // Only the decision needs per-process data: one fresh capture for this delivery, released when it returns.
+        if (await source.ReadProcessesOnceAsync("host-memory-protection", stop) is not { } processes) return;
         var before = baseline.Processes.ToDictionary(item => (item.ProcessId, item.ProcessStartKey));
         var policies = (await softwarePolicies.GetAsync(stop)).SoftwarePolicies;
         var neverTerminate = policies.Where(item => item.HostMemoryProtectionNeverTerminate).Select(item => item.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var noDump = policies.Where(item => item.HostMemoryProtectionNoDump).Select(item => item.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var candidates = new List<(HostMemoryProcess Process, decimal Growth)>();
-        foreach (var process in reading.Processes)
+        foreach (var process in processes)
         {
             var reason = CommonExclusion(process);
             var atPoint = before.GetValueOrDefault((process.ProcessId, process.ProcessStartKey));
@@ -249,7 +251,7 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
             PublishStatus();
         }
         var anyPositiveTree = false;
-        foreach (var tree in new HostMemoryProtectionTrees(reading.Processes, baseline.Processes).Ranked())
+        foreach (var tree in new HostMemoryProtectionTrees(processes, baseline.Processes).Ranked())
         {
             anyPositiveTree = true;
             if (stop.IsCancellationRequested) return;

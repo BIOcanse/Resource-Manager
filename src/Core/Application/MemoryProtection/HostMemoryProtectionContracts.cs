@@ -101,6 +101,11 @@ public sealed record HostMemoryActionOptions(string ActionMode = HostMemoryProte
 public interface IHostMemoryProtectionSource
 {
     Task<HostMemoryCommit?> ReadCurrentCommitAsync(CancellationToken cancellationToken);
+    // Machine commit only; every reading has Processes == null. The protection check and its status hold this.
+    IAsyncEnumerable<HostMemoryReading> SubscribeCommitAsync(string holder, TimeSpan interval, CancellationToken cancellationToken);
+    // One fresh per-process reading, requested only when commit reached the threshold; null when inventory is unavailable.
+    Task<IReadOnlyList<HostMemoryProcess>?> ReadProcessesOnceAsync(string holder, CancellationToken cancellationToken);
+    // Commit and per-process data together; only normal running point creation holds this.
     IAsyncEnumerable<HostMemoryReading> SubscribeAsync(string holder, TimeSpan interval, CancellationToken cancellationToken);
 }
 public interface IHostMemoryProtectionExecutor

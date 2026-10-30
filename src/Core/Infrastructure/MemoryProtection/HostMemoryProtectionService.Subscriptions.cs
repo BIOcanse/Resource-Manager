@@ -47,7 +47,7 @@ public sealed partial class HostMemoryProtectionService
             {
                 double interval;
                 lock (gate) interval = settings.CheckIntervalSeconds;
-                await foreach (var reading in source.SubscribeAsync("host-memory-protection:status:" + Guid.NewGuid().ToString("N"),
+                await foreach (var reading in source.SubscribeCommitAsync("host-memory-protection:status:" + Guid.NewGuid().ToString("N"),
                     TimeSpan.FromSeconds(interval), lifetime))
                     PublishStatus(reading.Commit, useReading: true, reading.At);
             }

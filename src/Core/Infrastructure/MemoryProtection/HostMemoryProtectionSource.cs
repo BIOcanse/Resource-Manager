@@ -27,6 +27,19 @@ public sealed class HostMemoryProtectionSource(IMetricSnapshotPushSource metrics
     public async Task<HostMemoryCommit?> ReadCurrentCommitAsync(CancellationToken cancellationToken)
         => ReadCommit(await metrics.FetchOnceAsync("host-memory-protection:status", CommitRequest, cancellationToken));
 
+    // The standing check holds only the machine commit; per-process data is not requested.
+    public async IAsyncEnumerable<HostMemoryReading> SubscribeCommitAsync(string holder, TimeSpan interval,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var snapshot in metrics.SubscribeAsync(holder + ":commit", CommitRequest, interval, cancellationToken))
+            yield return new(DateTimeOffset.UtcNow, ReadCommit(snapshot), null);
+    }
+
+    // One fresh process capture, held only for this call and released when it returns.
+    public async Task<IReadOnlyList<HostMemoryProcess>?> ReadProcessesOnceAsync(string holder, CancellationToken cancellationToken)
+        => await resources.FetchOnceAsync(holder + ":processes", ProcessRequest, cancellationToken) is { } snapshot
+            ? ReadProcesses(snapshot) : null;
+
     public async IAsyncEnumerable<HostMemoryReading> SubscribeAsync(string holder, TimeSpan interval,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {

@@ -531,6 +531,50 @@ public sealed partial class HostMemoryProtectionTests
         Assert.Equal(before.Revision, (await fixture.Stored()).Revision);
     }
 
+    [Fact]
+    public async Task BelowThresholdChecksNeverRequestProcessData()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        await fixture.CreatePoint();
+        var pointSubscriptions = fixture.Source.ProcessSubscriptions;
+        var beforeEnable = fixture.Source.Deliveries;
+        using var enabled = await fixture.Patch(new { enabled = true });
+        Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+        await Until(() => fixture.Source.Active == 1 && fixture.Source.Deliveries > beforeEnable);
+        var start = fixture.Source.Deliveries;
+        const int Cycles = 5;
+        // The check loop asks for the next delivery only after handling the previous one, so the extra delivery
+        // proves every earlier cycle finished.
+        for (var index = 0; index <= Cycles; index++)
+            fixture.Source.Publish(900 + (ulong)index, 90 + index, [Process(10, "1", 9999)]);
+        await Until(() => fixture.Source.Deliveries >= start + Cycles + 1);
+        await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).DecisionReason == "below-threshold");
+        Assert.Equal(0, fixture.Source.ProcessReads);
+        Assert.Equal(pointSubscriptions, fixture.Source.ProcessSubscriptions);
+        Assert.Empty(fixture.Executor.Opened);
+    }
+
+    [Fact]
+    public async Task ReachingThresholdRequestsProcessDataOnceAndActsAsBefore()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        fixture.Source.Publish(200, 20, [Process(10, "1", 900), Process(11, "1", 10)]);
+        await fixture.CreatePoint();
+        var pointSubscriptions = fixture.Source.ProcessSubscriptions;
+        using var enabled = await fixture.Patch(new { enabled = true });
+        Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+        await Until(() => fixture.Source.Active == 1);
+        Assert.Equal(0, fixture.Source.ProcessReads);
+        fixture.Source.Publish(960, 96, [Process(10, "1", 950), Process(11, "1", 400), Process(12, "1", 100)]);
+        await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 1);
+        var action = Assert.Single((await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions);
+        Assert.Equal(11, action.ProcessId);
+        Assert.Equal(390m, action.GrowthBytes);
+        Assert.Equal(11, Assert.Single(fixture.Executor.Executed));
+        Assert.Equal(1, fixture.Source.ProcessReads);
+        Assert.Equal(pointSubscriptions, fixture.Source.ProcessSubscriptions);
+    }
+
     private static HostMemoryProcess Process(int pid, string key, ulong bytes) => new(pid, key, "fake-" + pid, bytes);
     [Fact]
     public async Task SavedEnablementAfterRestartDoesNotRunWithoutAnInMemoryPoint()
@@ -702,7 +746,23 @@ public sealed partial class HostMemoryProtectionTests
             Volatile.Write(ref current, next);
             foreach (var channel in readers.Values) channel.Writer.TryWrite(next);
         }
-        public async IAsyncEnumerable<HostMemoryReading> SubscribeAsync(string holder, TimeSpan interval, [EnumeratorCancellation] CancellationToken token)
+        // Requests for per-process data: one-shot reads and standing commit+process subscriptions.
+        public int ProcessReads;
+        public int ProcessSubscriptions;
+        public IAsyncEnumerable<HostMemoryReading> SubscribeCommitAsync(string holder, TimeSpan interval, CancellationToken token)
+            => Subscribe(holder, includeProcesses: false, token);
+        public Task<IReadOnlyList<HostMemoryProcess>?> ReadProcessesOnceAsync(string holder, CancellationToken token)
+        {
+            Assert.StartsWith("host-memory-protection", holder);
+            Interlocked.Increment(ref ProcessReads);
+            return Task.FromResult(Volatile.Read(ref current).Processes);
+        }
+        public IAsyncEnumerable<HostMemoryReading> SubscribeAsync(string holder, TimeSpan interval, CancellationToken token)
+        {
+            Interlocked.Increment(ref ProcessSubscriptions);
+            return Subscribe(holder, includeProcesses: true, token);
+        }
+        private async IAsyncEnumerable<HostMemoryReading> Subscribe(string holder, bool includeProcesses, [EnumeratorCancellation] CancellationToken token)
         {
             Assert.StartsWith("host-memory-protection", holder);
             var key = Guid.NewGuid(); var channel = Channel.CreateUnbounded<HostMemoryReading>();
@@ -711,10 +771,11 @@ public sealed partial class HostMemoryProtectionTests
             try
             {
                 Interlocked.Increment(ref Deliveries);
-                yield return Volatile.Read(ref current) with { At = DateTimeOffset.UtcNow };
-                await foreach (var value in channel.Reader.ReadAllAsync(token)) { Interlocked.Increment(ref Deliveries); yield return value; }
+                yield return Shape(Volatile.Read(ref current) with { At = DateTimeOffset.UtcNow });
+                await foreach (var value in channel.Reader.ReadAllAsync(token)) { Interlocked.Increment(ref Deliveries); yield return Shape(value); }
             }
             finally { readers.TryRemove(key, out _); }
+            HostMemoryReading Shape(HostMemoryReading value) => includeProcesses ? value : value with { Processes = null };
         }
     }
     private sealed class FakeExecutor : IHostMemoryProtectionExecutor
