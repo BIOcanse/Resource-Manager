@@ -1,0 +1,160 @@
+{
+  "softwareTemplate": {
+    "zh-CN": "目标进程 · {name}",
+    "zh-TW": "目標處理程序 · {name}",
+    "en-US": "Target process · {name}",
+    "ja-JP": "対象プロセス · {name}",
+    "ko-KR": "대상 프로세스 · {name}",
+    "fr-FR": "Processus cible · {name}",
+    "de-DE": "Zielprozess · {name}",
+    "es-ES": "Proceso de destino · {name}",
+    "ru-RU": "Целевой процесс · {name}"
+  },
+  "processFields": {
+    "process_all_cpu_usage_actual": {
+      "zh-CN": "进程 CPU 使用率",
+      "zh-TW": "程序 CPU 使用率",
+      "en-US": "Process CPU usage",
+      "ja-JP": "プロセスの CPU 使用率",
+      "ko-KR": "프로세스 CPU 사용률",
+      "fr-FR": "Utilisation du processeur par le processus",
+      "de-DE": "Prozess-CPU-Auslastung",
+      "es-ES": "Uso de CPU del proceso",
+      "ru-RU": "Загрузка ЦП процессом"
+    },
+    "process_all_network_receive_bytes_attributed": {
+      "zh-CN": "网络接收量",
+      "zh-TW": "網路接收量",
+      "en-US": "Network received",
+      "ja-JP": "ネットワーク受信量",
+      "ko-KR": "네트워크 수신량",
+      "fr-FR": "Données réseau reçues",
+      "de-DE": "Empfangene Netzwerkdaten",
+      "es-ES": "Datos de red recibidos",
+      "ru-RU": "Получено по сети"
+    },
+    "process_all_network_receive_rate_attributed": {
+      "zh-CN": "网络接收速率",
+      "zh-TW": "網路接收速率",
+      "en-US": "Network receive rate",
+      "ja-JP": "ネットワーク受信速度",
+      "ko-KR": "네트워크 수신 속도",
+      "fr-FR": "Débit de réception réseau",
+      "de-DE": "Netzwerk-Empfangsrate",
+      "es-ES": "Velocidad de recepción de red",
+      "ru-RU": "Скорость приёма по сети"
+    },
+    "process_all_network_send_bytes_attributed": {
+      "zh-CN": "网络发送量",
+      "zh-TW": "網路傳送量",
+      "en-US": "Network sent",
+      "ja-JP": "ネットワーク送信量",
+      "ko-KR": "네트워크 송신량",
+      "fr-FR": "Données réseau envoyées",
+      "de-DE": "Gesendete Netzwerkdaten",
+      "es-ES": "Datos de red enviados",
+      "ru-RU": "Отправлено по сети"
+    },
+    "process_all_network_send_rate_attributed": {
+      "zh-CN": "网络发送速率",
+      "zh-TW": "網路傳送速率",
+      "en-US": "Network send rate",
+      "ja-JP": "ネットワーク送信速度",
+      "ko-KR": "네트워크 송신 속도",
+      "fr-FR": "Débit d’envoi réseau",
+      "de-DE": "Netzwerk-Senderate",
+      "es-ES": "Velocidad de envío de red",
+      "ru-RU": "Скорость отправки по сети"
+    },
+    "process_all_physical_disk_read_bytes_attributed": {
+      "zh-CN": "物理磁盘读取量",
+      "zh-TW": "實體磁碟讀取量",
+      "en-US": "Physical disk read",
+      "ja-JP": "物理ディスク読み取り量",
+      "ko-KR": "물리 디스크 읽기량",
+      "fr-FR": "Lecture sur disque physique",
+      "de-DE": "Gelesene Daten (physischer Datenträger)",
+      "es-ES": "Lectura de disco físico",
+      "ru-RU": "Чтение с физического диска"
+    },
+    "process_all_physical_disk_write_bytes_attributed": {
+      "zh-CN": "物理磁盘写入量",
+      "zh-TW": "實體磁碟寫入量",
+      "en-US": "Physical disk written",
+      "ja-JP": "物理ディスク書き込み量",
+      "ko-KR": "물리 디스크 쓰기량",
+      "fr-FR": "Écriture sur disque physique",
+      "de-DE": "Geschriebene Daten (physischer Datenträger)",
+      "es-ES": "Escritura en disco físico",
+      "ru-RU": "Запись на физический диск"
+    }
+  },
+  "reasons": {
+    "frame-events-lost": {
+      "zh-CN": "帧事件丢失",
+      "zh-TW": "影格事件遺失",
+      "en-US": "Frame events lost",
+      "ja-JP": "フレームイベントが失われました",
+      "ko-KR": "프레임 이벤트 손실",
+      "fr-FR": "Événements de trames perdus",
+      "de-DE": "Bildereignisse verloren",
+      "es-ES": "Eventos de fotogramas perdidos",
+      "ru-RU": "События кадров потеряны"
+    },
+    "metric-unavailable": {
+      "zh-CN": "读数不可用",
+      "zh-TW": "讀數無法使用",
+      "en-US": "Reading unavailable",
+      "ja-JP": "読み取り値を利用できません",
+      "ko-KR": "판독값을 사용할 수 없음",
+      "fr-FR": "Mesure indisponible",
+      "de-DE": "Messwert nicht verfügbar",
+      "es-ES": "Lectura no disponible",
+      "ru-RU": "Показание недоступно"
+    },
+    "no-frame-data": {
+      "zh-CN": "无帧数据",
+      "zh-TW": "無影格資料",
+      "en-US": "No frame data",
+      "ja-JP": "フレームデータがありません",
+      "ko-KR": "프레임 데이터 없음",
+      "fr-FR": "Aucune donnée de trames",
+      "de-DE": "Keine Bilddaten",
+      "es-ES": "Sin datos de fotogramas",
+      "ru-RU": "Нет данных о кадрах"
+    },
+    "process-cpu-unavailable": {
+      "zh-CN": "进程 CPU 不可用",
+      "zh-TW": "處理程序 CPU 無法使用",
+      "en-US": "Process CPU unavailable",
+      "ja-JP": "プロセスの CPU を利用できません",
+      "ko-KR": "프로세스 CPU를 사용할 수 없음",
+      "fr-FR": "CPU du processus indisponible",
+      "de-DE": "Prozess-CPU nicht verfügbar",
+      "es-ES": "CPU del proceso no disponible",
+      "ru-RU": "ЦП процесса недоступен"
+    },
+    "process-metric-unavailable": {
+      "zh-CN": "进程读数不可用",
+      "zh-TW": "處理程序讀數無法使用",
+      "en-US": "Process reading unavailable",
+      "ja-JP": "プロセスの読み取り値を利用できません",
+      "ko-KR": "프로세스 판독값을 사용할 수 없음",
+      "fr-FR": "Mesure du processus indisponible",
+      "de-DE": "Prozessmesswert nicht verfügbar",
+      "es-ES": "Lectura del proceso no disponible",
+      "ru-RU": "Показание процесса недоступно"
+    },
+    "target-not-running": {
+      "zh-CN": "目标未运行",
+      "zh-TW": "目標未執行",
+      "en-US": "Target not running",
+      "ja-JP": "対象が実行されていません",
+      "ko-KR": "대상이 실행 중이 아님",
+      "fr-FR": "Cible non lancée",
+      "de-DE": "Ziel läuft nicht",
+      "es-ES": "El destino no se está ejecutando",
+      "ru-RU": "Цель не запущена"
+    }
+  }
+}

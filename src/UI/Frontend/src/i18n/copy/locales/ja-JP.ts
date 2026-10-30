@@ -1909,8 +1909,8 @@ const jaJpAppCopy: AppCopy = {
     externalModeModulesPresent: "ローカルサービスにはこのソフトウェアの起動時注入モジュールがまだ登録されているため注入が有効な可能性がありますが、ここで選択した方式は注入を使いません。保存すると、ローカルサービスの登録をこの選択に合わせます。",
     injectedModulesPartial: "ローカルサービスには注入モジュールの一部だけが登録されているため、注入が不完全な可能性があります。保存すると、ローカルサービスの登録をこの選択に合わせます。",
     modulesSavedPreferencesFailed: "起動時注入モジュールはローカルサービスで更新されましたが、オーバーレイの設定を保存できませんでした。もう一度保存してください。",
-    metrics: "表示する指標",
-    chooseMetrics: "指標を選択",
+    items: "表示項目",
+    chooseItems: "表示項目を選択",
     sizeMode: "サイズ方式",
     absolutePixels: "絶対ピクセル",
     windowRatio: "ウィンドウに対する比率",
@@ -1925,8 +1925,41 @@ const jaJpAppCopy: AppCopy = {
     marginPx: "余白（ピクセル）",
     moveUp: "上に移動",
     moveDown: "下に移動",
-    removeMetric: "指標を削除",
-    group: "対象ソフトウェア"
+    removeItem: "この項目を削除",
+    group: "対象ソフトウェア",
+    pickerTitle: "オーバーレイの表示項目を選択",
+    itemSoftware: (name: string) => `対象プロセス · ${name}`,
+    itemSummary: (source: string, interval: string, precision: string) => `ソース: ${source} · 間隔: ${interval} · 同期精度: ${precision}`,
+    itemsInvalid: {
+      "too-many": "表示項目が 64 件を超えています。",
+      duplicate: "重複した表示項目があります。",
+      kind: "不明な種類の表示項目があります。",
+      id: "ID が空の表示項目があります。",
+      source: "ソースが空の表示項目があります。",
+      precision: "不明な同期精度の表示項目があります。",
+      interval: "間隔は空欄にするか、100〜60000 の整数を入力してください。",
+      "frames-interval": "フレーム項目はフレームごとに集計されるため、間隔を設定できません。"
+    },
+    itemReasons: {
+      "target-not-running": "対象が実行されていません",
+      "frame-events-lost": "フレームイベントが失われました",
+      "no-frame-data": "フレームデータがありません",
+      "metric-unavailable": "読み取り値を利用できません",
+      "process-cpu-unavailable": "プロセスの CPU を利用できません",
+      "process-metric-unavailable": "プロセスの読み取り値を利用できません"
+    },
+    picker: {
+      available: "表示できる項目",
+      selected: "選択した表示項目",
+      search: "表示できる項目を検索",
+      none: "表示項目が選択されていません。",
+      count: (count: number, limit: number) => `表示項目: ${count} / ${limit}`,
+      limitReached: "表示項目の上限に達しました。項目を削除してから追加してください。",
+      intervalDefault: (ms: number) => `オーバーレイの既定 ${ms}`,
+      defaultsHint: "新しく追加した項目は、ソースが自動選択、間隔が空欄（固有の間隔があればそれを、なければオーバーレイの既定の間隔を使用）、同期精度が中になります。各項目は個別に変更できます。順序はオーバーレイの描画順で、設定ページの「上に移動」「下に移動」で変更できます。",
+      precisionHint: "同期精度は購読の読み取りレベル（低、中、高）です。その設計が確定するまでは、保存して読み取り値とともに返すだけで、読み取り方法は変わりません。",
+      itemUnknown: "表示できる項目のカタログにない表示項目があります。"
+    }
   },
   softwareDetail: {
     openPath: "開く",

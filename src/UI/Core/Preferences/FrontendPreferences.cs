@@ -61,18 +61,12 @@ internal sealed record FrontendRefresh
     }
 }
 
-// The source an overlay item reads instead of its part address: one backend raw field on one
-// device (docs/metric_item_source_choice_2026-10-25.md). Absent means automatic.
-internal sealed record FrontendOverlayMetricSource(string FieldName, string DeviceIdentity);
-
 internal sealed record FrontendOverlayPresentation
 {
     public bool Enabled { get; init; }
     public string Mode { get; init; } = "external";
-    public IReadOnlyList<string> Metrics { get; init; } = FrontendPoints.MetricOrder;
-    // Per-item source choices keyed by the item's metric ID; items without one are automatic.
-    public IReadOnlyDictionary<string, FrontendOverlayMetricSource> MetricSources { get; init; } =
-        new Dictionary<string, FrontendOverlayMetricSource>(StringComparer.Ordinal);
+    // 浮层显示的项，顺序就是绘制顺序（FrontendOverlayItems.cs）。
+    public IReadOnlyList<FrontendOverlayItem> Items { get; init; } = FrontendOverlayItems.PointItems();
     public string SizeMode { get; init; } = FrontendPoints.SizeMode;
     public int FontSizePx { get; init; } = FrontendPoints.FontSizePx;
     public double RegionWidthRatio { get; init; } = FrontendPoints.RegionWidthRatio;
@@ -82,22 +76,14 @@ internal sealed record FrontendOverlayPresentation
 
     internal void Validate()
     {
-        if (Mode is not ("external" or "injected") || Metrics is null || Metrics.Count > 64
-            || Metrics.Any(static id => string.IsNullOrWhiteSpace(id) || id.Length > 128)
-            || Metrics.Distinct(StringComparer.OrdinalIgnoreCase).Count() != Metrics.Count
+        if (Mode is not ("external" or "injected") || FrontendOverlayItems.Issue(Items) is not null
             || SizeMode is not ("absolutePixels" or "windowRatio")
             || FontSizePx is < 8 or > 72 || MarginPx is < 0 or > 256
             || !double.IsFinite(RegionWidthRatio) || RegionWidthRatio is < 0.05 or > 1
             || !double.IsFinite(RegionHeightRatio) || RegionHeightRatio is < 0.05 or > 1
-            || Anchor is not ("topLeft" or "topRight" or "bottomLeft" or "bottomRight")
-            || MetricSources is null
-            || MetricSources.Any(pair => !Metrics.Contains(pair.Key, StringComparer.Ordinal) || pair.Value is null
-                || string.IsNullOrWhiteSpace(pair.Value.FieldName) || string.IsNullOrWhiteSpace(pair.Value.DeviceIdentity)))
+            || Anchor is not ("topLeft" or "topRight" or "bottomLeft" or "bottomRight"))
             throw new InvalidDataException("Invalid frontend overlay cache.");
     }
-
-    internal FrontendOverlayMetricSource? SourceFor(string metricId) =>
-        MetricSources.TryGetValue(metricId, out var source) ? source : null;
 }
 
 // 每类通知三项（docs/notifications_2026-10-29.md“设置在前端”）：是否弹（Notify）、Windows 通知（System，托盘读）、

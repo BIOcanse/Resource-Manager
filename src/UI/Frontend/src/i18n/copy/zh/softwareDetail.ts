@@ -11,8 +11,8 @@ export const zhSoftwareDetailCopy = {
     externalModeModulesPresent: "本地服务仍为此软件登记了启动注入模块，注入可能正在生效，但这里选择的方式不使用注入。保存后会按这里的选择更新本地服务的登记。",
     injectedModulesPartial: "本地服务只登记了部分注入模块，注入可能不完整。保存后会按这里的选择更新本地服务的登记。",
     modulesSavedPreferencesFailed: "启动注入模块已在本地服务中更新，但浮层偏好未能保存。请重新保存。",
-    metrics: "显示指标",
-    chooseMetrics: "选择指标",
+    items: "显示项",
+    chooseItems: "选择显示项",
     sizeMode: "尺寸方式",
     absolutePixels: "绝对像素",
     windowRatio: "相对窗口比例",
@@ -27,8 +27,44 @@ export const zhSoftwareDetailCopy = {
     marginPx: "边距（像素）",
     moveUp: "上移",
     moveDown: "下移",
-    removeMetric: "移除指标",
+    removeItem: "移除此项",
     group: "目标软件",
+    pickerTitle: "选择浮层显示项",
+    /** 目标软件项的名称：name 是字段名或指标名。原生壳浮层用同一份模板（scripts/generateOverlayMetricLabels.mjs）。 */
+    itemSoftware: (name: string) => `目标进程 · ${name}`,
+    itemSummary: (source: string, interval: string, precision: string) => `来源：${source} · 间隔：${interval} · 同步精度：${precision}`,
+    itemsInvalid: {
+      "too-many": "显示项超过 64 项。",
+      duplicate: "显示项中有重复的项。",
+      kind: "显示项中有未知的种类。",
+      id: "显示项中有空的项目 id。",
+      source: "显示项中有空的来源。",
+      precision: "显示项中有未知的同步精度。",
+      interval: "显示项的间隔须留空，或为 100–60000 之间的整数。",
+      "frames-interval": "帧项逐帧统计，不能设置间隔。"
+    },
+    /** 浮层项取不到值的原因（后端 value.items[].reason）。原生壳浮层用同一份表。 */
+    itemReasons: {
+      "target-not-running": "目标未运行",
+      "frame-events-lost": "帧事件丢失",
+      "no-frame-data": "无帧数据",
+      "metric-unavailable": "读数不可用",
+      "process-cpu-unavailable": "进程 CPU 不可用",
+      "process-metric-unavailable": "进程读数不可用"
+    },
+    /** 浮层用的项选择器里，替换“录制项”说法的几段文字。 */
+    picker: {
+      available: "可显示项",
+      selected: "已选显示项",
+      search: "搜索可显示项",
+      none: "尚未选择显示项。",
+      count: (count: number, limit: number) => `显示项：${count} / ${limit}`,
+      limitReached: "已达到显示项上限。请先移除一些项再添加。",
+      intervalDefault: (ms: number) => `浮层默认 ${ms}`,
+      defaultsHint: "新加的项：来源为自动选择，间隔留空（有自然间隔用自然间隔，否则用浮层的默认间隔），同步精度为中。每一项都可以单独修改；顺序就是浮层的绘制顺序，可在设置页用上移、下移调整。",
+      precisionHint: "同步精度即订阅读取的低、中、高三档。该设计定稿前，它只保存并随读数返回，不改变读取方式。",
+      itemUnknown: "有显示项不在可显示项目录中。"
+    }
   },
   softwareDetail: {
     openPath: "打开",

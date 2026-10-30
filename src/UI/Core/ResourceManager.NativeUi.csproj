@@ -46,6 +46,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Overlay\metric-labels.json"
                       LogicalName="ResourceManager.NativeUi.Overlay.metric-labels.json" />
+    <EmbeddedResource Include="Overlay\overlay-item-labels.json"
+                      LogicalName="ResourceManager.NativeUi.Overlay.overlay-item-labels.json" />
     <ProjectReference Include="..\..\Shared\ResourceManager.Shared.csproj" />
     <None Include="..\..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\..\NOTICE" Link="NOTICE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

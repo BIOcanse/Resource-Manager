@@ -1,45 +1,42 @@
-import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
-import { createEffect, createMemo, createSignal, For, Index, Show } from "solid-js";
-import { getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, OverlayPreferencesSaveError, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { Portal } from "solid-js/web";
+import { getPerformanceOverlaySettings, OverlayPreferencesSaveError, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
 import { expectedOverlayInjectionModules } from "./startupModuleSelection.ts";
-import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
 import { userFacingErrorMessage } from "../../presentation/userFacingText.ts";
-import { MetricModal } from "../monitor/MetricModal.tsx";
 import { StandardSelect } from "../../components/StandardSelect.tsx";
 import { uiText, currentSettingsText } from "../../text.ts";
-import type { MetricDefinition, PerformanceOverlaySettings } from "../../types.ts";
-
-import { useSource } from "../../frontendRuntime/source/useSource.ts";
+import type { PerformanceOverlayItem, PerformanceOverlaySettings } from "../../types.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
-import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import { fieldCardDefinitions } from "../monitor/fieldCards.ts";
-import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
-import { overlaySourceChoices, overlaySourceIndex, overlaySourcesFor, withOverlaySource } from "./overlaySources.ts";
+import { DialogActions, DialogBody, DialogHeader, DialogRoot } from "../../ui/primitives/Dialog.tsx";
+import { ItemPicker } from "../itemSelection/ItemPicker.tsx";
+import { sourceName } from "../itemSelection/itemNames.ts";
+import { findCatalogEntry, intervalPlaceholder, itemKinds, type CatalogEntry } from "../itemSelection/itemSelectionModel.ts";
+import { getItemCatalog } from "../targetedReport/targetedRecordingApi.ts";
+import { moveView } from "../targetedReport/views/viewModel.ts";
+import { overlayItemLabel } from "./overlayItemLabels.ts";
+import { maximumOverlayItems, overlayDefaultIntervalMs, overlayItemsIssue } from "./overlayItems.ts";
 
 export function SoftwareOverlaySettings(props: { softwareId: string; active: boolean }) {
   const [saved, setSaved] = createSignal<PerformanceOverlaySettings | null>(null);
   const [draft, setDraft] = createSignal<PerformanceOverlaySettings | null>(null);
-  const [catalog, setCatalog] = createSignal<MetricDefinition[]>([]);
+  // 浮层项的目录（和录制配置同一个目录，选择器只列出 uses 含 overlay 的项）。
+  const [catalog, setCatalog] = createSignal<CatalogEntry[]>([]);
   const [loading, setLoading] = createSignal(false);
   const [saving, setSaving] = createSignal(false);
   const [pickerOpen, setPickerOpen] = createSignal(false);
-  const [pickerMetrics, setPickerMetrics] = createSignal<string[]>([]);
+  // 选择器里正在改的项：确定后写进草稿，取消就丢掉。
+  const [pickerItems, setPickerItems] = createSignal<PerformanceOverlayItem[]>([]);
+  const [pickerIssues, setPickerIssues] = createSignal(false);
   const [error, setError] = createSignal("");
-  // 先选项目、再选来源：来源是部件地址的后端候选，候选字段要在字段目录里（和卡片选择器一样）。
   const runtime = useFrontendRuntime();
-  const componentSource = useSource(runtime.sources.managementComponents, () => ({ active: props.active }));
-  const components = () => componentSource.snapshot().data ?? [];
-  const readError = () => error() || (componentSource.snapshot().error
-    ? userFacingErrorMessage(componentSource.snapshot().error, uiText.status.actionFailed) : "");
-  const readIntervals = useFrontendReadIntervals();
-  const fieldCatalogSource = usePushSource(runtime.sources.metricFieldCatalog, () => ({
-    active: props.active, intervalMs: readIntervals.current()?.monitor
-  }));
-  const fieldDevices = () => fieldCatalogSource.snapshot().data?.fields ?? [];
-  const sourceCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldDevices())]);
   let requestId = 0;
   const dirty = createMemo(() => JSON.stringify(saved()) !== JSON.stringify(draft()));
+  // 草稿里的项不合规（旧缓存或别处写坏）时说明原因，不让保存。
+  const itemsIssue = createMemo(() => {
+    const current = draft();
+    return current ? overlayItemsIssue(current.items) : null;
+  });
   // 后端登记的注入模块和这里的选择不一致（外部改过，或上次只保存了一半）：显示提示，并允许保存来对齐。
   const modulesMismatch = () => {
     const current = saved();
@@ -58,12 +55,12 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     const id = ++requestId;
     setLoading(true);
     setError("");
-    void Promise.all([getPerformanceOverlaySettings(props.softwareId), getPerformanceOverlayMetricCatalog()])
-      .then(([settings, definitions]) => {
+    void Promise.all([getPerformanceOverlaySettings(props.softwareId), getItemCatalog(runtime.requestClient)])
+      .then(([settings, entries]) => {
         if (id !== requestId) return;
         setSaved(settings);
-        setDraft({ ...settings, metrics: [...settings.metrics] });
-        setCatalog(definitions);
+        setDraft(cloneSettings(settings));
+        setCatalog(entries);
       })
       .catch((cause: unknown) => {
         if (id === requestId) setError(userFacingErrorMessage(cause, uiText.status.actionFailed));
@@ -104,7 +101,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     try {
       const result = await savePerformanceOverlaySettings(current, saved() ?? undefined);
       setSaved(result);
-      setDraft({ ...result, metrics: [...result.metrics] });
+      setDraft(cloneSettings(result));
     } catch (cause) {
       setError(cause instanceof OverlayPreferencesSaveError
         ? uiText.performanceOverlay.modulesSavedPreferencesFailed
@@ -124,12 +121,15 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     } catch (cause) { setError(userFacingErrorMessage(cause, uiText.status.actionFailed)); }
     finally { setSaving(false); }
   };
-  const moveMetric = (index: number, direction: number) => {
-    const current = draft();
-    if (!current || index + direction < 0 || index + direction >= current.metrics.length) return;
-    const metrics = [...current.metrics];
-    [metrics[index], metrics[index + direction]] = [metrics[index + direction], metrics[index]];
-    update({ metrics });
+  // 一项的来源、间隔、同步精度，写成一行跟在名称后面；留空的间隔写出实际会用的间隔和出处（自然间隔或浮层默认）。
+  const itemSummary = (item: PerformanceOverlayItem) => {
+    const picker = uiText.targetedReport.itemPicker;
+    const fallback = intervalPlaceholder(findCatalogEntry(catalog(), item.kind, item.id), overlayDefaultIntervalMs);
+    const interval = item.kind === "frames" ? picker.perPresent
+      : item.intervalMs !== null ? uiText.targetedReport.reportInfo.intervalValue(item.intervalMs)
+        : fallback?.origin === "natural" ? picker.intervalNatural(fallback.intervalMs)
+          : uiText.performanceOverlay.picker.intervalDefault(fallback?.intervalMs ?? overlayDefaultIntervalMs);
+    return uiText.performanceOverlay.itemSummary(sourceName(item.source), interval, picker.precisions[item.syncPrecision]);
   };
 
   return (
@@ -139,11 +139,11 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
         <button type="button" class="secondary" disabled={!draft() || saving()} onClick={() => void resetPresentation()}>
           {currentSettingsText().actions.restoreDefaults}
         </button>
-        <button type="button" disabled={!draft() || !(dirty() || modulesMismatch()) || saving()} onClick={() => void save()}>
+        <button type="button" disabled={!draft() || !(dirty() || modulesMismatch()) || itemsIssue() !== null || saving()} onClick={() => void save()}>
           <StableLabel labels={{ idle: uiText.softwareDetail.save, busy: uiText.softwareDetail.processing }} current={saving() ? "busy" : "idle"} />
         </button>
       </div>
-      <Show when={readError()}>{(message) => <p class="software-detail-hint error" role="alert">{message()}</p>}</Show>
+      <Show when={error()}>{(message) => <p class="software-detail-hint error" role="alert">{message()}</p>}</Show>
       <Show when={!loading() && draft()} fallback={<p class="software-detail-empty">{uiText.softwareDetail.loadingPolicy}</p>}>
         {(current) => <div class="overlay-settings-fields">
           <label class="overlay-settings-check">
@@ -164,32 +164,28 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
             {(notice) => <p class="software-detail-hint overlay-modules-notice" role="status">{notice()}</p>}
           </Show>
           <div class="software-policy-section-header">
-            <h4>{uiText.performanceOverlay.metrics}</h4>
+            <h4>{uiText.performanceOverlay.items}</h4>
             <button class="secondary" type="button" disabled={saving()} onClick={() => {
-              setPickerMetrics([...current().metrics]);
+              setPickerItems(current().items.map((item) => ({ ...item })));
+              setPickerIssues(false);
               setPickerOpen(true);
-            }}>{uiText.performanceOverlay.chooseMetrics}</button>
+            }}>{uiText.performanceOverlay.chooseItems}</button>
           </div>
+          <Show when={itemsIssue()}>
+            {(issue) => <p class="software-detail-hint error" role="alert">{uiText.performanceOverlay.itemsInvalid[issue()]}</p>}
+          </Show>
+          {/* 顺序就是浮层的绘制顺序，用上移、下移调整（和报告视图的排序一样）。 */}
           <ol class="overlay-settings-metrics">
-            <For each={current().metrics}>
-              {(id, index) => <li>
-                <span>{localizedMetricLabel(id, catalog().find((item) => item.id === id)?.label)}</span>
+            <For each={current().items}>
+              {(item, index) => <li>
+                <span>{overlayItemLabel(item.kind, item.id)}</span>
                 <button class="secondary" type="button" disabled={saving() || index() === 0}
-                  aria-label={uiText.performanceOverlay.moveUp} onClick={() => moveMetric(index(), -1)}>↑</button>
-                <button class="secondary" type="button" disabled={saving() || index() === current().metrics.length - 1}
-                  aria-label={uiText.performanceOverlay.moveDown} onClick={() => moveMetric(index(), 1)}>↓</button>
-                <button class="secondary" type="button" disabled={saving()} aria-label={uiText.performanceOverlay.removeMetric}
-                  onClick={() => {
-                    const metrics = current().metrics.filter((metric) => metric !== id);
-                    update({ metrics, metricSources: overlaySourcesFor(current().metricSources, metrics) });
-                  }}>×</button>
-                <OverlayMetricSourceChoice
-                  disabled={saving()}
-                  metricId={id}
-                  label={localizedMetricLabel(id, catalog().find((item) => item.id === id)?.label)}
-                  catalog={sourceCatalog()}
-                  current={current().metricSources[id]}
-                  onChange={(source) => update({ metricSources: withOverlaySource(current().metricSources, current().metrics, id, source) })} />
+                  aria-label={uiText.performanceOverlay.moveUp} onClick={() => update({ items: moveView(current().items, index(), -1) })}>↑</button>
+                <button class="secondary" type="button" disabled={saving() || index() === current().items.length - 1}
+                  aria-label={uiText.performanceOverlay.moveDown} onClick={() => update({ items: moveView(current().items, index(), 1) })}>↓</button>
+                <button class="secondary" type="button" disabled={saving()} aria-label={uiText.performanceOverlay.removeItem}
+                  onClick={() => update({ items: current().items.filter((_, position) => position !== index()) })}>×</button>
+                <small class="overlay-settings-item-summary">{itemSummary(item)}</small>
               </li>}
             </For>
           </ol>
@@ -235,53 +231,29 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
           </label>
         </div>}
       </Show>
-      <MetricModal open={pickerOpen() && !saving()} catalog={catalog()} components={components()}
-        selectedMetricId={pickerMetrics()[0] ?? null} selectedMetricIds={pickerMetrics()} multiSelect
-        onSelect={(id) => setPickerMetrics((current) => current.includes(id)
-          ? current.filter((item) => item !== id) : [...current, id])}
-        onClose={() => setPickerOpen(false)}
-        onConfirm={() => {
-          update({ metrics: pickerMetrics(), metricSources: overlaySourcesFor(draft()?.metricSources ?? {}, pickerMetrics()) });
-          setPickerOpen(false);
-        }}
-        onDependencyPrompt={(_metric, dependency) => setError(uiText.metricPicker.needsInstall(dependency.name))} />
+      <Portal>
+        <DialogRoot open={pickerOpen() && !saving()} labelledBy="overlayItemsPickerTitle" class="overlay-items-modal"
+          dismissOnBackdrop={false} onDismiss={() => setPickerOpen(false)}>
+          <DialogHeader title={uiText.performanceOverlay.pickerTitle} titleId="overlayItemsPickerTitle"
+            onDismiss={() => setPickerOpen(false)} />
+          <DialogBody class="overlay-items-body">
+            <ItemPicker catalog={catalog()} use="overlay" items={pickerItems()} maximumItems={maximumOverlayItems}
+              allowedKinds={itemKinds} defaultIntervalMs={overlayDefaultIntervalMs} nameOf={overlayItemLabel}
+              onChange={(items) => setPickerItems(items)} onIssuesChange={setPickerIssues} />
+          </DialogBody>
+          <DialogActions>
+            <button class="secondary" type="button" disabled={saving()} onClick={() => setPickerOpen(false)}>{uiText.metricPicker.cancel}</button>
+            <button type="button" disabled={pickerIssues() || saving()} onClick={() => {
+              update({ items: pickerItems() });
+              setPickerOpen(false);
+            }}>{uiText.metricPicker.confirm}</button>
+          </DialogActions>
+        </DialogRoot>
+      </Portal>
     </section>
   );
 }
 
-/** 一项的来源：只有不止一个来源时摆出来，第一项是自动选择（写出后端现在选的来源）。统一分段样式。 */
-function OverlayMetricSourceChoice(props: {
-  metricId: string;
-  label: string;
-  catalog: readonly MetricDefinition[];
-  current: PerformanceOverlaySettings["metricSources"][string] | undefined;
-  disabled: boolean;
-  onChange: (source: PerformanceOverlaySettings["metricSources"][string] | null) => void;
-}) {
-  const choices = createMemo(() => overlaySourceChoices(props.metricId, props.catalog));
-  const groupLabel = () => uiText.resourceTable.columnSourceLabel(props.label);
-  return (
-    <Show when={choices().length > 0}>
-      <div class="overlay-settings-metric-source">
-        <strong>{uiText.metricPicker.sourceLabel}</strong>
-        <RadioGroupRoot class="segmented overlay-settings-metric-source-choices" ariaLabel={groupLabel()} disabled={props.disabled}
-          value={(() => { const index = overlaySourceIndex(choices(), props.current); return index < 0 ? "" : `source-${index}`; })()}
-          onChange={(value) => {
-            const choice = choices()[Number(value.slice("source-".length))];
-            if (choice) props.onChange(choice.source);
-          }}>
-          <Index each={choices()}>
-            {(choice, index) => (
-              <RadioGroupItem value={`source-${index}`} class="segment">
-                <span data-full-content={choice().label}>{choice().label}</span>
-                <Show when={choice().preferred}>
-                  <small class="metric-source-choice-mark">{uiText.metricPicker.sourcePreferred}</small>
-                </Show>
-              </RadioGroupItem>
-            )}
-          </Index>
-        </RadioGroupRoot>
-      </div>
-    </Show>
-  );
+function cloneSettings(settings: PerformanceOverlaySettings): PerformanceOverlaySettings {
+  return { ...settings, items: settings.items.map((item) => ({ ...item })) };
 }

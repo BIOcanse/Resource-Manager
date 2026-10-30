@@ -1909,8 +1909,8 @@ const deDeAppCopy: AppCopy = {
     externalModeModulesPresent: "Der lokale Dienst registriert für diese Software noch Startinjektionsmodule; die Injektion ist möglicherweise aktiv, obwohl der hier gewählte Modus keine Injektion verwendet. Beim Speichern wird der Dienst an diese Auswahl angepasst.",
     injectedModulesPartial: "Der lokale Dienst registriert nur einen Teil der Injektionsmodule; die Injektion ist möglicherweise unvollständig. Beim Speichern wird der Dienst an diese Auswahl angepasst.",
     modulesSavedPreferencesFailed: "Die Startinjektionsmodule wurden im lokalen Dienst aktualisiert, aber die Overlay-Einstellungen konnten nicht gespeichert werden. Speichern Sie erneut.",
-    metrics: "Angezeigte Messwerte",
-    chooseMetrics: "Messwerte auswählen",
+    items: "Angezeigte Einträge",
+    chooseItems: "Einträge auswählen",
     sizeMode: "Größenmodus",
     absolutePixels: "Absolute Pixel",
     windowRatio: "Relativ zum Fenster",
@@ -1925,8 +1925,41 @@ const deDeAppCopy: AppCopy = {
     marginPx: "Rand (Pixel)",
     moveUp: "Nach oben",
     moveDown: "Nach unten",
-    removeMetric: "Messwert entfernen",
-    group: "Zielsoftware"
+    removeItem: "Eintrag entfernen",
+    group: "Zielsoftware",
+    pickerTitle: "Overlay-Einträge auswählen",
+    itemSoftware: (name: string) => `Zielprozess · ${name}`,
+    itemSummary: (source: string, interval: string, precision: string) => `Quelle: ${source} · Intervall: ${interval} · Synchronisationsgenauigkeit: ${precision}`,
+    itemsInvalid: {
+      "too-many": "Es gibt mehr als 64 angezeigte Einträge.",
+      duplicate: "Ein Eintrag kommt mehrfach vor.",
+      kind: "Ein Eintrag hat eine unbekannte Art.",
+      id: "Ein Eintrag hat eine leere ID.",
+      source: "Ein Eintrag hat eine leere Quelle.",
+      precision: "Ein Eintrag hat eine unbekannte Synchronisationsgenauigkeit.",
+      interval: "Lassen Sie das Intervall eines Eintrags leer oder geben Sie eine ganze Zahl von 100 bis 60000 ein.",
+      "frames-interval": "Bildeinträge werden pro Bild gemessen und können kein Intervall haben."
+    },
+    itemReasons: {
+      "target-not-running": "Ziel läuft nicht",
+      "frame-events-lost": "Bildereignisse verloren",
+      "no-frame-data": "Keine Bilddaten",
+      "metric-unavailable": "Messwert nicht verfügbar",
+      "process-cpu-unavailable": "Prozess-CPU nicht verfügbar",
+      "process-metric-unavailable": "Prozessmesswert nicht verfügbar"
+    },
+    picker: {
+      available: "Verfügbare Einträge",
+      selected: "Ausgewählte Einträge",
+      search: "Verfügbare Einträge durchsuchen",
+      none: "Keine Einträge ausgewählt.",
+      count: (count: number, limit: number) => `Overlay-Einträge: ${count} / ${limit}`,
+      limitReached: "Die Höchstzahl an Einträgen ist erreicht. Entfernen Sie Einträge, bevor Sie weitere hinzufügen.",
+      intervalDefault: (ms: number) => `Overlay-Standard ${ms}`,
+      defaultsHint: "Neue Einträge verwenden die automatische Quellenauswahl, ein leeres Intervall (das natürliche Intervall, falls vorhanden, sonst das Standardintervall des Overlays) und mittlere Synchronisationsgenauigkeit. Jeder Eintrag kann einzeln geändert werden; die Reihenfolge ist die Zeichenreihenfolge des Overlays und lässt sich auf der Einstellungsseite mit „Nach oben“ und „Nach unten“ ändern.",
+      precisionHint: "Die Synchronisationsgenauigkeit entspricht den Lesestufen Niedrig, Mittel und Hoch der Abonnements. Bis dieser Entwurf feststeht, wird sie nur gespeichert und mit den Messwerten zurückgegeben, ohne das Lesen zu ändern.",
+      itemUnknown: "Einige Einträge sind nicht im Katalog der verfügbaren Einträge."
+    }
   },
   softwareDetail: {
     openPath: "Öffnen",

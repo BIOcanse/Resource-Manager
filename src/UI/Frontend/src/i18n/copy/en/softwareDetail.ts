@@ -12,8 +12,8 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
     externalModeModulesPresent: "The local service still registers startup injection modules for this software, so injection may be active even though the mode chosen here does not use injection. Saving updates the local service to match this choice.",
     injectedModulesPartial: "The local service registers only some of the injection modules, so injection may be incomplete. Saving updates the local service to match this choice.",
     modulesSavedPreferencesFailed: "The startup injection modules were updated in the local service, but the overlay preferences could not be saved. Save again.",
-    metrics: "Displayed metrics",
-    chooseMetrics: "Choose metrics",
+    items: "Displayed items",
+    chooseItems: "Choose items",
     sizeMode: "Size mode",
     absolutePixels: "Absolute pixels",
     windowRatio: "Relative to window",
@@ -28,8 +28,41 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
     marginPx: "Margin (pixels)",
     moveUp: "Move up",
     moveDown: "Move down",
-    removeMetric: "Remove metric",
+    removeItem: "Remove item",
     group: "Target software",
+    pickerTitle: "Choose overlay items",
+    itemSoftware: (name: string) => `Target process · ${name}`,
+    itemSummary: (source: string, interval: string, precision: string) => `Source: ${source} · Interval: ${interval} · Sync precision: ${precision}`,
+    itemsInvalid: {
+      "too-many": "There are more than 64 displayed items.",
+      duplicate: "An item appears more than once.",
+      kind: "An item has an unknown kind.",
+      id: "An item has an empty ID.",
+      source: "An item has an empty source.",
+      precision: "An item has an unknown sync precision.",
+      interval: "Leave an item's interval empty, or enter an integer from 100 to 60000.",
+      "frames-interval": "Frame items are measured per frame and cannot have an interval."
+    },
+    itemReasons: {
+      "target-not-running": "Target not running",
+      "frame-events-lost": "Frame events lost",
+      "no-frame-data": "No frame data",
+      "metric-unavailable": "Reading unavailable",
+      "process-cpu-unavailable": "Process CPU unavailable",
+      "process-metric-unavailable": "Process reading unavailable"
+    },
+    picker: {
+      available: "Available items",
+      selected: "Selected items",
+      search: "Search available items",
+      none: "No items selected.",
+      count: (count: number, limit: number) => `Overlay items: ${count} / ${limit}`,
+      limitReached: "The item limit has been reached. Remove some items before adding more.",
+      intervalDefault: (ms: number) => `Overlay default ${ms}`,
+      defaultsHint: "New items use automatic source selection, an empty interval (the natural interval when there is one, otherwise the overlay default interval) and medium sync precision. Each item can be changed individually; the order is the overlay's drawing order and can be changed with Move up and Move down on the settings page.",
+      precisionHint: "Sync precision uses the low, medium and high read levels of subscriptions. Until that design is final, it is stored and returned with the readings without changing how values are read.",
+      itemUnknown: "Some items are not in the catalog of available items."
+    }
   },
   softwareDetail: {
     openPath: "Open",

@@ -21,7 +21,8 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal(FrontendPoints.BarFrameRate, current.Appearance.ResourceBarFrameRate);
         Assert.Equal(FrontendPoints.Monitor.CustomValue, current.Refresh.Monitor.CustomValue);
         Assert.Equal(FrontendPoints.LocalSystem.Preset, current.Refresh.LocalSystem.Preset);
-        Assert.Equal(FrontendPoints.MetricOrder, Owner().Overlay("unrecorded").Metrics);
+        Assert.Equal(FrontendOverlayItems.PointItems(), Owner().Overlay("unrecorded").Items);
+        Assert.Equal(FrontendPoints.MetricOrder.Length, Owner().Overlay("unrecorded").Items.Count);
         Assert.False(File.Exists(Cache));
     }
 
@@ -34,7 +35,7 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
             Appearance = new() { Theme = "dark", ResourceBarFrameRate = 120 },
             Refresh = new() { Monitor = new("custom", "balanced", 3456) },
             Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["game"] = new() { Enabled = true, Mode = "injected", FontSizePx = 22, Metrics = ["custom.metric", "target.cpu"] } }
+            { ["game"] = new() { Enabled = true, Mode = "injected", FontSizePx = 22, Items = ChosenItems } }
         };
         owner.Save(desired);
         var restarted = Owner();
@@ -42,7 +43,7 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal("dark", current.Appearance.Theme);
         Assert.Equal(3456, current.Refresh.Monitor.CustomValue);
         Assert.Equal(22, restarted.Overlay("GAME").FontSizePx);
-        Assert.Equal(new[] { "custom.metric", "target.cpu" }, restarted.Overlay("game").Metrics);
+        Assert.Equal(ChosenItems, restarted.Overlay("game").Items);
         restarted.Reset();
         var expected = new FrontendPreferences { Overlays = new Dictionary<string, FrontendOverlayPresentation>
             { ["game"] = new() { Enabled = true, Mode = "injected" } } };
@@ -172,7 +173,10 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal(4321, imported.Refresh.Monitor.CustomValue);
         Assert.DoesNotContain("smartMonitoringMode", File.ReadAllText(Cache));
         Assert.Equal(24, imported.Overlays["game"].FontSizePx);
-        Assert.Equal(new[] { "target.gpu", "target.fps" }, imported.Overlays["game"].Metrics);
+        // target.gpu becomes the software GPU total and target.fps the frames item, in their old order.
+        Assert.Equal([new FrontendOverlayItem("software", "gpu.usage", "auto", null, "mid"),
+            new FrontendOverlayItem("frames", "frames.fps", "auto", null, "mid")], imported.Overlays["game"].Items);
+        Assert.DoesNotContain("\"metrics\"", File.ReadAllText(Cache));
         Assert.True(File.Exists(Cache + ".imported-v1"));
         File.Delete(Cache);
         Assert.Equal(Serialize(new FrontendPreferences()), Serialize(Owner().Read()));
@@ -231,7 +235,8 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         File.Copy(BackendPreferenceBoundaryTests.Fixture("performance-overlay.local.json"), Overlay);
         var imported = Owner().Read();
         Assert.Equal(FrontendPoints.Theme, imported.Appearance.Theme);
-        Assert.Equal(FrontendPoints.MetricOrder, imported.Overlays["legacy-game"].Metrics);
+        // fps, 1% low, frame time, cpu and gpu convert in their old order, which is the default point.
+        Assert.Equal(FrontendOverlayItems.PointItems(), imported.Overlays["legacy-game"].Items);
         Assert.Equal(FrontendPoints.FontSizePx, imported.Overlays["legacy-game"].FontSizePx);
         Assert.True(File.Exists(Cache));
     }
@@ -540,32 +545,97 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal("legacy", Owner().Read().Dashboard!.Value.GetProperty("cards")[0].GetProperty("id").GetString());
     }
 
+    private static readonly FrontendOverlayItem[] ChosenItems =
+    [
+        new("metric", "custom.metric", "custom_field@cpu|0", 2500, "high"),
+        new("software", "cpu.usage", "auto", null, "low"),
+        new("frames", "frames.low01", "auto", null, "mid")
+    ];
+
     [Fact]
-    public void OverlayMetricSourcesSurviveTheCacheAndMustBelongToAnItem()
+    public void OverlayItemsSurviveTheCacheAndInvalidListsAreRefused()
     {
-        // An overlay item's chosen source is frontend data next to the item order; absent means automatic.
-        static FrontendPreferences WithSources(Dictionary<string, FrontendOverlayMetricSource> sources) => new()
+        // Each item keeps its own source, interval and synchronization precision; the order is the user's.
+        static FrontendPreferences With(IReadOnlyList<FrontendOverlayItem> items) => new()
         {
-            Overlays = new Dictionary<string, FrontendOverlayPresentation>
-                { ["game"] = new() { Metrics = ["target.fps", "cpu.temperature"], MetricSources = sources } }
+            Overlays = new Dictionary<string, FrontendOverlayPresentation> { ["game"] = new() { Items = items } }
         };
         var owner = Owner();
-        owner.SaveOverlay("game", WithSources(new() { ["cpu.temperature"] = new("cpu_amd_tctl_temperature_celsius", "cpu|0") }));
-        var saved = Owner().Overlay("game");
-        Assert.Equal(new FrontendOverlayMetricSource("cpu_amd_tctl_temperature_celsius", "cpu|0"), saved.SourceFor("cpu.temperature"));
-        Assert.Null(saved.SourceFor("target.fps"));
-        Assert.Contains("\"metricSources\"", File.ReadAllText(Cache));
-        foreach (var invalid in new Dictionary<string, FrontendOverlayMetricSource>[]
+        owner.SaveOverlay("game", With(ChosenItems));
+        Assert.Equal(ChosenItems, Owner().Overlay("game").Items);
+        var written = File.ReadAllText(Cache);
+        Assert.Contains("\"items\"", written);
+        Assert.DoesNotContain("\"metrics\"", written);
+        Assert.DoesNotContain("\"metricSources\"", written);
+        // An empty list is a choice (the overlay shows nothing), not a reason to fill in the defaults.
+        owner.SaveOverlay("game", With([]));
+        Assert.Empty(Owner().Overlay("game").Items);
+
+        static FrontendOverlayItem Fine(int index) => new("metric", "m." + index, "auto", null, "mid");
+        foreach (var invalid in new IReadOnlyList<FrontendOverlayItem>[]
         {
-            new() { ["gpu.0.temperature"] = new("gpu_amd_edge_temperature_celsius", "gpu|0") },
-            new() { ["cpu.temperature"] = new(" ", "cpu|0") },
-            new() { ["cpu.temperature"] = new("cpu_amd_tctl_temperature_celsius", "") }
+            Enumerable.Range(0, FrontendOverlayItems.MaximumItems + 1).Select(Fine).ToArray(),
+            [Fine(1), new("metric", "M.1", "auto", 1000, "high")],
+            [new("process", "cpu.usage", "auto", null, "mid")],
+            [new("metric", "cpu.temperature", "auto", null, "exact")],
+            [new("metric", "cpu.temperature", "auto", 99, "mid")],
+            [new("metric", "cpu.temperature", "auto", 60_001, "mid")],
+            [new("frames", "frames.fps", "auto", 1000, "mid")],
+            [new("metric", " ", "auto", null, "mid")],
+            [new("metric", "cpu.temperature", "", null, "mid")]
         })
-            Assert.Throws<InvalidDataException>(() => owner.SaveOverlay("game", WithSources(invalid)));
-        Assert.Equal("cpu|0", Owner().Overlay("game").SourceFor("cpu.temperature")!.DeviceIdentity);
-        // A cache written before sources existed reads every item as automatic.
-        File.WriteAllText(Cache, """{"overlays":{"old":{"metrics":["target.fps"]}}}""");
-        Assert.Empty(Owner().Overlay("old").MetricSources);
+            Assert.Throws<InvalidDataException>(() => owner.SaveOverlay("game", With(invalid)));
+        Assert.Empty(Owner().Overlay("game").Items);
+        // Bounds and the same id under another kind are allowed.
+        var edge = new FrontendOverlayItem[]
+        {
+            new("metric", "cpu.usage", "auto", FrontendOverlayItems.MinimumIntervalMs, "low"),
+            new("software", "cpu.usage", "auto", FrontendOverlayItems.MaximumIntervalMs, "high")
+        };
+        owner.SaveOverlay("game", With(edge));
+        Assert.Equal(edge, Owner().Overlay("game").Items);
+        owner.SaveOverlay("game", With(Enumerable.Range(0, FrontendOverlayItems.MaximumItems).Select(Fine).ToArray()));
+        Assert.Equal(FrontendOverlayItems.MaximumItems, Owner().Overlay("game").Items.Count);
+    }
+
+    [Fact]
+    public void OldOverlayMetricsAreReadAsItemsInTheirOrderAndTheCacheIsRewritten()
+    {
+        // Migration frontend-preferences-overlay-items-v1, the same table as the frontend reader
+        // (src/UI/Frontend/src/features/overlay/overlayItems.ts).
+        File.WriteAllText(Cache, """
+            {"overlays":{"old":{"metrics":["target.fps"]},
+             "game":{"enabled":true,"fontSizePx":20,"metrics":["cpu.temperature","target.memory","target.pointOnePercentLow",
+               "target.vram","target.frameTime","gpu.0.temperature","target.onePercentLow","target.cpu","target.FPS","target.fps"],
+               "metricSources":{"cpu.temperature":{"fieldName":"cpu_amd_tctl_temperature_celsius","deviceIdentity":"cpu|0"},
+                 "target.fps":{"fieldName":"ignored","deviceIdentity":"ignored"}}}}}
+            """);
+        var loaded = Owner().Read();
+        Assert.Equal([new FrontendOverlayItem("frames", "frames.fps", "auto", null, "mid")], loaded.Overlays["old"].Items);
+        Assert.Equal(
+        [
+            new FrontendOverlayItem("metric", "cpu.temperature", "cpu_amd_tctl_temperature_celsius@cpu|0", null, "mid"),
+            new FrontendOverlayItem("software", "memory.usage", "auto", null, "mid"),
+            new FrontendOverlayItem("frames", "frames.low01", "auto", null, "mid"),
+            new FrontendOverlayItem("software", "gpu.vram", "auto", null, "mid"),
+            new FrontendOverlayItem("frames", "frames.present", "auto", null, "mid"),
+            new FrontendOverlayItem("metric", "gpu.0.temperature", "auto", null, "mid"),
+            new FrontendOverlayItem("frames", "frames.low1", "auto", null, "mid"),
+            new FrontendOverlayItem("software", "cpu.usage", "auto", null, "mid"),
+            new FrontendOverlayItem("frames", "frames.fps", "auto", null, "mid")
+        ], loaded.Overlays["game"].Items);
+        Assert.Equal(20, loaded.Overlays["game"].FontSizePx);
+        var written = File.ReadAllText(Cache);
+        Assert.DoesNotContain("\"metrics\"", written);
+        Assert.DoesNotContain("\"metricSources\"", written);
+        Assert.Equal(Serialize(loaded), Serialize(Owner().Read()));
+        // A cache that already has items keeps them; leftover old fields are only removed.
+        File.WriteAllText(Cache, """
+            {"overlays":{"game":{"items":[{"kind":"software","id":"cpu.usage","source":"auto","intervalMs":1000,"syncPrecision":"high"}],
+              "metrics":["target.fps"]}}}
+            """);
+        Assert.Equal([new FrontendOverlayItem("software", "cpu.usage", "auto", 1000, "high")], Owner().Overlay("game").Items);
+        Assert.DoesNotContain("\"metrics\"", File.ReadAllText(Cache));
     }
 
     [Fact]
@@ -591,7 +661,9 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
 
         var loaded = Owner().Read();
         Assert.Equal(expected, Serialize(loaded));
-        Assert.Equal(FrontendPreferencesOwner.NvmlFbUsedField, loaded.Overlays["game"].SourceFor("gpu.vram")!.FieldName);
+        // The renamed field reaches the converted overlay item source ("<field>@<device identity>").
+        Assert.Equal(FrontendPreferencesOwner.NvmlFbUsedField + "@gpu:a", loaded.Overlays["game"].Items[0].Source);
+        Assert.Equal(v1 + "@gpu:a", loaded.Overlays["game"].Items[1].Source);
         var written = File.ReadAllText(Cache);
         Assert.DoesNotContain(FrontendPreferencesOwner.RetiredNvmlFbUsedField, written);
         Assert.Contains(v1, written);

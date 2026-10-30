@@ -314,7 +314,7 @@ export function TargetedRecordingProfilesDialog(props: {
                   }>
                     <Show when={catalogState() === "ready"} fallback={<p class="targeted-profiles-note">{copy().catalogLoading}</p>}>
                       <Show when={`${selectedKey()}#${pickerRevision()}`} keyed>
-                        <ItemPicker catalog={catalog()} items={draft().items} maximumItems={maximumProfileItems}
+                        <ItemPicker catalog={catalog()} use="recording" items={draft().items} maximumItems={maximumProfileItems}
                           allowedKinds={itemKinds}
                           defaultIntervalMs={parsedDefaultInterval(draft()) ?? savedProfile(selectedKey())?.defaultIntervalMs ?? 1000}
                           onChange={(items) => edit({ items })} onIssuesChange={setPickerIssues} />

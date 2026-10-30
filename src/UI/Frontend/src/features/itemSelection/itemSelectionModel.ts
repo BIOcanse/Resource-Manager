@@ -1,6 +1,7 @@
 /*
  * 录制项选择器的数据和规则（docs/targeted_recording_views_2026-10-30.md §3.1、§3.9）。
- * 录制配置和浮层设置共用：两边的项形状、校验都和后端录制项相同，只是上限和允许的种类不同（配置 256，浮层 32）。
+ * 录制配置和浮层设置共用：两边的项形状、校验都和后端录制项相同，只是上限、允许的种类和用途不同（配置 256，浮层 64）。
+ * 目录里每项写明用途 uses（"recording"、"overlay"），选择器只列出含有当前用途的项。
  *
  * - 一项是 {kind, id, source, intervalMs, syncPrecision}。
  * - source："auto"（自动选择，报告里写实际用到的来源）或目录里这一项的某个具体来源。
@@ -13,6 +14,9 @@ export const itemKinds = ["frames", "software", "metric"] as const;
 export type ItemKind = typeof itemKinds[number];
 export const syncPrecisions = ["low", "mid", "high"] as const;
 export type SyncPrecision = typeof syncPrecisions[number];
+
+export const itemUses = ["recording", "overlay"] as const;
+export type ItemUse = typeof itemUses[number];
 
 export const automaticSource = "auto";
 export const defaultSyncPrecision: SyncPrecision = "mid";
@@ -27,13 +31,19 @@ export interface SelectionItem {
   syncPrecision: SyncPrecision;
 }
 
-/** 目录里的一项：可录的东西、它的单位、可以指定的具体来源，以及来源发布的自然间隔（没有为 null）。 */
+/** 目录里的一项：可录的东西、它的单位、可以指定的具体来源、来源发布的自然间隔（没有为 null），以及能用在哪里。 */
 export interface CatalogEntry {
   kind: ItemKind;
   id: string;
   unit: string;
   sources: string[];
   naturalIntervalMs: number | null;
+  uses: ItemUse[];
+}
+
+/** 只留下能用在 use 里的目录项（浮层独有的帧率、1% Low、0.1% Low 不进录制配置）。 */
+export function catalogForUse(catalog: readonly CatalogEntry[], use: ItemUse): CatalogEntry[] {
+  return catalog.filter((entry) => entry.uses.includes(use));
 }
 
 export function itemKey(kind: ItemKind, id: string) {
@@ -153,6 +163,30 @@ export function sourceOptions(entry: CatalogEntry | undefined, current: string):
   const sources = [automaticSource, ...(entry?.sources ?? [])];
   if (!sources.some((source) => source.toLowerCase() === current.toLowerCase())) sources.push(current);
   return sources;
+}
+
+export type ItemListIssue = "too-many" | "duplicate" | "kind" | "precision" | "interval" | "frames-interval" | "id" | "source";
+
+/**
+ * 一组项是否合规（与后端 TargetedRecordingItemReader 的形状校验一致，目录归属由后端判定）：
+ * 不超过上限，(kind, id) 不重复，种类和同步精度在各自的集合里，间隔为 null 或 100–60000，帧没有间隔。
+ * 合规返回 null，否则返回第一个问题。
+ */
+export function itemListIssue(items: readonly SelectionItem[], maximumItems: number): ItemListIssue | null {
+  if (items.length > maximumItems) return "too-many";
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (!(itemKinds as readonly string[]).includes(item.kind)) return "kind";
+    if (typeof item.id !== "string" || item.id.trim() === "") return "id";
+    if (typeof item.source !== "string" || item.source.trim() === "") return "source";
+    if (!(syncPrecisions as readonly string[]).includes(item.syncPrecision)) return "precision";
+    if (item.kind === "frames" && item.intervalMs !== null) return "frames-interval";
+    if (item.intervalMs !== null && !isIntervalInRange(item.intervalMs)) return "interval";
+    const key = itemKey(item.kind, item.id);
+    if (seen.has(key)) return "duplicate";
+    seen.add(key);
+  }
+  return null;
 }
 
 export function sameItems(left: readonly SelectionItem[], right: readonly SelectionItem[]) {

@@ -7,32 +7,32 @@ using ResourceManager.NativeUi.Preferences;
 
 namespace ResourceManager.NativeUi.Overlay;
 
-internal sealed record OverlaySubscription(string Id, string Path);
+// One enabled software: Path names the software and the subscription interval, Items is the body's item list
+// ({kind, id, source, intervalMs, syncPrecision}, the targeted recording item contract), sent as is in stored order.
+internal sealed record OverlaySubscription(string Id, string Path, IReadOnlyList<FrontendOverlayItem> Items);
 
 internal static class OverlaySubscriptions
 {
-    // Items with a chosen source are read as raw fields instead of their part address (ids=): each chosen
-    // device is one device=/fields= pair carrying the distinct field names chosen on it, so only those
-    // (device, field) pairs are sampled.
+    // The interval of items whose own interval is empty and whose catalog entry has no natural interval
+    // (the backend reports it as intervalOrigin profile-default). The settings page shows the same number
+    // (overlayDefaultIntervalMs in src/UI/Frontend/src/features/overlay/overlayItems.ts).
+    internal const int DefaultIntervalMs = 500;
+
+    // One subscription per enabled software that has items; a software without items has nothing to draw.
     internal static OverlaySubscription[] Create(FrontendPreferences preferences, StartupModuleOperationsDocument? operations = null) =>
         preferences.Overlays.Where(pair => OverlayStartupModules.Enabled(pair.Key, pair.Value, operations ?? new(1, [])))
+            .Where(static pair => pair.Value.Items.Count > 0)
             .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(static pair => (SoftwareId: pair.Key,
-                Ids: pair.Value.Metrics.Where(id => pair.Value.SourceFor(id) is null)
-                    .OrderBy(static id => id, StringComparer.Ordinal).ToArray(),
-                Devices: pair.Value.Metrics.Select(pair.Value.SourceFor).OfType<FrontendOverlayMetricSource>()
-                    .GroupBy(static source => source.DeviceIdentity, StringComparer.Ordinal)
-                    .OrderBy(static device => device.Key, StringComparer.Ordinal)
-                    .Select(static device => (Device: device.Key, Fields: device.Select(static source => source.FieldName)
-                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray()))
-                    .ToArray()))
-            .Where(static item => item.Ids.Length + item.Devices.Length > 0)
-            .Select((item, index) => new OverlaySubscription($"overlay-{index}",
-                "/api/performance-overlay/subscribe?intervalMs=500&softwareId=" + Uri.EscapeDataString(item.SoftwareId)
-                + string.Concat(item.Ids.Select(static id => "&ids=" + Uri.EscapeDataString(id)))
-                + string.Concat(item.Devices.Select(static device => "&device=" + Uri.EscapeDataString(device.Device)
-                    + "&fields=" + string.Join(',', device.Fields.Select(Uri.EscapeDataString))))))
+            .Select(static (pair, index) => new OverlaySubscription($"overlay-{index}",
+                "/api/performance-overlay/subscribe?softwareId=" + Uri.EscapeDataString(pair.Key)
+                + "&intervalMs=" + DefaultIntervalMs.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                pair.Value.Items.ToArray()))
             .ToArray();
+
+    // Two subscription sets are the same when their paths and items are the same.
+    internal static string Signature(IEnumerable<OverlaySubscription> subscriptions) =>
+        string.Join('\n', subscriptions.Select(static item => item.Path + " " + string.Join(';', item.Items.Select(static entry =>
+            $"{entry.Kind}|{entry.Id}|{entry.Source}|{entry.IntervalMs}|{entry.SyncPrecision}"))));
 
     internal const string OperationsSubscriptionId = "startup-modules";
     internal const string OperationsSubscriptionPath = "/api/startup-modules/settings/subscribe";
@@ -71,7 +71,7 @@ internal static class OverlaySubscriptions
             try
             {
                 var desired = Create(readPreferences(), operations);
-                var signature = string.Join('\n', desired.Select(static item => item.Path));
+                var signature = Signature(desired);
                 if (signature == previous) return;
                 await ReleaseAsync();
                 clear();

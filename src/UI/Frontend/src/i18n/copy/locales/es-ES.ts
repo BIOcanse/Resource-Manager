@@ -1909,8 +1909,8 @@ const esEsAppCopy: AppCopy = {
     externalModeModulesPresent: "El servicio local aún registra módulos de inyección al inicio para este software; la inyección puede estar activa aunque el modo elegido aquí no use inyección. Al guardar, el servicio se ajustará a esta elección.",
     injectedModulesPartial: "El servicio local solo registra parte de los módulos de inyección; la inyección puede estar incompleta. Al guardar, el servicio se ajustará a esta elección.",
     modulesSavedPreferencesFailed: "Los módulos de inyección al inicio se actualizaron en el servicio local, pero no se pudieron guardar las preferencias de la superposición. Vuelve a guardar.",
-    metrics: "Métricas mostradas",
-    chooseMetrics: "Elegir métricas",
+    items: "Elementos mostrados",
+    chooseItems: "Elegir elementos",
     sizeMode: "Modo de tamaño",
     absolutePixels: "Píxeles absolutos",
     windowRatio: "Relativo a la ventana",
@@ -1925,8 +1925,41 @@ const esEsAppCopy: AppCopy = {
     marginPx: "Margen (píxeles)",
     moveUp: "Subir",
     moveDown: "Bajar",
-    removeMetric: "Quitar métrica",
-    group: "Software de destino"
+    removeItem: "Quitar elemento",
+    group: "Software de destino",
+    pickerTitle: "Elegir elementos de la superposición",
+    itemSoftware: (name: string) => `Proceso de destino · ${name}`,
+    itemSummary: (source: string, interval: string, precision: string) => `Origen: ${source} · Intervalo: ${interval} · Precisión de sincronización: ${precision}`,
+    itemsInvalid: {
+      "too-many": "Hay más de 64 elementos mostrados.",
+      duplicate: "Un elemento aparece más de una vez.",
+      kind: "Un elemento tiene un tipo desconocido.",
+      id: "Un elemento tiene un identificador vacío.",
+      source: "Un elemento tiene un origen vacío.",
+      precision: "Un elemento tiene una precisión de sincronización desconocida.",
+      interval: "Deje vacío el intervalo de un elemento o introduzca un entero entre 100 y 60000.",
+      "frames-interval": "Los elementos de fotogramas se miden en cada fotograma y no pueden tener intervalo."
+    },
+    itemReasons: {
+      "target-not-running": "El destino no se está ejecutando",
+      "frame-events-lost": "Eventos de fotogramas perdidos",
+      "no-frame-data": "Sin datos de fotogramas",
+      "metric-unavailable": "Lectura no disponible",
+      "process-cpu-unavailable": "CPU del proceso no disponible",
+      "process-metric-unavailable": "Lectura del proceso no disponible"
+    },
+    picker: {
+      available: "Elementos disponibles",
+      selected: "Elementos seleccionados",
+      search: "Buscar elementos disponibles",
+      none: "No hay elementos seleccionados.",
+      count: (count: number, limit: number) => `Elementos de la superposición: ${count} / ${limit}`,
+      limitReached: "Se ha alcanzado el límite de elementos. Quite algunos antes de añadir más.",
+      intervalDefault: (ms: number) => `Predeterminado de la superposición ${ms}`,
+      defaultsHint: "Los elementos nuevos usan la selección automática de origen, un intervalo vacío (el intervalo natural si existe; si no, el intervalo predeterminado de la superposición) y una precisión de sincronización media. Cada elemento se puede cambiar por separado; el orden es el orden de dibujo de la superposición y se cambia con Subir y Bajar en la página de configuración.",
+      precisionHint: "La precisión de sincronización corresponde a los niveles de lectura baja, media y alta de las suscripciones. Hasta que ese diseño sea definitivo, solo se guarda y se devuelve con las lecturas, sin cambiar cómo se leen los valores.",
+      itemUnknown: "Algunos elementos no están en el catálogo de elementos disponibles."
+    }
   },
   softwareDetail: {
     openPath: "Abrir",

@@ -4,15 +4,17 @@ import { StandardSelect } from "../../components/StandardSelect.tsx";
 import { uiText } from "../../text.ts";
 import { itemName, sourceName } from "./itemNames.ts";
 import {
-  addItem, catalogGroups, findCatalogEntry, intervalPlaceholder, itemKey, parseIntervalText, removeItem,
+  addItem, catalogForUse, catalogGroups, findCatalogEntry, intervalPlaceholder, itemKey, parseIntervalText, removeItem,
   sourceOptions, syncPrecisions, updateItem,
-  type CatalogEntry, type ItemKind, type SelectionItem, type SyncPrecision
+  type CatalogEntry, type ItemKind, type ItemUse, type SelectionItem, type SyncPrecision
 } from "./itemSelectionModel.ts";
 
 /*
- * 录制项选择器（docs/targeted_recording_views_2026-10-30.md §3.1、§3.9）。录制配置用它，浮层设置之后也用它。
+ * 录制项选择器（docs/targeted_recording_views_2026-10-30.md §3.1、§3.9）。录制配置和浮层设置都用它。
  *
- * - 输入：目录、当前的项、最多几项（配置 256，浮层 32）、允许的种类、留空间隔时的默认间隔（作为占位文字显示）。
+ * - 输入：目录、用途（recording、overlay，只列出 uses 含有它的目录项）、当前的项、最多几项（配置 256，浮层 64）、
+ *   允许的种类、留空间隔时的默认间隔（作为占位文字显示），以及可选的项名称（浮层用自己的名称，不给时用 itemName）。
+ *   用途为 overlay 时，说“录制项”的几段文字换成浮层的说法（uiText.performanceOverlay.picker）。
  * - 输出：onChange 给出新的项列表；间隔输入框里有不合规的文字时 onIssuesChange(true)，调用方据此不让保存。
  * - 左边按种类分组列出目录，可搜索，逐项添加；右边是已选的项，逐项改来源、间隔、同步精度，或移除。
  * - 新加的项的默认值（来源自动、间隔留空、同步精度中）写在右边的说明里，每一项都能改。
@@ -21,18 +23,24 @@ import {
  */
 export function ItemPicker(props: {
   catalog: readonly CatalogEntry[];
+  use: ItemUse;
   items: readonly SelectionItem[];
   maximumItems: number;
   allowedKinds: readonly ItemKind[];
   defaultIntervalMs: number;
   onChange: (items: SelectionItem[]) => void;
   onIssuesChange?: (hasIssues: boolean) => void;
+  nameOf?: (kind: ItemKind, id: string) => string;
 }) {
-  const copy = () => uiText.targetedReport.itemPicker;
+  const copy = () => props.use === "overlay"
+    ? { ...uiText.targetedReport.itemPicker, ...uiText.performanceOverlay.picker }
+    : { ...uiText.targetedReport.itemPicker, itemUnknown: uiText.targetedReport.errors.itemUnknown };
+  const nameOf = (kind: ItemKind, id: string) => (props.nameOf ?? itemName)(kind, id);
+  const catalog = createMemo(() => catalogForUse(props.catalog, props.use));
   const [query, setQuery] = createSignal("");
   // 间隔输入框里还不合规的文字，按项的键存；合规的输入直接写进项，不留在这里。
   const [intervalDrafts, setIntervalDrafts] = createStore<Record<string, string>>({});
-  const groups = createMemo(() => catalogGroups(props.catalog, props.items, props.allowedKinds, query(), itemName));
+  const groups = createMemo(() => catalogGroups(catalog(), props.items, props.allowedKinds, query(), nameOf));
   const full = () => props.items.length >= props.maximumItems;
   const hasIssues = createMemo(() => Object.keys(intervalDrafts).length > 0);
   createEffect(() => props.onIssuesChange?.(hasIssues()));
@@ -57,7 +65,7 @@ export function ItemPicker(props: {
     if (parsed.value !== item.intervalMs) props.onChange(updateItem(props.items, item.kind, item.id, { intervalMs: parsed.value }));
   };
   const placeholder = (item: SelectionItem) => {
-    const value = intervalPlaceholder(findCatalogEntry(props.catalog, item.kind, item.id), props.defaultIntervalMs);
+    const value = intervalPlaceholder(findCatalogEntry(catalog(), item.kind, item.id), props.defaultIntervalMs);
     if (value === null) return "";
     return value.origin === "natural" ? copy().intervalNatural(value.intervalMs) : copy().intervalDefault(value.intervalMs);
   };
@@ -112,8 +120,8 @@ export function ItemPicker(props: {
             <Index each={props.items}>
               {(item) => {
                 const key = () => itemKey(item().kind, item().id);
-                const entry = () => findCatalogEntry(props.catalog, item().kind, item().id);
-                const name = () => itemName(item().kind, item().id);
+                const entry = () => findCatalogEntry(catalog(), item().kind, item().id);
+                const name = () => nameOf(item().kind, item().id);
                 const draft = () => intervalDrafts[key()];
                 const change = (value: Parameters<typeof updateItem>[3]) =>
                   props.onChange(updateItem(props.items, item().kind, item().id, value));
@@ -127,8 +135,8 @@ export function ItemPicker(props: {
                       <button class="secondary" type="button" aria-label={copy().removeItem(name())}
                         onClick={() => remove(item())}>{copy().remove}</button>
                     </div>
-                    <Show when={props.catalog.length > 0 && !entry()}>
-                      <p class="item-picker-note warning">{uiText.targetedReport.errors.itemUnknown}</p>
+                    <Show when={catalog().length > 0 && !entry()}>
+                      <p class="item-picker-note warning">{copy().itemUnknown}</p>
                     </Show>
                     <div class="item-picker-row-fields">
                       <div class="item-picker-field">

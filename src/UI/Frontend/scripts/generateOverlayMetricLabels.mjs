@@ -40,11 +40,43 @@ for (const id of ids) {
     }
   }
 }
-const output = JSON.stringify(labels, null, 2) + "\n";
-const destination = fileURLToPath(new URL("../../Core/Overlay/metric-labels.json", import.meta.url));
-if (process.argv.includes("--check")) {
-  if (await readFile(destination, "utf8") !== output)
-    throw new Error("Overlay metric labels differ from the frontend copy. Regenerate the manifest.");
-} else {
-  await writeFile(destination, output, "utf8");
+// 浮层项的其余文字（OverlayItemLabels.cs 按 overlayItemLabels.ts 的顺序查）：目标软件项的模板、进程字段名、取不到值的原因。
+const nameSentinel = "NAME7319";
+const softwareTemplate = {};
+for (const [language, copy] of Object.entries(copies)) {
+  const rendered = copy.performanceOverlay.itemSoftware(nameSentinel);
+  if (rendered.split(nameSentinel).length !== 2) throw new Error(`${language}: itemSoftware must contain the name exactly once`);
+  softwareTemplate[language] = rendered.replace(nameSentinel, "{name}");
+}
+const keyedTable = (pick, what) => {
+  const table = {};
+  for (const key of Object.keys(pick(zhAppCopy)).sort()) {
+    table[key] = {};
+    for (const [language, copy] of Object.entries(copies)) {
+      const text = pick(copy)[key];
+      if (typeof text !== "string" || !text.trim()) throw new Error(`${language}: missing ${what} ${key}`);
+      table[key][language] = text;
+    }
+  }
+  return table;
+};
+const itemLabels = {
+  softwareTemplate,
+  processFields: keyedTable((copy) => copy.resourceTable.processFieldNames, "process field"),
+  reasons: keyedTable((copy) => copy.performanceOverlay.itemReasons, "overlay item reason")
+};
+
+const outputs = [
+  ["../../Core/Overlay/metric-labels.json", JSON.stringify(labels, null, 2) + "\n", "Overlay metric labels"],
+  ["../../Core/Overlay/overlay-item-labels.json", JSON.stringify(itemLabels, null, 2) + "\n", "Overlay item labels"]
+];
+for (const [path, output, name] of outputs) {
+  const destination = fileURLToPath(new URL(path, import.meta.url));
+  if (process.argv.includes("--check")) {
+    const existing = await readFile(destination, "utf8").catch(() => null);
+    if (existing !== output)
+      throw new Error(`${name} differ from the frontend copy. Regenerate the manifest.`);
+  } else {
+    await writeFile(destination, output, "utf8");
+  }
 }

@@ -509,7 +509,7 @@ export default createSettingsLocale("es-ES", {
     "loadFailed": "No se pudo leer la configuración de superposición",
     "emptyTitle": "Ningún software tiene una superposición activada",
     "emptyDetail": (tab: string) => `Para activarla, abra los detalles del software y vaya a la pestaña «${tab}».`,
-    "metricCount": (count: number) => plural("es-ES", count, { one: "{count} métrica", many: "{count} métricas", other: "{count} métricas" }),
+    "itemCount": (count: number) => plural("es-ES", count, { one: "{count} elemento", many: "{count} elementos", other: "{count} elementos" }),
     "position": (anchor: string) => `Posición: ${anchor}`,
     "open": "Abrir configuración de superposición",
     "openLabel": (name: string) => `Abrir la configuración de superposición de ${name}`,

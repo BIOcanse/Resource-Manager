@@ -25,7 +25,9 @@ test("frontend changes survive restart; reset restores presentation while retain
   const changed = await first.read();
   changed.appearance.theme = "dark";
   changed.refresh.monitor = { mode: "custom", preset: "quiet", customValue: 4321 };
-  changed.overlays.game = { ...pointOverlayPresentation(), enabled: true, mode: "injected", fontSizePx: 26, metrics: ["target.gpu", "target.cpu"] };
+  changed.overlays.game = { ...pointOverlayPresentation(), enabled: true, mode: "injected", fontSizePx: 26,
+    items: [{ kind: "software", id: "gpu.0.usage", source: "auto", intervalMs: 1000, syncPrecision: "high" },
+      { kind: "frames", id: "frames.fps", source: "auto", intervalMs: null, syncPrecision: "low" }] };
   await first.save(changed);
   const restarted = createFrontendPreferencesClient(disk);
   assert.deepEqual(await restarted.read(), changed);
@@ -241,19 +243,27 @@ test("the removed self-scheduling animation switch is dropped on cache read and 
 test("the retired NVML v2 used field name is renamed in card slots and overlay sources on cache read", async () => {
   // Migration frontend-preferences-nvml-fb-used-v1: only the retired name changes; the v1 field, metric ids and everything else stay.
   const v1 = "gpu_nvidia_fb_used_v1_including_reserved_bytes";
-  const preferences = (field: string) => ({ ...pointPreferences(),
+  // 旧缓存的浮层是 metrics、metricSources；读入时先改名，再换成 items（frontend-preferences-overlay-items-v1）。
+  const { items: _items, ...presentation } = pointOverlayPresentation();
+  const metricItem = (id: string, source: string) => ({ kind: "metric" as const, id, source, intervalMs: null, syncPrecision: "mid" as const });
+  const legacyOverlay = (field: string) => ({ ...presentation, enabled: true, metrics: ["gpu.vram", "gpu.vramV1"], metricSources: {
+    "gpu.vram": { fieldName: field, deviceIdentity: "gpu:a" }, "gpu.vramV1": { fieldName: v1, deviceIdentity: "gpu:a" } } });
+  const migratedOverlay = (field: string) => ({ ...presentation, enabled: true,
+    items: [metricItem("gpu.vram", `${field}@gpu:a`), metricItem("gpu.vramV1", `${v1}@gpu:a`)] });
+  const preferences = (field: string, overlay: object) => ({ ...pointPreferences(),
     dashboard: { version: 17, usesFactoryDefaults: false, cards: [{ id: "gpu-card", slots: [
       { metricId: `${field}@gpu:a`, size: "medium" as const, binding: { scopeKind: "device-field", scopeKey: "gpu:a" } },
       { metricId: `${v1}@gpu:a`, size: "small" as const, binding: { scopeKind: "device-field", scopeKey: "gpu:a" } },
       { metricId: "gpu.0.nvmlFbUsedBytes", size: "small" as const, binding: { scopeKind: "gpu", scopeKey: "gpu:a" } }] }],
       resourceBars: [{ id: "gpu-bar", metricId: "gpu.0.vram", scaleMode: "capacity" as const }],
       resourceTableColumns: [], resourceTableProcessColumns: [] },
-    overlays: { game: { ...pointOverlayPresentation(), enabled: true, metrics: ["gpu.vram", "gpu.vramV1"], metricSources: {
-      "gpu.vram": { fieldName: field, deviceIdentity: "gpu:a" }, "gpu.vramV1": { fieldName: v1, deviceIdentity: "gpu:a" } } } } });
+    overlays: { game: overlay } });
   const disk = storage();
-  disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify(preferences("gpu_nvidia_fb_used_including_reserved_bytes")));
+  const retired = "gpu_nvidia_fb_used_including_reserved_bytes";
+  disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify(preferences(retired, legacyOverlay(retired))));
   const client = createFrontendPreferencesClient(disk);
-  const expected = preferences("gpu_nvidia_fb_used_excluding_reserved_bytes");
+  const renamed = "gpu_nvidia_fb_used_excluding_reserved_bytes";
+  const expected = preferences(renamed, migratedOverlay(renamed));
   const loaded = await client.read();
   assert.deepEqual(loaded, expected);
   await client.save(loaded, "dashboard");
@@ -264,13 +274,17 @@ test("the retired NVML v2 used field name is renamed in card slots and overlay s
 
 test("malformed card slots and overlay sources pass the NVML rename untouched and are left to the validators", async () => {
   // The rename runs before any validation: a null slot, a numeric metricId or a null overlay source must not fail the whole read.
+  // The overlay-items migration then turns the legacy overlay into items: a null source is automatic selection.
+  const { items: _items, ...presentation } = pointOverlayPresentation();
+  const metricItem = (id: string, source: string) => ({ kind: "metric" as const, id, source, intervalMs: null, syncPrecision: "mid" as const });
   const malformed = { ...pointPreferences(), appearance: { ...pointPreferences().appearance, theme: "dark" as const },
     dashboard: { version: 17, usesFactoryDefaults: false, cards: [{ id: "broken", slots: [null, { metricId: 42, size: "small" }] }] },
-    overlays: { game: { ...pointOverlayPresentation(), metrics: ["gpu.vram"], metricSources: { "gpu.vram": null } } } };
+    overlays: { game: { ...presentation, metrics: ["gpu.vram"], metricSources: { "gpu.vram": null } } } };
   const disk = storage();
   disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify(malformed));
   const client = createFrontendPreferencesClient(disk);
-  assert.deepEqual(await client.read(), malformed, "the read returns the cache exactly as before the migration existed");
+  assert.deepEqual(await client.read(), { ...malformed, overlays: { game: { ...presentation, items: [metricItem("gpu.vram", "auto")] } } },
+    "the read keeps the malformed card slots exactly as before the migration existed");
   await assert.rejects(readDashboardPreferences(undefined, client), /Invalid frontend dashboard cache/, "the dashboard validator still rejects only that section");
   // A well-formed retired slot or source next to malformed ones is still renamed; the malformed ones stay as they are.
   const mixedSlot = (field: string) => ({ metricId: `${field}@gpu:a`, size: "small" });
@@ -281,7 +295,9 @@ test("malformed card slots and overlay sources pass the NVML rename untouched an
       metricSources: { "gpu.vram": null, "gpu.vramV2": mixedSource(field) } } } });
   const mixedDisk = storage();
   mixedDisk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify(mixed("gpu_nvidia_fb_used_including_reserved_bytes")));
-  assert.deepEqual(await createFrontendPreferencesClient(mixedDisk).read(), mixed("gpu_nvidia_fb_used_excluding_reserved_bytes"));
+  const renamed = "gpu_nvidia_fb_used_excluding_reserved_bytes";
+  assert.deepEqual(await createFrontendPreferencesClient(mixedDisk).read(), { ...mixed(renamed), overlays: { game: { ...presentation,
+    items: [metricItem("gpu.vram", "auto"), metricItem("gpu.vramV2", `${renamed}@gpu:a`)] } } });
 });
 
 test("retired reading-source choices are dropped on cache read and subsequent save", async () => {

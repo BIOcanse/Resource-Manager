@@ -61,33 +61,23 @@ internal static class OverlayBitmapRenderer
         return new OverlayImage(targetSize.Width, targetSize.Height, pixels);
     }
 
-    // One line per item in the user's order. An item with a chosen source shows that raw field on
-    // that device under the item's own label; when it cannot be read the line shows no value
-    // instead of falling back to the part address.
+    // One line per item in the user's stored order: the item's name, then its value and unit, or why it has no value.
+    // An item the stream has not answered yet (the preferences changed and the new subscription has not pushed) is
+    // not drawn until it arrives.
     internal static string[] Lines(OverlayTarget target, FrontendOverlayPresentation presentation, string language) =>
-        presentation.Metrics.Select(id => presentation.SourceFor(id) is { } source
-                ? SourceMetric(id, source, target)
-                : target.Metrics.FirstOrDefault(metric => metric.MetricId.Equals(id, StringComparison.OrdinalIgnoreCase)))
-            .Where(static metric => metric is not null)
-            .Select(metric => FormatLine(metric!, language)).ToArray();
+        presentation.Items.Select(item => target.Items.FirstOrDefault(value =>
+                value.Kind.Equals(item.Kind, StringComparison.Ordinal) && value.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase)))
+            .OfType<OverlayItemValue>()
+            .Select(value => FormatLine(value, language)).ToArray();
 
-    private static OverlayMetric SourceMetric(string id, FrontendOverlayMetricSource source, OverlayTarget target)
+    // Numbers keep the old overlay's formatting: one decimal at most in the current culture, bytes scaled to MiB or GiB.
+    // A value that is missing or not finite shows the reason text, or a dash when the backend gave no reason.
+    internal static string FormatLine(OverlayItemValue item, string language)
     {
-        var field = target.Fields.FirstOrDefault(device => device.DeviceIdentity == source.DeviceIdentity)?
-            .Fields.FirstOrDefault(value => value.Name == source.FieldName);
-        if (field is null || field.Status != OverlayFieldValue.CurrentStatus)
-            return new(id, null, field?.Unit ?? "", "unavailable", null);
-        var value = field.IntegerValue is { } integer
-            && double.TryParse(integer, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-                ? parsed : field.NumericValue;
-        return new(id, value, field.Unit, value is null ? "unavailable" : "current", null);
-    }
-
-    internal static string FormatLine(OverlayMetric metric, string language)
-    {
-        var label = OverlayMetricLabels.ForMetric(metric.MetricId, language);
-        if (metric.Value is not { } number || !double.IsFinite(number)) return $"{label}  —";
-        var unit = metric.Unit;
+        var label = OverlayItemLabels.ForItem(item.Kind, item.Id, language);
+        if (item.Value is not { } number || !double.IsFinite(number))
+            return item.Reason is { Length: > 0 } reason ? $"{label}  {OverlayItemLabels.ForReason(reason, language)}" : $"{label}  —";
+        var unit = item.Unit ?? string.Empty;
         if (unit.Equals("bytes", StringComparison.OrdinalIgnoreCase)
             || unit.Equals("B", StringComparison.OrdinalIgnoreCase))
         {

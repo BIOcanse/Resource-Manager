@@ -1909,8 +1909,8 @@ const frFrAppCopy: AppCopy = {
     externalModeModulesPresent: "Le service local enregistre encore les modules d’injection au démarrage de ce logiciel : l’injection est peut-être active, alors que le mode choisi ici n’utilise pas l’injection. L’enregistrement mettra le service en accord avec ce choix.",
     injectedModulesPartial: "Le service local n’enregistre qu’une partie des modules d’injection : l’injection est peut-être incomplète. L’enregistrement mettra le service en accord avec ce choix.",
     modulesSavedPreferencesFailed: "Les modules d’injection au démarrage ont été mis à jour dans le service local, mais les préférences de superposition n’ont pas pu être enregistrées. Enregistrez à nouveau.",
-    metrics: "Mesures affichées",
-    chooseMetrics: "Choisir les mesures",
+    items: "Éléments affichés",
+    chooseItems: "Choisir les éléments",
     sizeMode: "Mode de taille",
     absolutePixels: "Pixels absolus",
     windowRatio: "Proportion de la fenêtre",
@@ -1925,8 +1925,41 @@ const frFrAppCopy: AppCopy = {
     marginPx: "Marge (pixels)",
     moveUp: "Monter",
     moveDown: "Descendre",
-    removeMetric: "Retirer la mesure",
-    group: "Logiciel cible"
+    removeItem: "Retirer l'élément",
+    group: "Logiciel cible",
+    pickerTitle: "Choisir les éléments de la superposition",
+    itemSoftware: (name: string) => `Processus cible · ${name}`,
+    itemSummary: (source: string, interval: string, precision: string) => `Source : ${source} · Intervalle : ${interval} · Précision de synchronisation : ${precision}`,
+    itemsInvalid: {
+      "too-many": "Il y a plus de 64 éléments affichés.",
+      duplicate: "Un élément apparaît plusieurs fois.",
+      kind: "Un élément a un type inconnu.",
+      id: "Un élément a un identifiant vide.",
+      source: "Un élément a une source vide.",
+      precision: "Un élément a une précision de synchronisation inconnue.",
+      interval: "Laissez l'intervalle d'un élément vide ou saisissez un entier compris entre 100 et 60000.",
+      "frames-interval": "Les éléments de trames sont mesurés à chaque trame et ne peuvent pas avoir d'intervalle."
+    },
+    itemReasons: {
+      "target-not-running": "Cible non lancée",
+      "frame-events-lost": "Événements de trames perdus",
+      "no-frame-data": "Aucune donnée de trames",
+      "metric-unavailable": "Mesure indisponible",
+      "process-cpu-unavailable": "CPU du processus indisponible",
+      "process-metric-unavailable": "Mesure du processus indisponible"
+    },
+    picker: {
+      available: "Éléments disponibles",
+      selected: "Éléments sélectionnés",
+      search: "Rechercher des éléments disponibles",
+      none: "Aucun élément sélectionné.",
+      count: (count: number, limit: number) => `Éléments de la superposition : ${count} / ${limit}`,
+      limitReached: "La limite d'éléments est atteinte. Retirez des éléments avant d'en ajouter.",
+      intervalDefault: (ms: number) => `Défaut de la superposition ${ms}`,
+      defaultsHint: "Les nouveaux éléments utilisent la sélection automatique de la source, un intervalle vide (l'intervalle naturel s'il existe, sinon l'intervalle par défaut de la superposition) et une précision de synchronisation moyenne. Chaque élément peut être modifié séparément ; l'ordre est l'ordre de dessin de la superposition et se modifie avec Monter et Descendre sur la page des paramètres.",
+      precisionHint: "La précision de synchronisation reprend les niveaux de lecture bas, moyen et haut des abonnements. Tant que cette conception n'est pas finalisée, elle est seulement enregistrée et renvoyée avec les mesures, sans modifier la lecture.",
+      itemUnknown: "Certains éléments ne figurent pas dans le catalogue des éléments disponibles."
+    }
   },
   softwareDetail: {
     openPath: "Ouvrir",

@@ -508,7 +508,7 @@ export default createSettingsLocale("ja-JP", {
     "loadFailed": "オーバーレイ設定の読み取りに失敗しました",
     "emptyTitle": "オーバーレイが有効なソフトウェアはありません",
     "emptyDetail": (tab: string) => `有効にするには、ソフトウェアの詳細を開き [${tab}] タブを選択してください。`,
-    "metricCount": (count: number) => `メトリック ${count} 個`,
+    "itemCount": (count: number) => `表示項目 ${count} 件`,
     "position": (anchor: string) => `位置: ${anchor}`,
     "open": "オーバーレイ設定を開く",
     "openLabel": (name: string) => `${name} のオーバーレイ設定を開く`,

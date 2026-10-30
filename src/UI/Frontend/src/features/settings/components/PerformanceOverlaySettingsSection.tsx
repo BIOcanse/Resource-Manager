@@ -74,7 +74,7 @@ export function PerformanceOverlaySettingsSection(props: PerformanceOverlaySetti
   };
   const summary = (settings: PerformanceOverlaySettings) => [
     settings.mode === "injected" ? uiText.performanceOverlay.injected : uiText.performanceOverlay.external,
-    copy().metricCount(settings.metrics.length),
+    copy().itemCount(settings.items.length),
     copy().position(anchorLabel(settings.anchor))
   ].join(" · ");
 

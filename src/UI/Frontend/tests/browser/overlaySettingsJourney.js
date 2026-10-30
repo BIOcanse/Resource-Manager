@@ -47,13 +47,14 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   await editor.getByRole("combobox", { name: copy.performanceOverlay.mode, exact: true }).click();
   await page.getByRole("option", { name: copy.performanceOverlay.injected, exact: true }).click();
   await font.fill("21");
-  // Exercise the shared picker and ordering before persisting the complete object.
-  await editor.getByRole("button", { name: copy.performanceOverlay.chooseMetrics }).click();
+  // Exercise the shared item picker (overlay use) and ordering before persisting the complete object.
+  await editor.getByRole("button", { name: copy.performanceOverlay.chooseItems }).click();
+  await page.getByRole("dialog", { name: copy.performanceOverlay.pickerTitle }).waitFor({ state: "visible" });
   await page.getByRole("button", { name: copy.metricPicker.confirm, exact: true }).click();
   const before = await editor.locator(".overlay-settings-metrics li span").allTextContents();
   await editor.getByRole("button", { name: copy.performanceOverlay.moveDown, exact: true }).first().click();
   const ordered = await editor.locator(".overlay-settings-metrics li span").allTextContents();
-  assert(ordered[1] === before[0], "Metric order did not change");
+  assert(ordered[1] === before[0], "Item order did not change");
   await patch({ overlaySaveDelayMs: 1500 });
   const sent = page.waitForRequest(request => request.method() === "PUT" && request.url().endsWith(modulePath));
   const completed = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith(modulePath));
@@ -77,7 +78,7 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   await open();
   assert(await font.inputValue() === "21", "Reopening lost saved font size");
   assert(await editor.getByRole("checkbox").isChecked(), "Reopening lost enabled state");
-  assert(JSON.stringify(await editor.locator(".overlay-settings-metrics li span").allTextContents()) === JSON.stringify(ordered), "Reopening lost metric order");
+  assert(JSON.stringify(await editor.locator(".overlay-settings-metrics li span").allTextContents()) === JSON.stringify(ordered), "Reopening lost item order");
   const beforeAppearanceSave = backendOverlayRequests.length;
   await font.fill("22");
   await save.click();
@@ -195,7 +196,12 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   await save.click();
   await editor.getByRole("alert").waitFor({ state: "hidden" });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1"))?.overlays["frontend-harness.software"]?.mode === "injected");
-  assert(backendOverlayRequests.every(({ path }) => path.startsWith("/api/startup-modules/") || path === "/api/performance-overlay/metrics/catalog"), "Renderer requested a removed backend overlay settings route");
+  // The picker reads /api/targeted-recordings/items/catalog; the old overlay metric catalog route is gone.
+  assert(backendOverlayRequests.every(({ path }) => path.startsWith("/api/startup-modules/")), "Renderer requested a removed backend overlay settings route");
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1")).overlays["frontend-harness.software"]);
+  assert(Array.isArray(stored.items) && stored.items.length > 0 && !("metrics" in stored) && !("metricSources" in stored), "Overlay preferences are not stored as items");
+  assert(stored.items.every(item => ["frames", "metric", "software"].includes(item.kind) && typeof item.source === "string"
+    && ["low", "mid", "high"].includes(item.syncPrecision) && (item.kind !== "frames" || item.intervalMs === null)), "A stored overlay item lost its kind, source, interval or precision");
   // 数字框打到一半时（清空、"0."）不能被改写成 0；离开框后显示的是会保存的草稿值。
   const defaults = pointOverlayPresentation();
   const margin = editor.getByRole("spinbutton", { name: copy.performanceOverlay.marginPx });
@@ -214,5 +220,5 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   assert(await width.inputValue() === "0.5", "Leaving the box changed a typed 0.5");
   assert(await save.isEnabled(), "A typed 0.5 did not reach the draft");
   assert(errors.length === 0, errors.join("\n"));
-  return { numberBoxesKeepPartialInput: true, persistence: true, metricOrdering: true, pendingControlsLocked: true, appearanceSaveStaysLocal: true, genericModulePayload: true, actualInjectedModuleJoin: true, failureRetainsDraft: true, retry: true, moduleMismatchVisible: true, preferenceFailureAfterModulesVisible: true };
+  return { numberBoxesKeepPartialInput: true, persistence: true, itemOrdering: true, pendingControlsLocked: true, appearanceSaveStaysLocal: true, genericModulePayload: true, actualInjectedModuleJoin: true, failureRetainsDraft: true, retry: true, moduleMismatchVisible: true, preferenceFailureAfterModulesVisible: true };
 }

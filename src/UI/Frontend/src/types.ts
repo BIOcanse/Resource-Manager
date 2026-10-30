@@ -1150,10 +1150,17 @@ export interface BaseScoreResolution {
 /** 后端为该软件登记的叠加层注入模块：都没有、只有一部分、全部。只读，来自后端的启动模块选择。 */
 export type OverlayInjectionModules = "none" | "partial" | "complete";
 
-/** 浮窗一项选的来源：一台设备上的一个后端原始字段（和卡片的“字段@设备”同一个东西）。 */
-export interface OverlayMetricSource {
-  fieldName: string;
-  deviceIdentity: string;
+/**
+ * 浮层的一项，形状和校验与录制项相同（docs/targeted_recording_views_2026-10-30.md §3.1、§3.9）：
+ * kind 是 frames、software、metric；source 是 "auto" 或目录里这一项的具体来源；intervalMs 是 null（自然间隔或浮层默认间隔）
+ * 或 100–60000，帧项永远是 null；syncPrecision 是 low、mid、high。
+ */
+export interface PerformanceOverlayItem {
+  kind: "frames" | "software" | "metric";
+  id: string;
+  source: string;
+  intervalMs: number | null;
+  syncPrecision: "low" | "mid" | "high";
 }
 
 export interface PerformanceOverlaySettings {
@@ -1161,13 +1168,11 @@ export interface PerformanceOverlaySettings {
   injectionModules: OverlayInjectionModules;
   enabled: boolean;
   mode: "external" | "injected";
-  metrics: string[];
   /**
-   * 每一项的来源，按项目的指标 id 存（docs/metric_item_source_choice_2026-10-25.md）。没有这一项是“自动选择”：
-   * 按部件地址订阅，后端按本机选来源；有就只读这个字段（原生壳按 fields= 订阅），读不到显示不可用。
-   * 和 metrics 一起存在前端偏好缓存里，不进后端设置。
+   * 浮层的项，顺序就是绘制顺序，每个软件最多 64 项。存在前端偏好缓存里，不进后端设置；
+   * 原生壳把它原样放进浮层订阅的 items（请求体）。
    */
-  metricSources: Record<string, OverlayMetricSource>;
+  items: PerformanceOverlayItem[];
   sizeMode: "absolutePixels" | "windowRatio";
   fontSizePx: number;
   regionWidthRatio: number;

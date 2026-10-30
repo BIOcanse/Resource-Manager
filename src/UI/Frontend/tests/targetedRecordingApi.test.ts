@@ -85,9 +85,15 @@ assert.throws(() => recordingTargetsDecoder.decode([{ softwareId: "", name: "Gam
 assert.throws(() => recordingTargetsDecoder.decode([{ softwareId: "game-1", name: "Game", processCount: 1.5 }]));
 
 assert.equal(itemCatalogDecoder.decode([
-  { kind: "metric", id: "cpu.temperature", unit: "°C", sources: ["cpu.temperature@cpu0"], naturalIntervalMs: 2000 }
+  { kind: "metric", id: "cpu.temperature", unit: "°C", sources: ["cpu.temperature@cpu0"], naturalIntervalMs: 2000, uses: ["recording", "overlay"] }
 ])[0].naturalIntervalMs, 2000);
-assert.throws(() => itemCatalogDecoder.decode([{ kind: "metric", id: "x", unit: "", sources: "auto", naturalIntervalMs: null }]));
+assert.deepEqual(itemCatalogDecoder.decode([
+  { kind: "frames", id: "frames.fps", unit: "FPS", sources: [], naturalIntervalMs: null, uses: ["overlay"] }
+])[0].uses, ["overlay"]);
+assert.throws(() => itemCatalogDecoder.decode([{ kind: "metric", id: "x", unit: "", sources: "auto", naturalIntervalMs: null, uses: ["recording"] }]));
+// uses 必须有，且只能是 recording、overlay。
+assert.throws(() => itemCatalogDecoder.decode([{ kind: "metric", id: "x", unit: "", sources: [], naturalIntervalMs: null }]));
+assert.throws(() => itemCatalogDecoder.decode([{ kind: "metric", id: "x", unit: "", sources: [], naturalIntervalMs: null, uses: ["report"] }]));
 
 assert.equal(profileListDecoder.decode([profile])[0].items[0].intervalMs, null);
 assert.throws(() => profileListDecoder.decode([{ ...profile, items: [{ ...profile.items[0], syncPrecision: "none" }] }]));

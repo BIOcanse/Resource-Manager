@@ -40,7 +40,9 @@ public sealed class BackendPreferenceBoundaryTests
             Assert.Equal(v2, await ReadCommitted(path));
             if (existingBackup) Assert.Equal(original, await ReadCommitted(backup));
             var owner = new FrontendPreferencesOwner(cache, null, path);
-            Assert.Equal(new[] { "target.memory", "target.fps" }, owner.Read().Overlays["legacy-game"].Metrics);
+            // The legacy file's metric IDs become items (migration frontend-preferences-overlay-items-v1), in the same order.
+            Assert.Equal(new FrontendOverlayItem[] { new("software", "memory.usage", "auto", null, "mid"), new("frames", "frames.fps", "auto", null, "mid") },
+                owner.Read().Overlays["legacy-game"].Items);
             Assert.Equal(v2, await ReadCommitted(path));
             owner.Reset();
             Assert.Equal(owner.Read().Overlays["legacy-game"].Enabled, new FrontendPreferencesOwner(cache, null, path).Read().Overlays["legacy-game"].Enabled);
@@ -63,7 +65,7 @@ public sealed class BackendPreferenceBoundaryTests
         var legacy = Path.Combine(files.Root, "performance-overlay.local.json");
         var old = JsonSerializer.SerializeToNode(new FrontendPreferences
         {
-            Overlays = new Dictionary<string, FrontendOverlayPresentation> { ["game"] = new() { Metrics = ["target.memory"] } }
+            Overlays = new Dictionary<string, FrontendOverlayPresentation> { ["game"] = new() { Items = [new("software", "memory.usage", "auto", null, "mid")] } }
         }, FrontendPreferencesOwner.Json)!.AsObject();
         old.Remove("overlaySelectionVersion");
         old["overlays"]!["game"]!.AsObject().Remove("enabled");
@@ -74,12 +76,12 @@ public sealed class BackendPreferenceBoundaryTests
         var imported = owner.Read().Overlays["game"];
         Assert.True(imported.Enabled);
         Assert.Equal("injected", imported.Mode);
-        Assert.Equal(["target.memory"], imported.Metrics);
+        Assert.Equal(new FrontendOverlayItem[] { new("software", "memory.usage", "auto", null, "mid") }, imported.Items);
         owner.Reset();
         var reset = new FrontendPreferencesOwner(cache, null, legacy).Read().Overlays["game"];
         Assert.True(reset.Enabled);
         Assert.Equal("injected", reset.Mode);
-        Assert.Equal(FrontendPoints.MetricOrder, reset.Metrics);
+        Assert.Equal(FrontendOverlayItems.PointItems(), reset.Items);
         var disabled = owner.Read() with { Overlays = new Dictionary<string, FrontendOverlayPresentation> { ["game"] = reset with { Enabled = false } } };
         owner.Save(disabled);
         Assert.False(new FrontendPreferencesOwner(cache, null, legacy).Read().Overlays["game"].Enabled);

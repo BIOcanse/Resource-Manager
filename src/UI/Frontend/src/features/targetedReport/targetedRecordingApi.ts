@@ -7,7 +7,7 @@ import {
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { uiText } from "../../text.ts";
 import {
-  itemKinds, syncPrecisions,
+  itemKinds, itemUses, syncPrecisions,
   type CatalogEntry, type ItemKind, type SelectionItem, type SyncPrecision
 } from "../itemSelection/itemSelectionModel.ts";
 
@@ -248,7 +248,10 @@ export const itemCatalogDecoder = defineResponseDecoder<CatalogEntry[]>("targete
       id: requireNonEmptyString(row.id, `${path}.id`),
       unit: requireString(row.unit, `${path}.unit`),
       sources: requireStringArray(row.sources, `${path}.sources`),
-      naturalIntervalMs: nullableInteger(row.naturalIntervalMs, `${path}.naturalIntervalMs`)
+      naturalIntervalMs: nullableInteger(row.naturalIntervalMs, `${path}.naturalIntervalMs`),
+      // 用途：recording、overlay（docs/targeted_recording_views_2026-10-30.md §3.9）；选择器按它过滤。
+      uses: requireArray(row.uses, `${path}.uses`).map((use, useIndex) =>
+        requireOneOf(use, `${path}.uses[${useIndex}]`, itemUses))
     };
   }));
 

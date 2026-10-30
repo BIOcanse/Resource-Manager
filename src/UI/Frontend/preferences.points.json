@@ -24,7 +24,7 @@
     {"group":2,"name":"overlay-size_mode","symbol":"SizeMode","type":"choice","options":["absolutePixels","windowRatio"],"value":"absolutePixels"},
     {"group":2,"name":"overlay-anchor","symbol":"Anchor","type":"choice","options":["topLeft","topRight","bottomLeft","bottomRight"],"value":"topLeft"},
     {"group":2,"name":"overlay-margin_px","symbol":"MarginPx","type":"integer","min":0,"max":256,"value":12},
-    {"group":2,"name":"overlay-metric_order","symbol":"MetricOrder","type":"metricOrder","value":["target.fps","target.onePercentLow","target.frameTime","target.cpu","target.gpu"]},
+    {"group":2,"name":"overlay-metric_order","symbol":"MetricOrder","type":"metricOrder","value":["frames:frames.fps","frames:frames.low1","frames:frames.present","software:cpu.usage","software:gpu.usage"]},
     {"group":3,"name":"dashboard-layout_defaults","symbol":"DashboardLayoutDefaults","type":"dashboardDefaults","value":{
       "builtInMetricIds":["cpu.usage","cpu.frequency","cpu.frequencyPercent","memory.usage","memory.percent","virtualMemory.usage","virtualMemory.percent","disk.total.activePercent","disk.total.readBytesPerSec","disk.total.writeBytesPerSec","disk.total.queueLength","network.total.receiveBytesPerSec","network.total.sendBytesPerSec","network.total.utilizationPercent"],
       "cards":[

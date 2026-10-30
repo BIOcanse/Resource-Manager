@@ -11,8 +11,8 @@ export const zhSoftwareDetailCopy = {
     externalModeModulesPresent: "本機服務仍為此軟體登記了啟動注入模組，注入可能正在生效，但這裡選擇的方式不使用注入。儲存後會依這裡的選擇更新本機服務的登記。",
     injectedModulesPartial: "本機服務只登記了部分注入模組，注入可能不完整。儲存後會依這裡的選擇更新本機服務的登記。",
     modulesSavedPreferencesFailed: "啟動注入模組已在本機服務中更新，但浮層偏好未能儲存。請重新儲存。",
-    metrics: "顯示指標",
-    chooseMetrics: "選擇指標",
+    items: "顯示項目",
+    chooseItems: "選擇顯示項目",
     sizeMode: "尺寸方式",
     absolutePixels: "絕對像素",
     windowRatio: "相對視窗比例",
@@ -27,8 +27,41 @@ export const zhSoftwareDetailCopy = {
     marginPx: "邊距（像素）",
     moveUp: "上移",
     moveDown: "下移",
-    removeMetric: "移除指標",
-    group: "目標軟體"
+    removeItem: "移除此項目",
+    group: "目標軟體",
+    pickerTitle: "選擇浮層顯示項目",
+    itemSoftware: (name: string) => `目標處理程序 · ${name}`,
+    itemSummary: (source: string, interval: string, precision: string) => `來源：${source} · 間隔：${interval} · 同步精度：${precision}`,
+    itemsInvalid: {
+      "too-many": "顯示項目超過 64 項。",
+      duplicate: "顯示項目中有重複的項目。",
+      kind: "顯示項目中有未知的種類。",
+      id: "顯示項目中有空白的項目 ID。",
+      source: "顯示項目中有空白的來源。",
+      precision: "顯示項目中有未知的同步精度。",
+      interval: "顯示項目的間隔須留空，或為 100–60000 之間的整數。",
+      "frames-interval": "影格項目逐影格統計，不能設定間隔。"
+    },
+    itemReasons: {
+      "target-not-running": "目標未執行",
+      "frame-events-lost": "影格事件遺失",
+      "no-frame-data": "無影格資料",
+      "metric-unavailable": "讀數無法使用",
+      "process-cpu-unavailable": "處理程序 CPU 無法使用",
+      "process-metric-unavailable": "處理程序讀數無法使用"
+    },
+    picker: {
+      available: "可顯示項目",
+      selected: "已選顯示項目",
+      search: "搜尋可顯示項目",
+      none: "尚未選擇顯示項目。",
+      count: (count: number, limit: number) => `顯示項目：${count} / ${limit}`,
+      limitReached: "已達顯示項目上限。請先移除部分項目再新增。",
+      intervalDefault: (ms: number) => `浮層預設 ${ms}`,
+      defaultsHint: "新增的項目：來源為自動選擇，間隔留空（有自然間隔就用自然間隔，否則用浮層的預設間隔），同步精度為中。每個項目都可以單獨修改；順序即浮層的繪製順序，可在設定頁以上移、下移調整。",
+      precisionHint: "同步精度即訂閱讀取的低、中、高三檔。該設計定案前，它只儲存並隨讀數傳回，不改變讀取方式。",
+      itemUnknown: "有顯示項目不在可顯示項目目錄中。"
+    }
   },
   softwareDetail: {
     openPath: "開啟",

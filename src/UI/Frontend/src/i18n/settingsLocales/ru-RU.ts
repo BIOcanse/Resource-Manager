@@ -509,7 +509,7 @@ export default createSettingsLocale("ru-RU", {
     "loadFailed": "Не удалось прочитать настройки наложения",
     "emptyTitle": "Ни для одной программы наложение не включено",
     "emptyDetail": (tab: string) => `Чтобы включить его, откройте сведения о программе и перейдите на вкладку «${tab}».`,
-    "metricCount": (count: number) => plural("ru-RU", count, { one: "{count} метрика", few: "{count} метрики", many: "{count} метрик", other: "{count} метрики" }),
+    "itemCount": (count: number) => plural("ru-RU", count, { one: "{count} элемент", few: "{count} элемента", many: "{count} элементов", other: "{count} элемента" }),
     "position": (anchor: string) => `Положение: ${anchor}`,
     "open": "Открыть настройки наложения",
     "openLabel": (name: string) => `Открыть настройки наложения для ${name}`,

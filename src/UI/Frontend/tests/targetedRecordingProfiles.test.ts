@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {
-  addItem, catalogGroups, intervalPlaceholder, newItem, parseIntervalText, removeItem, sameItems, sourceOptions, updateItem,
+  addItem, catalogForUse, catalogGroups, intervalPlaceholder, newItem, parseIntervalText, removeItem, sameItems, sourceOptions, updateItem,
   type CatalogEntry, type SelectionItem
 } from "../src/features/itemSelection/itemSelectionModel.ts";
 import {
@@ -10,11 +10,14 @@ import { maximumProfileItems, type RecordingProfile, type RecordingReport } from
 import { seriesFromReport, type SeriesLabels } from "../src/features/targetedReport/views/reportSeriesAdapter.ts";
 
 const catalog: CatalogEntry[] = [
-  { kind: "frames", id: "frames.present", unit: "ms", sources: [], naturalIntervalMs: null },
-  { kind: "software", id: "cpu.usage", unit: "%", sources: ["resource-breakdown"], naturalIntervalMs: null },
-  { kind: "metric", id: "cpu.usage", unit: "%", sources: ["cpu.usage@cpu0"], naturalIntervalMs: null },
-  { kind: "metric", id: "cpu.temperature", unit: "°C", sources: ["cpu.temperature@cpu0"], naturalIntervalMs: 2000 }
+  { kind: "frames", id: "frames.present", unit: "ms", sources: [], naturalIntervalMs: null, uses: ["recording", "overlay"] },
+  { kind: "software", id: "cpu.usage", unit: "%", sources: ["resource-breakdown"], naturalIntervalMs: null, uses: ["recording", "overlay"] },
+  { kind: "metric", id: "cpu.usage", unit: "%", sources: ["cpu.usage@cpu0"], naturalIntervalMs: null, uses: ["recording", "overlay"] },
+  { kind: "metric", id: "cpu.temperature", unit: "°C", sources: ["cpu.temperature@cpu0"], naturalIntervalMs: 2000, uses: ["recording", "overlay"] }
 ];
+// 只给浮层的帧项（后端目录 uses 为 ["overlay"]）。
+const overlayOnly: CatalogEntry[] = ["frames.fps", "frames.low1", "frames.low01"].map((id) =>
+  ({ kind: "frames", id, unit: "FPS", sources: [], naturalIntervalMs: null, uses: ["overlay"] }));
 const names = (kind: string, id: string) => `${kind} ${id}`;
 
 // ---------- 选择器的逻辑 ----------
@@ -30,10 +33,21 @@ for (const entry of catalog) {
 }
 assert.equal(items.length, 4);
 assert.deepEqual(addItem(items, catalog[0], 256, ["frames", "software", "metric"]), { refused: "duplicate" });
-// 上限：配置 256，浮层 32；到上限时拒绝并给出原因。
+// 上限：配置 256，浮层 64；到上限时拒绝并给出原因。
 assert.deepEqual(addItem(items, { ...catalog[0], id: "frames.other" }, 4, ["frames", "software", "metric"]), { refused: "limit" });
-const full = Array.from({ length: 32 }, (_, index) => newItem({ ...catalog[2], id: `metric.${index}` }));
-assert.deepEqual(addItem(full, catalog[3], 32, ["frames", "software", "metric"]), { refused: "limit" });
+const full = Array.from({ length: 64 }, (_, index) => newItem({ ...catalog[2], id: `metric.${index}` }));
+assert.deepEqual(addItem(full, catalog[3], 64, ["frames", "software", "metric"]), { refused: "limit" });
+// 用途过滤：录制配置看不到只给浮层的项，浮层看得到全部；选择器按过滤后的目录分组。
+const combined = [...catalog, ...overlayOnly];
+assert.deepEqual(catalogForUse(combined, "recording").map((entry) => entry.id),
+  ["frames.present", "cpu.usage", "cpu.usage", "cpu.temperature"]);
+assert.deepEqual(catalogForUse(combined, "overlay").map((entry) => entry.id),
+  ["frames.present", "cpu.usage", "cpu.usage", "cpu.temperature", "frames.fps", "frames.low1", "frames.low01"]);
+assert.deepEqual(catalogGroups(catalogForUse(combined, "recording"), [], ["frames"], "", names)[0].entries.map((row) => row.entry.id),
+  ["frames.present"]);
+assert.deepEqual(catalogGroups(catalogForUse(combined, "overlay"), [], ["frames"], "", names)[0].entries.map((row) => row.entry.id),
+  ["frames.fps", "frames.low01", "frames.low1", "frames.present"]);
+assert.deepEqual(catalogForUse([{ ...catalog[0], uses: [] }], "overlay"), []);
 // 种类过滤：不允许的种类不加，目录里也不列。
 assert.deepEqual(addItem([], catalog[0], 32, ["software", "metric"]), { refused: "kind" });
 assert.deepEqual(catalogGroups(catalog, [], ["software", "metric"], "", names).map((group) => group.kind), ["software", "metric"]);

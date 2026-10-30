@@ -269,7 +269,7 @@ export interface SettingsCopy {
     loadFailed: string;
     emptyTitle: string;
     emptyDetail: (tab: string) => string;
-    metricCount: (count: number) => string;
+    itemCount: (count: number) => string;
     position: (anchor: string) => string;
     open: string;
     openLabel: (name: string) => string;

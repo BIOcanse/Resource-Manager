@@ -157,6 +157,8 @@ internal sealed partial class FrontendPreferencesOwner
     //   upgrade starts after this release.
     // - frontend-preferences-animation-style-v1: see MigrateAnimationAppearance.
     // - frontend-preferences-nvml-fb-used-v1: see MigrateNvmlFbUsedField.
+    // - frontend-preferences-overlay-items-v1: overlay metrics and metricSources become items, after the NVML rename so
+    //   converted sources carry the new field name (FrontendOverlayItems.MigrateLegacyPresentation).
     // - frontend-preferences-notified-version-v1: notifications.updateInAppNotifiedVersion recorded which version the
     //   in-app update notice had shown; since 2026-10-29 both channels follow the notification sequence
     //   (docs/notifications_2026-10-29.md), so the record is dropped. Delete once every supported upgrade starts after
@@ -189,6 +191,10 @@ internal sealed partial class FrontendPreferencesOwner
                 changed |= appearance.Remove("autoDisableAnimations");
             }
             changed |= MigrateNvmlFbUsedField(root);
+            if (root?["overlays"] is JsonObject overlays)
+                foreach (var (softwareId, overlay) in overlays.ToArray())
+                    if (overlay is JsonObject presentation)
+                        changed |= FrontendOverlayItems.MigrateLegacyPresentation(presentation, softwareId);
             changed |= root?["notifications"] is JsonObject notifications && notifications.Remove("updateInAppNotifiedVersion");
             if (changed) WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(root, Json));
         }
@@ -304,7 +310,10 @@ internal sealed partial class FrontendPreferencesOwner
                 if (item["softwareId"] is not JsonValue idValue || !idValue.TryGetValue<string>(out var id)
                     || string.IsNullOrWhiteSpace(id)) continue;
                 var presentation = JsonSerializer.SerializeToNode(new FrontendOverlayPresentation(), Json)!.AsObject();
-                CopyKnown(item, presentation);
+                // The legacy file stores metrics (metric IDs); they become items like the cache's old metrics.
+                var legacy = item.DeepClone().AsObject();
+                FrontendOverlayItems.MigrateLegacyPresentation(legacy, id);
+                CopyKnown(legacy, presentation);
                 overlays[id] = presentation;
                 imported = true;
             }

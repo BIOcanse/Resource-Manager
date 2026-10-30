@@ -507,7 +507,7 @@ export default createSettingsLocale("zh-TW", {
     "loadFailed": "浮層設定讀取失敗",
     "emptyTitle": "沒有軟體啟用浮層",
     "emptyDetail": (tab: string) => `在軟體的詳細資訊中開啟「${tab}」分頁即可啟用。`,
-    "metricCount": (count: number) => `${count} 項指標`,
+    "itemCount": (count: number) => `${count} 個顯示項目`,
     "position": (anchor: string) => `位置：${anchor}`,
     "open": "開啟浮層設定",
     "openLabel": (name: string) => `開啟「${name}」的浮層設定`,

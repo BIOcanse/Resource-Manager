@@ -44,7 +44,7 @@ import { decodeHostManagerSmartCoordinatorStatus } from
 import { ApiRequestError, requestJson, requestNoContent } from "./api/httpTransport.ts";
 import { reportRuleSettingsDecoder } from "./data/appSettings/reportRuleSettingsDecoder.ts";
 import { metricCatalogDecoder } from "./data/monitor/monitorSourceDecoders.ts";
-import { metricOfferedInPicker } from "./presentation/metricPresentation.ts";
+import { overlayItemsIssue } from "./features/overlay/overlayItems.ts";
 import { cpuTopologyDecoder, cpuResidencyDecoder, cpuExclusiveBindingsDecoder } from "./data/cpu/cpuSourceDecoders.ts";
 import { decodeRuntimePolicySaveResult } from "./api/runtimePolicySaveResultDecoder.ts";
 import { decodeSoftwarePolicy } from "./data/softwarePolicy/softwarePolicyDecoder.ts";
@@ -95,9 +95,7 @@ export async function getPerformanceOverlaySettings(softwareId: string, signal?:
   if (presentation.mode === "injected") {
     presentation.enabled = injectionModules === "complete";
   }
-  // 来源出现之前写的缓存没有 metricSources：点的默认值是空表，每一项都是自动选择。
-  return { softwareId, injectionModules, ...presentation, metrics: [...presentation.metrics],
-    metricSources: { ...presentation.metricSources } };
+  return { softwareId, injectionModules, ...presentation, items: presentation.items.map((item) => ({ ...item })) };
 }
 
 /**
@@ -127,14 +125,12 @@ export class OverlayPreferencesSaveError extends Error {
   }
 }
 
-export async function getPerformanceOverlayMetricCatalog() {
-  return metricCatalogDecoder.decode(await getJson<unknown>("/api/performance-overlay/metrics/catalog"))
-    .filter(metricOfferedInPicker);
-}
-
 export async function savePerformanceOverlaySettings(settings: PerformanceOverlaySettings,
     previous?: Pick<PerformanceOverlaySettings, "enabled" | "mode">): Promise<PerformanceOverlaySettings> {
   const { softwareId, injectionModules: readModules, ...presentation } = settings;
+  // 不合规的项不写进偏好（界面在保存前就不让保存，这里拦住其他调用方）。
+  const itemsIssue = overlayItemsIssue(presentation.items);
+  if (itemsIssue !== null) throw new Error(`overlay-items-invalid: ${itemsIssue}`);
   const expected = expectedOverlayInjectionModules(settings);
   let injectionModules = readModules;
   let modulesChanged = false;
@@ -158,8 +154,7 @@ export async function savePerformanceOverlaySettings(settings: PerformanceOverla
   } catch (error) {
     throw modulesChanged ? new OverlayPreferencesSaveError(error) : error;
   }
-  return { softwareId, injectionModules, ...presentation, metrics: [...presentation.metrics],
-    metricSources: { ...presentation.metricSources } };
+  return { softwareId, injectionModules, ...presentation, items: presentation.items.map((item) => ({ ...item })) };
 }
 
 export async function resetPerformanceOverlayPresentation(softwareId: string) {

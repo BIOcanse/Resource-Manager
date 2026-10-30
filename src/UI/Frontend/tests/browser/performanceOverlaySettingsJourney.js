@@ -11,15 +11,16 @@ import { NOT_GHOST } from "./liveLocator.js";
 
 const injectedModules = ["performance-overlay-preload", "performance-overlay-vulkan"];
 const overlay = (patch) => ({ ...pointOverlayPresentation(), ...patch });
+const item = (kind, id) => ({ kind, id, source: "auto", intervalMs: null, syncPrecision: "mid" });
 // 多软件的情形：外置、注入（模块已登记）各一个启用；一个关闭、一个注入但模块没有登记（浮层分页按未启用读），都不列出；
 // 一个启用但软件列表里已经没有它，按软件 ID 列出、不能打开。
 const mixed = {
   overlays: {
-    "frontend-harness.software": overlay({ enabled: true, mode: "external", metrics: ["target.fps", "target.cpu", "target.gpu"], anchor: "topRight" }),
-    "overlay.injected.app": overlay({ enabled: true, mode: "injected", metrics: ["target.fps"], anchor: "bottomLeft" }),
+    "frontend-harness.software": overlay({ enabled: true, mode: "external", items: [item("frames", "frames.fps"), item("software", "cpu.usage"), item("metric", "gpu.0.usage")], anchor: "topRight" }),
+    "overlay.injected.app": overlay({ enabled: true, mode: "injected", items: [item("frames", "frames.fps")], anchor: "bottomLeft" }),
     "overlay.disabled.app": overlay({ enabled: false, mode: "external" }),
     "overlay.unregistered.app": overlay({ enabled: true, mode: "injected" }),
-    "overlay.removed.app": overlay({ enabled: true, mode: "external", metrics: ["target.fps", "target.frameTime"], anchor: "bottomRight" })
+    "overlay.removed.app": overlay({ enabled: true, mode: "external", items: [item("frames", "frames.fps"), item("frames", "frames.present")], anchor: "bottomRight" })
   },
   software: [
     { id: "overlay.injected.app", name: "Injected Sample" },
@@ -96,7 +97,7 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
     await rowsOf(panel).first().waitFor();
     assert.equal(await rowsOf(panel).count(), 1, `${language}: one external overlay should give one row`);
     const one = rowsOf(panel).first();
-    const expectedSummary = [app.performanceOverlay.external, settings.performanceOverlay.metricCount(3),
+    const expectedSummary = [app.performanceOverlay.external, settings.performanceOverlay.itemCount(3),
       settings.performanceOverlay.position(app.performanceOverlay.topRight)].join(" · ");
     assert.equal((await one.locator(".settings-row-copy strong").textContent()).trim(), "示例软件");
     assert.equal((await one.locator(".settings-row-copy span").textContent()).trim(), expectedSummary, `${language}: wrong row summary`);
@@ -127,7 +128,7 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
     assert.deepEqual([...ids].sort(), ["frontend-harness.software", "overlay.injected.app", "overlay.removed.app"], `${language}: wrong rows ${ids}`);
     const injected = rowsOf(panel).filter({ hasText: "Injected Sample" });
     assert.equal((await injected.locator(".settings-row-copy span:not([role='note'])").textContent()).trim(), [app.performanceOverlay.injected,
-      settings.performanceOverlay.metricCount(1), settings.performanceOverlay.position(app.performanceOverlay.bottomLeft)].join(" · "));
+      settings.performanceOverlay.itemCount(1), settings.performanceOverlay.position(app.performanceOverlay.bottomLeft)].join(" · "));
     const removed = panel.locator('.performance-overlay-row[data-software-id="overlay.removed.app"]');
     assert.equal((await removed.locator(".settings-row-copy strong").textContent()).trim(), "overlay.removed.app");
     const removedButton = removed.getByRole("button");

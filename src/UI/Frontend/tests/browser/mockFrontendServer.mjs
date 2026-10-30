@@ -280,13 +280,20 @@ const targetedRecordings = new Map();
 // 录制配置（只在内存里）、录制项目录和“目标是否在运行”。形状和错误代码照后端
 // （TargetedRecordingModels.cs、TargetedRecordingProfileService.cs）；默认配置 id 为 default、名称“默认”。
 const targetedRecordingFramesItemId = "frames.present";
+// uses 照后端 TargetedRecordingItemUses：帧率和两档低帧只给浮层用（overlay），其余录制和浮层都能用。
+const targetedRecordingBothUses = ["recording", "overlay"];
 const targetedRecordingCatalog = [
-  { kind: "frames", id: targetedRecordingFramesItemId, unit: "ms", sources: [], naturalIntervalMs: null },
-  { kind: "software", id: "cpu.usage", unit: "%", sources: ["resource-breakdown"], naturalIntervalMs: null },
-  { kind: "software", id: "memory.usage", unit: "B", sources: ["resource-breakdown"], naturalIntervalMs: null },
-  { kind: "metric", id: "cpu.usage", unit: "%", sources: ["cpu.usage@cpu0"], naturalIntervalMs: null },
-  { kind: "metric", id: "cpu.temperature", unit: "°C", sources: ["cpu.temperature@cpu0", "cpu.temperature@board"], naturalIntervalMs: 2000 },
-  { kind: "metric", id: "memory.usage", unit: "%", sources: ["memory.usage@system"], naturalIntervalMs: null }
+  { kind: "frames", id: targetedRecordingFramesItemId, unit: "ms", sources: [], naturalIntervalMs: null, uses: targetedRecordingBothUses },
+  { kind: "frames", id: "frames.fps", unit: "FPS", sources: [], naturalIntervalMs: null, uses: ["overlay"] },
+  { kind: "frames", id: "frames.low1", unit: "FPS", sources: [], naturalIntervalMs: null, uses: ["overlay"] },
+  { kind: "frames", id: "frames.low01", unit: "FPS", sources: [], naturalIntervalMs: null, uses: ["overlay"] },
+  { kind: "software", id: "cpu.usage", unit: "%", sources: ["resource-breakdown"], naturalIntervalMs: null, uses: targetedRecordingBothUses },
+  { kind: "software", id: "memory.usage", unit: "B", sources: ["resource-breakdown"], naturalIntervalMs: null, uses: targetedRecordingBothUses },
+  { kind: "software", id: "gpu.usage", unit: "%", sources: ["resource-breakdown"], naturalIntervalMs: null, uses: targetedRecordingBothUses },
+  { kind: "software", id: "gpu.vram", unit: "B", sources: ["resource-breakdown"], naturalIntervalMs: null, uses: targetedRecordingBothUses },
+  { kind: "metric", id: "cpu.usage", unit: "%", sources: ["cpu.usage@cpu0"], naturalIntervalMs: null, uses: targetedRecordingBothUses },
+  { kind: "metric", id: "cpu.temperature", unit: "°C", sources: ["cpu.temperature@cpu0", "cpu.temperature@board"], naturalIntervalMs: 2000, uses: targetedRecordingBothUses },
+  { kind: "metric", id: "memory.usage", unit: "%", sources: ["memory.usage@system"], naturalIntervalMs: null, uses: targetedRecordingBothUses }
 ];
 const targetedRecordingDefaultItems = () => [
   { kind: "frames", id: targetedRecordingFramesItemId },
@@ -625,12 +632,6 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/optimization/smart/status" && request.method === "GET") {
     return json(response, 200, smartCoordinatorStatus());
-  }
-  if (path === "/api/performance-overlay/metrics/catalog" && request.method === "GET") {
-    // 浮窗目录和后端一样也带部件地址的候选来源（MetricCatalog.ForPerformanceOverlay 继承同一份）。
-    return json(response, 200, [...["target.fps", "target.frameTime", "target.onePercentLow", "target.pointOnePercentLow", "target.cpu", "target.gpu", "target.memory", "target.vram"]
-      .map(id => metric(id, id, "Target", id === "target.frameTime" ? "ms" : id.endsWith("cpu") || id.endsWith("gpu") ? "%" : "FPS")),
-      ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : [])]);
   }
   if (path === "/api/startup-modules/settings" && request.method === "GET") {
     return json(response, 200, { version: 1, software: [...startupModuleSelections.values()] });
@@ -3552,7 +3553,8 @@ function targetedRecordingItemsError(items) {
   for (const item of items) {
     if (!["frames", "software", "metric"].includes(item?.kind)) return "targeted-recording-item-invalid-kind";
     const entry = targetedRecordingCatalog.find((candidate) => candidate.kind === item.kind && candidate.id === item.id);
-    if (!entry) return "targeted-recording-item-unknown";
+    // 后端 TargetedRecordingItemCatalog.Validate：录制只收 uses 含 recording 的项。
+    if (!entry || !entry.uses.includes("recording")) return "targeted-recording-item-unknown";
     const key = `${item.kind}:${item.id}`;
     if (seen.has(key)) return "targeted-recording-item-duplicate";
     seen.add(key);

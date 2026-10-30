@@ -113,11 +113,11 @@ public sealed class PerformanceOverlayDesktopTests
     {
         var settings = new OverlaySettings("test", true, mode);
         return new OverlayTarget("test", id.ProcessId, id.ProcessStartKey,
-            settings, [PerformanceOverlayNativeUiTests.Metric()]);
+            settings) { Items = [PerformanceOverlayNativeUiTests.Fps()] };
     }
 
     private static FrontendOverlayPresentation Presentation() =>
-        new() { Metrics = ["target.fps"], SizeMode = "windowRatio", Anchor = "bottomRight" };
+        new() { Items = [new("frames", "frames.fps", "auto", null, "mid")], SizeMode = "windowRatio", Anchor = "bottomRight" };
 
     private static void WaitUntil(Func<bool> condition)
     {

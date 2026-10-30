@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class PerformanceOverlayNativeUiTests
 {
-    private static readonly FrontendOverlayPresentation Absolute = new() { FontSizePx = 16, Metrics = ["target.fps"] };
+    private static readonly FrontendOverlayPresentation Absolute = new() { FontSizePx = 16, Items = [Item("frames", "frames.fps")] };
 
     private static SizeF Measure(string line, int fontSize) =>
         new(line.Length * fontSize * 0.55f, fontSize * 1.3f);
@@ -63,7 +63,7 @@ public sealed class PerformanceOverlayNativeUiTests
     [Fact]
     public void RendererOutputsGrayscalePremultipliedBgra()
     {
-        var target = new OverlayTarget("test", 42, 1337, new("test", true, "external"), [Metric()]);
+        var target = new OverlayTarget("test", 42, 1337, new("test", true, "external")) { Items = [Fps()] };
         var image = Assert.IsType<OverlayImage>(OverlayBitmapRenderer.Render(target, new Size(300, 120), Absolute));
         Assert.Equal(300 * 120 * 4, image.Pixels.Length);
         var translucent = false;
@@ -110,7 +110,7 @@ public sealed class PerformanceOverlayNativeUiTests
         using var process = Process.GetCurrentProcess();
         var id = checked((ulong)process.StartTime.ToFileTimeUtc());
         var target = new OverlayTarget("test", process.Id, id,
-            new("test", true, "external"), [Metric()]);
+            new("test", true, "external")) { Items = [Fps()] };
         using var dispatcher = new Control();
         using var coordinator = new PerformanceOverlayCoordinator(dispatcher);
         coordinator.ApplySnapshot(new OverlaySnapshot(3, [target]));
@@ -134,17 +134,24 @@ public sealed class PerformanceOverlayNativeUiTests
     }
 
     [Fact]
-    public void StreamJsonAndNineMetricLabelsReachTheRenderer()
+    public void StreamJsonAndNineItemLabelsReachTheRenderer()
     {
+        // Snapshot version 3: the subscription's item values sit next to its targets.
         const string json = """
-            {"version":3,"targets":[{"softwareId":"test",
-              "processId":42,"processStartKey":1337,
-              "metrics":[{"metricId":"target.fps","value":100,"unit":"FPS",
-                "state":"current","reason":null}]}]}
+            {"version":3,"capturedAt":"2026-10-30T08:00:00Z","targets":[{"softwareId":"test",
+              "processId":42,"processStartKey":1337,"metrics":[],"frameStreams":[]}],
+             "fields":[],
+             "items":[{"kind":"frames","id":"frames.fps","unit":"FPS","selectedSource":"auto","actualSource":"present-mon",
+               "intervalMs":500,"intervalOrigin":"profile-default","syncPrecision":"mid","value":100,"state":"current",
+               "reason":null,"observedAt":"2026-10-30T08:00:00Z"}]}
             """;
         var snapshot = JsonSerializer.Deserialize<OverlaySnapshot>(json,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        var metric = Assert.Single(Assert.Single(snapshot!.Targets).Metrics);
+        var item = Assert.Single(snapshot!.Items);
+        Assert.Equal(new OverlayItemValue("frames", "frames.fps", "FPS", "auto", "present-mon", 500, "profile-default", "mid",
+            100, "current", null, DateTimeOffset.Parse("2026-10-30T08:00:00Z", System.Globalization.CultureInfo.InvariantCulture)), item);
+        Assert.Single(snapshot.Targets);
+        // frames.fps keeps the old overlay's FPS name in every language.
         var expectedLabels = new Dictionary<string, string>
         {
             ["zh-CN"] = "目标帧率", ["zh-TW"] = "目標影格率", ["en-US"] = "Target FPS",
@@ -154,49 +161,70 @@ public sealed class PerformanceOverlayNativeUiTests
         };
         Assert.Equal(AppLanguage.SupportedIds.Order(), expectedLabels.Keys.Order());
         foreach (var language in AppLanguage.SupportedIds)
-            Assert.Equal($"{expectedLabels[language]}  100 FPS", OverlayBitmapRenderer.FormatLine(metric, language));
+        {
+            Assert.Equal($"{expectedLabels[language]}  100 FPS", OverlayBitmapRenderer.FormatLine(item, language));
+            // Every reason the backend sends has text in every language.
+            foreach (var reason in new[] { "target-not-running", "frame-events-lost", "no-frame-data", "metric-unavailable",
+                "process-cpu-unavailable", "process-metric-unavailable" })
+                Assert.NotEqual(reason, OverlayItemLabels.ForReason(reason, language));
+        }
         Assert.DoesNotContain("labels", JsonSerializer.Serialize(snapshot), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void ChosenSourceShowsItsRawFieldUnderTheItemLabelAndNeverThePartAddress()
+    public void LinesFollowTheStoredOrderAndShowTheReasonWhenAnItemHasNoValue()
     {
-        // The overlay stream's raw-field values (fields=) and the item's chosen field on one device.
-        const string json = """
-            {"version":2,"targets":[{"softwareId":"test","processId":42,"processStartKey":1337,
-              "settings":{"softwareId":"test","enabled":true,"mode":"external"},
-              "metrics":[{"metricId":"cpu.temperature","value":70,"unit":"°C","state":"current","reason":null}]}],
-             "fields":[{"deviceIdentity":"gpu|1","device":{"kind":"gpu_adapter"},"fields":[
-               {"name":"gpu_amd_edge_temperature_celsius","unit":"°C","numericValue":50,"integerValue":null,"status":1,
-                "sourceId":"amd.adlx","valueKind":"float64"},
-               {"name":"memory_all_physical_available_bytes","unit":"B","numericValue":null,"integerValue":"9007199254740993",
-                "status":1,"sourceId":"windows.memory","valueKind":"unsigned64"}]},
-               {"deviceIdentity":"gpu|0","fields":[{"name":"gpu_amd_edge_temperature_celsius","unit":"°C","numericValue":null,
-                "integerValue":null,"status":3,"sourceId":"amd.adlx","valueKind":"float64"}]}]}
-            """;
-        var snapshot = JsonSerializer.Deserialize<OverlaySnapshot>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
-        var target = Assert.Single(snapshot.Targets) with { Fields = snapshot.Fields };
-        FrontendOverlayPresentation Choose(string device, string field) => new()
-        {
-            Metrics = ["cpu.temperature"],
-            MetricSources = new Dictionary<string, FrontendOverlayMetricSource> { ["cpu.temperature"] = new(field, device) }
-        };
         const string language = "en-US";
-        Assert.Equal([OverlayBitmapRenderer.FormatLine(new("cpu.temperature", 50, "°C", "current", null), language)],
-            OverlayBitmapRenderer.Lines(target, Choose("gpu|1", "gpu_amd_edge_temperature_celsius"), language));
-        // The same field on another device is that device's own value: unavailable there, not borrowed.
-        var unavailable = OverlayBitmapRenderer.FormatLine(new("cpu.temperature", null, "°C", "unavailable", null), language);
-        Assert.Equal([unavailable], OverlayBitmapRenderer.Lines(target, Choose("gpu|0", "gpu_amd_edge_temperature_celsius"), language));
-        Assert.Equal([OverlayBitmapRenderer.FormatLine(new("cpu.temperature", null, "", "unavailable", null), language)],
-            OverlayBitmapRenderer.Lines(target, Choose("gpu|9", "gpu_amd_edge_temperature_celsius"), language));
-        // Exact integers are read from their decimal text.
-        Assert.Equal([OverlayBitmapRenderer.FormatLine(new("cpu.temperature", 9007199254740993d, "B", "current", null), language)],
-            OverlayBitmapRenderer.Lines(target, Choose("gpu|1", "memory_all_physical_available_bytes"), language));
-        // Automatic keeps the part address value.
-        Assert.Equal([OverlayBitmapRenderer.FormatLine(new("cpu.temperature", 70, "°C", "current", null), language)],
-            OverlayBitmapRenderer.Lines(target, new() { Metrics = ["cpu.temperature"] }, language));
-        Assert.DoesNotContain("70", OverlayBitmapRenderer.Lines(target, Choose("gpu|0", "gpu_amd_edge_temperature_celsius"), language)[0]);
+        var target = new OverlayTarget("test", 42, 1337, new("test", true, "external"))
+        {
+            // The stream's order is not the drawing order: the stored items are.
+            Items =
+            [
+                Value("software", "cpu.usage", "%", 12.34),
+                Value("frames", "frames.low1", "FPS", null, "frame-events-lost"),
+                Value("metric", "gpu.0.temperature", "°C", 61),
+                Value("frames", "frames.present", "ms", 8.25),
+                Value("software", "process_all_cpu_usage_actual", "%", null, "target-not-running"),
+                Value("metric", "memory.available", "B", 3d * 1_073_741_824),
+                Value("metric", "made.up", null, null, "some-new-reason"),
+                Value("metric", "no.reason", null, null, null)
+            ]
+        };
+        var presentation = new FrontendOverlayPresentation
+        {
+            Items =
+            [
+                Item("frames", "frames.present"), Item("frames", "frames.low1"), Item("metric", "gpu.0.temperature", "gpu_amd_edge_temperature_celsius@gpu|0"),
+                Item("software", "CPU.Usage"), Item("software", "process_all_cpu_usage_actual"), Item("metric", "memory.available"),
+                Item("metric", "made.up"), Item("metric", "no.reason"),
+                // Not answered by the stream yet (the subscription is being replaced): not drawn.
+                Item("frames", "frames.fps")
+            ]
+        };
+        Assert.Equal(new[]
+        {
+            $"Target frame time  {8.25.ToString("0.#", System.Globalization.CultureInfo.CurrentCulture)} ms",
+            "Target 1% low  Frame events lost",
+            "GPU0 temperature  61 °C",
+            // The four software items the old overlay had keep its names.
+            $"Target process CPU  {12.34.ToString("0.#", System.Globalization.CultureInfo.CurrentCulture)} %",
+            "Target process · Process CPU usage  Target not running",
+            // Bytes keep the old scaling to GiB / MiB.
+            $"{OverlayItemLabels.ForItem("metric", "memory.available", language)}  3 GiB",
+            // An unknown reason is shown as its code; no reason at all is a dash.
+            "made.up  some-new-reason",
+            "no.reason  —"
+        }, OverlayBitmapRenderer.Lines(target, presentation, language));
+        // The same id under another kind is another item.
+        Assert.Empty(OverlayBitmapRenderer.Lines(target, new() { Items = [Item("metric", "cpu.usage")] }, language));
     }
 
-    internal static OverlayMetric Metric() => new("target.fps", 100, "FPS", "current", null);
+    private static FrontendOverlayItem Item(string kind, string id, string source = "auto") =>
+        new(kind, id, source, null, "mid");
+
+    private static OverlayItemValue Value(string kind, string id, string? unit, double? value, string? reason = null) =>
+        new(kind, id, unit, "auto", value is null ? null : "auto", 500, "profile-default", "mid", value,
+            value is null ? "unavailable" : "current", reason, value is null ? null : DateTimeOffset.UnixEpoch);
+
+    internal static OverlayItemValue Fps() => Value("frames", "frames.fps", "FPS", 100);
 }

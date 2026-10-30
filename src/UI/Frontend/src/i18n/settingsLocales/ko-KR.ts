@@ -508,7 +508,7 @@ export default createSettingsLocale("ko-KR", {
     "loadFailed": "오버레이 설정을 읽지 못했습니다",
     "emptyTitle": "오버레이가 켜진 소프트웨어가 없습니다",
     "emptyDetail": (tab: string) => `켜려면 소프트웨어 세부 정보를 열고 '${tab}' 탭으로 이동하세요.`,
-    "metricCount": (count: number) => `메트릭 ${count}개`,
+    "itemCount": (count: number) => `표시 항목 ${count}개`,
     "position": (anchor: string) => `위치: ${anchor}`,
     "open": "오버레이 설정 열기",
     "openLabel": (name: string) => `${name}의 오버레이 설정 열기`,

@@ -1,31 +1,28 @@
 namespace ResourceManager.NativeUi.Overlay;
 
+// One pushed value of /api/performance-overlay/subscribe (snapshot version 3). Items are the values of the
+// subscription's items in request order; every target of one subscription is the same software.
 internal sealed record OverlaySnapshot(int Version, IReadOnlyList<OverlayTarget> Targets)
 {
-    // Raw field values requested with fields= (the backend's raw-field value contract).
-    public IReadOnlyList<OverlayDeviceFields> Fields { get; init; } = [];
+    public IReadOnlyList<OverlayItemValue> Items { get; init; } = [];
 }
 
 internal sealed record OverlayTarget(
-    string SoftwareId, int ProcessId, ulong ProcessStartKey,
-    OverlaySettings Settings, IReadOnlyList<OverlayMetric> Metrics)
+    string SoftwareId, int ProcessId, ulong ProcessStartKey, OverlaySettings Settings)
 {
-    // The raw fields of the subscription this target arrived on; items with a chosen source read them.
-    public IReadOnlyList<OverlayDeviceFields> Fields { get; init; } = [];
+    // The item values of the subscription this target arrived on.
+    public IReadOnlyList<OverlayItemValue> Items { get; init; } = [];
 }
 
-internal sealed record OverlayDeviceFields(string DeviceIdentity, IReadOnlyList<OverlayFieldValue> Fields);
-
-// Status is the backend SamplingObservationStatus number; only Current (1) carries a value.
-internal sealed record OverlayFieldValue(string Name, string Unit, double? NumericValue, string? IntegerValue, int Status)
-{
-    internal const int CurrentStatus = 1;
-}
+// The current value of one requested item (backend PerformanceOverlayItemValue). State is current or
+// unavailable; Reason says why a value is unavailable (target-not-running, frame-events-lost, no-frame-data,
+// metric-unavailable, process-cpu-unavailable, process-metric-unavailable).
+internal sealed record OverlayItemValue(
+    string Kind, string Id, string? Unit, string SelectedSource, string? ActualSource,
+    int IntervalMs, string IntervalOrigin, string SyncPrecision,
+    double? Value, string State, string? Reason, DateTimeOffset? ObservedAt);
 
 internal sealed record OverlaySettings(string SoftwareId, bool Enabled, string Mode);
-
-internal sealed record OverlayMetric(
-    string MetricId, double? Value, string Unit, string State, string? Reason);
 
 internal readonly record struct OverlayTargetId(int ProcessId, ulong ProcessStartKey);
 

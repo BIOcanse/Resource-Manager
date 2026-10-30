@@ -335,7 +335,7 @@ export const loadingSettingsText: SettingsTextBundle = {
     loadFailed: "",
     emptyTitle: "",
     emptyDetail: () => "",
-    metricCount: () => "",
+    itemCount: () => "",
     position: () => "",
     open: "",
     openLabel: () => "",

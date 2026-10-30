@@ -1908,8 +1908,8 @@ const koKrAppCopy: AppCopy = {
     externalModeModulesPresent: "로컬 서비스에 이 소프트웨어의 시작 주입 모듈이 아직 등록되어 있어 주입이 작동 중일 수 있지만, 여기서 선택한 방식은 주입을 사용하지 않습니다. 저장하면 로컬 서비스가 이 선택에 맞게 갱신됩니다.",
     injectedModulesPartial: "로컬 서비스에 주입 모듈 일부만 등록되어 있어 주입이 불완전할 수 있습니다. 저장하면 로컬 서비스가 이 선택에 맞게 갱신됩니다.",
     modulesSavedPreferencesFailed: "시작 주입 모듈은 로컬 서비스에서 갱신되었지만 오버레이 설정을 저장하지 못했습니다. 다시 저장하세요.",
-    metrics: "표시할 지표",
-    chooseMetrics: "지표 선택",
+    items: "표시 항목",
+    chooseItems: "표시 항목 선택",
     sizeMode: "크기 방식",
     absolutePixels: "절대 픽셀",
     windowRatio: "창 크기에 대한 비율",
@@ -1924,8 +1924,41 @@ const koKrAppCopy: AppCopy = {
     marginPx: "여백(픽셀)",
     moveUp: "위로 이동",
     moveDown: "아래로 이동",
-    removeMetric: "지표 제거",
-    group: "대상 소프트웨어"
+    removeItem: "이 항목 제거",
+    group: "대상 소프트웨어",
+    pickerTitle: "오버레이 표시 항목 선택",
+    itemSoftware: (name: string) => `대상 프로세스 · ${name}`,
+    itemSummary: (source: string, interval: string, precision: string) => `소스: ${source} · 간격: ${interval} · 동기화 정밀도: ${precision}`,
+    itemsInvalid: {
+      "too-many": "표시 항목이 64개를 초과합니다.",
+      duplicate: "중복된 표시 항목이 있습니다.",
+      kind: "알 수 없는 종류의 표시 항목이 있습니다.",
+      id: "ID가 비어 있는 표시 항목이 있습니다.",
+      source: "소스가 비어 있는 표시 항목이 있습니다.",
+      precision: "알 수 없는 동기화 정밀도의 표시 항목이 있습니다.",
+      interval: "간격은 비워 두거나 100–60000 사이의 정수를 입력하십시오.",
+      "frames-interval": "프레임 항목은 프레임마다 집계되므로 간격을 설정할 수 없습니다."
+    },
+    itemReasons: {
+      "target-not-running": "대상이 실행 중이 아님",
+      "frame-events-lost": "프레임 이벤트 손실",
+      "no-frame-data": "프레임 데이터 없음",
+      "metric-unavailable": "판독값을 사용할 수 없음",
+      "process-cpu-unavailable": "프로세스 CPU를 사용할 수 없음",
+      "process-metric-unavailable": "프로세스 판독값을 사용할 수 없음"
+    },
+    picker: {
+      available: "표시할 수 있는 항목",
+      selected: "선택한 표시 항목",
+      search: "표시할 수 있는 항목 검색",
+      none: "선택한 표시 항목이 없습니다.",
+      count: (count: number, limit: number) => `표시 항목: ${count} / ${limit}`,
+      limitReached: "표시 항목 한도에 도달했습니다. 일부 항목을 제거한 후 추가하십시오.",
+      intervalDefault: (ms: number) => `오버레이 기본값 ${ms}`,
+      defaultsHint: "새로 추가한 항목은 소스가 자동 선택, 간격이 비어 있음(고유 간격이 있으면 고유 간격, 없으면 오버레이 기본 간격), 동기화 정밀도가 중간입니다. 각 항목은 개별적으로 변경할 수 있으며, 순서는 오버레이의 그리기 순서로 설정 페이지에서 위로 이동, 아래로 이동으로 변경할 수 있습니다.",
+      precisionHint: "동기화 정밀도는 구독 읽기 수준(낮음, 중간, 높음)입니다. 해당 설계가 확정될 때까지는 저장되어 판독값과 함께 반환될 뿐 읽기 방식은 바뀌지 않습니다.",
+      itemUnknown: "표시할 수 있는 항목 카탈로그에 없는 표시 항목이 있습니다."
+    }
   },
   softwareDetail: {
     openPath: "열기",

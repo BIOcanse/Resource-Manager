@@ -271,11 +271,11 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable, IAsyncDisposa
                     var snapshot = value.Deserialize<OverlaySnapshot>(StreamJson);
                     if (snapshot is null) continue;
                     var preferences = FrontendPreferencesOwner.Current.Read();
-                    // Each subscription is one software: its targets read the raw fields it carried.
+                    // Each subscription is one software: its targets draw the item values it carried.
                     snapshot = snapshot with { Targets = snapshot.Targets.Select(target =>
                     {
                         var choice = preferences.Overlays.FirstOrDefault(pair => pair.Key.Equals(target.SoftwareId, StringComparison.OrdinalIgnoreCase)).Value ?? new();
-                        return target with { Settings = new(target.SoftwareId, choice.Mode == "injected" || choice.Enabled, choice.Mode), Fields = snapshot.Fields };
+                        return target with { Settings = new(target.SoftwareId, choice.Mode == "injected" || choice.Enabled, choice.Mode), Items = snapshot.Items };
                     }).ToArray() };
                     snapshots[subscriptionId.GetString()!] = snapshot;
                     var combined = snapshot with { Targets = snapshots.Values.SelectMany(static item => item.Targets).ToArray() };
@@ -323,7 +323,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable, IAsyncDisposa
     }
 
     private static string ContentSignature(OverlayTarget target) =>
-        JsonSerializer.Serialize(new { target.Settings, target.Metrics, target.Fields }, StreamJson);
+        JsonSerializer.Serialize(new { target.Settings, target.Items }, StreamJson);
 
     private void OnLanguageChanged(object? sender, EventArgs args) => Post(() =>
     {

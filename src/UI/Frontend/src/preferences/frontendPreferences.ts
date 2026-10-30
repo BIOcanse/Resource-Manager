@@ -5,6 +5,7 @@ import type {
   FrontendRefreshIntervals, PerformanceOverlaySettings
 } from "../types.ts";
 import type { TargetedReportViewTemplate } from "../features/targetedReport/views/viewTemplates.ts";
+import { migrateLegacyOverlayPresentation, pointOverlayItems } from "../features/overlay/overlayItems.ts";
 
 const points = ResourceManager.FrontendPoints;
 const resetListeners = new Set<() => void>();
@@ -90,7 +91,7 @@ const nvmlFbUsedField = "gpu_nvidia_fb_used_excluding_reserved_bytes";
 export function migrateNvmlFbUsedField(value: FrontendPreferencesCache): FrontendPreferencesCache {
   const isObject = (item: unknown): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item);
   const retiredSlot = (slot: unknown) => isObject(slot) && typeof slot.metricId === "string" && slot.metricId.startsWith(`${retiredNvmlFbUsedField}@`);
-  const retiredSource = (source: unknown) => isObject(source) && source.fieldName === retiredNvmlFbUsedField;
+  const retiredSource = (source: unknown): source is Record<string, unknown> => isObject(source) && source.fieldName === retiredNvmlFbUsedField;
   const result = { ...value };
   const cards: unknown = isObject(value.dashboard) ? value.dashboard.cards : undefined;
   if (value.dashboard && Array.isArray(cards) && cards.some(card => isObject(card) && Array.isArray(card.slots) && card.slots.some(retiredSlot))) {
@@ -99,17 +100,29 @@ export function migrateNvmlFbUsedField(value: FrontendPreferencesCache): Fronten
         : { ...slot, metricId: nvmlFbUsedField + slot.metricId.slice(retiredNvmlFbUsedField.length) }) }) };
   }
   if (isObject(value.overlays)) {
-    result.overlays = Object.fromEntries(Object.entries(value.overlays).map(([id, overlay]) => [id,
+    // 旧缓存的浮层还是 metrics、metricSources 的形状（之后由 migrateOverlayItems 换成 items），这里按未知对象读。
+    result.overlays = Object.fromEntries(Object.entries(value.overlays as Record<string, unknown>).map(([id, overlay]) => [id,
       !isObject(overlay) || !isObject(overlay.metricSources) || !Object.values(overlay.metricSources).some(retiredSource) ? overlay
         : { ...overlay, metricSources: Object.fromEntries(Object.entries(overlay.metricSources).map(([metric, source]) => [metric,
-          retiredSource(source) ? { ...source, fieldName: nvmlFbUsedField } : source])) }]));
+          retiredSource(source) ? { ...source, fieldName: nvmlFbUsedField } : source])) }])) as FrontendPreferencesCache["overlays"];
   }
   return result;
 }
 
+/**
+ * Migration frontend-preferences-overlay-items-v1（features/overlay/overlayItems.ts 写明对应表）：旧缓存的浮层 metrics 和
+ * metricSources 读入时换成 items。在 NVML 改名迁移之后运行，换出来的来源已经是新字段名。
+ */
+export function migrateOverlayItems(value: FrontendPreferencesCache): FrontendPreferencesCache {
+  const overlays: unknown = value.overlays;
+  if (typeof overlays !== "object" || overlays === null || Array.isArray(overlays)) return value;
+  return { ...value, overlays: Object.fromEntries(Object.entries(overlays)
+    .map(([id, overlay]) => [id, migrateLegacyOverlayPresentation(overlay as OverlayPresentation)])) };
+}
+
 export function pointOverlayPresentation(): OverlayPresentation {
   return {
-    enabled: false, mode: "external", metrics: [...points.MetricOrder], metricSources: {}, fontSizePx: points.FontSizePx, sizeMode: points.SizeMode,
+    enabled: false, mode: "external", items: pointOverlayItems(), fontSizePx: points.FontSizePx, sizeMode: points.SizeMode,
     regionWidthRatio: points.RegionWidthRatio, regionHeightRatio: points.RegionHeightRatio,
     anchor: points.Anchor, marginPx: points.MarginPx
   };
@@ -211,7 +224,7 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     // 2026-10-29 起跟随通知序号，旧缓存的已提示版本记录丢弃。删除条件：下一个不再读旧版本缓存的发行。
     const { updateInAppNotifiedVersion: _notified, ...notifications } =
       (value.notifications ?? {}) as Partial<AppNotificationSettings> & { updateInAppNotifiedVersion?: unknown };
-    return { ...migrateNvmlFbUsedField(value), ...(appearance ? { appearance } : {}),
+    return { ...migrateOverlayItems(migrateNvmlFbUsedField(value)), ...(appearance ? { appearance } : {}),
       notifications: { ...pointPreferences().notifications, ...notifications } };
   };
   let writes = Promise.resolve();

@@ -509,7 +509,7 @@ export default createSettingsLocale("de-DE", {
     "loadFailed": "Die Overlay-Einstellungen konnten nicht gelesen werden",
     "emptyTitle": "Für keine Software ist ein Overlay aktiviert",
     "emptyDetail": (tab: string) => `Zum Aktivieren die Details einer Software öffnen und den Tab „${tab}“ wählen.`,
-    "metricCount": (count: number) => plural("de-DE", count, { one: "{count} Metrik", other: "{count} Metriken" }),
+    "itemCount": (count: number) => plural("de-DE", count, { one: "{count} Eintrag", other: "{count} Einträge" }),
     "position": (anchor: string) => `Position: ${anchor}`,
     "open": "Overlay-Einstellungen öffnen",
     "openLabel": (name: string) => `Overlay-Einstellungen für ${name} öffnen`,

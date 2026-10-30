@@ -28,6 +28,16 @@
   border-color: var(--danger);
 }
 
+/* ---------- 浮层显示项对话框（软件详情的浮层设置） ---------- */
+
+.modal.overlay-items-modal {
+  max-width: min(1080px, calc(100% - 36px));
+}
+
+.overlay-items-body {
+  padding: 14px 18px;
+}
+
 /* ---------- 录制配置对话框 ---------- */
 
 .modal.targeted-profiles-modal {

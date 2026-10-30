@@ -1,28 +1,22 @@
 import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
-import { metricFieldDevices, readingSourceDevices } from "./metricFieldsProbe.js";
 import { frontendPreferencesKey, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 const languages = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU"];
-const address = "gpu.5.temperature";
-const alternate = { fieldName: "gpu_amd_edge_temperature_celsius", deviceIdentity: "gpu|reading" };
+const item = { kind: "metric", id: "cpu.temperature" };
+// 模拟后端项目录里 cpu.temperature 的第二个候选来源（mockFrontendServer.mjs targetedRecordingCatalog）。
+const alternate = "cpu.temperature@board";
 
 /**
- * 浮窗一项先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md，简体中文）：
- * 浮窗目录里有核显温度的部件地址 gpu.5.temperature，后端给它列了三个候选来源、当前选中 ADLX 次选。
- * 把它加进浮窗后，这一项下面摆“来源”（统一分段样式）：第一项自动选择，写出后端现在选的 ADLX；
- * 其后是后端候选（按后端顺序，本机首选标出）。只有一个来源的 target.* 不摆。
- * 选 ADLX 次选并保存：来源和项目一起存在前端偏好缓存里，发给后端的任何请求（启动模块登记等）都不带来源；
- * 重新打开仍选着它。改回自动选择保存后缓存里没有这一项的来源；移除这一项时它的来源一起去掉。
- * 最后在九种语言下核对来源名称、自动选择和首选标记的文字。
- * 原生壳按 device=/fields= 成对订阅、按设备取值的部分由 OverlaySubscriptionConsumerTests / PerformanceOverlayNativeUiTests 核对。
+ * 浮层的每一项都能选来源、监控间隔和同步精度（docs/targeted_recording_views_2026-10-30.md §3.9，用户原话
+ * 「具体每一项也都能选择监控间隔」「监控的三档精度，每个监控项的来源等等」）：
+ * 浮层设置用共用的项选择器（用途 overlay，最多 64 项）；只给浮层用的帧率、1% 低帧、0.1% 低帧在这里是已知项。
+ * 加入整机 CPU 温度，选第二个来源、间隔 2500 ms、精度高并保存：整项存在前端偏好缓存的 items 里，
+ * 发给后端的写请求（启动模块登记等）都不带它；重新打开仍是这些选择。移除这一项时它的选择一起去掉。
+ * 最后在九种语言下核对设置列表里这一项的摘要（来源、间隔、精度）文字。
+ * 原生壳按软件订阅、把 items 放进请求体的部分由 OverlaySubscriptionConsumerTests / PerformanceOverlayNativeUiTests 核对。
  */
 export default async function overlaySourceChoiceJourney(page, baseUrl) {
-  const response = await fetch(`${baseUrl}/__test/scenario`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ metricFieldDevices: [...metricFieldDevices, ...readingSourceDevices], metricCatalogAddresses: "reading-source" })
-  });
-  if (!response.ok) throw new Error("Unable to enable the reading-source fixture");
   await page.setViewportSize({ width: 1200, height: 950 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const app = await loadAppCopy("zh-CN");
@@ -37,16 +31,22 @@ export default async function overlaySourceChoiceJourney(page, baseUrl) {
   const close = async (copy) => {
     await page.getByRole("dialog", { name: "示例软件", exact: true }).getByRole("button", { name: copy.softwareDetail.close, exact: true }).first().click();
   };
-  const sourcesOf = (copy) => editor.getByRole("radiogroup", { name: copy.resourceTable.columnSourceLabel(copy.metricLabel["gpu.{index}.temperature"]?.("5") ?? address), exact: true });
-  const cachedSources = async () => {
+  const openPicker = async (copy) => {
+    await editor.getByRole("button", { name: copy.performanceOverlay.chooseItems, exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: copy.performanceOverlay.pickerTitle, exact: true });
+    await dialog.locator(".item-picker").waitFor({ state: "visible" });
+    return dialog;
+  };
+  const cachedItems = async () => {
     const cache = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "null"), frontendPreferencesKey);
-    // 这个旅程只编辑示例软件一个浮窗。
+    // 这个旅程只编辑示例软件一个浮层。
     const overlays = Object.values(cache?.overlays ?? {});
     if (overlays.length > 1) throw new Error(`Expected one cached overlay, found ${overlays.length}`);
-    return overlays[0]?.metricSources ?? null;
+    return overlays[0]?.items ?? null;
   };
-  // 浮窗开关和方式存在后端的启动模块登记里（可能经提权通道发送）；来源只在前端偏好缓存里，
-  // 所以任何发给后端的写请求都不能带来源。
+  const cachedItem = async () => (await cachedItems())?.find((entry) => entry.kind === item.kind && entry.id === item.id);
+  // 浮层开关和方式存在后端的启动模块登记里（可能经提权通道发送）；项只在前端偏好缓存里，
+  // 所以任何发给后端的写请求都不能带它们。
   const backendBodies = [];
   page.on("request", (request) => {
     if (request.method() !== "GET" && request.url().includes("/api/")) backendBodies.push(request.postData() ?? "");
@@ -58,87 +58,74 @@ export default async function overlaySourceChoiceJourney(page, baseUrl) {
     await page.waitForFunction((label) => [...document.querySelectorAll(".overlay-settings button")]
       .find((element) => element.innerText?.trim() === label)?.disabled === true, copy.softwareDetail.save);
     for (const body of backendBodies) {
-      if (body.includes("metricSources") || body.includes(alternate.fieldName)) {
-        throw new Error(`The overlay source entered a backend request: ${body}`);
+      if (body.includes("syncPrecision") || body.includes(alternate)) {
+        throw new Error(`An overlay item entered a backend request: ${body}`);
       }
     }
   };
-  const expectedLabels = (copy) => {
-    const name = (field) => copy.fieldLabel[field].label;
-    const automaticPrefix = copy.metricPicker.sourceAutomatic(name(alternate.fieldName)).split(name(alternate.fieldName))[0];
-    return [`${automaticPrefix}${name(alternate.fieldName)}`, name("gpu_amd_apu_temperature_reported_celsius"),
-      name("cpu_amd_apu_graphics_temperature_celsius"), name(alternate.fieldName)];
-  };
-  const checkLabels = async (copy, language) => {
-    const radios = sourcesOf(copy).getByRole("radio");
-    // 字段目录 5 秒推一次：候选字段到了才摆出来源。
-    await sourcesOf(copy).waitFor({ timeout: 15_000 });
-    const labels = (await radios.allTextContents()).map((label) => label.trim());
-    const expected = expectedLabels(copy);
-    if (labels.length !== 4 || !expected.every((label, index) => labels[index].startsWith(label))) {
-      throw new Error(`${language}: overlay sources ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
-    }
-    if (!labels[1].endsWith(copy.metricPicker.sourcePreferred) || [0, 2, 3].some((index) => labels[index].endsWith(copy.metricPicker.sourcePreferred))) {
-      throw new Error(`${language}: only the preferred overlay source carries the mark: ${JSON.stringify(labels)}`);
-    }
-    return labels;
-  };
+  const expectedSummary = (copy) => copy.performanceOverlay.itemSummary(`${item.id} · board`,
+    copy.targetedReport.reportInfo.intervalValue(2500), copy.targetedReport.itemPicker.precisions.high);
+  const summaryOf = async () => (await editor.locator(".overlay-settings-metrics li").last()
+    .locator(".overlay-settings-item-summary").textContent())?.trim();
 
   await open(app);
-  // 把核显温度加进浮窗（共用的多选指标弹窗）。
-  await editor.getByRole("button", { name: app.performanceOverlay.chooseMetrics }).click();
-  const picker = page.locator("#metricModal");
-  await picker.locator(`[data-metric-id="${address}"]`).click();
-  await picker.getByRole("button", { name: app.metricPicker.confirm, exact: true }).click();
-  const labels = await checkLabels(app, "zh-CN");
-  if (await editor.locator(".overlay-settings-metric-source").count() !== 1) throw new Error("A single-source overlay item offered a source choice");
-  const sources = sourcesOf(app);
-  if (!await sources.evaluate((element) => element.classList.contains("segmented"))
-    || !await sources.getByRole("radio").first().evaluate((element) => element.classList.contains("segment"))) {
-    throw new Error("The overlay source choice does not use the shared segmented look");
+  let picker = await openPicker(app);
+  // 默认的帧率、1% 低帧、帧时间是浮层项：浮层用途的目录认识它们，不报“项目录里没有”。
+  if (await picker.locator(".item-picker-row .item-picker-note.warning").count() !== 0) {
+    throw new Error("The overlay picker does not know the overlay-only frames items");
   }
-  if (await sources.getByRole("radio").nth(0).getAttribute("aria-checked") !== "true") throw new Error("Automatic is not the checked overlay source");
-
-  // ADLX 次选。
-  await sources.getByRole("radio").nth(3).click();
-  await save(app);
-  const chosen = await cachedSources();
-  if (JSON.stringify(chosen?.[address]) !== JSON.stringify(alternate)) throw new Error(`The chosen overlay source was not cached: ${JSON.stringify(chosen)}`);
-  await close(app);
-  await open(app);
-  await sourcesOf(app).waitFor({ timeout: 15_000 });
-  if (await sourcesOf(app).getByRole("radio").nth(3).getAttribute("aria-checked") !== "true") throw new Error("Reopening lost the overlay source");
-
-  // 自动选择：缓存里没有这一项的来源。
-  await sourcesOf(app).getByRole("radio").nth(0).click();
-  await save(app);
-  if ((await cachedSources())?.[address] !== undefined) throw new Error("Automatic kept a cached overlay source");
-
-  // 移除这一项：来源一起去掉。
-  await sourcesOf(app).getByRole("radio").nth(3).click();
-  const item = editor.locator(".overlay-settings-metrics li").filter({ has: page.locator(".overlay-settings-metric-source") });
-  await item.getByRole("button", { name: app.performanceOverlay.removeMetric, exact: true }).click();
-  await save(app);
-  const removed = await cachedSources();
-  if (removed === null || Object.keys(removed).length !== 0) throw new Error(`Removing the item left its source: ${JSON.stringify(removed)}`);
-  await close(app);
-
-  // 九种语言的文字：先把核显温度加回去，再逐个语言打开。
-  await open(app);
-  await editor.getByRole("button", { name: app.performanceOverlay.chooseMetrics }).click();
-  await picker.locator(`[data-metric-id="${address}"]`).click();
+  const before = await picker.locator(".item-picker-row").count();
+  await picker.getByRole("searchbox", { name: app.performanceOverlay.picker.search, exact: true }).fill(item.id);
+  await picker.locator(".item-picker-catalog .item-picker-group").filter({ has: page.locator(".item-picker-entry") }).last()
+    .locator(".item-picker-entry button").first().click();
+  if (await picker.locator(".item-picker-row").count() !== before + 1) throw new Error("Adding an overlay item did not add one row");
+  const row = picker.locator(".item-picker-row").last();
+  await row.getByRole("combobox").nth(0).click();
+  await page.getByRole("option", { name: `${item.id} · board`, exact: true }).click();
+  await row.locator("input[type='text']").fill("2500");
+  await row.getByRole("combobox").nth(1).click();
+  await page.getByRole("option", { name: app.targetedReport.itemPicker.precisions.high, exact: true }).click();
   await picker.getByRole("button", { name: app.metricPicker.confirm, exact: true }).click();
   await save(app);
+  const chosen = await cachedItem();
+  if (JSON.stringify(chosen) !== JSON.stringify({ ...item, source: alternate, intervalMs: 2500, syncPrecision: "high" })) {
+    throw new Error(`The chosen overlay item was not cached: ${JSON.stringify(await cachedItems())}`);
+  }
+  if (await summaryOf() !== expectedSummary(app)) throw new Error(`zh-CN: overlay item summary ${await summaryOf()}`);
   await close(app);
+
+  await open(app);
+  picker = await openPicker(app);
+  const reopened = picker.locator(".item-picker-row").last();
+  if (!(await reopened.getByRole("combobox").nth(0).textContent())?.includes(`${item.id} · board`)
+    || await reopened.locator("input[type='text']").inputValue() !== "2500") {
+    throw new Error("Reopening lost the overlay item's source or interval");
+  }
+  await picker.getByRole("button", { name: app.metricPicker.cancel, exact: true }).click();
+
+  // 移除这一项：它的来源、间隔和精度一起去掉。
+  await editor.locator(".overlay-settings-metrics li").last()
+    .getByRole("button", { name: app.performanceOverlay.removeItem, exact: true }).click();
+  await save(app);
+  if (await cachedItem() !== undefined) throw new Error(`Removing the item left it cached: ${JSON.stringify(await cachedItems())}`);
+  await close(app);
+
+  // 九种语言的文字：直接把这一项写回偏好缓存，再逐个语言打开。
+  await writeFrontendPreferences(page, (value) => {
+    const overlay = Object.values(value.overlays ?? {})[0];
+    overlay.items = [...overlay.items, { ...item, source: alternate, intervalMs: 2500, syncPrecision: "high" }];
+  });
   const localized = [];
   for (const language of languages) {
     const copy = await loadAppCopy(language);
     await writeFrontendPreferences(page, (value) => { value.appearance.language = language; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await open(copy);
-    localized.push({ language, labels: await checkLabels(copy, language) });
+    const summary = await summaryOf();
+    if (summary !== expectedSummary(copy)) throw new Error(`${language}: overlay item summary ${summary}, expected ${expectedSummary(copy)}`);
+    localized.push({ language, summary });
     await close(copy);
   }
   await writeFrontendPreferences(page, (value) => { value.appearance.language = "system"; });
-  return { sources: labels, chosen: chosen?.[address], localized };
+  return { chosen, localized };
 }
