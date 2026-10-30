@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.RegularExpressions;
 using ResourceManager.App.Application.SoftwareIdentity;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Controlled;
@@ -10,7 +11,7 @@ using ResourceManager.App.Infrastructure.SoftwareIdentity;
 
 namespace ResourceManager.App.Application.ProcessAttribution;
 
-public sealed class RuntimeProcessAttributionPipeline : IDisposable
+public sealed partial class RuntimeProcessAttributionPipeline : IDisposable
 {
     private readonly NativeRuntimeProcessAttributionResolver resolver;
 
@@ -50,7 +51,8 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
         CancellationToken cancellationToken = default,
         IReadOnlyDictionary<int, RuntimeProcessAttributionDirectMatch>? cachedDirectMatches = null,
         bool captureDirectMatches = false,
-        IReadOnlyDictionary<int, RuntimeProcessAttributionFixedInputs>? cachedFixedInputs = null)
+        IReadOnlyDictionary<int, RuntimeProcessAttributionFixedInputs>? cachedFixedInputs = null,
+        IReadOnlyDictionary<int, RuntimeProcessHelperFacts>? cachedHelperFacts = null)
     {
         var versions = new Dictionary<NativeRuntimeProcessAttributionResolver, RuntimeAttributionInputVersions>();
         var resolved = new Dictionary<int, RuntimeSoftwareAttribution>();
@@ -90,6 +92,18 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
             }
         }
         var owners = new Dictionary<int, int>();
+        // Helper facts read only the instance's fixed name, path and command line. The per-instance entry hands them
+        // back, so a known instance does not match its command line again.
+        var helperFacts = new Dictionary<int, RuntimeProcessHelperFacts>();
+        RuntimeProcessHelperFacts Facts(RuntimeProcessIdentity process)
+        {
+            if (helperFacts.TryGetValue(process.ProcessId, out var known)) return known;
+            RuntimeProcessHelperFacts? facts = null;
+            cachedHelperFacts?.TryGetValue(process.ProcessId, out facts);
+            if (facts is null || !facts.Describes(process)) facts = ReadHelperFacts(process);
+            helperFacts[process.ProcessId] = facts;
+            return facts;
+        }
         foreach (var process in processes.OrderBy(process => process.StartKey))
         {
             if (failures.ContainsKey(process.ProcessId)) continue;
@@ -98,17 +112,17 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
                 or NativeRuntimeAttributionSources.Service) continue;
             var current = process;
             var visited = new HashSet<int> { current.ProcessId };
-            while (visited.Count <= byId.Count && IsHelper(current)
+            while (visited.Count <= byId.Count && Facts(current).IsHelper
                 && current.StartKey is > 0 && current.ParentProcessId is { } parentId
                 && byId.TryGetValue(parentId, out var parent) && parent.StartKey is > 0
                 && parent.StartKey <= current.StartKey && visited.Add(parentId))
             {
                 if (failures.ContainsKey(parentId)) break;
                 current = parent;
-                if (IsHelper(parent) && sources[parentId] is not (NativeRuntimeAttributionSources.Adapted
+                if (Facts(parent).IsHelper && sources[parentId] is not (NativeRuntimeAttributionSources.Adapted
                     or NativeRuntimeAttributionSources.Controlled
                     or NativeRuntimeAttributionSources.Service)) continue;
-                if (WebViewHostName(process.CommandLine) is { } hostName
+                if (Facts(process).WebViewHostName is { } hostName
                     && !Path.GetFileName(parent.ExecutablePath ?? parent.Name)
                         .Equals(hostName, StringComparison.OrdinalIgnoreCase)) break;
                 var owner = resolved[parentId];
@@ -142,25 +156,36 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
             Failures = failures,
             DirectMatchesByProcessId = directMatches is null
                 ? ImmutableDictionary<int, RuntimeProcessAttributionDirectMatch>.Empty
-                : directMatches
+                : directMatches,
+            HelperFactsByProcessId = helperFacts
         };
+    }
+
+    // The host name is read only for a helper: the chain consults it only for a process that passed IsHelper.
+    internal static RuntimeProcessHelperFacts ReadHelperFacts(RuntimeProcessIdentity process)
+    {
+        var isHelper = IsHelper(process);
+        return new(process.ProcessId, process.StartKey, process.Name, process.ExecutablePath, process.CommandLine,
+            isHelper, isHelper ? WebViewHostName(process.CommandLine) : null);
     }
 
     private static bool IsHelper(RuntimeProcessIdentity process)
         => Path.GetFileNameWithoutExtension(process.ExecutablePath ?? process.Name)
             .Equals("msedgewebview2", StringComparison.OrdinalIgnoreCase)
-            || process.CommandLine is { } command && System.Text.RegularExpressions.Regex.IsMatch(command,
-                @"(?:^|\s)--type=(?:renderer|gpu-process|utility|zygote|crashpad-handler)(?:\s|$)",
-                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+            || process.CommandLine is { } command && HelperTypePattern().IsMatch(command);
 
     private static string? WebViewHostName(string? commandLine)
     {
         if (commandLine is null) return null;
-        var match = System.Text.RegularExpressions.Regex.Match(commandLine,
-            "(?:^|\\s)--webview-exe-name=(?:\"([^\"]+)\"|([^\\s]+))",
-            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        var match = WebViewHostNamePattern().Match(commandLine);
         return match.Success ? match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value : null;
     }
+
+    [GeneratedRegex(@"(?:^|\s)--type=(?:renderer|gpu-process|utility|zygote|crashpad-handler)(?:\s|$)", RegexOptions.CultureInvariant)]
+    private static partial Regex HelperTypePattern();
+
+    [GeneratedRegex("(?:^|\\s)--webview-exe-name=(?:\"([^\"]+)\"|([^\\s]+))", RegexOptions.CultureInvariant)]
+    private static partial Regex WebViewHostNamePattern();
 
     public void Dispose() => resolver.Dispose();
 }
@@ -173,6 +198,10 @@ public sealed record RuntimeProcessAttributionBatch(
 
     internal IReadOnlyDictionary<int, RuntimeProcessAttributionDirectMatch> DirectMatchesByProcessId { get; init; }
         = ImmutableDictionary<int, RuntimeProcessAttributionDirectMatch>.Empty;
+
+    // The helper facts this batch consulted, reused or read, for the caller's per-instance entry.
+    internal IReadOnlyDictionary<int, RuntimeProcessHelperFacts> HelperFactsByProcessId { get; init; }
+        = ImmutableDictionary<int, RuntimeProcessHelperFacts>.Empty;
 }
 
 internal readonly record struct RuntimeProcessAttributionDirectMatch(

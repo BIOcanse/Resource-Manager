@@ -30,7 +30,9 @@ internal static class RuntimeProcessAttributionCapture
         Action<RuntimeProcessIdentity, string, RuntimeProcessAttributionCatalog,
             RuntimeProcessAttributionDirectMatch>? cacheDirectMatch = null,
         Func<RuntimeProcessIdentity, RuntimeProcessAttributionFixedInputs?>? getCachedFixedInputs = null,
-        IDictionary<string, RuntimeProcessAttributionCatalogLease>? retainedCatalogs = null)
+        IDictionary<string, RuntimeProcessAttributionCatalogLease>? retainedCatalogs = null,
+        Func<RuntimeProcessIdentity, RuntimeProcessHelperFacts?>? getCachedHelperFacts = null,
+        Action<RuntimeProcessIdentity, RuntimeProcessHelperFacts>? cacheHelperFacts = null)
     {
         var catalogs = new Dictionary<string, RuntimeProcessAttributionCatalogLease>(StringComparer.Ordinal);
         var scopeByPid = new Dictionary<int, string>();
@@ -75,11 +77,15 @@ internal static class RuntimeProcessAttributionCapture
             var fixedInputs = getCachedFixedInputs is null ? null : processes
                 .Select(process => (process.ProcessId, Facts: getCachedFixedInputs(process)))
                 .Where(item => item.Facts is not null).ToDictionary(item => item.ProcessId, item => item.Facts!);
+            var helperFacts = getCachedHelperFacts is null ? null : processes
+                .Select(process => (process.ProcessId, Facts: getCachedHelperFacts(process)))
+                .Where(item => item.Facts is not null).ToDictionary(item => item.ProcessId, item => item.Facts!);
             var batch = RuntimeProcessAttributionPipeline.MatchBatch(processes,
                 process => catalogs[scopeByPid[process.ProcessId]].Catalog.Pipeline,
                 cancellationToken,
                 cachedDirectMatches,
-                captureDirectMatches: cacheDirectMatch is not null, cachedFixedInputs: fixedInputs);
+                captureDirectMatches: cacheDirectMatch is not null, cachedFixedInputs: fixedInputs,
+                cachedHelperFacts: helperFacts);
             if (cacheDirectMatch is not null)
             {
                 foreach (var process in processes)
@@ -91,6 +97,19 @@ internal static class RuntimeProcessAttributionCapture
                         continue;
                     var scope = scopeByPid[process.ProcessId];
                     cacheDirectMatch(process, scope, catalogs[scope].Catalog, match);
+                }
+            }
+            // Only facts read in this batch are stored; reused ones are already in their entry.
+            if (cacheHelperFacts is not null)
+            {
+                foreach (var process in processes)
+                {
+                    if (process.StartKey is not > 0
+                        || !batch.HelperFactsByProcessId.TryGetValue(process.ProcessId, out var facts)
+                        || helperFacts?.TryGetValue(process.ProcessId, out var previous) == true
+                            && ReferenceEquals(previous, facts))
+                        continue;
+                    cacheHelperFacts(process, facts);
                 }
             }
             // These are scoring inputs only. Matching always uses the owner's separate catalog.

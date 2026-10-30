@@ -22,7 +22,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         var capture = await RuntimeProcessAttributionCapture.CaptureAsync(processAttributionCatalogProvider,
             processSamples.Select(process => CreateRuntimeIdentity(process, textSharing)).ToArray(), baseScorePlan, cancellationToken,
             TryGetCachedDirectMatch,
-            CacheDirectMatch, TryGetCachedFixedInputs, retainedCatalogs);
+            CacheDirectMatch, TryGetCachedFixedInputs, retainedCatalogs, TryGetCachedHelperFacts, CacheHelperFacts);
         var batch = capture.Batch;
         if (batch.Failures.Count != 0)
             logger?.LogWarning("Process attribution could not observe these processes: {FailedProcesses}.",
@@ -105,7 +105,8 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (!cache.TryGet(key, out var cached) || cached?.Identity != identity)
             // A direct match belongs to its original input. Recovery must not
             // overwrite that input while carrying the old result and stamps.
-            cache.Set(key, new CachedProcessAttribution(identity) { FixedInputs = cached?.FixedInputs });
+            cache.Set(key, new CachedProcessAttribution(identity)
+                { FixedInputs = cached?.FixedInputs, HelperFacts = cached?.HelperFacts });
     }
 
     private RuntimeProcessAttributionDirectMatch? TryGetCachedDirectMatch(
@@ -152,6 +153,7 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         if (process.StartKey is not > 0) return;
         var key = new ProcessInstanceKey(process.ProcessId, process.StartKey.Value);
+        var helperFacts = cache.TryGet(key, out var previous) ? previous?.HelperFacts : null;
         cache.Set(key, new CachedProcessAttribution(
             process,
             catalogScope,
@@ -159,7 +161,30 @@ public sealed partial class WindowsResourceBreakdownSampler
             catalog.Version,
             catalog.BundledCatalogVersion,
             match,
-            new WeakReference<RuntimeProcessAttributionCatalog>(catalog)) { FixedInputs = match.ExternalInputs?.FixedInputs });
+            new WeakReference<RuntimeProcessAttributionCatalog>(catalog))
+            { FixedInputs = match.ExternalInputs?.FixedInputs, HelperFacts = helperFacts });
+    }
+
+    private RuntimeProcessHelperFacts? TryGetCachedHelperFacts(RuntimeProcessIdentity process)
+        => TryGetCachedHelperFacts(processAttributionCache, process);
+
+    internal static RuntimeProcessHelperFacts? TryGetCachedHelperFacts(
+        ProcessInstanceCache<CachedProcessAttribution> cache, RuntimeProcessIdentity process)
+        => process.StartKey is > 0 && cache.TryGet(new(process.ProcessId, process.StartKey.Value), out var entry)
+            ? entry?.HelperFacts : null;
+
+    private void CacheHelperFacts(RuntimeProcessIdentity process, RuntimeProcessHelperFacts facts)
+        => CacheHelperFacts(processAttributionCache, process, facts);
+
+    // The entry exists: the batch's identity was cached when it was read. Its facts are checked
+    // against the identity on use, so a later identity change reads them again.
+    internal static void CacheHelperFacts(
+        ProcessInstanceCache<CachedProcessAttribution> cache, RuntimeProcessIdentity process, RuntimeProcessHelperFacts facts)
+    {
+        if (process.StartKey is not > 0) return;
+        var key = new ProcessInstanceKey(process.ProcessId, process.StartKey.Value);
+        if (cache.TryGet(key, out var cached) && cached is not null)
+            cache.Set(key, cached with { HelperFacts = facts });
     }
 
     private RuntimeProcessAttributionFixedInputs? TryGetCachedFixedInputs(RuntimeProcessIdentity process)
@@ -192,5 +217,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         WeakReference<RuntimeProcessAttributionCatalog>? CatalogSnapshot = null)
     {
         internal RuntimeProcessAttributionFixedInputs? FixedInputs { get; init; }
+        internal RuntimeProcessHelperFacts? HelperFacts { get; init; }
     }
 }
