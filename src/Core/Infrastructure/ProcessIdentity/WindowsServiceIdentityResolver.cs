@@ -77,16 +77,15 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
         {
             var service = orderedServices[0];
             return RuntimeAttributionObservation.Matched(new RuntimeSoftwareAttribution(
-                $"windows-service:{NormalizeId(service.ServiceName)}",
+                WindowsServiceSoftwareIds.ForService(service.ServiceName),
                 string.IsNullOrWhiteSpace(service.DisplayName) ? service.ServiceName : service.DisplayName,
                 SoftwareKinds.WindowsService,
                 SoftwareDisplayKinds.WindowsService,
                 []));
         }
 
-        var identityText = string.Join('|', orderedServices.Take(8).Select(static service => service.ServiceName));
         return RuntimeAttributionObservation.Matched(new RuntimeSoftwareAttribution(
-            $"windows-service-group:{NormalizeId(identityText)}-{orderedServices.Length}",
+            WindowsServiceSoftwareIds.ForServiceGroup(orderedServices.Select(static service => service.ServiceName).ToArray()),
             // 名字为空：前端按分组标识出「Windows 服务」，数量由 ProcessCount 单独给出。
             string.Empty,
             SoftwareKinds.WindowsService,
@@ -180,17 +179,6 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
 
     private static long? TryReadProcessStartKey(int processId)
         => BasicMetricReader.ReadCurrentCreationFileTime(processId);
-
-    private static string NormalizeId(string value)
-    {
-        var chars = value
-            .Trim()
-            .ToLowerInvariant()
-            .Select(static c => char.IsLetterOrDigit(c) ? c : '-')
-            .ToArray();
-        var id = string.Join('-', new string(chars).Split('-', StringSplitOptions.RemoveEmptyEntries));
-        return string.IsNullOrWhiteSpace(id) ? "unknown" : id;
-    }
 
     private sealed record ServiceIdentity(string ServiceName, string DisplayName);
 

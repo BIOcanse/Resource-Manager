@@ -2043,7 +2043,16 @@ export interface ProtectedOptimizationTarget {
   lastVerifiedAt?: string | null;
   state: string;
   allowsPlacementAvoidance: boolean;
+  /** 0 不保护，1 不冻结（docs/scheduling_protection_2026-10-29.md：保护只留一级）。 */
   protectionLevel: number;
+  /** 用户条目替换了默认条目时：被替换的默认的等级和来源，两项同时有或同时为 null。 */
+  defaultProtectionLevel?: number | null;
+  defaultProtectionSource?: string | null;
+  /** 给出这个条目（或它替换的默认）的软件目录组。 */
+  policyGroupId?: string | null;
+  /** 按进程的条目：匹配的映像名，和限定的完整路径。 */
+  processName?: string | null;
+  executablePath?: string | null;
 }
 
 export interface OptimizationReportOverview {

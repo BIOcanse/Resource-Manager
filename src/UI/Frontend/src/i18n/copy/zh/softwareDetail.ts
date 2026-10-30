@@ -33,8 +33,12 @@ export const zhSoftwareDetailCopy = {
     protection: {
       title: "保护",
       enabled: "启用保护",
-      hint: "不会被降级：不降低优先级、不限速、不冻结、不移到集显、不整理内存；仍可以被提升。",
+      hint: "保护就是不冻结：不会被冻结，其他调度照常进行。基础分达到 81 及以上的软件不再被压制。",
       failed: "无法读取或保存保护设置，请重新打开软件详情。",
+      sourceLine: (source: string, state: string) => `来源：${source}（${state}）`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `默认：${defaultSource}（${defaultState}）；已由你在${source}中改为${state}`,
+      state: { protected: "保护", unprotected: "不保护" },
+      sources: { software_detail: "软件详情", report: "报告", protection_list: "保护列表", software_catalog: "软件目录", system_default: "系统服务默认" },
     },
     participation: {
       title: "调度参与",

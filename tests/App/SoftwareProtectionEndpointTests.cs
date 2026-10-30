@@ -23,7 +23,7 @@ public sealed class SoftwareProtectionEndpointTests
     public async Task MappedOptimizationGroupPersistsProtectionWithoutRevivingLegacyRoutes()
     {
         var store = new Store();
-        var protection = new OptimizationProtectionService(store, new Registry());
+        var protection = new OptimizationProtectionService(store, new Registry(), FixedSoftwarePolicyProfileProvider.Empty);
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
@@ -45,19 +45,19 @@ public sealed class SoftwareProtectionEndpointTests
             Timeout = TimeSpan.FromSeconds(10)
         };
 
-        Assert.Empty((await client.GetFromJsonAsync<ProtectedOptimizationTarget[]>(
-            "/api/optimization/protection"))!);
+        Assert.Empty(ProtectionTestEntries.User((await client.GetFromJsonAsync<ProtectedOptimizationTarget[]>(
+            "/api/optimization/protection"))!));
         using var enabled = await client.PutAsJsonAsync(
             "/api/optimization/protection/software/app", new SoftwareProtectionRequest(true));
         Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
         var selected = (await enabled.Content.ReadFromJsonAsync<ProtectedOptimizationTarget>())!;
         Assert.Equal("app", selected.SoftwareId);
-        Assert.Equal(OptimizationProtectionLevels.Level2NoOptimization, selected.ProtectionLevel);
+        Assert.Equal(OptimizationProtectionLevels.NoFreeze, selected.ProtectionLevel);
         var targets = (await client.GetFromJsonAsync<ProtectedOptimizationTarget[]>(
             "/api/optimization/protection"))!;
-        Assert.Equal(selected, Assert.Single(targets));
-        Assert.Equal(selected, Assert.Single(await new OptimizationProtectionService(store, new Registry())
-            .GetProtectedTargetsAsync(default)));
+        Assert.Equal(selected, Assert.Single(ProtectionTestEntries.User(targets)));
+        Assert.Equal(selected, Assert.Single(ProtectionTestEntries.User(await new OptimizationProtectionService(store, new Registry(), FixedSoftwarePolicyProfileProvider.Empty)
+            .GetProtectedTargetsAsync(default))));
 
         using var unknown = await client.PutAsJsonAsync(
             "/api/optimization/protection/software/missing", new SoftwareProtectionRequest(false));
@@ -67,8 +67,8 @@ public sealed class SoftwareProtectionEndpointTests
         using var disabled = await client.PutAsJsonAsync(
             "/api/optimization/protection/software/app", new SoftwareProtectionRequest(false));
         Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
-        Assert.Empty((await client.GetFromJsonAsync<ProtectedOptimizationTarget[]>(
-            "/api/optimization/protection"))!);
+        Assert.Empty(ProtectionTestEntries.User((await client.GetFromJsonAsync<ProtectedOptimizationTarget[]>(
+            "/api/optimization/protection"))!));
         Assert.Empty(store.Targets);
         foreach (var legacy in new[]
         {
@@ -78,6 +78,86 @@ public sealed class SoftwareProtectionEndpointTests
             using var absent = await client.GetAsync(legacy);
             Assert.Equal(HttpStatusCode.NotFound, absent.StatusCode);
         }
+        await app.StopAsync();
+    }
+
+    [Fact]
+    public async Task ProtectionListChangesAndRestoresDefaultsThroughEntryRoutes()
+    {
+        var store = new Store();
+        var profile = new SoftwarePolicyProfile(
+            new Dictionary<string, SoftwarePolicyGroup>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["meeting"] = new("meeting", "Meeting", null, []) { NoFreeze = true }
+            },
+            new Dictionary<string, SoftwarePolicyAssignment>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["app"] = new("app", "Fixture", "meeting", [])
+            });
+        var protection = new OptimizationProtectionService(store, new Registry(), new FixedSoftwarePolicyProfileProvider(profile));
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Services.AddSingleton<IOptimizationProtectionService>(protection);
+        builder.Services.AddSingleton<IHostManagerReportService>(_ =>
+            throw new InvalidOperationException("Protection must use its registered owner."));
+        builder.Services.AddSingleton<IHostManagerSmartCoordinator>(_ =>
+            throw new InvalidOperationException("Protection must not execute the scheduler."));
+        await using var app = builder.Build();
+        typeof(ResourceManagerEndpointRouteBuilderExtensions)
+            .GetMethod("MapOptimizationEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [app, LoopbackApiPipelineMode.StandardUser]);
+        await app.StartAsync();
+        using var client = new HttpClient
+        {
+            BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
+                .Features.Get<IServerAddressesFeature>()!.Addresses)),
+            Timeout = TimeSpan.FromSeconds(10)
+        };
+
+        var list = (await client.GetFromJsonAsync<ProtectedOptimizationTarget[]>("/api/optimization/protection"))!;
+        var catalog = Assert.Single(list, item => item.ProtectionSource == OptimizationProtectionSources.SoftwareCatalog);
+        Assert.Equal(("app", OptimizationProtectionLevels.NoFreeze, "meeting"), (catalog.SoftwareId, catalog.ProtectionLevel, catalog.PolicyGroupId));
+        var services = Assert.Single(list, item => item.SoftwareKind == SoftwareKinds.WindowsService);
+        Assert.Equal(OptimizationProtectionSources.SystemDefault, services.ProtectionSource);
+
+        // Switch the Windows service default off from the list; it is stored and replaces the default.
+        using var off = await client.PutAsJsonAsync(
+            $"/api/optimization/protection/entries/{services.Id}/level", new OptimizationProtectionLevelRequest(0));
+        Assert.Equal(HttpStatusCode.OK, off.StatusCode);
+        var changed = (await off.Content.ReadFromJsonAsync<ProtectedOptimizationTarget>())!;
+        Assert.Equal((services.Id, OptimizationProtectionSources.ProtectionList, OptimizationProtectionLevels.None),
+            (changed.Id, changed.ProtectionSource, changed.ProtectionLevel));
+        Assert.Equal(((int?)OptimizationProtectionLevels.NoFreeze, OptimizationProtectionSources.SystemDefault),
+            (changed.DefaultProtectionLevel, changed.DefaultProtectionSource));
+        Assert.Equal(services.Id, Assert.Single(store.Targets).Id);
+        list = (await client.GetFromJsonAsync<ProtectedOptimizationTarget[]>("/api/optimization/protection"))!;
+        Assert.Equal(changed, Assert.Single(list, item => item.Id == services.Id));
+
+        using var levelTwo = await client.PutAsJsonAsync(
+            $"/api/optimization/protection/entries/{services.Id}/level", new OptimizationProtectionLevelRequest(2));
+        Assert.Equal(HttpStatusCode.BadRequest, levelTwo.StatusCode);
+        Assert.Contains("optimization-protection-level-invalid", await levelTwo.Content.ReadAsStringAsync());
+        using var unknown = await client.PutAsJsonAsync(
+            "/api/optimization/protection/entries/missing/level", new OptimizationProtectionLevelRequest(1));
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+
+        // A default itself cannot be removed; removing the user's entry restores the default.
+        using var removeDefault = await client.DeleteAsync($"/api/optimization/protection/entries/{catalog.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, removeDefault.StatusCode);
+        using var restore = await client.DeleteAsync($"/api/optimization/protection/entries/{services.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, restore.StatusCode);
+        Assert.Empty(store.Targets);
+        list = (await client.GetFromJsonAsync<ProtectedOptimizationTarget[]>("/api/optimization/protection"))!;
+        Assert.Equal(services, Assert.Single(list, item => item.Id == services.Id));
+
+        // The software switch turns a catalog default off with a stored entry at 0.
+        using var softwareOff = await client.PutAsJsonAsync(
+            "/api/optimization/protection/software/app", new SoftwareProtectionRequest(false));
+        var softwareEntry = (await softwareOff.Content.ReadFromJsonAsync<ProtectedOptimizationTarget>())!;
+        Assert.Equal((catalog.Id, OptimizationProtectionSources.SoftwareDetail, OptimizationProtectionLevels.None),
+            (softwareEntry.Id, softwareEntry.ProtectionSource, softwareEntry.ProtectionLevel));
+        Assert.Equal(OptimizationProtectionSources.SoftwareCatalog, softwareEntry.DefaultProtectionSource);
         await app.StopAsync();
     }
 

@@ -1,48 +1,72 @@
-using System.Security.Cryptography;
-using System.Text;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.Optimization;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
+/// <summary>
+/// Owner of the protection list. The list is the default entries (software catalog, system default) with the
+/// user's entries in place of the defaults they change; only the user's entries are stored. Every read returns the
+/// same immutable list, rebuilt after each user change.
+/// </summary>
 public sealed class OptimizationProtectionService(
     IOptimizationProtectionStore store,
-    ISoftwareRegistryView softwareRegistry) : IOptimizationProtectionService
+    ISoftwareRegistryView softwareRegistry,
+    ISoftwarePolicyProfileProvider profileProvider) : IOptimizationProtectionService
 {
     private readonly SemaphoreSlim gate = new(1, 1);
+    private ProtectedOptimizationTarget[] defaults = [];
+    private ProtectedOptimizationTarget[] userTargets = [];
     private ProtectedOptimizationTarget[] targets = [];
     private bool loaded;
 
     public int ProtectedTargetCount => Volatile.Read(ref targets).Length;
 
+    /// <summary>
+    /// Software detail protection switch. On: a user entry at no-freeze. Off: a stored user entry at 0 when the
+    /// software has a default (catalog) protection, so the default stays switched off; otherwise the user entry is
+    /// removed. Returns the user entry now in the list, or null when there is none.
+    /// </summary>
     public async Task<ProtectedOptimizationTarget?> SetSoftwareProtectionAsync(string softwareId, bool enabled,
         CancellationToken cancellationToken)
     {
         var software = (await softwareRegistry.GetSoftwareAsync(cancellationToken)).FirstOrDefault(item =>
-            string.Equals(item.Id, softwareId, StringComparison.OrdinalIgnoreCase))
-            ?? throw new KeyNotFoundException("Unknown software identity.");
+            string.Equals(item.Id, softwareId, StringComparison.OrdinalIgnoreCase));
         await EnsureLoadedAsync(cancellationToken);
+        var softwareDefault = Volatile.Read(ref defaults).FirstOrDefault(item =>
+            item.TargetType == OptimizationProtectionTargetTypes.Software
+            && string.Equals(item.SoftwareId, softwareId, StringComparison.OrdinalIgnoreCase));
+        if (software is null && softwareDefault is null)
+        {
+            throw new KeyNotFoundException("Unknown software identity.");
+        }
+
+        var id = software?.Id ?? softwareDefault!.SoftwareId!;
+        var key = OptimizationProtectionDefaults.SoftwareKey(id);
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var key = $"software:{software.Id}";
-            var next = targets.Where(item => !string.Equals(item.SoftwareId, software.Id, StringComparison.OrdinalIgnoreCase)
+            var next = userTargets.Where(item => !string.Equals(item.SoftwareId, id, StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(item.TargetKey, key, StringComparison.OrdinalIgnoreCase)).ToList();
+            int? level = enabled
+                ? OptimizationProtectionLevels.NoFreeze
+                : softwareDefault is not null
+                    ? OptimizationProtectionLevels.None
+                    : null;
             ProtectedOptimizationTarget? protection = null;
-            if (enabled)
+            if (level is { } userLevel)
             {
                 var now = DateTimeOffset.UtcNow;
-                protection = new(CreateStableId($"protect|Software|{key}"), OptimizationReportTargetTypes.Software,
-                    key, software.Id, software.Name, software.Kind, now,
-                    "software_detail", "software-detail", now, OptimizationProtectionStates.Active,
-                    AllowsPlacementAvoidance: true, ProtectionLevel: OptimizationProtectionLevels.Level2NoOptimization);
+                protection = new(OptimizationProtectionDefaults.CreateId(OptimizationProtectionTargetTypes.Software, key),
+                    OptimizationProtectionTargetTypes.Software, key, id, software?.Name ?? softwareDefault!.SoftwareName,
+                    software?.Kind ?? softwareDefault!.SoftwareKind, now,
+                    OptimizationProtectionSources.SoftwareDetail, "software-detail", now, OptimizationProtectionStates.Active,
+                    AllowsPlacementAvoidance: true, ProtectionLevel: userLevel);
                 next.Add(protection);
             }
-            var ordered = next.OrderBy(item => item.ProtectedAt).ToArray();
-            await store.SaveAsync(ordered, cancellationToken);
-            Volatile.Write(ref targets, ordered);
-            return protection;
+
+            var published = await CommitAsync(next, cancellationToken);
+            return protection is null ? null : Find(published, protection.Id);
         }
         finally { gate.Release(); }
     }
@@ -63,33 +87,28 @@ public sealed class OptimizationProtectionService(
         {
             var now = DateTimeOffset.UtcNow;
             var item = new ProtectedOptimizationTarget(
-                CreateStableId(
-                    $"protect|{report.Target.TargetType}|{report.Target.TargetKey}"),
+                OptimizationProtectionDefaults.CreateId(report.Target.TargetType, report.Target.TargetKey),
                 report.Target.TargetType,
                 report.Target.TargetKey,
                 report.Target.SoftwareId,
                 report.Target.SoftwareName,
                 report.Target.SoftwareKind,
                 now,
-                "report",
+                OptimizationProtectionSources.Report,
                 report.Id,
                 now,
                 OptimizationProtectionStates.Active,
                 AllowsPlacementAvoidance: true,
-                ProtectionLevel: OptimizationProtectionLevels.Level2NoOptimization);
+                ProtectionLevel: OptimizationProtectionLevels.NoFreeze);
             ProtectedOptimizationTarget[] next =
             [
-                .. targets
+                .. userTargets
                     .Where(existing => !existing.Id.Equals(
                         item.Id,
                         StringComparison.OrdinalIgnoreCase)),
                 item
             ];
-            Array.Sort(next, static (left, right) =>
-                left.ProtectedAt.CompareTo(right.ProtectedAt));
-            await store.SaveAsync(next, cancellationToken);
-            Volatile.Write(ref targets, next);
-            return item;
+            return Find(await CommitAsync(next, cancellationToken), item.Id);
         }
         finally
         {
@@ -104,6 +123,7 @@ public sealed class OptimizationProtectionService(
         return Volatile.Read(ref targets);
     }
 
+    /// <summary>Marks the user's software entries active or missing by the current software list.</summary>
     public async Task<IReadOnlyList<ProtectedOptimizationTarget>> RefreshProtectedTargetsAsync(
         CancellationToken cancellationToken)
     {
@@ -121,19 +141,16 @@ public sealed class OptimizationProtectionService(
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var next = targets
-                .Select(item => item with
+            var next = userTargets
+                .Select(item => item.TargetType != OptimizationProtectionTargetTypes.Software ? item : item with
                 {
                     LastVerifiedAt = now,
                     State = IsPresent(item, softwareIds, softwareNames)
                         ? OptimizationProtectionStates.Active
                         : OptimizationProtectionStates.Missing
                 })
-                .OrderBy(static item => item.ProtectedAt)
                 .ToArray();
-            await store.SaveAsync(next, cancellationToken);
-            Volatile.Write(ref targets, next);
-            return next;
+            return await CommitAsync(next, cancellationToken);
         }
         finally
         {
@@ -141,6 +158,10 @@ public sealed class OptimizationProtectionService(
         }
     }
 
+    /// <summary>
+    /// Removes the user's own entry. A default it replaced returns to the list; a default itself cannot be
+    /// removed (set its level to 0 to switch it off), so this returns false for it.
+    /// </summary>
     public async Task<bool> RemoveProtectedTargetAsync(
         string protectionId,
         CancellationToken cancellationToken)
@@ -149,17 +170,16 @@ public sealed class OptimizationProtectionService(
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var next = targets
+            var next = userTargets
                 .Where(item => !item.Id.Equals(
                     protectionId,
                     StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-            if (next.Length == targets.Length)
+            if (next.Length == userTargets.Length)
             {
                 return false;
             }
-            await store.SaveAsync(next, cancellationToken);
-            Volatile.Write(ref targets, next);
+            await CommitAsync(next, cancellationToken);
             return true;
         }
         finally
@@ -168,38 +188,56 @@ public sealed class OptimizationProtectionService(
         }
     }
 
+    /// <summary>
+    /// Sets the level (0 or 1) of one entry of the list. A user entry changes in place; a default gets a stored
+    /// user entry for the same target (source <c>protection_list</c>), which replaces it. Null when no entry has
+    /// this id.
+    /// </summary>
     public async Task<ProtectedOptimizationTarget?> UpdateProtectedTargetLevelAsync(
         string protectionId,
         int protectionLevel,
         CancellationToken cancellationToken)
     {
+        if (!OptimizationProtectionLevels.IsValid(protectionLevel))
+        {
+            throw new ArgumentOutOfRangeException(nameof(protectionLevel), protectionLevel, "Protection level must be 0 or 1.");
+        }
+
         await EnsureLoadedAsync(cancellationToken);
         await gate.WaitAsync(cancellationToken);
         try
         {
+            var now = DateTimeOffset.UtcNow;
+            var next = (ProtectedOptimizationTarget[])userTargets.Clone();
             var index = Array.FindIndex(
-                targets,
+                next,
                 item => item.Id.Equals(
                     protectionId,
                     StringComparison.OrdinalIgnoreCase));
-            if (index < 0)
+            if (index >= 0)
+            {
+                next[index] = next[index] with
+                {
+                    ProtectionLevel = protectionLevel,
+                    LastVerifiedAt = now
+                };
+            }
+            else if (defaults.FirstOrDefault(item => item.Id.Equals(protectionId, StringComparison.OrdinalIgnoreCase))
+                is { } replacedDefault)
+            {
+                next = [.. next, OptimizationProtectionDefaults.CreateUserEntry(
+                    replacedDefault,
+                    protectionLevel,
+                    OptimizationProtectionSources.ProtectionList,
+                    OptimizationProtectionDefaults.ProtectionListOrigin,
+                    now)];
+            }
+            else
             {
                 return null;
             }
 
-            var next = (ProtectedOptimizationTarget[])targets.Clone();
-            next[index] = next[index] with
-            {
-                ProtectionLevel = OptimizationProtectionLevels.Normalize(protectionLevel),
-                LastVerifiedAt = DateTimeOffset.UtcNow
-            };
-            Array.Sort(next, static (left, right) =>
-                left.ProtectedAt.CompareTo(right.ProtectedAt));
-            await store.SaveAsync(next, cancellationToken);
-            Volatile.Write(ref targets, next);
-            return next.First(item => item.Id.Equals(
-                protectionId,
-                StringComparison.OrdinalIgnoreCase));
+            return Find(await CommitAsync(next, cancellationToken), protectionId);
         }
         finally
         {
@@ -215,6 +253,7 @@ public sealed class OptimizationProtectionService(
         await EnsureLoadedAsync(cancellationToken);
         return Volatile.Read(ref targets).Any(item =>
             item.State == OptimizationProtectionStates.Active
+            && item.ProtectionLevel > OptimizationProtectionLevels.None
             && item.TargetType.Equals(
                 target.TargetType,
                 StringComparison.OrdinalIgnoreCase)
@@ -226,6 +265,19 @@ public sealed class OptimizationProtectionService(
                     && item.SoftwareId.Equals(
                         target.SoftwareId,
                         StringComparison.OrdinalIgnoreCase))));
+    }
+
+    /// <summary>Saves the user entries, then publishes them and the rebuilt list. Called inside the gate.</summary>
+    private async Task<ProtectedOptimizationTarget[]> CommitAsync(
+        IEnumerable<ProtectedOptimizationTarget> nextUserTargets,
+        CancellationToken cancellationToken)
+    {
+        var ordered = nextUserTargets.OrderBy(static item => item.ProtectedAt).ToArray();
+        await store.SaveAsync(ordered, cancellationToken);
+        var published = OptimizationProtectionDefaults.Merge(defaults, ordered);
+        userTargets = ordered;
+        Volatile.Write(ref targets, published);
+        return published;
     }
 
     private async Task EnsureLoadedAsync(CancellationToken cancellationToken)
@@ -243,10 +295,14 @@ public sealed class OptimizationProtectionService(
                 return;
             }
             var persisted = await store.LoadAsync(cancellationToken);
-            var next = persisted
+            var profile = await profileProvider.GetProfileAsync(cancellationToken);
+            var nextDefaults = OptimizationProtectionDefaults.Create(profile, DateTimeOffset.UtcNow);
+            var nextUsers = persisted
                 .OrderBy(static item => item.ProtectedAt)
                 .ToArray();
-            Volatile.Write(ref targets, next);
+            defaults = nextDefaults;
+            userTargets = nextUsers;
+            Volatile.Write(ref targets, OptimizationProtectionDefaults.Merge(nextDefaults, nextUsers));
             Volatile.Write(ref loaded, true);
         }
         finally
@@ -254,6 +310,9 @@ public sealed class OptimizationProtectionService(
             gate.Release();
         }
     }
+
+    private static ProtectedOptimizationTarget? Find(IReadOnlyList<ProtectedOptimizationTarget> list, string id)
+        => list.FirstOrDefault(item => item.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
     private static bool IsPresent(
         ProtectedOptimizationTarget item,
@@ -279,11 +338,5 @@ public sealed class OptimizationProtectionService(
                 : '\0')
             .Where(static value => value != '\0')
             .ToArray());
-    }
-
-    private static string CreateStableId(string value)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value.ToUpperInvariant()));
-        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
     }
 }

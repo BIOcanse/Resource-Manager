@@ -510,6 +510,7 @@ function GpuPlacementPolicySection(props: {
               </Show>
               <SchedulingParticipationGroup
                 softwareId={props.softwareId}
+                softwareKind={props.softwareKind}
                 protectionAvailable={props.protectionAvailable}
                 policy={current()}
                 onUpdate={updateDraft}
@@ -629,6 +630,7 @@ function GpuPlacementPolicySection(props: {
 // 保护（只防降级，立即保存）与三个“不参与”开关（完全不管对应的域，进策略草稿）各自独立，互不推导、互不联动。
 function SchedulingParticipationGroup(props: {
   softwareId: string;
+  softwareKind: string;
   protectionAvailable: boolean;
   policy: GpuPlacementSoftwarePolicy;
   onUpdate: (patch: Partial<GpuPlacementSoftwarePolicy>) => void;
@@ -637,7 +639,7 @@ function SchedulingParticipationGroup(props: {
     <div class="software-policy-group">
       <h4>{uiText.softwareDetail.participation.title}</h4>
       <Show when={props.protectionAvailable}>
-        <SoftwareProtectionControl softwareId={props.softwareId} />
+        <SoftwareProtectionControl softwareId={props.softwareId} softwareKind={props.softwareKind} />
       </Show>
       <div class="software-policy-grid">
         <PolicyToggle

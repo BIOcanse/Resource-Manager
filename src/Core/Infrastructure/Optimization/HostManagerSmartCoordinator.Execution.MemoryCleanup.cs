@@ -268,7 +268,7 @@ public sealed partial class HostManagerSmartCoordinator
             unknownCandidateCount);
     }
 
-    private async Task<MemoryCleanupFinalAdmissionResult>
+    private Task<MemoryCleanupFinalAdmissionResult>
         CaptureMemoryCleanupFinalAdmissionAsync(
         AutomaticMemoryCleanupPlanRequest request,
         IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeScore>
@@ -288,14 +288,13 @@ public sealed partial class HostManagerSmartCoordinator
                 out var currentProcesses,
                 out var maximumBaseScores))
         {
-            return MemoryCleanupFinalAdmissionResult.Incomplete(
-                HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCandidateProjectionIncomplete);
+            return Task.FromResult(MemoryCleanupFinalAdmissionResult.Incomplete(
+                HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCandidateProjectionIncomplete));
         }
         var capacity = CreateMemoryCleanupCapacitySnapshot(hardware);
-        var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
-        // Memory scheduling exclusion is resolved again for each candidate's current software, like
-        // protection. The cycle's publication lease holds new plans back, so this is the plan the round
-        // was planned with; an exclusion published during the round applies from the next round.
+        // Memory scheduling exclusion is resolved again for each candidate's current software. The cycle's
+        // publication lease holds new plans back, so this is the plan the round was planned with; an exclusion
+        // published during the round applies from the next round.
         var gpuPlacementPlan = runtimePlanProvider.Current.GpuPlacement;
 
         var currentCandidates = new List<AutomaticMemoryCleanupCandidate>(
@@ -337,16 +336,12 @@ public sealed partial class HostManagerSmartCoordinator
                     baseline.TargetId, SchedulingFactCode.BaseScore, SchedulingFactExclusionReason.CleanupSoftwareMaximumBaseScoreMissing, null));
                 continue;
             }
-            var protectionLevel = protectionLevels.GetValueOrDefault(
-                baseline.TargetId,
-                protectionLevels.GetValueOrDefault(current.SoftwareId));
             var admission = HostManagerMemoryCleanupPrePonrAdmission.EvaluateCurrentFact(
                 baseline,
                 baselineScore,
                 current,
                 maximumBaseScore,
                 current.RuntimeState,
-                protectionLevel,
                 gpuPlacementPlan.Resolve(current.SoftwareId, null, null, null).MemorySchedulingExcluded);
             if (admission == HostManagerMemoryCleanupCandidateAdmissionStatus.Eligible)
             {
@@ -374,7 +369,7 @@ public sealed partial class HostManagerSmartCoordinator
             }
         }
 
-        return MemoryCleanupFinalAdmissionResult.Complete(
+        return Task.FromResult(MemoryCleanupFinalAdmissionResult.Complete(
             request with
             {
                 OrdinaryMemoryFreeRatio = capacity.PhysicalMemoryFreeRatio,
@@ -396,7 +391,7 @@ public sealed partial class HostManagerSmartCoordinator
                 VirtualMemoryFreeRatioCurrent:
                     capacity.VirtualMemoryFreeRatioCurrent),
             knownFilteredCount,
-            unknownCount);
+            unknownCount));
     }
 
     private static bool TryIndexCurrentMemoryCleanupProcessFacts(

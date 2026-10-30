@@ -1930,8 +1930,12 @@ const koKrAppCopy: AppCopy = {
     protection: {
       title: "보호",
       enabled: "보호 활성화",
-      hint: "강등되지 않습니다: 우선순위를 낮추지 않고, 제한·정지하지 않으며, 내장 GPU로 옮기지 않고, 메모리를 정리하지 않습니다. 상향은 계속 가능합니다.",
+      hint: "보호는 정지하지 않는다는 뜻입니다. 이 소프트웨어는 정지되지 않으며 그 밖의 스케줄링은 평소대로 진행됩니다. 기본 점수가 81 이상인 소프트웨어는 더 이상 억제되지 않습니다.",
       failed: "보호 설정을 읽거나 저장하지 못했습니다. 소프트웨어 세부 정보를 다시 여세요.",
+      sourceLine: (source: string, state: string) => `출처: ${source} (${state})`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `기본값: ${defaultSource} (${defaultState}); ${source}에서 '${state}'(으)로 변경함`,
+      state: { protected: "보호", unprotected: "보호 안 함" },
+      sources: { software_detail: "소프트웨어 세부 정보", report: "보고서", protection_list: "보호 목록", software_catalog: "소프트웨어 카탈로그", system_default: "시스템 서비스 기본값" },
     },
     participation: {
       title: "스케줄링 참여",

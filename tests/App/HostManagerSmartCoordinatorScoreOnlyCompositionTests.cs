@@ -1616,54 +1616,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task AutomaticMemoryCleanupFinalAdmission_StopsForNewActiveProtection()
-    {
-        const int processId = 24_223;
-        const string softwareId = "software:final-protection";
-        var startedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
-        var startKey = checked((ulong)startedAt.ToFileTime());
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            scoreOnlyEnabled: false,
-            processFactsSnapshot: CreateCompleteProcessFacts(
-                processId,
-                startKey,
-                softwareId,
-                baseScore: 20,
-                cpuUsagePercent: 1,
-                memoryUsagePercent: 25),
-            processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
-                new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            automaticMemoryCleanupEnabled: true,
-            optimizationMode: AppOptimizationModes.MemoryOnly);
-        fixture.MemoryCleanupPlanner.PlanHandler =
-            CreateFinalAdmissionAwareMemoryCleanupPlan;
-        await fixture.PrimeMemoryCleanupAdmissionAsync();
-        fixture.ProtectionService.Targets =
-            [
-                new ProtectedOptimizationTarget(
-                    "protection:final-admission",
-                    "Process",
-                    HostManagerTargetIdentity.CreateProcessTargetId(processId, startKey),
-                    softwareId,
-                    "final protection",
-                    SoftwareKinds.Other,
-                    DateTimeOffset.UtcNow,
-                    "test",
-                    "report:test",
-                    DateTimeOffset.UtcNow,
-                    OptimizationProtectionStates.Active,
-                    AllowsPlacementAvoidance: true,
-                    ProtectionLevel: OptimizationProtectionLevels.Level2NoOptimization)
-            ];
-
-        _ = await fixture.RunRealtimeCycleAsync();
-
-        AssertFinalAdmissionDeferredWithoutEffects(fixture, expectedPlanCalls: 1);
-        Assert.Equal(3, fixture.ProtectionService.GetCalls);
-    }
-
-    [Fact]
     public async Task DisabledAutomaticCleanup_DoesNotDisableHealthyPublicResourceRecallCapacity()
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(

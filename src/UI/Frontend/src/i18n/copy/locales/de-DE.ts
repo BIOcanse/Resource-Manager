@@ -1931,8 +1931,12 @@ const deDeAppCopy: AppCopy = {
     protection: {
       title: "Schutz",
       enabled: "Schutz aktivieren",
-      hint: "Wird nie herabgestuft: keine niedrigere Priorität, keine Drosselung, kein Einfrieren, kein Wechsel auf die integrierte GPU, keine Speicherbereinigung. Hochstufen bleibt möglich.",
+      hint: "Schutz bedeutet kein Einfrieren: Die Software wird nie eingefroren, die übrige Planung läuft unverändert weiter. Software mit einer Grundbewertung von 81 oder höher wird nicht mehr zurückgestuft.",
       failed: "Schutzeinstellungen konnten nicht gelesen oder gespeichert werden. Softwaredetails erneut öffnen.",
+      sourceLine: (source: string, state: string) => `Quelle: ${source} (${state})`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `Standard: ${defaultSource} (${defaultState}); von Ihnen in ${source} auf „${state}“ geändert`,
+      state: { protected: "geschützt", unprotected: "nicht geschützt" },
+      sources: { software_detail: "Softwaredetails", report: "Bericht", protection_list: "Schutzliste", software_catalog: "Softwarekatalog", system_default: "Standard für Systemdienste" },
     },
     participation: {
       title: "Teilnahme an der Planung",

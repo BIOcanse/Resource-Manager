@@ -1931,8 +1931,12 @@ const jaJpAppCopy: AppCopy = {
     protection: {
       title: "保護",
       enabled: "保護を有効化",
-      hint: "降格されません：優先度を下げず、制限せず、凍結せず、統合 GPU に移さず、メモリを整理しません。引き上げは引き続き行われます。",
+      hint: "保護とは凍結しないことです。このソフトウェアは凍結されず、その他のスケジューリングは通常どおり行われます。基礎スコアが 81 以上のソフトウェアは抑制されなくなります。",
       failed: "保護設定を読み取るか保存できませんでした。ソフトウェアの詳細を開き直してください。",
+      sourceLine: (source: string, state: string) => `設定元：${source}（${state}）`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `既定：${defaultSource}（${defaultState}）；${source}で「${state}」に変更済み`,
+      state: { protected: "保護", unprotected: "保護なし" },
+      sources: { software_detail: "ソフトウェアの詳細", report: "レポート", protection_list: "保護リスト", software_catalog: "ソフトウェアカタログ", system_default: "システムサービスの既定" },
     },
     participation: {
       title: "スケジューリングへの参加",

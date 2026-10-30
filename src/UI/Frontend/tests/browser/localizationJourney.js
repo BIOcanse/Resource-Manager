@@ -85,8 +85,13 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
   }
   let protectedSoftware = null;
   let failProtectionSave = false;
+  // 保护列表按后端格式给完整条目（前端严格解码）：开关打开后是来源为软件详情的用户条目。
   await page.route("**/api/optimization/protection", route => route.fulfill({ json: protectedSoftware ? [{
-    softwareId: protectedSoftware, targetKey: `software:${protectedSoftware}`, protectionLevel: 2
+    id: `software:software:${protectedSoftware}`, targetType: "software", targetKey: `software:${protectedSoftware}`,
+    softwareId: protectedSoftware, softwareName: "示例软件", softwareKind: "other", protectedAt: "2026-10-29T08:00:00.000Z",
+    protectionSource: "software_detail", createdFromReportId: "software-detail", lastVerifiedAt: "2026-10-29T08:00:00.000Z",
+    state: "active", allowsPlacementAvoidance: true, protectionLevel: 1,
+    defaultProtectionLevel: null, defaultProtectionSource: null, policyGroupId: null, processName: null, executablePath: null
   }] : [] }));
   await page.route("**/api/optimization/protection/software/*", async route => {
     if (route.request().method() !== "PUT") throw new Error("Protection must use PUT");
@@ -288,6 +293,9 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     await protection.check();
     await page.waitForFunction(() => !document.querySelector('.policy-toggle:not([data-exit-ghost] *) input')?.disabled);
     if (!await protection.isChecked()) throw new Error(`${option.id}: protection not enabled`);
+    const protectionCopy = app.softwareDetail.protection;
+    await protectionGroup.getByText(protectionCopy.sourceLine(protectionCopy.sources.software_detail, protectionCopy.state.protected),
+      { exact: true }).waitFor();
     await details.locator('button.icon-button').first().click();
     await card.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
     await policyTab.click();
@@ -298,6 +306,8 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     await protection.uncheck();
     await page.waitForFunction(() => !document.querySelector('.policy-toggle:not([data-exit-ghost] *) input')?.disabled);
     if (await protection.isChecked()) throw new Error(`${option.id}: protection not removed`);
+    // 没有条目适用时不显示来源。
+    await protectionGroup.locator(".software-protection-source").waitFor({ state: "detached" });
     failProtectionSave = true;
     // A failed save immediately reverts the switch. check() itself requires
     // the final state to stay checked, so click and assert the actual error result.

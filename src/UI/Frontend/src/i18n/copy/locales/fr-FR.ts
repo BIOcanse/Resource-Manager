@@ -1931,8 +1931,12 @@ const frFrAppCopy: AppCopy = {
     protection: {
       title: "Protection",
       enabled: "Activer la protection",
-      hint: "Jamais rétrogradé : pas de priorité abaissée, pas de bridage, pas de gel, pas de passage sur le GPU intégré, pas de nettoyage de la mémoire. Il peut toujours être favorisé.",
+      hint: "La protection signifie aucun gel : le logiciel n’est jamais gelé et le reste de la planification se poursuit normalement. Un logiciel dont le score de base atteint 81 ou plus n’est plus restreint.",
       failed: "Impossible de lire ou enregistrer les paramètres de protection. Rouvrez les détails du logiciel.",
+      sourceLine: (source: string, state: string) => `Origine : ${source} (${state})`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `Par défaut : ${defaultSource} (${defaultState}) ; modifié par vous en « ${state} » dans ${source}`,
+      state: { protected: "protégé", unprotected: "non protégé" },
+      sources: { software_detail: "Détails du logiciel", report: "Rapport", protection_list: "Liste de protection", software_catalog: "Catalogue de logiciels", system_default: "Valeur par défaut des services système" },
     },
     participation: {
       title: "Participation à la planification",

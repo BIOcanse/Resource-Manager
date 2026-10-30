@@ -157,6 +157,8 @@ public sealed partial class JsonOptimizationProtectionStore(IHostEnvironment env
         public const int CurrentVersion = 1;
     }
 
+    // Only the user's entries are stored; a stored level 2 (before 10-29) reads as no-freeze. Which default an
+    // entry replaces is worked out against the current catalog when the list is built, not stored.
     private static IReadOnlyList<ProtectedOptimizationTarget> Normalize(
         IEnumerable<ProtectedOptimizationTarget> targets)
     {
@@ -164,7 +166,9 @@ public sealed partial class JsonOptimizationProtectionStore(IHostEnvironment env
             .Where(static item => !string.IsNullOrWhiteSpace(item.Id))
             .Select(static item => item with
             {
-                ProtectionLevel = OptimizationProtectionLevels.Normalize(item.ProtectionLevel)
+                ProtectionLevel = OptimizationProtectionLevels.Normalize(item.ProtectionLevel),
+                DefaultProtectionLevel = null,
+                DefaultProtectionSource = null
             })
             .GroupBy(static item => item.Id, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.OrderBy(static item => item.ProtectedAt).First())

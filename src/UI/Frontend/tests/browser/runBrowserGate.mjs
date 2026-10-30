@@ -168,6 +168,7 @@ const allJourneys = [
   ["smart-details-all-records", smartDetailsAllRecordsJourney],
   ["smart-details-history", async (...args) => (await import("./smartDetailsHistoryJourney.js")).default(...args)],
   ["software-participation", softwareParticipationJourney],
+  ["software-protection-source", async (...args) => (await import("./softwareProtectionSourceJourney.js")).default(...args)],
   ["memory-protection-settings", async (...args) => (await import("./memoryProtectionSettingsJourney.js")).default(...args)],
   ["memory-protection-no-dump", async (...args) => (await import("./memoryProtectionNoDumpJourney.js")).default(...args)],
   ["memory-protection-layout", async (...args) => (await import("./memoryProtectionLayoutJourney.js")).default(...args)],

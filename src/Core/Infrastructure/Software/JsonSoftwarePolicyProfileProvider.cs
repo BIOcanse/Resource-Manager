@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ResourceManager.App.Application.Software;
+using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Infrastructure.Software;
 
@@ -45,6 +46,11 @@ public sealed partial class JsonSoftwarePolicyProfileProvider : ISoftwarePolicyP
             return SoftwarePolicyProfile.Empty;
         }
 
+        return Read(stream);
+    }
+
+    internal static SoftwarePolicyProfile Read(Stream stream)
+    {
         try
         {
             var document = JsonSerializer.Deserialize<SoftwarePolicyProfileDocument>(
@@ -66,7 +72,11 @@ public sealed partial class JsonSoftwarePolicyProfileProvider : ISoftwarePolicyP
                 group.GroupId!.Trim(),
                 string.IsNullOrWhiteSpace(group.DisplayName) ? group.GroupId!.Trim() : group.DisplayName!.Trim(),
                 string.IsNullOrWhiteSpace(group.Role) ? null : group.Role!.Trim(),
-                CleanStrings(group.Capabilities)))
+                CleanStrings(group.Capabilities))
+            {
+                BaseScore = CleanBaseScore(group.BaseScore),
+                NoFreeze = group.NoFreeze == true
+            })
             .GroupBy(static group => group.GroupId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
 
@@ -81,8 +91,50 @@ public sealed partial class JsonSoftwarePolicyProfileProvider : ISoftwarePolicyP
             .GroupBy(static assignment => assignment.SoftwareId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
 
-        return new SoftwarePolicyProfile(groups, assignments);
+        return new SoftwarePolicyProfile(groups, assignments)
+        {
+            ProcessAssignments = ToProcessAssignments(document.ProcessAssignments, groups)
+        };
     }
+
+    /// <summary>
+    /// An entry names a process (<c>processName</c>, optionally limited to <c>executablePath</c>) or a Windows
+    /// service (<c>serviceName</c>), never both, and assigns a known group and/or a base score. Other entries
+    /// are dropped; the first entry for one process or service wins.
+    /// </summary>
+    private static IReadOnlyList<SoftwarePolicyProcessAssignment> ToProcessAssignments(
+        IReadOnlyList<SoftwarePolicyProcessAssignmentDocument>? documents,
+        IReadOnlyDictionary<string, SoftwarePolicyGroup> groups)
+    {
+        var result = new List<SoftwarePolicyProcessAssignment>();
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var document in documents ?? [])
+        {
+            var processName = SoftwareProcessMatch.NormalizeProcessName(document.ProcessName);
+            var serviceName = string.IsNullOrWhiteSpace(document.ServiceName) ? null : document.ServiceName.Trim();
+            var executablePath = string.IsNullOrWhiteSpace(document.ExecutablePath) ? null : document.ExecutablePath.Trim();
+            var groupId = string.IsNullOrWhiteSpace(document.AssignedGroupId) ? null : document.AssignedGroupId.Trim();
+            var baseScore = CleanBaseScore(document.BaseScore);
+            if ((processName is null) == (serviceName is null)
+                || (serviceName is not null && executablePath is not null)
+                || (groupId is not null && !groups.ContainsKey(groupId))
+                || (groupId is null && baseScore is null))
+            {
+                continue;
+            }
+
+            var key = SoftwarePolicyProcessAssignment.CreateKey(processName, executablePath, serviceName);
+            if (keys.Add(key))
+            {
+                result.Add(new SoftwarePolicyProcessAssignment(key, processName, executablePath, serviceName, groupId, baseScore));
+            }
+        }
+
+        return result;
+    }
+
+    private static double? CleanBaseScore(double? value)
+        => value is { } score && double.IsFinite(score) && score is >= 0 and <= 100 ? score : null;
 
     private static IReadOnlyList<string> CleanStrings(IReadOnlyList<string>? values)
     {
@@ -98,6 +150,7 @@ public sealed partial class JsonSoftwarePolicyProfileProvider : ISoftwarePolicyP
     {
         public IReadOnlyList<SoftwarePolicyGroupDocument>? SoftwareGroups { get; set; }
         public IReadOnlyList<SoftwarePolicyAssignmentDocument>? SoftwareAssignments { get; set; }
+        public IReadOnlyList<SoftwarePolicyProcessAssignmentDocument>? ProcessAssignments { get; set; }
     }
 
     private sealed class SoftwarePolicyGroupDocument
@@ -106,6 +159,19 @@ public sealed partial class JsonSoftwarePolicyProfileProvider : ISoftwarePolicyP
         public string? DisplayName { get; set; }
         public string? Role { get; set; }
         public IReadOnlyList<string>? Capabilities { get; set; }
+        public double? BaseScore { get; set; }
+        public bool? NoFreeze { get; set; }
+        // constraints (conditionalLevel2Requires, conditionalLevel4Requires, conditionalCapabilities, …) are not
+        // read: they need state facts RM does not have yet (scheduling_protection_2026-10-29 §5).
+    }
+
+    private sealed class SoftwarePolicyProcessAssignmentDocument
+    {
+        public string? ProcessName { get; set; }
+        public string? ExecutablePath { get; set; }
+        public string? ServiceName { get; set; }
+        public string? AssignedGroupId { get; set; }
+        public double? BaseScore { get; set; }
     }
 
     private sealed class SoftwarePolicyAssignmentDocument

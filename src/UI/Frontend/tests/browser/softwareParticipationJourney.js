@@ -21,9 +21,18 @@ export default async function softwareParticipationJourney(page, baseUrl) {
   await fetch(`${policyPath}/policy`, { method: "PUT", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...initialPolicy, hostMemoryProtectionNoDump: true }) });
   const protectionWrites = [];
-  await page.route("**/api/optimization/protection", route => route.fulfill({ json: [] }));
+  // 开关写入后前端重读保护列表；列表按写入的结果给出来源为软件详情的条目（后端格式）。
+  let protectedNow = false;
+  await page.route("**/api/optimization/protection", route => route.fulfill({ json: protectedNow ? [{
+    id: "software:software:frontend-harness.software", targetType: "software", targetKey: "software:frontend-harness.software",
+    softwareId: "frontend-harness.software", softwareName: "示例软件", softwareKind: "other", protectedAt: "2026-10-29T08:00:00.000Z",
+    protectionSource: "software_detail", createdFromReportId: "software-detail", lastVerifiedAt: "2026-10-29T08:00:00.000Z",
+    state: "active", allowsPlacementAvoidance: true, protectionLevel: 1,
+    defaultProtectionLevel: null, defaultProtectionSource: null, policyGroupId: null, processName: null, executablePath: null
+  }] : [] }));
   await page.route("**/api/optimization/protection/software/*", async route => {
     protectionWrites.push(route.request().postDataJSON());
+    protectedNow = route.request().postDataJSON().enabled === true;
     await route.fulfill({ json: { softwareId: "frontend-harness.software" } });
   });
   const policyWrites = [];

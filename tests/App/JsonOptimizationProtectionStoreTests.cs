@@ -92,6 +92,37 @@ public sealed class JsonOptimizationProtectionStoreTests : IDisposable
         Assert.Single(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "optimization-protection.json.*.backup"));
     }
 
+    [Fact]
+    public async Task StoredLevel2ReadsAsNoFreezeAndASwitchedOffDefaultRoundTrips()
+    {
+        var legacyLevel2 = CreateTarget() with { ProtectionLevel = 2 };
+        var switchedOff = new ProtectedOptimizationTarget(
+            "protect:process", OptimizationProtectionTargetTypes.Process, "process-name:sguard64", null, null, null,
+            DateTimeOffset.Parse("2026-10-29T00:00:00Z"), OptimizationProtectionSources.ProtectionList, "protection-list",
+            null, OptimizationProtectionStates.Active, AllowsPlacementAvoidance: true,
+            ProtectionLevel: OptimizationProtectionLevels.None)
+        {
+            DefaultProtectionLevel = OptimizationProtectionLevels.NoFreeze,
+            DefaultProtectionSource = OptimizationProtectionSources.SoftwareCatalog,
+            PolicyGroupId = "anti-cheat",
+            ProcessName = "SGuard64"
+        };
+        // A version-1 document written before 10-29 holds the level 2 the software switch stored then.
+        Directory.CreateDirectory(Path.GetDirectoryName(StoragePath())!);
+        await File.WriteAllTextAsync(StoragePath(), JsonSerializer.Serialize(
+            new { version = 1, targets = new[] { legacyLevel2, switchedOff } }, JsonOptions));
+        Assert.Contains("\"protectionLevel\":2", await File.ReadAllTextAsync(StoragePath()));
+
+        var restored = await CreateStore().LoadAsync(default);
+
+        Assert.Equal(OptimizationProtectionLevels.NoFreeze, restored.Single(item => item.Id == "protect:app").ProtectionLevel);
+        var off = restored.Single(item => item.Id == "protect:process");
+        Assert.Equal((OptimizationProtectionLevels.None, "SGuard64", "anti-cheat"), (off.ProtectionLevel, off.ProcessName, off.PolicyGroupId));
+        // Which default an entry replaces is worked out from the current catalog, not stored.
+        Assert.Null(off.DefaultProtectionLevel);
+        Assert.Null(off.DefaultProtectionSource);
+    }
+
     [Theory]
     [InlineData("not JSON")]
     [InlineData("null")]

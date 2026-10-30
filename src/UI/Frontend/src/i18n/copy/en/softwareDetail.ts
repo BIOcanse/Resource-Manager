@@ -36,8 +36,12 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
     protection: {
       title: "Protection",
       enabled: "Enable protection",
-      hint: "Never downgraded: no lower priority, no throttling, no freezing, no move to the integrated GPU, no memory trimming. It can still be boosted.",
+      hint: "Protection means no freezing: the software is never frozen, and other scheduling continues as usual. Software with a base score of 81 or higher is no longer held back.",
       failed: "Unable to read or save protection settings. Reopen software details.",
+      sourceLine: (source: string, state: string) => `Source: ${source} (${state})`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `Default: ${defaultSource} (${defaultState}); you changed it to ${state} in ${source}`,
+      state: { protected: "protected", unprotected: "not protected" },
+      sources: { software_detail: "Software details", report: "Report", protection_list: "Protection list", software_catalog: "Software catalog", system_default: "System service default" },
     },
     participation: {
       title: "Scheduling participation",

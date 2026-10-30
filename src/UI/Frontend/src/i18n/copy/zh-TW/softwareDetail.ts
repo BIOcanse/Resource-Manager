@@ -33,8 +33,12 @@ export const zhSoftwareDetailCopy = {
     protection: {
       title: "保護",
       enabled: "啟用保護",
-      hint: "不會被降級：不降低優先順序、不限速、不凍結、不移到內顯、不整理記憶體；仍可以被提升。",
+      hint: "保護就是不凍結：不會被凍結，其他排程照常進行。基礎分達到 81 以上的軟體不再被壓制。",
       failed: "無法讀取或儲存保護設定，請重新開啟軟體詳細資料。",
+      sourceLine: (source: string, state: string) => `來源：${source}（${state}）`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `預設：${defaultSource}（${defaultState}）；已由你在${source}中改為${state}`,
+      state: { protected: "保護", unprotected: "不保護" },
+      sources: { software_detail: "軟體詳情", report: "報告", protection_list: "保護清單", software_catalog: "軟體目錄", system_default: "系統服務預設" },
     },
     participation: {
       title: "排程參與",

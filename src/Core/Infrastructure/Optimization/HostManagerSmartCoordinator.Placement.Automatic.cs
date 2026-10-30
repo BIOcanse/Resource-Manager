@@ -62,8 +62,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (cpuPlacementEnabled || gpuPlacementEnabled)
         {
             var topology = desiredRuntime.RuntimePlan.CpuPlacementTopology;
-            var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
-            var processes = CreateAutomaticPlacementProcesses(sample, computeScoring, state.AppliedPlacements, protectionLevels);
+            var processes = CreateAutomaticPlacementProcesses(sample, computeScoring, state.AppliedPlacements);
             processes = processes
                 .Where(process => HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
                     processEffectValidationScope,
@@ -84,7 +83,7 @@ public sealed partial class HostManagerSmartCoordinator
             var cpuReservations = cpuPlacementEnabled && topology is not null
                 ? PlanCpuReservations(topology, sample, processes, leases) : null;
             leaseProcesses = leases.Length == 0 ? [] : CreateAutomaticPlacementProcesses(sample, computeScoring,
-                state.AppliedPlacements, protectionLevels, includeProtected: true)
+                state.AppliedPlacements)
                 .Select(raw => processes.FirstOrDefault(process => process.TargetId == raw.TargetId)
                     ?? raw with { CanApplyPhysicalPlacement = false }).ToArray();
             leaseReservations = cpuReservations;
@@ -303,17 +302,12 @@ public sealed partial class HostManagerSmartCoordinator
         CreateAutomaticPlacementProcesses(
         HostManagerSample sample,
         HostManagerComputeScoringCycleResult? computeScoring,
-        IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements,
-        IReadOnlyDictionary<string, int> protectionLevels, bool includeProtected = false)
+        IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements)
     {
         var scoreProjection = CreateNativeComputeScoreProjection(computeScoring);
         var processes = new List<HostManagerAutomaticPlacementProcess>(sample.Targets.Count);
         foreach (var target in sample.Targets)
         {
-            var protectedProcess = protectionLevels.GetValueOrDefault(target.TargetId,
-                    protectionLevels.GetValueOrDefault(target.SoftwareId)) >= OptimizationProtectionLevels.Level2NoOptimization;
-            if (protectedProcess && !includeProtected)
-                continue;
             if (target.ProcessIds.Count != 1)
             {
                 throw new InvalidDataException(
@@ -362,7 +356,7 @@ public sealed partial class HostManagerSmartCoordinator
                 processStartKey,
                 target.ProcessNames.Count == 1 ? target.ProcessNames[0] : string.Empty,
                 target.ExecutablePaths.Count == 1 ? target.ExecutablePaths[0] : null,
-                target.CanApplyPhysicalCorePlacement && !protectedProcess,
+                target.CanApplyPhysicalCorePlacement,
                 target.GpuPlacementPolicy,
                 cpuScore?.Score,
                 gpuScores,

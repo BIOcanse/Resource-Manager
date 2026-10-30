@@ -267,6 +267,20 @@ function decodeProtectedTarget(
   path: string
 ): ProtectedOptimizationTarget {
   const record = requireRecord(value, path);
+  // 用户条目替换了默认时，后端同时写默认的等级和来源；只有一项是坏数据。
+  const defaultProtectionLevel = optionalNullable(
+    record.defaultProtectionLevel,
+    `${path}.defaultProtectionLevel`,
+    requireNonNegativeSafeInteger);
+  const defaultProtectionSource = optionalNullable(
+    record.defaultProtectionSource,
+    `${path}.defaultProtectionSource`,
+    requireNonEmptyString);
+  if ((defaultProtectionLevel === null) !== (defaultProtectionSource === null)) {
+    throw new ResponseDecodeError(
+      defaultProtectionLevel === null ? `${path}.defaultProtectionLevel` : `${path}.defaultProtectionSource`,
+      "defaultProtectionLevel and defaultProtectionSource both present or both null");
+  }
   return Object.freeze({
     id: requireNonEmptyString(record.id, `${path}.id`),
     targetType: requireNonEmptyString(record.targetType, `${path}.targetType`),
@@ -289,8 +303,34 @@ function decodeProtectedTarget(
       `${path}.allowsPlacementAvoidance`),
     protectionLevel: requireNonNegativeSafeInteger(
       record.protectionLevel,
-      `${path}.protectionLevel`)
+      `${path}.protectionLevel`),
+    defaultProtectionLevel,
+    defaultProtectionSource,
+    policyGroupId: optionalNullable(record.policyGroupId, `${path}.policyGroupId`, requireString),
+    processName: optionalNullable(record.processName, `${path}.processName`, requireString),
+    executablePath: optionalNullable(record.executablePath, `${path}.executablePath`, requireString)
   });
+}
+
+/**
+ * GET /api/optimization/protection：保护列表（默认条目和用户条目合在一起，每个目标一个生效条目）。
+ * 与报告总览里的 protectedTargets 用同一个条目解码。
+ */
+export const protectedTargetListDecoder = defineResponseDecoder<readonly ProtectedOptimizationTarget[]>(
+  "optimization.protection.list.v1",
+  (value) => {
+    const targets = decodeArray(value, "$", decodeProtectedTarget);
+    assertUniqueIds(targets, "$");
+    return Object.freeze(targets);
+  });
+
+/** 后端可以省略或写 null 的字段：两种都解成 null。 */
+function optionalNullable<T>(
+  value: unknown,
+  path: string,
+  decode: (value: unknown, path: string) => T
+): T | null {
+  return value === undefined ? null : requireNullable(value, path, decode);
 }
 
 function decodeArray<T>(

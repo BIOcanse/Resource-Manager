@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   optimizationReportsDecoder,
+  protectedTargetListDecoder,
   reportEntryStates
 } from "../src/data/optimization/optimizationReportsDecoder.ts";
+import { protectionSources } from "../src/data/optimization/softwareProtection.ts";
 import {
   ResponseDecodeError
 } from "../src/frontendRuntime/request/ResponseDecoder.ts";
@@ -120,3 +122,70 @@ const statesBody = /public static class OptimizationReportStates\s*\{([^}]*)\}/.
 assert.ok(statesBody !== undefined, "backend OptimizationReportStates exists");
 assert.deepEqual([...reportEntryStates], [...statesBody.matchAll(/const string \w+ = "([^"]+)"/g)].map(match => match[1]),
   "report entry states match the backend");
+
+// 保护列表（GET /api/optimization/protection，docs/scheduling_protection_2026-10-29.md）：条目和报告总览里的
+// protectedTargets 同一个解码；新加的五个字段可以省略或为 null，替换默认的用户条目同时带默认的等级和来源。
+const catalogEntry = protectedTarget({ id: "software-catalog", protectionSource: "software_catalog", policyGroupId: "meeting-capture-password" });
+const replacedEntry = protectedTarget({ id: "software-user", protectionSource: "software_detail", protectionLevel: 0,
+  defaultProtectionLevel: 1, defaultProtectionSource: "software_catalog", policyGroupId: "meeting-capture-password" });
+const processEntry = protectedTarget({ id: "process-dwm", targetType: "process", targetKey: "process-name:dwm", softwareId: null,
+  softwareName: null, softwareKind: null, protectionSource: "software_catalog", processName: "dwm", executablePath: null });
+const legacyEntry = Object.fromEntries(Object.entries(protectedTarget({ id: "legacy" }))
+  .filter(([key]) => !["defaultProtectionLevel", "defaultProtectionSource", "policyGroupId", "processName", "executablePath"].includes(key)));
+const decodedList = protectedTargetListDecoder.decode([catalogEntry, replacedEntry, processEntry, legacyEntry]);
+assert.equal(decodedList.length, 4);
+assert.equal(decodedList[0]!.policyGroupId, "meeting-capture-password");
+assert.equal(decodedList[0]!.defaultProtectionSource, null);
+assert.deepEqual([decodedList[1]!.protectionLevel, decodedList[1]!.defaultProtectionLevel, decodedList[1]!.defaultProtectionSource],
+  [0, 1, "software_catalog"]);
+assert.deepEqual([decodedList[2]!.processName, decodedList[2]!.executablePath], ["dwm", null]);
+assert.deepEqual([decodedList[3]!.defaultProtectionLevel, decodedList[3]!.defaultProtectionSource, decodedList[3]!.policyGroupId,
+  decodedList[3]!.processName, decodedList[3]!.executablePath], [null, null, null, null, null]);
+assert.ok(Object.isFrozen(decodedList));
+// 报告总览里的 protectedTargets 也带这些字段。
+assert.equal(optimizationReportsDecoder.decode({ ...source, protectedTargets: [replacedEntry],
+  status: { ...source.status, protectedCount: 1 } }).protectedTargets[0]!.defaultProtectionSource, "software_catalog");
+
+const invalidLists: Array<[unknown, string]> = [
+  [null, "$"],
+  [{ targets: [] }, "$"],
+  [[{ softwareId: "x", targetKey: "software:x", protectionLevel: 1 }], "$[0].id"],
+  [[catalogEntry, catalogEntry], "$[1].id"],
+  [[{ ...catalogEntry, protectionLevel: -1 }], "$[0].protectionLevel"],
+  [[{ ...catalogEntry, defaultProtectionLevel: 1 }], "$[0].defaultProtectionSource"],
+  [[{ ...catalogEntry, defaultProtectionSource: "software_catalog" }], "$[0].defaultProtectionLevel"],
+  [[{ ...replacedEntry, defaultProtectionLevel: "1" }], "$[0].defaultProtectionLevel"],
+  [[{ ...replacedEntry, defaultProtectionSource: "" }], "$[0].defaultProtectionSource"],
+  [[{ ...processEntry, processName: 7 }], "$[0].processName"],
+  [[{ ...processEntry, executablePath: false }], "$[0].executablePath"],
+  [[{ ...catalogEntry, policyGroupId: [] }], "$[0].policyGroupId"]
+];
+for (const [value, expectedPath] of invalidLists) {
+  assert.throws(
+    () => protectedTargetListDecoder.decode(value),
+    (error: unknown) => error instanceof ResponseDecodeError && error.path === expectedPath,
+    `protection list must fail at ${expectedPath}`);
+}
+
+function protectedTarget(overrides: Record<string, unknown>) {
+  return {
+    id: "entry", targetType: "software", targetKey: "software:frontend-harness.software",
+    softwareId: "frontend-harness.software", softwareName: "示例软件", softwareKind: "other",
+    protectedAt: "2026-10-29T08:00:00.000Z", protectionSource: "software_detail", createdFromReportId: "software-detail",
+    lastVerifiedAt: null, state: "active", allowsPlacementAvoidance: true, protectionLevel: 1,
+    defaultProtectionLevel: null, defaultProtectionSource: null, policyGroupId: null, processName: null, executablePath: null,
+    ...overrides
+  };
+}
+
+// 来源的取值与后端 OptimizationProtectionSources 逐个相等。后端常量随 codex/catalog-protection 进来；
+// 这个检出里还没有时跳过并打印，合入后必须相等。
+const backendProtection = readFileSync(new URL("../../../Core/Domain/Optimization/OptimizationProtection.cs", import.meta.url), "utf8");
+const sourcesBody = /public static class OptimizationProtectionSources\s*\{([\s\S]*?)\r?\n\}/.exec(backendProtection)?.[1];
+if (sourcesBody === undefined) {
+  console.log("skip: backend OptimizationProtectionSources is not in this checkout yet");
+} else {
+  assert.deepEqual([...protectionSources].sort(),
+    [...sourcesBody.matchAll(/const string \w+ = "([^"]+)"/g)].map(match => match[1]).sort(),
+    "protection sources match the backend");
+}

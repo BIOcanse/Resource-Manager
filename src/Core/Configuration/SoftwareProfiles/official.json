@@ -4,13 +4,9 @@
       "groupId": "adapted.resource-manager",
       "displayName": "资源管理器",
       "role": "AdaptedSoftware",
-      "defaultPolicy": "Protection",
+      "baseScore": 90,
       "constraints": {
-        "externalGovernance": false,
-        "blockedPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
+        "externalGovernance": false
       },
       "notes": [
         "本软件自身不作为普通后台压制对象。"
@@ -20,16 +16,10 @@
       "groupId": "dependency.telemetry-provider",
       "displayName": "依赖软件/支持组件",
       "role": "DependencySupport",
-      "defaultPolicy": "ReportOnly",
+      "baseScore": 90,
       "capabilities": [
         "DependencyManagedInstall"
       ],
-      "constraints": {
-        "blockedAutomaticPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
       "notes": [
         "依赖/支持组件由组件安装页管理，不由游戏模式自动压制。"
       ]
@@ -38,18 +28,12 @@
       "groupId": "targets.games",
       "displayName": "游戏目标",
       "role": "TargetCandidate",
+      "baseScore": 95,
       "policySource": "targetPolicyByState",
       "capabilities": [
         "AllowA1",
         "AllowA2"
       ],
-      "constraints": {
-        "blockedPolicies": [
-          "Level1Optimization",
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
       "notes": [
         "游戏本体不走压制矩阵。"
       ]
@@ -79,13 +63,7 @@
       "groupId": "game.runtime-support",
       "displayName": "游戏运行库和游戏依赖",
       "role": "ProtectedPath",
-      "defaultPolicy": "Protection",
-      "constraints": {
-        "blockedPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
+      "baseScore": 90,
       "notes": [
         "GameInput、XNA、OpenAL、PhysX、EOS、Rockstar SDK 等不作为普通后台冻结对象。"
       ]
@@ -144,14 +122,11 @@
       "groupId": "meeting-capture-password",
       "displayName": "会议、课堂、录制和密码管理",
       "role": "ProtectedOrManualSubject",
-      "defaultPolicy": "Protection",
+      "noFreeze": true,
       "capabilities": [
         "AllowLevel1WhenInactive"
       ],
       "constraints": {
-        "blockedPolicies": [
-          "Level4Freeze"
-        ],
         "conditionalLevel2Requires": [
           "NoMeeting",
           "NoAudioCapture",
@@ -169,16 +144,10 @@
       "groupId": "developer.runtime",
       "displayName": "开发工具、运行时和本地服务",
       "role": "ProcessLevelSubject",
-      "defaultPolicy": "ReportOnly",
+      "baseScore": 90,
       "capabilities": [
         "ProcessLevelRequired"
       ],
-      "constraints": {
-        "blockedAutomaticPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
       "notes": [
         "用途差异大，必须由进程级报告决定。"
       ]
@@ -187,13 +156,7 @@
       "groupId": "driver-input-hardware",
       "displayName": "驱动、输入、显示、网络和硬件控制",
       "role": "ProtectedPath",
-      "defaultPolicy": "Protection",
-      "constraints": {
-        "blockedPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
+      "baseScore": 90,
       "notes": [
         "底层路径不由游戏模式默认压制或冻结。"
       ]
@@ -202,16 +165,10 @@
       "groupId": "hardware-tuning.manual",
       "displayName": "超频、风扇和硬件调校",
       "role": "ManualProtectedSubject",
-      "defaultPolicy": "ReportOnly",
+      "baseScore": 90,
       "capabilities": [
         "ManualOnly"
       ],
-      "constraints": {
-        "blockedAutomaticPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
       "notes": [
         "硬件调校工具状态敏感，只报告或用户手动保护。"
       ]
@@ -220,16 +177,10 @@
       "groupId": "telemetry.diagnostics",
       "displayName": "监控、诊断、调试和性能工具",
       "role": "ManualSubject",
-      "defaultPolicy": "ReportOnly",
+      "baseScore": 90,
       "capabilities": [
         "ManualOnly"
       ],
-      "constraints": {
-        "blockedAutomaticPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
       "notes": [
         "这些工具常用于观察优化效果，不默认压制。"
       ]
@@ -238,13 +189,7 @@
       "groupId": "system.runtime-redistributable",
       "displayName": "系统运行库和可再发行组件",
       "role": "ProtectedPath",
-      "defaultPolicy": "Protection",
-      "constraints": {
-        "blockedPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
+      "baseScore": 90,
       "notes": [
         "运行库不是用户软件会话，不参与游戏模式调度。"
       ]
@@ -253,16 +198,10 @@
       "groupId": "network.remote-support",
       "displayName": "网络、远程和代理支撑",
       "role": "ProtectedOrManualSubject",
-      "defaultPolicy": "Protection",
+      "baseScore": 90,
       "capabilities": [
         "AllowLevel1WhenInactive"
       ],
-      "constraints": {
-        "blockedAutomaticPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
       "notes": [
         "网络/远程支撑不能因为游戏模式自动中断。"
       ]
@@ -356,16 +295,10 @@
       "groupId": "automation.user-scripts",
       "displayName": "用户脚本和自动化工具",
       "role": "ProcessLevelSubject",
-      "defaultPolicy": "ReportOnly",
+      "baseScore": 90,
       "capabilities": [
         "ProcessLevelRequired"
       ],
-      "constraints": {
-        "blockedAutomaticPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
       "notes": [
         "AutoHotkey 等可能承载用户正在依赖的输入脚本，需进程级判断。"
       ]
@@ -374,18 +307,40 @@
       "groupId": "oem.vendor-utility",
       "displayName": "厂商工具和保修/控制附属项",
       "role": "ProtectedOrManualSubject",
-      "defaultPolicy": "ReportOnly",
+      "baseScore": 90,
       "capabilities": [
         "AllowLevel1WhenInactive"
       ],
-      "constraints": {
-        "blockedAutomaticPolicies": [
-          "Level2Optimization",
-          "Level4Freeze"
-        ]
-      },
       "notes": [
         "OEM 附属工具默认只报告，避免误伤设备控制链路。"
+      ]
+    },
+    {
+      "groupId": "system.critical-services",
+      "displayName": "系统关键服务",
+      "role": "ProtectedPath",
+      "baseScore": 90,
+      "notes": [
+        "音频、输入、显示、网络栈和会话核心这类一卡就影响使用的 Windows 服务和进程：基础分 90（高档：不优化、不冻结）。不另加保护：Windows 进程已有系统默认的不冻结。名单在 processAssignments，按服务名或进程名分配。"
+      ]
+    },
+    {
+      "groupId": "system.background-telemetry-ads",
+      "displayName": "系统后台和广告服务",
+      "role": "SubjectSoftware",
+      "baseScore": 30,
+      "notes": [
+        "遥测、诊断上报、广告和推广、后台搜索和索引：基础分 30。本组不加保护；Windows 进程沿用系统默认的不冻结。名单在 processAssignments。"
+      ]
+    },
+    {
+      "groupId": "anti-cheat",
+      "displayName": "反作弊",
+      "role": "ProtectedPath",
+      "baseScore": 90,
+      "noFreeze": true,
+      "notes": [
+        "反作弊服务和进程：基础分 90（高档：不优化、不冻结），并加不冻结保护：反作弊进程常归在游戏名下，用户调低那个游戏的基础分时它也不被冻结。按服务名和进程名分配，比所属软件的组优先。"
       ]
     }
   ],
@@ -1541,6 +1496,413 @@
       "state": "active",
       "assignedGroupId": "adapted.resource-manager",
       "assignmentReason": "适配软件自身。"
+    }
+  ],
+  "processAssignments": [
+    {
+      "serviceName": "Audiosrv",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "音频。"
+    },
+    {
+      "serviceName": "AudioEndpointBuilder",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "音频。"
+    },
+    {
+      "serviceName": "hidserv",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "输入。"
+    },
+    {
+      "serviceName": "TabletInputService",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "输入。"
+    },
+    {
+      "serviceName": "TextInputManagementService",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "输入。"
+    },
+    {
+      "serviceName": "DispBrokerDesktopSvc",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "显示。"
+    },
+    {
+      "serviceName": "Dhcp",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "网络栈。"
+    },
+    {
+      "serviceName": "Dnscache",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "网络栈。"
+    },
+    {
+      "serviceName": "NlaSvc",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "网络栈。"
+    },
+    {
+      "serviceName": "nsi",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "网络栈。"
+    },
+    {
+      "serviceName": "netprofm",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "网络栈。"
+    },
+    {
+      "serviceName": "BFE",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "网络栈。"
+    },
+    {
+      "serviceName": "mpssvc",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "网络栈。"
+    },
+    {
+      "serviceName": "WlanSvc",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "网络栈。"
+    },
+    {
+      "serviceName": "RpcSs",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "RpcEptMapper",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "DcomLaunch",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "LSM",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "PlugPlay",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "Power",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "ProfSvc",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "CoreMessagingRegistrar",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "BrokerInfrastructure",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "SystemEventsBroker",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "serviceName": "UserManager",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和系统核心。"
+    },
+    {
+      "processName": "dwm",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和桌面核心进程。"
+    },
+    {
+      "processName": "csrss",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和桌面核心进程。"
+    },
+    {
+      "processName": "winlogon",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和桌面核心进程。"
+    },
+    {
+      "processName": "wininit",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和桌面核心进程。"
+    },
+    {
+      "processName": "services",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和桌面核心进程。"
+    },
+    {
+      "processName": "lsass",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和桌面核心进程。"
+    },
+    {
+      "processName": "smss",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和桌面核心进程。"
+    },
+    {
+      "processName": "fontdrvhost",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "会话和桌面核心进程。"
+    },
+    {
+      "processName": "audiodg",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "音频。"
+    },
+    {
+      "processName": "explorer",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "桌面外壳。"
+    },
+    {
+      "processName": "sihost",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "桌面外壳。"
+    },
+    {
+      "processName": "ctfmon",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "输入和输入法。"
+    },
+    {
+      "processName": "TextInputHost",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "输入和输入法。"
+    },
+    {
+      "processName": "ChsIME",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "输入和输入法。"
+    },
+    {
+      "processName": "GameInputSvc",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "输入和输入法。"
+    },
+    {
+      "processName": "WUDFHost",
+      "assignedGroupId": "system.critical-services",
+      "assignmentReason": "用户态驱动宿主（触控板、传感器等设备）。"
+    },
+    {
+      "serviceName": "DiagTrack",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "遥测。"
+    },
+    {
+      "serviceName": "dmwappushservice",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "遥测。"
+    },
+    {
+      "serviceName": "InventorySvc",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "遥测。"
+    },
+    {
+      "serviceName": "DPS",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "诊断和问题上报。"
+    },
+    {
+      "serviceName": "WdiServiceHost",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "诊断和问题上报。"
+    },
+    {
+      "serviceName": "WdiSystemHost",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "诊断和问题上报。"
+    },
+    {
+      "serviceName": "diagsvc",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "诊断和问题上报。"
+    },
+    {
+      "serviceName": "WerSvc",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "诊断和问题上报。"
+    },
+    {
+      "serviceName": "PcaSvc",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "诊断和问题上报。"
+    },
+    {
+      "serviceName": "TroubleshootingSvc",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "诊断和问题上报。"
+    },
+    {
+      "serviceName": "diagnosticshub.standardcollector.service",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "诊断和问题上报。"
+    },
+    {
+      "serviceName": "RetailDemo",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "推广。"
+    },
+    {
+      "serviceName": "WSearch",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "索引。"
+    },
+    {
+      "processName": "SearchHost",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "后台搜索和索引。"
+    },
+    {
+      "processName": "SearchProtocolHost",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "后台搜索和索引。"
+    },
+    {
+      "processName": "SearchFilterHost",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "后台搜索和索引。"
+    },
+    {
+      "processName": "CompatTelRunner",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "遥测。"
+    },
+    {
+      "processName": "DeviceCensus",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "遥测。"
+    },
+    {
+      "processName": "Widgets",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "资讯和推广。"
+    },
+    {
+      "processName": "WidgetService",
+      "assignedGroupId": "system.background-telemetry-ads",
+      "assignmentReason": "资讯和推广。"
+    },
+    {
+      "serviceName": "EasyAntiCheat",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "Easy Anti-Cheat。"
+    },
+    {
+      "serviceName": "EasyAntiCheat_EOS",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "Easy Anti-Cheat（Epic Online Services）。"
+    },
+    {
+      "serviceName": "BEService",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "BattlEye。"
+    },
+    {
+      "serviceName": "vgc",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "Riot Vanguard。"
+    },
+    {
+      "serviceName": "EAAntiCheatService",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "EA AntiCheat。"
+    },
+    {
+      "serviceName": "FACEIT",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "FACEIT AC。"
+    },
+    {
+      "processName": "EasyAntiCheat",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "Easy Anti-Cheat。"
+    },
+    {
+      "processName": "EasyAntiCheat_EOS",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "Easy Anti-Cheat（Epic Online Services）。"
+    },
+    {
+      "processName": "BEService",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "BattlEye。"
+    },
+    {
+      "processName": "BEService_x64",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "BattlEye。"
+    },
+    {
+      "processName": "vgc",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "Riot Vanguard。"
+    },
+    {
+      "processName": "EAAntiCheat.GameService",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "EA AntiCheat。"
+    },
+    {
+      "processName": "EAAntiCheat.GameServiceLauncher",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "EA AntiCheat。"
+    },
+    {
+      "processName": "SGuard64",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "腾讯 ACE。"
+    },
+    {
+      "processName": "SGuardSvc64",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "腾讯 ACE。"
+    },
+    {
+      "processName": "ACE-Guard Client",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "腾讯 ACE。"
+    },
+    {
+      "processName": "ACE-Tray",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "腾讯 ACE。"
+    },
+    {
+      "processName": "GameMon.des",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "nProtect GameGuard。"
+    },
+    {
+      "processName": "GameMon64.des",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "nProtect GameGuard。"
+    },
+    {
+      "processName": "faceitservice",
+      "assignedGroupId": "anti-cheat",
+      "assignmentReason": "FACEIT AC。"
     }
   ]
 }

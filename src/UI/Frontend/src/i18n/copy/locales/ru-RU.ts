@@ -1931,8 +1931,12 @@ const ruRuAppCopy: AppCopy = {
     protection: {
       title: "Защита",
       enabled: "Включить защиту",
-      hint: "Без понижения: приоритет не снижается, нет ограничения, заморозки, переноса на встроенный GPU и очистки памяти. Повышение по-прежнему возможно.",
+      hint: "Защита означает отсутствие заморозки: программа никогда не замораживается, остальное планирование выполняется как обычно. Программы с базовой оценкой 81 и выше больше не ограничиваются.",
       failed: "Не удалось прочитать или сохранить настройки защиты. Откройте сведения о программе заново.",
+      sourceLine: (source: string, state: string) => `Источник: ${source} (${state})`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `По умолчанию: ${defaultSource} (${defaultState}); изменено вами на «${state}» в разделе «${source}»`,
+      state: { protected: "защищено", unprotected: "без защиты" },
+      sources: { software_detail: "Сведения о программе", report: "Отчёт", protection_list: "Список защиты", software_catalog: "Каталог программ", system_default: "Значение по умолчанию для системных служб" },
     },
     participation: {
       title: "Участие в планировании",

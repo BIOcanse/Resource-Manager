@@ -472,10 +472,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
                     inputs.ProcessMetrics, hardware?.GpuInventory ?? new SchedulingGpuInventorySnapshot(
                         SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
             var backgroundIds = BackgroundSoftwareIds(processFacts);
-            var protectedIds = (await protectionService.GetProtectedTargetsAsync(cancellationToken))
-                .Where(item => item.State == OptimizationProtectionStates.Active && item.SoftwareId is not null)
-                .Select(item => item.SoftwareId!)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var protectedIds = OptimizationProtectionTable.SoftwareProtectedFromReports(
+                await protectionService.GetProtectedTargetsAsync(cancellationToken));
             var batch = HostManagerReportFactProjector.Project(
                 plan,
                 hardware,

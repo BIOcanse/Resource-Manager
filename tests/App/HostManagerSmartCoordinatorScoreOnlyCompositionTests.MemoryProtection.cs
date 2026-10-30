@@ -8,13 +8,15 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    // Protection only forbids freezing (user 10-29: 「取消2级保护机制」「只需要留一级保护」); "never optimized" is the
+    // high base-score tier. A protection, including a level 2 stored before 10-29, keeps the memory directive.
     [Theory]
-    [InlineData(true, OptimizationProtectionStates.Active, 2, false)]
-    [InlineData(false, OptimizationProtectionStates.Active, 2, false)]
-    [InlineData(true, OptimizationProtectionStates.Stale, 2, true)]
-    [InlineData(true, OptimizationProtectionStates.Active, 1, true)]
-    public async Task MemoryPriorityProjectionHonorsCurrentProtection(
-        bool processProtection, string state, int level, bool expectedDirective)
+    [InlineData(true, OptimizationProtectionStates.Active, 2)]
+    [InlineData(false, OptimizationProtectionStates.Active, 2)]
+    [InlineData(true, OptimizationProtectionStates.Stale, 2)]
+    [InlineData(true, OptimizationProtectionStates.Active, 1)]
+    public async Task MemoryPriorityProjectionIsNotChangedByNoFreezeProtection(
+        bool processProtection, string state, int level)
     {
         const int pid = 24057;
         const ulong startKey = 132_537_599_910_000_000;
@@ -36,12 +38,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(NativeMemoryMode.Optimize, Assert.Single(authority.MemoryModes!.Software).Mode);
         var projection = Assert.IsType<HostManagerNonAdaptedMemoryModeProjectionSnapshot>(
             fixture.Coordinator.NonAdaptedMemoryModeProjection);
-        Assert.Equal(expectedDirective ? 1 : 0, projection.Processes.Length);
+        Assert.Single(projection.Processes);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
     }
 
     [Fact]
-    public async Task NewProtectionRestoresOwnedMemoryPriorityAndRemovalAllowsFreshApply()
+    public async Task NewNoFreezeProtectionKeepsOwnedMemoryPriority()
     {
         const int pid = 24058;
         var startedAt = CreateProcessStartedAtOrderedBeforeSoftwareTarget(pid);
@@ -82,17 +84,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             CancellationToken.None)).Records);
         fixture.ProtectionService.Targets = [CreateMemoryProtection(
             HostManagerTargetIdentity.CreateProcessTargetId(pid, startKey),
-            OptimizationProtectionStates.Active, OptimizationProtectionLevels.Level2NoOptimization)];
+            OptimizationProtectionStates.Active, OptimizationProtectionLevels.NoFreeze)];
 
         _ = await fixture.RunRealtimeCycleAsync();
 
-        Assert.Equal([3U, 5U], writes);
-        Assert.Empty(fixture.Coordinator.NonAdaptedMemoryModeProjection!.Processes);
-        Assert.Empty((await fixture.NativeTransactions.AppliedOwnership.ReadSnapshotAsync(
-            CancellationToken.None)).Records);
-        fixture.ProtectionService.Targets = [];
-        _ = await fixture.RunRealtimeCycleAsync();
-        Assert.Equal([3U, 5U, 3U], writes);
+        Assert.Equal([3U], writes);
+        Assert.Single(fixture.Coordinator.NonAdaptedMemoryModeProjection!.Processes);
         Assert.Single((await fixture.NativeTransactions.AppliedOwnership.ReadSnapshotAsync(
             CancellationToken.None)).Records);
     }

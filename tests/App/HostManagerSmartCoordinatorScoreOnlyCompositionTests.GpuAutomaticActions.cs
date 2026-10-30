@@ -114,8 +114,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.NotNull(sample);
         var processes = (IReadOnlyList<HostManagerAutomaticPlacementProcess>)typeof(HostManagerSmartCoordinator)
             .GetMethod("CreateAutomaticPlacementProcesses", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [sample, null, Array.Empty<HostManagerAppliedPlacementReceipt>(),
-                new Dictionary<string, int>(), false])!;
+            .Invoke(null, [sample, null, Array.Empty<HostManagerAppliedPlacementReceipt>()])!;
         var process = Assert.Single(processes);
         Assert.Equal(expectedBytes.HasValue, process.ObservedDedicatedMemoryBytes.TryGetValue(69842, out var actual));
         if (expectedBytes.HasValue) Assert.Equal(expectedBytes.Value, actual);

@@ -151,6 +151,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.Optimization.OptimizationReportOverview))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.Optimization.ProtectedOptimizationTarget))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.Optimization.SoftwareProtectionRequest))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.Optimization.OptimizationProtectionLevelRequest))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.Optimization.TrustedOptimizationTarget))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.PublicResources.HostPublicResourceCapabilitySnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.PublicResources.PublicResourceCatalogSnapshot))]

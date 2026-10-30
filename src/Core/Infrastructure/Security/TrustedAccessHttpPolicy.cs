@@ -134,6 +134,7 @@ internal static class TrustedAccessHttpPolicy
             "DELETE /api/cpu/baseline-ratio",
             "DELETE /api/cpu/topology/performance-overrides",
             "DELETE /api/gpu/performance-overrides",
+            "DELETE /api/optimization/protection/entries/{protectionId}",
             "PATCH /api/settings/app",
             "PATCH /api/memory-protection",
             "POST /api/memory-protection/reserve/rebuild",
@@ -166,6 +167,7 @@ internal static class TrustedAccessHttpPolicy
             "PUT /api/gpu-placement/software/{softwareId}/policy",
             "PUT /api/gpu/performance-overrides",
             "PUT /api/optimization/protection/software/{softwareId}",
+            "PUT /api/optimization/protection/entries/{protectionId}/level",
             "PUT /api/public/v1/sqlite/databases/{databaseId}",
             "PUT /api/settings/app",
             "PUT /api/settings/dashboard");

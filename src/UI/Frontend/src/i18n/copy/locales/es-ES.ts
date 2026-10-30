@@ -1931,8 +1931,12 @@ const esEsAppCopy: AppCopy = {
     protection: {
       title: "Protección",
       enabled: "Activar protección",
-      hint: "Nunca se rebaja: no se baja la prioridad, no se limita, no se congela, no se pasa a la GPU integrada ni se limpia su memoria. Aún puede recibir impulsos.",
+      hint: "La protección significa no congelar: el software nunca se congela y el resto de la planificación continúa con normalidad. El software con una puntuación base de 81 o superior deja de restringirse.",
       failed: "No se pudieron leer o guardar los ajustes de protección. Vuelva a abrir los detalles del software.",
+      sourceLine: (source: string, state: string) => `Origen: ${source} (${state})`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `Predeterminado: ${defaultSource} (${defaultState}); usted lo cambió a «${state}» en ${source}`,
+      state: { protected: "protegido", unprotected: "sin protección" },
+      sources: { software_detail: "Detalles del software", report: "Informe", protection_list: "Lista de protección", software_catalog: "Catálogo de software", system_default: "Predeterminado de los servicios del sistema" },
     },
     participation: {
       title: "Participación en la planificación",
