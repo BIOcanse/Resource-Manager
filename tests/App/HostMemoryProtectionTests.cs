@@ -546,7 +546,7 @@ public sealed partial class HostMemoryProtectionTests
         // The check loop asks for the next delivery only after handling the previous one, so the extra delivery
         // proves every earlier cycle finished.
         for (var index = 0; index <= Cycles; index++)
-            fixture.Source.Publish(900 + (ulong)index, 90 + index, [Process(10, "1", 9999)]);
+            fixture.Source.Publish(800 + (ulong)index, 80 + index, [Process(10, "1", 9999)]);
         await Until(() => fixture.Source.Deliveries >= start + Cycles + 1);
         await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).DecisionReason == "below-threshold");
         Assert.Equal(0, fixture.Source.ProcessReads);

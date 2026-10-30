@@ -80,7 +80,8 @@ public sealed class HostMemoryProtectionSourceTests
     public async Task CommitSubscriptionHoldsNoProcessDataAndProcessReadIsOneShot()
     {
         var fixture = new Fixture();
-        await using (var stream = fixture.Source.SubscribeCommitAsync(Holder, Interval, CancellationToken.None).GetAsyncEnumerator())
+        using var cancellation = new CancellationTokenSource();
+        await using (var stream = fixture.Source.SubscribeCommitAsync(Holder, Interval, cancellation.Token).GetAsyncEnumerator())
         {
             var pending = stream.MoveNextAsync().AsTask();
             Assert.Equal(Holder + ":commit", await fixture.Metrics.Started.Reader.ReadAsync().AsTask().WaitAsync(Timeout));
@@ -95,6 +96,9 @@ public sealed class HostMemoryProtectionSourceTests
             }
             Assert.Empty(fixture.Resources.Active);
             Assert.Equal(0, fixture.Foundations.ReadCount);
+            // An async iterator cannot be disposed while a MoveNextAsync is pending: end the pending read first.
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(Timeout));
         }
         Assert.Empty(fixture.Metrics.Active);
 
