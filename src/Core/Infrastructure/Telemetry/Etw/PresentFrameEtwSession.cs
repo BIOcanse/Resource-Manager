@@ -16,15 +16,24 @@ internal interface IPresentFrameEtwSession : IDisposable
     void Flush();
 }
 
-internal sealed class TraceEventPresentFrameEtwSession(string name) : IPresentFrameEtwSession
+internal sealed class TraceEventPresentFrameEtwSession : IPresentFrameEtwSession
 {
-    private readonly TraceEventSession session = new(name)
+    private readonly string name;
+    private readonly TraceEventSession session;
+    private readonly TraceEventSessionProcessingRuntime cleanup;
+    private ETWTraceEventSource? source;
+
+    internal TraceEventPresentFrameEtwSession(string name)
     {
-        StopOnDispose = true,
-        BufferSizeMB = 16,
-        EnableProviderTimeoutMSec = 2000
-    };
-    private TraceEventSessionProcessingRuntime? cleanup;
+        this.name = name;
+        session = new(name)
+        {
+            StopOnDispose = true,
+            BufferSizeMB = 16,
+            EnableProviderTimeoutMSec = 2000
+        };
+        cleanup = new(session, blockId: BlockUids.PresentFrameEtwSource);
+    }
     private Action<TraceEvent>? eventHandler;
     private EtwEventDropSession? drops;
     private EtwEventDropSession Drops => drops ??= EtwEventDropDiagnostics.Start(name, () => session.EventsLost);
@@ -41,10 +50,11 @@ internal sealed class TraceEventPresentFrameEtwSession(string name) : IPresentFr
             counter.Receive();
             if (!handler(data)) counter.Drop();
         };
-        session.Source.Dynamic.All += eventHandler;
-        session.Source.UnhandledEvents += run.RecordUnhandled;
+        var processingSource = source ??= session.Source;
+        processingSource.Dynamic.All += eventHandler;
+        processingSource.UnhandledEvents += run.RecordUnhandled;
     }
-    public void Process() => session.Source.Process();
+    public void Process() => cleanup.Process();
     public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds)
     {
         session.EnableProvider(provider, level, keywords,
@@ -61,14 +71,17 @@ internal sealed class TraceEventPresentFrameEtwSession(string name) : IPresentFr
     {
         try
         {
-            if (eventHandler is { } handler) session.Source.Dynamic.All -= handler;
-            if (drops is { } run) session.Source.UnhandledEvents -= run.RecordUnhandled;
+            if (source is { } processingSource)
+            {
+                if (eventHandler is { } handler) processingSource.Dynamic.All -= handler;
+                if (drops is { } run) processingSource.UnhandledEvents -= run.RecordUnhandled;
+            }
             eventHandler = null;
         }
         finally
         {
             drops?.Complete();
-            var release = (cleanup ??= new(session, blockId: BlockUids.PresentFrameEtwSource)).Stop(Timeout.InfiniteTimeSpan);
+            var release = cleanup.Stop(TimeSpan.FromSeconds(2));
             if (!release.IsReleased) throw new IOException("Present session release was not confirmed: " + string.Join(" | ", release.Failures));
             drops?.ConfirmNativeRelease();
         }

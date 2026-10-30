@@ -141,15 +141,8 @@ public sealed class TraceEventKernelEtwSessionRuntimeFactory(
         }
 
         var failures = new List<Exception>();
-        try
-        {
-            session.Source.StopProcessing();
-        }
-        catch (Exception ex)
-        {
-            failures.Add(ex);
-        }
-
+        // Creation has not started ProcessTrace. Stop its provider before
+        // disposing any lazily opened source; there is no consumer to drain.
         try
         {
             if (!session.Stop(noThrow: false))
@@ -250,6 +243,30 @@ internal sealed class TraceEventSessionProcessingRuntime(
                 TaskScheduler.Default);
     }
 
+    // PresentFrames owns the dedicated thread outside this runtime. Register its
+    // synchronous Process call so Stop can drain and join that same consumer too.
+    internal void Process()
+    {
+        Microsoft.Diagnostics.Tracing.ETWTraceEventSource processingSource;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (stopGate)
+        {
+            ObjectDisposedException.ThrowIf(disposed || stopAttempted, this);
+            if (Interlocked.CompareExchange(ref processing, 1, 0) != 0)
+                throw new InvalidOperationException("ETW event processing has already started.");
+            try { processingSource = source = session.Source; }
+            catch { Volatile.Write(ref processing, 0); throw; }
+            processingTask = completion.Task;
+            consumerThread = Thread.CurrentThread;
+        }
+        try { processingSource.Process(); }
+        finally
+        {
+            Volatile.Write(ref processing, 0);
+            completion.TrySetResult();
+        }
+    }
+
     public KernelEtwSessionStopResult Stop(TimeSpan waitTimeout)
     {
         if (waitTimeout < TimeSpan.Zero && waitTimeout != Timeout.InfiniteTimeSpan)
@@ -266,95 +283,33 @@ internal sealed class TraceEventSessionProcessingRuntime(
 
             ObjectDisposedException.ThrowIf(disposed, this);
             stopAttempted = true;
-            var failures = new List<string>();
-            var sessionStopSucceeded = false;
-            try
-            {
-                // TraceEvent.Stop marks itself stopped even when ControlTrace is denied.
-                // Use the owned native controller so a later reconcile really retries.
-                cleanup.StopSession(StopSession);
-                sessionStopSucceeded = true;
-            }
-            catch (Exception ex) when (KernelEtwSessionKeywordControl.IsAccessDenied(ex))
-            {
-                // A denied control operation did not stop the owned session. Leave
-                // callbacks, Process and the session handle alive; do not cache this result.
-                return new(false, false, processingTask?.IsCompleted ?? true,
-                    [$"SessionStop: {ex.GetType().Name}: {ex.Message}"]) { ControlDenied = true };
-            }
-            catch (Exception ex)
-            {
-                failures.Add($"SessionStop: {ex.GetType().Name}: {ex.Message}");
-            }
-
-            cleanup.CancelSubscriptions(() => dispatcher?.CancelAll());
-            try
-            {
-                cleanup.StopProcessing(() => source?.StopProcessing());
-            }
-            catch (Exception ex)
-            {
-                failures.Add($"StopProcessing: {ex.GetType().Name}: {ex.Message}");
-            }
-
-            var sessionDisposeSucceeded = false;
-            try
-            {
-                cleanup.DisposeSession(() =>
+            var result = cleanup.Stop(waitTimeout,
+                StopSession,
+                () => dispatcher?.CancelAll(),
+                WaitForProcessing,
+                () => source?.StopProcessing(),
+                () => source?.Dispose(),
+                () =>
                 {
                     eventDrops?.Complete(refreshLoss: false);
                     session.StopOnDispose = false;
                     session.Dispose();
                 });
-                sessionDisposeSucceeded = true;
-            }
-            catch (Exception ex)
-            {
-                failures.Add($"SessionDispose: {ex.GetType().Name}: {ex.Message}");
-            }
-
-            var processingCompleted = false;
-            var drainStarted = System.Diagnostics.Stopwatch.GetTimestamp();
-            try
-            {
-                processingCompleted = failures.Count == 0 && (processingTask?.Wait(waitTimeout) ?? true);
-                if (!processingCompleted)
-                {
-                    failures.Add(failures.Count > 0
-                        ? "ProcessingTask: cleanup failed; drain was not attempted."
-                        : $"ProcessingTask: did not exit within {waitTimeout}.");
-                }
-            }
-            catch (Exception ex)
-            {
-                failures.Add($"ProcessingTask: {ex.GetType().Name}: {ex.Message}");
-            }
-
-            // Completion records Process() and observer cleanup. Join the original
-            // thread too, using only the remainder of the same drain budget.
-            if (failures.Count == 0 && consumerThread is { } thread)
-            {
-                var unlimited = waitTimeout == Timeout.InfiniteTimeSpan;
-                var remaining = unlimited ? Timeout.InfiniteTimeSpan
-                    : waitTimeout - System.Diagnostics.Stopwatch.GetElapsedTime(drainStarted);
-                var joined = thread.Join(unlimited ? Timeout.InfiniteTimeSpan
-                    : remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
-                processingCompleted &= joined;
-                if (!joined) failures.Add($"ConsumerThread: did not exit within {waitTimeout}.");
-            }
-
-            if (processingCompleted) cleanup.ConfirmProcessingJoined();
-
-            var result = new KernelEtwSessionStopResult(
-                sessionStopSucceeded,
-                sessionDisposeSucceeded,
-                processingCompleted,
-                failures.ToArray());
             // Only completed release is terminal. A failed explicit Stop may be
             // tried again without repeating the steps already confirmed complete.
             if (result.IsReleased) stopResult = result;
             return result;
         }
+    }
+
+    private bool WaitForProcessing(TimeSpan waitTimeout)
+    {
+        var began = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (!(processingTask?.Wait(waitTimeout) ?? true)) return false;
+        var remaining = waitTimeout == Timeout.InfiniteTimeSpan ? Timeout.InfiniteTimeSpan
+            : waitTimeout - System.Diagnostics.Stopwatch.GetElapsedTime(began);
+        return consumerThread?.Join(remaining == Timeout.InfiniteTimeSpan ? remaining
+            : remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero) ?? true;
     }
 
     private void StopSession()
@@ -380,7 +335,13 @@ internal sealed class TraceEventSessionProcessingRuntime(
             var failures = new List<Exception>();
             if (!stopAttempted)
             {
-                try { _ = Stop(TimeSpan.FromSeconds(2)); }
+                try
+                {
+                    var release = Stop(TimeSpan.FromSeconds(2));
+                    if (!release.IsReleased)
+                        failures.Add(new InvalidOperationException(
+                            "ETW stop remains incomplete: " + string.Join(" | ", release.Failures)));
+                }
                 catch (Exception ex) { failures.Add(ex); }
             }
 
@@ -420,6 +381,50 @@ internal sealed class KernelEtwSessionRuntimeCleanup
     private Exception? sessionDisposeStopFailure;
     private Exception? nativeStopFailure;
 
+    internal KernelEtwSessionStopResult Stop(TimeSpan waitTimeout, Action stopSession,
+        Action cancel, Func<TimeSpan, bool> wait, Action stop, Action disposeSource, Action disposeSession)
+    {
+        var failures = new List<string>();
+        try { StopSession(stopSession); }
+        catch (Exception error) when (KernelEtwSessionKeywordControl.IsAccessDenied(error))
+        {
+            // Keep the denied session and its live consumer intact for retry.
+            return new(false, false, processingJoined, [$"SessionStop: {error.GetType().Name}: {error.Message}"])
+                { ControlDenied = true };
+        }
+        catch (Exception error) { failures.Add($"SessionStop: {error.GetType().Name}: {error.Message}"); }
+        try { CancelSubscriptions(cancel); }
+        catch (Exception error) { failures.Add($"CancelSubscriptions: {error.GetType().Name}: {error.Message}"); }
+
+        // ControlTrace STOP flushes final buffers. Do not cancel ProcessTrace or
+        // CloseTrace until it has drained and its thread has exited. The wait
+        // callback shares one budget between task completion and thread join.
+        if (!processingJoined && failures.Count == 0)
+        {
+            try
+            {
+                if (wait(waitTimeout)) ConfirmProcessingJoined();
+                else failures.Add($"ProcessingTask: natural drain did not exit within {waitTimeout}; trace forcibly closed, release incomplete.");
+            }
+            catch (Exception error) { failures.Add($"ProcessingTask: {error.GetType().Name}: {error.Message}"); }
+        }
+
+        // Timeout/failure still closes the trace to unblock the consumer. It
+        // cannot turn this attempt into a confirmed, successful natural drain.
+        try { StopProcessing(stop); }
+        catch (Exception error) { failures.Add($"StopProcessing: {error.GetType().Name}: {error.Message}"); }
+        try { DisposeSource(disposeSource); }
+        catch (Exception error) { failures.Add($"SourceDispose: {error.GetType().Name}: {error.Message}"); }
+        // TraceEventSession.Dispose also disposes its source. Do not let it
+        // implicitly retry a source-close failure in this same explicit Stop.
+        if (sourceDisposed)
+        {
+            try { DisposeSession(disposeSession); }
+            catch (Exception error) { failures.Add($"SessionDispose: {error.GetType().Name}: {error.Message}"); }
+        }
+        return new(sessionStopped, sessionDisposed, processingJoined, failures.ToArray());
+    }
+
     internal void ConfirmProcessingJoined() => processingJoined = true;
 
     internal void StopSession(Action stop)
@@ -448,6 +453,13 @@ internal sealed class KernelEtwSessionRuntimeCleanup
         if (sessionDisposed) return;
         try { dispose(); sessionDisposed = true; sessionDisposeStopFailure = null; }
         catch (Exception failure) { sessionDisposeStopFailure = failure; throw; }
+    }
+
+    private void DisposeSource(Action dispose)
+    {
+        if (sourceDisposed) return;
+        dispose();
+        sourceDisposed = true;
     }
 
     internal void Dispose(Action stopSession, Action cancel, Action stop,
