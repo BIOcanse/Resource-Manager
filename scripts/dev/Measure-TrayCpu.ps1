@@ -15,6 +15,10 @@ param(
     [ValidateRange(0,2147483647)][int]$UiProcessId = 0
 )
 $ErrorActionPreference = 'Stop'
+# Without elevation the per-thread time getters fail and PowerShell reads them as null, so every row would be 0.
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw 'Run elevated (Start-Process -Verb RunAs): the service threads cannot be opened otherwise.'
+}
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 Add-Type -Namespace RmTray -Name Native -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
