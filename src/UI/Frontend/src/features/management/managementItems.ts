@@ -1,13 +1,13 @@
 // 组件与软件的分类和每一类列出的项。分页清单（app/navigation/managementNavigation.ts）按它数每一类的数量，
 // 管理页按它列出当前分类的项；两处读同一份规则。
 
-import { sharedBrowserRuntimeComponentId } from "../browserRuntimes/browserRuntimeTypes";
-import { componentDisplayName } from "../../presentation/userFacingText";
+import { sharedBrowserRuntimeComponentId } from "../browserRuntimes/browserRuntimeTypes.ts";
+import { componentDisplayName } from "../../presentation/userFacingText.ts";
 import { isUnclassifiedSoftware } from "../../presentation/softwareClassification.ts";
-import type { ManagedComponent, ManagementKind, ManagementRole, SoftwareRecord } from "../../types";
+import type { ManagedComponent, ManagementKind, ManagementRole, SoftwareRecord } from "../../types.ts";
 import { managementKindLabel } from "../../text.ts";
-import { normalizeName, normalizeSoftwareKind } from "../../utils";
-import { managementInventoryKinds } from "./managementNavigation";
+import { normalizeName, normalizeSoftwareKind } from "../../utils.ts";
+import { managementInventoryKinds } from "./managementNavigation.ts";
 
 // 分类名按当前语言求值，不能在模块顶层固化。
 export function managementKinds(): Array<{ id: ManagementKind; label: string }> {
@@ -28,8 +28,10 @@ export function getManagementItems(kind: ManagementKind, components: ManagedComp
     return getManagementRoleItems(kind, components, software);
   }
 
+  // 带依赖或支持角色的记录只列在所属角色那一页：它们由组件管理，不在应用分类里重复出现，也不给出卸载。
+  const appSoftware = software.filter((item) => !item.managementRole);
   if (kind === "Unclassified") {
-    return software.filter(isUnclassifiedSoftware).map((item) => ({ type: "software", value: item }));
+    return appSoftware.filter(isUnclassifiedSoftware).map((item) => ({ type: "software", value: item }));
   }
 
   if (kind === "Unconfirmed") {
@@ -38,7 +40,7 @@ export function getManagementItems(kind: ManagementKind, components: ManagedComp
       .map((item) => ({ type: "software", value: item }));
   }
 
-  return software
+  return appSoftware
     .filter((item) => !isUnconfirmedSoftware(item) && !isUnclassifiedSoftware(item) && normalizeSoftwareKind(item) === kind)
     .map((item) => ({ type: "software", value: item }));
 }

@@ -206,9 +206,10 @@ function ComponentCard(props: {
         workIds={[frontendWorkIds.managementInventory]}
       />
       <div class="component-summary">
-        <strong class="management-card-title">
-          {componentDisplayName(props.component.definition?.id)}
-        </strong>
+        <CardTitleButton
+          name={componentDisplayName(props.component.definition?.id)}
+          onClick={() => props.onOpenDetail(props.component)}
+        />
         <div class="management-card-purpose">{componentPurpose(props.component.definition?.id)}</div>
         <Show when={props.component.state === "payload_missing" || props.component.state === "update_available"}>
           <ManagementStatusTag label={userFacingState(props.component.state)} tone={componentStateTone(props.component.state)} />
@@ -299,7 +300,7 @@ function SoftwareCard(props: {
       />
       <div class="software-summary">
         <div class="management-card-title-row">
-          <strong class="management-card-title">{softwareRecordName(props.software) || "--"}</strong>
+          <CardTitleButton name={softwareRecordName(props.software) || "--"} onClick={() => props.onOpenDetail(props.software)} />
           <Show when={props.software.requiresRootPathConfirmation}>
             <AlertTriangle
               class="management-root-warning-icon"
@@ -370,6 +371,15 @@ function ManagementStatusTag(props: { label: string; tone: StatusTone }) {
 function repeatsStatus(message: string, status: string) {
   const plain = (text: string) => text.trim().replace(/[。！？.!?]+$/, "").toLocaleLowerCase();
   return Boolean(status) && plain(message) === plain(status);
+}
+
+// 卡片标题就是打开详情的入口，和右侧按钮打开同一个对话框。
+function CardTitleButton(props: { name: string; onClick: () => void }) {
+  return (
+    <button class="management-card-title management-card-title-button" type="button" onClick={props.onClick}>
+      {props.name}
+    </button>
+  );
 }
 
 function SettingsButton(props: { onClick: () => void }) {

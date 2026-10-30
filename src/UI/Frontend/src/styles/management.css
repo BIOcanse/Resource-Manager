@@ -121,6 +121,23 @@
   white-space: nowrap;
 }
 
+/* 标题按钮保持标题的样子：去掉全局按钮的强调底色、边框和最小高度，悬停只加下划线。 */
+.management-card-title-button,
+.management-card-title-button:hover {
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.management-card-title-button:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .management-card-title-row {
   display: flex;
   min-width: 0;
