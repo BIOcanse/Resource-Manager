@@ -721,6 +721,96 @@ test "complete absence remains importable before and after report activation" {
     }
 }
 
+test "repeated resets persist only the source frame and checkpoint until stored content changes" {
+    const Reset = enum { missing, fact_unavailable, source_unavailable };
+    for ([_]Reset{ .missing, .fact_unavailable, .source_unavailable }) |reset| {
+        var fixture = try Fixture.create();
+        defer fixture.destroy();
+        // The durable table the managed store keeps: one row per kind and identity.
+        var table: [16]protocol.PersistenceOperation = undefined;
+        var table_count: usize = 0;
+        var epoch: u64 = 3;
+        var plan_epoch: u64 = 1;
+        var utc: i64 = 100;
+        var sequence: u64 = 1;
+        var round: u64 = 0;
+        while (round < 5) : (round += 1) {
+            if (round == 0) {
+                try fixture.observeComplete(epoch, epoch, round + 1, utc, &.{fact(sequence, 60)});
+            } else switch (reset) {
+                .missing => try fixture.observeComplete(epoch, epoch, round + 1, utc, &.{}),
+                .fact_unavailable => {
+                    sequence += 1;
+                    var unavailable = fact(sequence, 0);
+                    unavailable.flags = 0;
+                    try fixture.observeComplete(epoch, epoch, round + 1, utc, &.{unavailable});
+                },
+                .source_unavailable => try fixture.observeUnavailable(epoch, epoch, round + 1, utc),
+            }
+            const planned = try lifecyclePlan(fixture.session, epoch + 1, plan_epoch, utc + 1);
+            const rows = planned.operations[0..planned.output.persistence_operation_count];
+            var observation_rows: usize = 0;
+            for (rows) |row| {
+                switch (@as(protocol.PersistenceKind, @enumFromInt(row.operation_kind))) {
+                    .source, .metadata => {},
+                    .observation => observation_rows += 1,
+                    else => return error.UnexpectedPersistenceRow,
+                }
+            }
+            // The first settle stores the sample and the first reset stores the
+            // zeroed counters; identical resets after that store nothing new.
+            try std.testing.expectEqual(@as(usize, if (round < 2) 1 else 0), observation_rows);
+            try storeRows(&table, &table_count, rows);
+            try settlePlan(fixture.session, rows, epoch + 2, epoch + 2, plan_epoch, utc + 2);
+            epoch += 3;
+            plan_epoch += 1;
+            utc += 10;
+        }
+        const live_index = fixture.session.findObservation(
+            source_handle,
+            coverage_scope_handle,
+            rule_handle,
+            target_handle,
+        ).?;
+        const live = fixture.session.observations[live_index];
+        try std.testing.expectEqual(live.persisted_mutation_version, live.mutation_version);
+
+        // Restart from the durable table restores the same stored observation;
+        // the next managed fact sequence follows the stored cursor.
+        const restored = try state.Session.create(&fixture.config);
+        defer restored.destroy();
+        var rule_row = rule();
+        var replace = ruleReplaceInput(1, 1, utc, 1);
+        try expectCode(.ok, session_module.replaceRules(restored, &replace, @ptrCast(&rule_row), 1));
+        var import_input = importInput(2, 2, utc, 1, @intCast(table_count));
+        try expectCode(.ok, session_module.importPersisted(restored, &import_input, &table, @intCast(table_count)));
+        const restored_index = restored.findObservation(
+            source_handle,
+            coverage_scope_handle,
+            rule_handle,
+            target_handle,
+        ).?;
+        const back = restored.observations[restored_index];
+        try std.testing.expectEqual(live.sample_count, back.sample_count);
+        try std.testing.expectEqual(live.value_sum, back.value_sum);
+        try std.testing.expectEqual(live.last_observed_at_utc_ms, back.last_observed_at_utc_ms);
+        try std.testing.expectEqual(@as(u32, 0), back.consecutive_hits);
+        try std.testing.expectEqual(@as(u32, 0), back.consecutive_misses);
+        try std.testing.expect(!back.active);
+        try std.testing.expect(back.last_fact_sequence <= live.last_fact_sequence);
+        try observeRows(restored, sourceSnapshot(3, 3, round + 1, utc, .complete, 1), &.{fact(back.last_fact_sequence + 1, 60)});
+        try std.testing.expectEqual(live.sample_count + 1, restored.observations[restored_index].sample_count);
+
+        // A returning fact is a stored change in the running session.
+        try fixture.observeComplete(epoch, epoch, round + 1, utc, &.{fact(sequence + 1, 60)});
+        const returned = try lifecyclePlan(fixture.session, epoch + 1, plan_epoch, utc + 1);
+        const returned_row = try findOperation(returned.operations[0..returned.output.persistence_operation_count], .observation);
+        try std.testing.expectEqual(live.sample_count + 1, returned_row.sample_count);
+        try std.testing.expectEqual(@as(u32, 1), returned_row.consecutive_hits);
+        try std.testing.expectEqual(sequence + 1, returned_row.fact_sequence);
+    }
+}
+
 test "complete absence import rejects active state at or beyond the clear threshold" {
     for ([_]u32{ 2, 7, std.math.maxInt(u32) }) |misses| {
         var config = testConfig();
@@ -3811,6 +3901,32 @@ fn findOperation(
         if (operation.operation_kind == @intFromEnum(kind)) return operation;
     }
     return error.MissingPersistenceOperation;
+}
+
+// Mirror the managed store: upsert by kind and identity, remove on delete.
+fn storeRows(
+    table: []protocol.PersistenceOperation,
+    count: *usize,
+    rows: []const protocol.PersistenceOperation,
+) !void {
+    for (rows) |row| {
+        var index: usize = 0;
+        while (index < count.* and (table[index].operation_kind != row.operation_kind or
+            table[index].identity_handle != row.identity_handle)) : (index += 1)
+        {}
+        if ((row.flags & protocol.PersistenceFlags.delete) != 0) {
+            if (index < count.*) {
+                count.* -= 1;
+                table[index] = table[count.*];
+            }
+            continue;
+        }
+        if (index == count.*) {
+            if (count.* == table.len) return error.PersistedTableFull;
+            count.* += 1;
+        }
+        table[index] = row;
+    }
 }
 
 fn persistedMutation(

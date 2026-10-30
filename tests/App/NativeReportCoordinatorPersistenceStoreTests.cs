@@ -491,6 +491,102 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
             () => store.LoadTargetsAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task UnchangedTargetIdentityIsWrittenOnceAndAChangedOneAgain()
+    {
+        var database = CreateDatabase();
+        var store = new NativeReportCoordinatorPersistenceStore(database);
+        var evidence = new ResourceManager.App.Domain.Optimization.OptimizationProcessEvidence(42, "123456789123456789",
+            "pwsh", 50 * 1024 * 1024, 900, "pwsh -File \"任务.ps1\"");
+        var target = new HostManagerReportTargetDescriptor(123, "tool", "PowerShell", "other", "other", ["pwsh"], [42], evidence);
+        var catalog = new Dictionary<ulong, HostManagerReportTargetDescriptor> { [123] = target };
+        var row = CreateRow(NativeReportPersistenceKind.Trust, 12, 1, 22) with { TargetHandle = 123 };
+        await store.PersistAsync(new[] { row }, CancellationToken.None, catalog);
+        await ExecuteAsync(database, WriteCounterSql);
+
+        // Each batch stores the native row it carries; the unchanged identity is not rewritten,
+        // including by a new store instance that reads the committed identity back.
+        await store.PersistAsync(new[] { row with { MutationVersion = 2 } }, CancellationToken.None, catalog);
+        await store.PersistAsync(new[] { row with { MutationVersion = 3 } }, CancellationToken.None, catalog);
+        var restarted = new NativeReportCoordinatorPersistenceStore(database);
+        await restarted.PersistAsync(new[] { row with { MutationVersion = 4 } }, CancellationToken.None, catalog);
+        Assert.Equal((3L, 0L), await ReadWriteCountsAsync(database));
+
+        catalog[123] = target with { Process = evidence with { IdleDurationSeconds = 910 } };
+        await restarted.PersistAsync(new[] { row with { MutationVersion = 5 } }, CancellationToken.None, catalog);
+        Assert.Equal((4L, 1L), await ReadWriteCountsAsync(database));
+        var restored = Assert.Single(await new NativeReportCoordinatorPersistenceStore(database).LoadTargetsAsync(CancellationToken.None));
+        Assert.Equal(910, restored.Process!.IdleDurationSeconds);
+        Assert.Equal(5UL, Assert.Single(await new NativeReportCoordinatorPersistenceStore(database).LoadAsync(CancellationToken.None)).MutationVersion);
+    }
+
+    [Fact]
+    public async Task FailedBatchDoesNotChangeTheRetainedTargetIdentities()
+    {
+        var database = CreateDatabase();
+        var store = new NativeReportCoordinatorPersistenceStore(database);
+        var target = new HostManagerReportTargetDescriptor(123, "runtime:editor", "Editor", "other", "other", [], []);
+        var catalog = new Dictionary<ulong, HostManagerReportTargetDescriptor> { [123] = target };
+        var row = CreateRow(NativeReportPersistenceKind.Trust, 12, 1, 22) with { TargetHandle = 123 };
+        await store.PersistAsync(new[] { row }, CancellationToken.None, catalog);
+        await ExecuteAsync(database, """
+            CREATE TRIGGER test_reject_identity BEFORE INSERT ON host_manager_report_coordinator_rows
+            WHEN NEW.identity_handle = 99 BEGIN SELECT RAISE(ABORT, 'rejected'); END;
+            """);
+
+        // The delete runs before the rejected insert; the rollback restores both.
+        await Assert.ThrowsAsync<SqliteException>(() => store.PersistAsync(new[]
+        {
+            row with { MutationVersion = 2, Flags = (uint)NativeReportPersistenceFlags.Delete },
+            CreateRow(NativeReportPersistenceKind.Trust, 99, 3, 1) with { TargetHandle = 124 }
+        }, CancellationToken.None, catalog));
+        await ExecuteAsync(database, "DROP TRIGGER test_reject_identity;");
+
+        await store.PersistAsync(new[] { CreateRow(NativeReportPersistenceKind.Source, 11, 4, 21) },
+            CancellationToken.None, catalog);
+        Assert.Equal(123UL, Assert.Single(await store.LoadTargetsAsync(CancellationToken.None)).TargetHandle);
+        Assert.Contains(await store.LoadAsync(CancellationToken.None), stored => stored.IdentityHandle == 12);
+    }
+
+    // Counts committed row writes per table; an upsert counts once (insert or update).
+    private const string WriteCounterSql = """
+        CREATE TABLE test_write_counts(table_name TEXT NOT NULL PRIMARY KEY, writes INTEGER NOT NULL);
+        INSERT INTO test_write_counts VALUES ('rows', 0), ('targets', 0);
+        CREATE TRIGGER test_rows_insert AFTER INSERT ON host_manager_report_coordinator_rows
+        BEGIN UPDATE test_write_counts SET writes = writes + 1 WHERE table_name = 'rows'; END;
+        CREATE TRIGGER test_rows_update AFTER UPDATE ON host_manager_report_coordinator_rows
+        BEGIN UPDATE test_write_counts SET writes = writes + 1 WHERE table_name = 'rows'; END;
+        CREATE TRIGGER test_rows_delete AFTER DELETE ON host_manager_report_coordinator_rows
+        BEGIN UPDATE test_write_counts SET writes = writes + 1 WHERE table_name = 'rows'; END;
+        CREATE TRIGGER test_targets_insert AFTER INSERT ON host_manager_report_target_identities
+        BEGIN UPDATE test_write_counts SET writes = writes + 1 WHERE table_name = 'targets'; END;
+        CREATE TRIGGER test_targets_update AFTER UPDATE ON host_manager_report_target_identities
+        BEGIN UPDATE test_write_counts SET writes = writes + 1 WHERE table_name = 'targets'; END;
+        CREATE TRIGGER test_targets_delete AFTER DELETE ON host_manager_report_target_identities
+        BEGIN UPDATE test_write_counts SET writes = writes + 1 WHERE table_name = 'targets'; END;
+        """;
+
+    private static async Task ExecuteAsync(ResourceManagerDatabase database, string sql)
+    {
+        await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync(CancellationToken.None);
+    }
+
+    private static async Task<(long Rows, long Targets)> ReadWriteCountsAsync(ResourceManagerDatabase database)
+    {
+        await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT (SELECT writes FROM test_write_counts WHERE table_name = 'rows'),
+                   (SELECT writes FROM test_write_counts WHERE table_name = 'targets');
+            """;
+        await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        Assert.True(await reader.ReadAsync(CancellationToken.None));
+        return (reader.GetInt64(0), reader.GetInt64(1));
+    }
+
     private static async Task SetStoredTargetKindsAsync(
         ResourceManagerDatabase database,
         string softwareKind,

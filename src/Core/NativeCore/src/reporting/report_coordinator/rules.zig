@@ -355,11 +355,13 @@ fn observeInternal(
                 observation.source_handle != input.source_handle or
                 observation.coverage_scope_handle != input.coverage_scope_handle) continue;
             session.snapshotObservation(@intCast(index));
+            const persisted_changed = resetsPersistedCounters(observation);
             observation.consecutive_hits = 0;
             observation.consecutive_misses = 0;
             observation.active_sample_count = 0;
             observation.decision = .unknown;
             observation.evidence_available = false;
+            if (!persisted_changed) continue;
             observation.mutation_version = session.allocateMutation() orelse {
                 rollbackObserve(session, &checkpoint);
                 return .out_of_memory;
@@ -533,13 +535,19 @@ fn observeComplete(
                 if (observation.delete_pending or observation.rule_generation != fact.rule_generation or
                     fact.fact_sequence <= observation.last_fact_sequence) return .stale_frame;
                 observation.seen_operation_epoch = input.operation_epoch;
+                // The fact sequence is only a replay cursor. Both the native
+                // import and the managed fact sequencer resume from the stored
+                // row, so a stored value behind this one stays valid.
                 observation.last_fact_sequence = fact.fact_sequence;
+                const persisted_changed = resetsPersistedCounters(observation);
                 observation.consecutive_hits = 0;
                 observation.consecutive_misses = 0;
                 observation.active_sample_count = 0;
                 observation.decision = .unknown;
                 observation.evidence_available = false;
-                observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
+                if (persisted_changed) {
+                    observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
+                }
             }
             continue;
         }
@@ -658,6 +666,7 @@ fn observeComplete(
             observation.coverage_scope_handle != input.coverage_scope_handle or
             observation.seen_operation_epoch == input.operation_epoch) continue;
         session.snapshotObservation(@intCast(observation_index));
+        const persisted_changed = observation.active or resetsPersistedCounters(observation);
         observation.consecutive_hits = 0;
         observation.active_sample_count = 0;
         // A complete source confirms disappearance; this is not a safe sample
@@ -666,7 +675,9 @@ fn observeComplete(
         observation.active = false;
         observation.decision = .missing;
         observation.evidence_available = false;
-        observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
+        if (persisted_changed) {
+            observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
+        }
     }
 
     const maintenance = maintainBeforeReports(session, effective_now_utc_ms);
@@ -708,6 +719,13 @@ fn applyMetricOutcome(
         observation.active_sample_count = 0;
         observation.decision = .unknown;
     }
+}
+
+// Decision and evidence availability are not stored, so an unchanged reset is
+// not a new persisted row; evaluateChangedRollingWindows follows the same rule.
+fn resetsPersistedCounters(observation: *const state.ObservationSlot) bool {
+    return observation.consecutive_hits != 0 or observation.consecutive_misses != 0 or
+        observation.active_sample_count != 0;
 }
 
 fn evaluateChangedRollingWindows(session: *state.Session) ResultCode {
