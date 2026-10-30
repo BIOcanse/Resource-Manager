@@ -82,7 +82,7 @@ internal static partial class Program
             name =>
             {
                 RequireOwnSessionName(ResourceManagerEtwSessionNames.PresentFramesPrefix, name);
-                return new PresentMeasurementSession(name, transitions, closed,
+                return new PresentMeasurementSession(name, provider.GetRequiredService<ILogger<PresentFrameEtwSource>>(), transitions, closed,
                     () => provider.GetRequiredService<PresentFrameEtwSource>().ReadHolders());
             }, TimeProvider.System, provider.GetService<IEtwConsumerThreadObserver>())));
         builder.Logging.ClearProviders();
@@ -164,7 +164,7 @@ internal static partial class Program
         private readonly ConcurrentDictionary<(string Name, long Generation), (DateTimeOffset At, EtwSessionEventDrops Drops)> closed;
         private readonly Func<PresentFrameEtwSource.PresentHolder[]> readHolders;
         private int opened;
-        internal PresentMeasurementSession(string name, ConcurrentQueue<object> transitions,
+        internal PresentMeasurementSession(string name, ILogger logger, ConcurrentQueue<object> transitions,
             ConcurrentDictionary<(string Name, long Generation), (DateTimeOffset At, EtwSessionEventDrops Drops)> closed,
             Func<PresentFrameEtwSource.PresentHolder[]> readHolders)
         {
@@ -172,7 +172,7 @@ internal static partial class Program
             this.transitions = transitions;
             this.closed = closed;
             this.readHolders = readHolders;
-            inner = new(name);
+            inner = new(name, logger);
         }
         public int EventsLost => inner.EventsLost;
         public void Bind(Action<TraceEvent> handler) => inner.Bind(handler);

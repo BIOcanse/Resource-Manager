@@ -30,15 +30,15 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
             ? GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12
             : provider == Direct3D9Provider && eventId == Direct3D9PresentStart ? GpuGraphicsApi.D3D9 : null;
 
-    private bool ApplyGraphicsApiEvent(TraceEvent data)
+    private bool ApplyGraphicsApiEvent(TraceEvent data, EtwFixedPayload payload)
     {
         if (graphicsApiSubscriptions.Count == 0) return false;
         if (data.ProviderGuid == KernelProcessProvider)
         {
-            if ((int)data.ID == ProcessStart && data.PayloadByName("CreateTime") is DateTime created)
-                return ObserveGraphicsApiProcessLifetimeCore(Convert.ToInt32(data.PayloadByName("ProcessID")), created.ToFileTimeUtc());
+            if ((int)data.ID == ProcessStart && payload.TryFileTime((int)PresentFrameField.CreateTime, out var created))
+                return ObserveGraphicsApiProcessLifetimeCore(payload.Int32((int)PresentFrameField.ProcessID), created.ToFileTimeUtc());
             else if ((int)data.ID == ProcessStop)
-                return ObserveGraphicsApiProcessLifetimeCore(Convert.ToInt32(data.PayloadByName("ProcessID")), null);
+                return ObserveGraphicsApiProcessLifetimeCore(payload.Int32((int)PresentFrameField.ProcessID), null);
             return false;
         }
         return ObserveGraphicsApiPresentCore(data.ProviderGuid, (int)data.ID, data.ProcessID, data.TimeStamp.ToUniversalTime());

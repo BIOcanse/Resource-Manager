@@ -65,7 +65,8 @@ internal static partial class Program
                 native.StopOnDispose = true;
                 native.BufferSizeMB = 16;
                 native.EnableProviderTimeoutMSec = 2000;
-                session = new TraceEventGpuAllocationSession(native);
+                // No host logger here; fixed-layout rejections still show in the drop counters.
+                session = new TraceEventGpuAllocationSession(native, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
                 session.Bind((id, eventId, payload, timestamp) =>
                 {
                     // This mode measures filter delivery only; it deliberately

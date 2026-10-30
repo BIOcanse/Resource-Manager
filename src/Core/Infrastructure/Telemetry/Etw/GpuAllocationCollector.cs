@@ -9,7 +9,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 public sealed partial class GpuAllocationCollector : IBusinessBlock
 {
     internal static readonly Guid Provider = new("802ec45a-1e99-4b83-9920-87c98277ba9d");
-    private static readonly Guid BoundaryProvider = EventSource.GetGuid(typeof(GpuAllocationBoundary));
+    internal static readonly Guid BoundaryProvider = EventSource.GetGuid(typeof(GpuAllocationBoundary));
     private static readonly int[] EventIds = [33, 34, 35, 36, 37, 38, 39, 40, 53, 54, 55,
         74, 78, 80, 110, 227, 306, 307, 313, 314, 391];
     private readonly object gate = new();

@@ -52,7 +52,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
                 run.Session = current;
                 current.BindUsage(data =>
                 {
-                    return Volatile.Read(ref run.Accepting) != 0 && OnDynamicEvent(data, evidence);
+                    return Volatile.Read(ref run.Accepting) != 0 && OnFixedLayoutEvent(data, evidence);
                 });
                 run.Processing = DedicatedEtwConsumerThread.Start(BlockUids.DxgkrnlVidMmEtwTelemetryZone, SessionName, () =>
                 {

@@ -18,16 +18,20 @@ internal sealed class TraceEventVidMmSession : IVidMmEtwSession
     private readonly TraceEventSessionProcessingRuntime cleanup;
     private Action<TraceEvent>? eventHandler;
     private readonly EtwEventDropSession drops;
+    private readonly EtwFixedLayoutGate layouts;
 
-    internal TraceEventVidMmSession(string name, string provider, ulong keywords)
+    // The provider is enabled by GUID: a provider name makes TraceEvent enumerate every
+    // registered provider through TDH into a process-lifetime name table.
+    internal TraceEventVidMmSession(string name, Guid provider, ulong keywords, ILogger logger)
     {
         session = new TraceEventSession(name) { StopOnDispose = true };
         cleanup = new(session, blockId: BlockUids.DxgkrnlVidMmEtwTelemetryZone);
         drops = EtwEventDropDiagnostics.Start(name, () => session.EventsLost);
+        layouts = new(logger, "DxgKrnl VidMm", drops);
         try
         {
             session.EnableProvider(provider, TraceEventLevel.Verbose, keywords);
-            drops.EnableProvider(provider, keywords);
+            drops.EnableProvider(provider.ToString("D"), keywords);
         }
         catch (Exception error)
         {
@@ -44,22 +48,23 @@ internal sealed class TraceEventVidMmSession : IVidMmEtwSession
         => BindUsage(data => { handler(data); return true; });
     public void BindUsage(Func<TraceEvent, bool> handler)
     {
+        // No parser is registered on this source, so every event arrives here undecoded.
+        // A consumed event whose version or length does not match its fixed layout
+        // (DxgkrnlVidMmEtwLayouts) is counted and never reaches the handler.
         eventHandler = data =>
         {
             var counter = drops.Kind(data.ProviderGuid, (int)data.ID, (int)data.Opcode);
             counter.Receive();
-            if (!handler(data)) counter.Drop();
+            if (layouts.Admit(data, counter, DxgkrnlVidMmEtwLayouts.Catalog.Find(data, out _)) && !handler(data)) counter.Drop();
         };
-        session.Source.Dynamic.All += eventHandler;
-        session.Source.UnhandledEvents += drops.RecordUnhandled;
+        session.Source.UnhandledEvents += eventHandler;
     }
     public void Process() => session.Source.Process();
     public void Dispose()
     {
         try
         {
-            if (eventHandler is { } handler) session.Source.Dynamic.All -= handler;
-            session.Source.UnhandledEvents -= drops.RecordUnhandled;
+            if (eventHandler is { } handler) session.Source.UnhandledEvents -= handler;
             eventHandler = null;
         }
         finally

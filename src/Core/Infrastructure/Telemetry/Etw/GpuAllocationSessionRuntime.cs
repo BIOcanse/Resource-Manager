@@ -56,11 +56,12 @@ internal sealed class TraceEventGpuAllocationSessionFactory(
     }
 
     internal TraceEventGpuAllocationSession WrapSession(TraceEventSession session)
-        => new(session, consumerThreadObserver);
+        => new(session, logger, consumerThreadObserver);
 }
 
 internal sealed class TraceEventGpuAllocationSession(
     TraceEventSession session,
+    ILogger logger,
     IEtwConsumerThreadObserver? consumerThreadObserver = null) : IGpuAllocationSession
 {
     private readonly TraceEventSessionProcessingRuntime processing = new(
@@ -68,7 +69,6 @@ internal sealed class TraceEventGpuAllocationSession(
         consumerThreadObserver: consumerThreadObserver,
         blockId: BlockUids.GpuAllocationCollector);
     private Action<TraceEvent>? eventHandler;
-    private Action<TraceEvent>? unhandledHandler;
     private EtwEventDropSession? drops;
     private EtwEventDropSession Drops => drops ??= EtwEventDropDiagnostics.Start(session.SessionName, () => session.EventsLost);
     private GpuAllocationProviderControl? providerControl;
@@ -81,22 +81,20 @@ internal sealed class TraceEventGpuAllocationSession(
     public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> handler)
     {
         var run = Drops;
-        var payload = new GpuAllocationIndexedPayload();
+        var payload = new GpuAllocationFixedPayload();
+        var layouts = new EtwFixedLayoutGate(logger, "GPU allocation", run);
+        // No parser is registered on this source, so every event arrives here undecoded;
+        // the payload reads consumed events at fixed offsets (EtwFixedLayout.cs).
         eventHandler = data =>
         {
             var counter = run.Kind(data.ProviderGuid, (int)data.ID, (int)data.Opcode);
             counter.Receive();
-            payload.SetEvent(data, counter);
-            handler(data.ProviderGuid, (int)data.ID, payload, data.TimeStamp.ToUniversalTime());
-        };
-        session.Source.Dynamic.All += eventHandler;
-        unhandledHandler = data =>
-        {
-            run.RecordUnhandled(data);
-            GpuAllocationObservation.RecordDelivery(session.SessionName, data.ProviderGuid, (int)data.ID,
+            if (layouts.Admit(data, counter, payload.SetEvent(data, counter)))
+                handler(data.ProviderGuid, (int)data.ID, payload, data.TimeStamp.ToUniversalTime());
+            else GpuAllocationObservation.RecordDelivery(session.SessionName, data.ProviderGuid, (int)data.ID,
                 data.TimeStamp.ToUniversalTime(), false);
         };
-        session.Source.UnhandledEvents += unhandledHandler;
+        session.Source.UnhandledEvents += eventHandler;
     }
     public void StartProcessing(Action<Exception?> completed) => processing.StartProcessing(completed);
     public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
@@ -114,10 +112,8 @@ internal sealed class TraceEventGpuAllocationSession(
         KernelEtwSessionStopResult release;
         try
         {
-            if (eventHandler is { } handler) session.Source.Dynamic.All -= handler;
-            if (unhandledHandler is { } unhandled) session.Source.UnhandledEvents -= unhandled;
+            if (eventHandler is { } handler) session.Source.UnhandledEvents -= handler;
             eventHandler = null;
-            unhandledHandler = null;
         }
         finally
         {

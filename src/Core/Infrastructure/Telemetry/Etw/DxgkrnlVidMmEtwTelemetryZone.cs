@@ -17,18 +17,16 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     IEtwConsumerThreadObserver? consumerThreadObserver = null) : IBusinessBlock
 {
     public const string ProviderStateId = "dxgkrnl-vidmm-etw";
-    private const string ProviderName = "Microsoft-Windows-DxgKrnl";
     private const ulong DxgKrnlKeywords = 0x40UL | 0x80UL | 0x10000UL | 0x100000UL | 0x200000UL | 0x20000000UL;
     private static readonly string SessionName = ResourceManagerEtwSessionNames.Create(
         ResourceManagerEtwSessionNames.DxgkrnlVidMmPrefix, ResourceManagerEtwSessionNames.CurrentOwner);
-    private static readonly string[] ProcessIdPayloadNames = ["ProcessId", "ProcessID", "Pid", "PID", "OwnerProcessId", "OwnerProcessID"];
     private static readonly TimeSpan EvidenceRetention = TimeSpan.FromSeconds(90);
     private ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> evidenceByProcess = new();
     private DxgkrnlVidMmEtwMemoryEvidence[]? retainedEvidence;
     private long stoppedAtUtcTicks;
     private long nextPruneUtcTicks;
     private readonly Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess = WindowsNetworkEndpointProcessLease.Open;
-    private readonly Func<string, IVidMmEtwSession> createSession = name => new TraceEventVidMmSession(name, ProviderName, DxgKrnlKeywords);
+    private readonly Func<string, IVidMmEtwSession> createSession = name => new TraceEventVidMmSession(name, DxgkrnlVidMmEtwLayouts.Provider, DxgKrnlKeywords, logger);
 
     public string State => controller.ReadState(BlockUids.DxgkrnlVidMmEtwTelemetryZone).ToString();
     public string Message => diagnostics.Read(BlockUids.DxgkrnlVidMmEtwTelemetryZone).Result?.Outcome == BusinessBlockOutcome.Failed ? "etw-session-failed" : string.Empty;
@@ -60,27 +58,41 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     internal bool MatchesCurrentProcess(DxgkrnlVidMmEtwMemoryEvidence evidence)
         => evidence.ProcessStartKey > 0 && ReadProcessBirth(evidence.ProcessId) == evidence.ProcessStartKey;
 
-    private bool OnDynamicEvent(TraceEvent data, ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence)
+    private bool OnFixedLayoutEvent(TraceEvent data, ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence)
     {
         try
         {
-            if (!string.Equals(data.ProviderName, ProviderName, StringComparison.OrdinalIgnoreCase)
-                || !IsProcessMemoryEvent(data.EventName)
-                || !TryReadProcessId(data, out var processId)
-                || processId <= 0
-                || !TryReadByteValue(data, out var valueBytes))
-            {
-                return false;
-            }
-
-            return ObserveProcessMemory(currentEvidence, processId, data.ProcessName, valueBytes,
-                data.EventName, EtwNetworkTcpIpCaptureOwner.ToEventFileTime(data.TimeStamp), DateTimeOffset.UtcNow);
+            return TryReadProcessMemory(data, out var processId, out var valueBytes, out var eventName)
+                && ObserveProcessMemory(currentEvidence, processId, data.ProcessName, valueBytes,
+                    eventName, EtwNetworkTcpIpCaptureOwner.ToEventFileTime(data.TimeStamp), DateTimeOffset.UtcNow);
         }
         catch (Exception ex)
         {
             SignalFailure(ex);
             return false;
         }
+    }
+
+    // Reads a process-memory event at its fixed layout (DxgkrnlVidMmEtwLayouts): the payload
+    // ProcessId when positive, else the header process; then the first byte-value field in a
+    // plausible range. Other events, and events that fail their layout, read nothing.
+    internal static bool TryReadProcessMemory(TraceEvent data, out int processId, out double valueBytes, out string eventName)
+    {
+        processId = 0;
+        valueBytes = 0;
+        eventName = string.Empty;
+        if (data.ProviderGuid != DxgkrnlVidMmEtwLayouts.Provider
+            || !DxgkrnlVidMmEtwLayouts.Events.TryGetValue((int)data.ID, out var memoryEvent)
+            || DxgkrnlVidMmEtwLayouts.Catalog.Find(data, out var payload) != EtwFixedLayoutStatus.Decoded)
+        {
+            return false;
+        }
+
+        processId = payload.Has((int)VidMmField.ProcessId) && payload.Int32((int)VidMmField.ProcessId) is > 0 and var payloadProcessId
+            ? payloadProcessId
+            : data.ProcessID;
+        eventName = memoryEvent.EventName;
+        return processId > 0 && TryReadByteValue(payload, memoryEvent.ByteValues, out valueBytes);
     }
 
     internal void ObserveProcessMemory(int processId, string? processName, double valueBytes,
@@ -129,68 +141,16 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
         }
     }
 
-    private static bool IsProcessMemoryEvent(string eventName)
+    private static bool TryReadByteValue(EtwFixedPayload payload, VidMmField[] candidates, out double value)
     {
-        return eventName.Equals("VidMmProcessUsageChange", StringComparison.OrdinalIgnoreCase)
-            || eventName.Equals("VidMmProcessCommitmentChange", StringComparison.OrdinalIgnoreCase)
-            || eventName.Equals("VidMmProcessDemotedCommitmentChange", StringComparison.OrdinalIgnoreCase)
-            || eventName.Equals("ReportCommittedAllocation", StringComparison.OrdinalIgnoreCase)
-            || eventName.Equals("ProcessAllocation", StringComparison.OrdinalIgnoreCase)
-            || eventName.Equals("ProcessAllocationDetails", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryReadProcessId(TraceEvent data, out int processId)
-    {
-        foreach (var name in ProcessIdPayloadNames)
+        foreach (var candidate in candidates)
         {
-            if (TryReadIntPayload(data, name, out processId) && processId > 0)
-            {
-                return true;
-            }
-        }
-
-        processId = data.ProcessID;
-        return processId > 0;
-    }
-
-    private static bool TryReadByteValue(TraceEvent data, out double value)
-    {
-        var candidates = data.PayloadNames
-            .Where(IsLikelyBytePayloadName)
-            .OrderByDescending(BytePayloadNameScore)
-            .ToArray();
-        foreach (var name in candidates)
-        {
-            if (TryReadDoublePayload(data, name, out value) && IsPlausibleByteValue(value))
-            {
-                return true;
-            }
+            value = payload.Int64((int)candidate);
+            if (IsPlausibleByteValue(value)) return true;
         }
 
         value = 0;
         return false;
-    }
-
-    private static bool IsLikelyBytePayloadName(string name)
-    {
-        return name.Contains("Usage", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Commit", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Resident", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Bytes", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("Size", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int BytePayloadNameScore(string name)
-    {
-        var score = 0;
-        if (name.Contains("Current", StringComparison.OrdinalIgnoreCase)) score += 20;
-        if (name.Contains("Usage", StringComparison.OrdinalIgnoreCase)) score += 18;
-        if (name.Contains("Commitment", StringComparison.OrdinalIgnoreCase)) score += 16;
-        if (name.Contains("Committed", StringComparison.OrdinalIgnoreCase)) score += 14;
-        if (name.Contains("Resident", StringComparison.OrdinalIgnoreCase)) score += 12;
-        if (name.Contains("Bytes", StringComparison.OrdinalIgnoreCase)) score += 8;
-        if (name.Contains("Size", StringComparison.OrdinalIgnoreCase)) score += 4;
-        return score;
     }
 
     private static bool IsPlausibleByteValue(double value)
@@ -199,46 +159,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
             && !double.IsInfinity(value)
             && value >= 4096
             && value <= 512d * 1024 * 1024 * 1024;
-    }
-
-    private static bool TryReadIntPayload(TraceEvent data, string name, out int value)
-    {
-        value = 0;
-        try
-        {
-            var payload = data.PayloadByName(name);
-            if (payload is null)
-            {
-                return false;
-            }
-
-            value = Convert.ToInt32(payload);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool TryReadDoublePayload(TraceEvent data, string name, out double value)
-    {
-        value = 0;
-        try
-        {
-            var payload = data.PayloadByName(name);
-            if (payload is null)
-            {
-                return false;
-            }
-
-            value = Convert.ToDouble(payload);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }
 

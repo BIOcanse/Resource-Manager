@@ -19,13 +19,15 @@ internal interface IPresentFrameEtwSession : IDisposable
 internal sealed class TraceEventPresentFrameEtwSession : IPresentFrameEtwSession
 {
     private readonly string name;
+    private readonly ILogger logger;
     private readonly TraceEventSession session;
     private readonly TraceEventSessionProcessingRuntime cleanup;
     private ETWTraceEventSource? source;
 
-    internal TraceEventPresentFrameEtwSession(string name)
+    internal TraceEventPresentFrameEtwSession(string name, ILogger logger)
     {
         this.name = name;
+        this.logger = logger;
         session = new(name)
         {
             StopOnDispose = true,
@@ -44,15 +46,18 @@ internal sealed class TraceEventPresentFrameEtwSession : IPresentFrameEtwSession
     public void BindUsage(Func<TraceEvent, bool> handler)
     {
         var run = Drops;
+        var layouts = new EtwFixedLayoutGate(logger, "Present frame", run);
+        // No parser is registered on this source, so every event arrives here undecoded.
+        // A consumed event whose version or length does not match its fixed layout
+        // (PresentFrameEtwLayouts) is counted and never reaches the handler.
         eventHandler = data =>
         {
             var counter = run.Kind(data.ProviderGuid, (int)data.ID, (int)data.Opcode);
             counter.Receive();
-            if (!handler(data)) counter.Drop();
+            if (layouts.Admit(data, counter, PresentFrameEtwLayouts.Catalog.Find(data, out _)) && !handler(data)) counter.Drop();
         };
         var processingSource = source ??= session.Source;
-        processingSource.Dynamic.All += eventHandler;
-        processingSource.UnhandledEvents += run.RecordUnhandled;
+        processingSource.UnhandledEvents += eventHandler;
     }
     public void Process() => cleanup.Process();
     public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds, int[]? processIds = null)
@@ -73,8 +78,7 @@ internal sealed class TraceEventPresentFrameEtwSession : IPresentFrameEtwSession
         {
             if (source is { } processingSource)
             {
-                if (eventHandler is { } handler) processingSource.Dynamic.All -= handler;
-                if (drops is { } run) processingSource.UnhandledEvents -= run.RecordUnhandled;
+                if (eventHandler is { } handler) processingSource.UnhandledEvents -= handler;
             }
             eventHandler = null;
         }

@@ -25,20 +25,20 @@ internal static partial class Program
             provider.GetRequiredService<BusinessBlockScheduler>(),
             provider.GetRequiredService<BusinessBlockDiagnosticsRegistry>(),
             provider.GetRequiredService<NativeEtwSessionAvailability>(),
-            static name =>
+            name =>
             {
                 RequireOwnSessionName(ResourceManagerEtwSessionNames.PresentFramesPrefix, name);
-                return new TraceEventPresentFrameEtwSession(name);
+                return new TraceEventPresentFrameEtwSession(name, provider.GetRequiredService<ILogger<PresentFrameEtwSource>>());
             }, TimeProvider.System, provider.GetService<IEtwConsumerThreadObserver>())));
         services.Replace(ServiceDescriptor.Singleton<GpuAllocationCollector>(provider => new(
             provider.GetRequiredService<ILogger<GpuAllocationCollector>>(),
             provider.GetRequiredService<IConfiguration>(),
             provider.GetRequiredService<BusinessBlockDiagnosticsRegistry>(),
             provider.GetRequiredService<NativeEtwSessionAvailability>(),
-            new ActualUseGpuAllocationFactory(provider.GetService<IEtwConsumerThreadObserver>()),
+            new ActualUseGpuAllocationFactory(provider.GetRequiredService<ILogger<GpuAllocationCollector>>(), provider.GetService<IEtwConsumerThreadObserver>()),
             TimeProvider.System, consumerThreadObserver: provider.GetService<IEtwConsumerThreadObserver>())));
         // VidMm already directly constructs TraceEventVidMmSession(name, provider,
-        // keywords). Neither that constructor nor the zone calls orphan recovery.
+        // keywords, logger). Neither that constructor nor the zone calls orphan recovery.
         // It keeps the product's exact-own PID/start-time session name and cleanup.
     }
 
@@ -48,7 +48,7 @@ internal static partial class Program
             name, StringComparison.Ordinal)) throw new InvalidDataException("Private probe factory received another process's session name.");
     }
 
-    private sealed class ActualUseGpuAllocationFactory(IEtwConsumerThreadObserver? observer) : IGpuAllocationSessionFactory
+    private sealed class ActualUseGpuAllocationFactory(ILogger logger, IEtwConsumerThreadObserver? observer) : IGpuAllocationSessionFactory
     {
         public IGpuAllocationSession Create(string name)
         {
@@ -58,7 +58,7 @@ internal static partial class Program
             {
                 session = new TraceEventSession(name, TraceEventSessionOptions.Create)
                     { StopOnDispose = true, BufferSizeMB = 16, EnableProviderTimeoutMSec = 2000 };
-                return new TraceEventGpuAllocationSession(session, observer);
+                return new TraceEventGpuAllocationSession(session, logger, observer);
             }
             catch (Exception failure)
             {

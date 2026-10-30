@@ -55,7 +55,7 @@ public sealed partial class PresentFrameEtwSource(
     {
         ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
             ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner, name);
-        return new TraceEventPresentFrameEtwSession(name);
+        return new TraceEventPresentFrameEtwSession(name, logger);
     };
     private readonly TimeProvider timeProvider = TimeProvider.System;
     private readonly Func<GpuPlacementProcessInstance, bool> isCurrentGraphicsApiProcess =
@@ -243,21 +243,24 @@ public sealed partial class PresentFrameEtwSource(
     {
         bool used;
         var graphicsApiUseChanged = false;
+        // The session already dropped consumed events without a matching fixed layout.
+        if (PresentFrameEtwLayouts.Catalog.Find(data, out var payload) is EtwFixedLayoutStatus.UnknownVersion or EtwFixedLayoutStatus.ShortPayload)
+            return false;
         lock (gate)
         {
             used = false;
             try
             {
-                graphicsApiUseChanged = used = ApplyGraphicsApiEvent(data);
+                graphicsApiUseChanged = used = ApplyGraphicsApiEvent(data, payload);
                 // An API-only lease uses the supplied process birth identity. It does not
                 // invoke the frame ledger's process-handle fallback for other processes.
                 if (Volatile.Read(ref frameLeases) > 0
-                    && data.TimeStamp.ToUniversalTime().Ticks >= lastLossUtcTicks) used |= Apply(ledger, data);
+                    && data.TimeStamp.ToUniversalTime().Ticks >= lastLossUtcTicks) used |= Apply(ledger, data, payload);
             }
             catch (Exception error)
             {
                 SignalFailure(error);
-                logger.LogWarning(error, "Present frame event {Provider}/{Event} could not be applied.", data.ProviderName, (int)data.ID);
+                logger.LogWarning(error, "Present frame event {Provider}/{Event} could not be applied.", data.ProviderGuid, (int)data.ID);
             }
         }
         // Provider mutation/authority notification must leave the aggregation
@@ -273,20 +276,21 @@ public sealed partial class PresentFrameEtwSource(
             && (ProcessIds is null ? other.ProcessIds is null : other.ProcessIds is not null && ProcessIds.SequenceEqual(other.ProcessIds));
     }
 
-    internal static bool Apply(PresentFrameLedger target, TraceEvent data)
+    // Payload fields come from the event's fixed layout (PresentFrameEtwLayouts); the
+    // values equal what TraceEvent's dynamic payload produced for the same manifest fields.
+    internal static bool Apply(PresentFrameLedger target, TraceEvent data, EtwFixedPayload payload)
     {
         var id = (int)data.ID;
         if (data.ProviderGuid == KernelProcessProvider)
         {
-            var processId = Convert.ToInt32(data.PayloadByName("ProcessID"));
-            if (id == ProcessStart && data.PayloadByName("CreateTime") is DateTime created)
+            if (id == ProcessStart && payload.TryFileTime((int)PresentFrameField.CreateTime, out var created))
             {
-                target.ProcessStarted(processId, created.ToFileTimeUtc());
+                target.ProcessStarted(payload.Int32((int)PresentFrameField.ProcessID), created.ToFileTimeUtc());
                 return true;
             }
             else if (id == ProcessStop)
             {
-                target.ProcessStopped(processId);
+                target.ProcessStopped(payload.Int32((int)PresentFrameField.ProcessID));
                 return true;
             }
 
@@ -304,9 +308,9 @@ public sealed partial class PresentFrameEtwSource(
         {
             var threadId = data.ThreadID;
             target.Present(data.ProcessID, FramePresentSource.Dxgi,
-                ReadPointer(data.PayloadByName("pIDXGISwapChain")), timestamp, threadId, timestampQpc, qpcFrequency);
+                payload.Pointer((int)PresentFrameField.pIDXGISwapChain), timestamp, threadId, timestampQpc, qpcFrequency);
             if (id == DxgiMultiplaneOverlayPresentStart
-                || (ReadUInt32(data.PayloadByName("Flags")) & 1) != 0)
+                || (payload.UInt32((int)PresentFrameField.Flags) & 1) != 0)
             {
                 target.UnsupportedDisplayPath(data.ProcessID, threadId);
             }
@@ -314,17 +318,17 @@ public sealed partial class PresentFrameEtwSource(
         else if (data.ProviderGuid == DxgiProvider && id is DxgiPresentStop or DxgiMultiplaneOverlayPresentStop)
         {
             target.PresentStopped(data.ProcessID, data.ThreadID, timestamp, timestampQpc,
-                unchecked((int)ReadUInt32(data.PayloadByName("Result"))));
+                payload.Int32((int)PresentFrameField.Result));
         }
         else if (data.ProviderGuid == Direct3D9Provider && id == Direct3D9PresentStart)
         {
             target.Present(data.ProcessID, FramePresentSource.Direct3D9,
-                ReadPointer(data.PayloadByName("pSwapchain")), timestamp, data.ThreadID, timestampQpc, qpcFrequency);
+                payload.Pointer((int)PresentFrameField.pSwapchain), timestamp, data.ThreadID, timestampQpc, qpcFrequency);
         }
         else if (data.ProviderGuid == Direct3D9Provider && id == Direct3D9PresentStop)
         {
             target.PresentStopped(data.ProcessID, data.ThreadID, timestamp, timestampQpc,
-                unchecked((int)ReadUInt32(data.PayloadByName("Result"))));
+                payload.Int32((int)PresentFrameField.Result));
         }
         else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelPresent)
         {
@@ -333,30 +337,30 @@ public sealed partial class PresentFrameEtwSource(
         else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelFlip)
         {
             target.LegacyFlip(data.ProcessID, data.ThreadID,
-                ReadBoolean(data.PayloadByName("MMIOFlip")), timestampQpc);
+                payload.Boolean((int)PresentFrameField.MMIOFlip), timestampQpc);
         }
         else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelFlipMultiPlaneOverlay)
         {
             target.UnsupportedDisplayPath(data.ProcessID, data.ThreadID,
-                ReadUInt32(data.PayloadByName("VidPnSourceId")));
+                payload.UInt32((int)PresentFrameField.VidPnSourceId));
         }
         else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelQueuePacketStart)
         {
             target.QueuePacketStart(data.ProcessID, data.ThreadID,
-                ReadUInt32(data.PayloadByName("SubmitSequence")),
-                ReadUInt64(data.PayloadByName("hContext")),
-                ReadUInt32(data.PayloadByName("PacketType")),
-                ReadBoolean(data.PayloadByName("bPresent")), timestampQpc);
+                payload.UInt32((int)PresentFrameField.SubmitSequence),
+                payload.Pointer((int)PresentFrameField.hContext),
+                payload.UInt32((int)PresentFrameField.PacketType),
+                payload.Boolean((int)PresentFrameField.bPresent), timestampQpc);
         }
         else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelMmioFlip)
         {
-            target.MmioFlip(ReadUInt32(data.PayloadByName("FlipSubmitSequence")),
+            target.MmioFlip(payload.UInt32((int)PresentFrameField.FlipSubmitSequence),
                 timestamp, timestampQpc,
-                (ReadUInt32(data.PayloadByName("Flags")) & FlipImmediate) != 0);
+                (payload.UInt32((int)PresentFrameField.Flags) & FlipImmediate) != 0);
         }
         else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelVSyncDpc)
         {
-            var fenceId = ReadUInt64(data.PayloadByName("FlipFenceId"));
+            var fenceId = payload.UInt64((int)PresentFrameField.FlipFenceId);
             var submitSequence = (uint)(fenceId >> 32);
             if (submitSequence != 0) target.VSyncDpc(submitSequence, timestamp, timestampQpc);
             else return false;
@@ -364,65 +368,21 @@ public sealed partial class PresentFrameEtwSource(
         else if (data.ProviderGuid == Win32kProvider && id == Win32kTokenCompositionSurfaceObject)
         {
             target.TrackWin32kToken(data.ProcessID, data.ThreadID,
-                ReadUInt64(data.PayloadByName("CompositionSurfaceLuid")),
-                ReadUInt64(data.PayloadByName("PresentCount")),
-                ReadUInt64(data.PayloadByName("BindId")));
+                payload.UInt64((int)PresentFrameField.CompositionSurfaceLuid),
+                payload.UInt64((int)PresentFrameField.PresentCount),
+                payload.UInt64((int)PresentFrameField.BindId));
         }
         else if (data.ProviderGuid == Win32kProvider && id == Win32kTokenStateChanged)
         {
             target.Win32kTokenStateChanged(
-                ReadUInt64(data.PayloadByName("CompositionSurfaceLuid")),
-                ReadUInt32(data.PayloadByName("PresentCount")),
-                ReadUInt64(data.PayloadByName("BindId")),
-                ReadUInt32(data.PayloadByName("NewState")), timestamp, timestampQpc);
+                payload.UInt64((int)PresentFrameField.CompositionSurfaceLuid),
+                payload.UInt32((int)PresentFrameField.PresentCount),
+                payload.UInt64((int)PresentFrameField.BindId),
+                payload.UInt32((int)PresentFrameField.NewState), timestamp, timestampQpc);
         }
         else return false;
         return true;
     }
-
-    private static bool ReadBoolean(object? value) => value switch
-    {
-        bool flag => flag,
-        byte flag => flag != 0,
-        sbyte flag => flag != 0,
-        ushort flag => flag != 0,
-        short flag => flag != 0,
-        uint flag => flag != 0,
-        int flag => flag != 0,
-        ulong flag => flag != 0,
-        long flag => flag != 0,
-        _ => throw new InvalidDataException("The ETW payload is not a supported Boolean value.")
-    };
-
-    private static uint ReadUInt32(object? value)
-    {
-        var wide = ReadUInt64(value);
-        return wide <= uint.MaxValue
-            ? (uint)wide
-            : throw new InvalidDataException("The ETW payload exceeds an unsigned 32-bit value.");
-    }
-
-    private static ulong ReadUInt64(object? value) => value switch
-    {
-        byte number => number,
-        sbyte number => unchecked((byte)number),
-        ushort number => number,
-        short number => unchecked((ushort)number),
-        uint number => number,
-        int number => unchecked((uint)number),
-        ulong number => number,
-        long number => unchecked((ulong)number),
-        _ => throw new InvalidDataException("The ETW payload is not an integer value.")
-    };
-
-    private static ulong ReadPointer(object? value) => value switch
-    {
-        ulong pointer => pointer,
-        long pointer => unchecked((ulong)pointer),
-        uint pointer => pointer,
-        int pointer => unchecked((uint)pointer),
-        _ => 0
-    };
 
     // 与现有 ProcessStartKey 同一口径：进程启动时间的 UTC FILETIME。
     private static long? ReadProcessStartKey(int processId)
