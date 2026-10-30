@@ -563,6 +563,28 @@ pub const Session = struct {
         return .ok;
     }
 
+    // The managed owner grants the exact native demand, within its configured
+    // upper bound. Keep the old arena and limits on allocation/budget failure.
+    pub fn reserveObservations(self: *Session, count: u32) ResultCode {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
+        if (self.planned_persistence_count != 0) return .unavailable;
+        if (count <= self.config.maximum_observation_count) return .ok;
+        if (count > (1 << 29)) return .invalid_argument;
+        const previous = self.config;
+        self.config.maximum_observation_count = count;
+        self.config.observation_index_capacity = indexCapacity(count);
+        if (!protocol.validConfig(&self.config)) {
+            self.config = previous;
+            return .buffer_too_small;
+        }
+        var demand = self.allocationShape();
+        demand.maximum_observation_count = count;
+        const result = self.ensureShape(demand, .report_facts);
+        if (result != .ok) self.config = previous;
+        return result;
+    }
+
     pub fn reconfigure(self: *Session, config: *const protocol.Config) ResultCode {
         lockMutex(&self.mutex);
         defer self.mutex.unlock();

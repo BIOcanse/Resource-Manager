@@ -67,6 +67,15 @@ public sealed partial class HostManagerPlanCompiler
 
         var buildSpecialize = CompileBuildSpecialize(
             profile.BuildSpecialize ?? throw Missing("build_specialize"));
+        var reportObservationGrowthLimit = freedom.Consume<int>(BackendFreedomPointPaths.ReportObservationGrowthLimit,
+            "HostManagerPlanCompiler.Compile");
+        if (reportObservationGrowthLimit <= 0
+            || reportObservationGrowthLimit > (1 << 29))
+            throw new InvalidDataException("The report observation growth limit must cover the initial observation limit and fit the native index.");
+        buildSpecialize = buildSpecialize with
+        {
+            ReportCoordinator = buildSpecialize.ReportCoordinator with { ObservationGrowthLimit = reportObservationGrowthLimit }
+        };
 
         var recreate = profile.HostRecreate
             ?? throw Missing("host_recreate");

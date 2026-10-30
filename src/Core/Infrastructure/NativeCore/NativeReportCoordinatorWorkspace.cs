@@ -38,7 +38,8 @@ internal sealed class NativeReportCoordinatorWorkspace : IDisposable
             plan,
             sessionInstanceLow,
             sessionInstanceHigh);
-        Session = new NativeReportCoordinatorSession(in configuration);
+        // fixed: the compiled backend bound is read once for this workspace.
+        Session = new NativeReportCoordinatorSession(in configuration, checked((uint)plan.Build.ObservationGrowthLimit));
         try
         {
             Layout = new NativeReportScratchLayout(0, 0);

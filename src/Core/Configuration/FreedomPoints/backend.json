@@ -524,6 +524,26 @@
               }
             ]
           }
+        },
+        {
+          "id": "reports",
+          "description": "Backend report coordinator observation storage.",
+          "build": {
+            "simple": [
+              {
+                "index": 0,
+                "id": "observation_growth_limit",
+                "description": "Maximum retained report observations after a native required-count query. Default 16384; accepts the initial profile limit through 536870912. Native persistence capacity and resident-byte budget also apply. One reserve and retry per observation; no eviction.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 16384,
+                "consumers": [ "HostManagerPlanCompiler.Compile" ]
+              }
+            ]
+          },
+          "children": []
         }
       ]
     }

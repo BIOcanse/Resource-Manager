@@ -1,5 +1,21 @@
 const protocol = @import("protocol.zig");
 
+pub export fn rm_report_coordinator_query_observation_count(
+    handle: ?*anyopaque,
+    input: ?*const protocol.SourceSnapshotInput,
+    facts: ?[*]const protocol.FactInput,
+    fact_count: u32,
+    required: ?*u32,
+) callconv(.c) i32 {
+    const session: *session_module.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    return code(session_module.queryObservationCount(session, input orelse return code(.invalid_argument), facts, fact_count, required orelse return code(.invalid_argument)));
+}
+
+pub export fn rm_report_coordinator_reserve_observations(handle: ?*anyopaque, count: u32) callconv(.c) i32 {
+    const session: *session_module.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    return code(session.reserveObservations(count));
+}
+
 pub export fn rm_report_coordinator_query_workspace_capacity(
     handle: ?*anyopaque,
     output: ?*protocol.WorkspaceCapacity,

@@ -39,6 +39,8 @@ public sealed partial class HostManagerPlanCompiler
             source.Capacity ?? throw Missing("host_recreate.report_coordinator.capacity"),
             "host_recreate.report_coordinator.capacity");
         var limit = build.CapacityLimits;
+        ValidateMaximum(capacity.MaximumObservationCount, build.ObservationGrowthLimit,
+            "host_recreate.report_coordinator.capacity.maximum_observation_count (observation growth limit)");
         ValidateMaximum(capacity.MaximumSourceCount, limit.MaximumSourceCount, "host_recreate.report_coordinator.capacity.maximum_source_count");
         ValidateMaximum(capacity.MaximumRuleCount, limit.MaximumRuleCount, "host_recreate.report_coordinator.capacity.maximum_rule_count");
         ValidateMaximum(capacity.MaximumObservationCount, limit.MaximumObservationCount, "host_recreate.report_coordinator.capacity.maximum_observation_count");

@@ -66,6 +66,8 @@ public sealed record CompiledHostManagerReportCoordinatorBuildPlan(
     string NativeBinarySha256,
     CompiledHostManagerReportCoordinatorCapacityPlan CapacityLimits)
 {
+    [global::FreedomPoint.FreedomPointBinding(ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints.BackendFreedomPointPositions.ObservationGrowthLimit)]
+    public int ObservationGrowthLimit { get; init; }
     private static CompiledHostManagerReportCoordinatorCapacityPlan EmptyCapacity { get; } =
         new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
@@ -74,7 +76,8 @@ public sealed record CompiledHostManagerReportCoordinatorBuildPlan(
         && !string.IsNullOrWhiteSpace(NativeBinaryFileName)
         && NativeBinarySha256.Length == 64
         && NativeBinarySha256.All(static value => char.IsAsciiHexDigit(value))
-        && CapacityLimits.IsPublished;
+        && CapacityLimits.IsPublished
+        && ObservationGrowthLimit is > 0 and <= (1 << 29);
 
     public static CompiledHostManagerReportCoordinatorBuildPlan Unpublished { get; } = new(
         0,

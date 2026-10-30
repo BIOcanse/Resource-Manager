@@ -9,6 +9,25 @@ const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 pub const Session = state.Session;
 
+pub fn queryObservationCount(
+    session: *Session,
+    input: *const protocol.SourceSnapshotInput,
+    fact_pointer: ?[*]const protocol.FactInput,
+    fact_count: u32,
+    required: *u32,
+) ResultCode {
+    required.* = 0;
+    const rows = if (fact_count == 0) &.{} else (fact_pointer orelse return .invalid_argument)[0..fact_count];
+    state.lockMutex(&session.mutex);
+    defer session.mutex.unlock();
+    var validation_config = session.config;
+    validation_config.maximum_observation_count = @max(fact_count, validation_config.maximum_observation_count);
+    if (!protocol.validSourceSnapshot(input, &validation_config)) return .abi_mismatch;
+    if (input.fact_count != fact_count) return .invalid_argument;
+    required.* = @import("growth.zig").observationDemand(session, input, rows).maximum_observation_count;
+    return .ok;
+}
+
 pub fn replaceRules(
     session: *Session,
     input: *const protocol.RuleReplaceInput,

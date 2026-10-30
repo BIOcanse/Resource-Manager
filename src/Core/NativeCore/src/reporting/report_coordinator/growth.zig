@@ -32,6 +32,10 @@ pub fn importRows(session: *state.Session, rows: []const protocol.PersistenceOpe
 }
 
 pub fn observe(session: *state.Session, input: *const protocol.SourceSnapshotInput, facts: []const protocol.FactInput) ResultCode {
+    return session.ensureShape(observationDemand(session, input, facts), .report_facts);
+}
+
+pub fn observationDemand(session: *state.Session, input: *const protocol.SourceSnapshotInput, facts: []const protocol.FactInput) protocol.Config {
     var demand = session.allocationShape();
     const source = session.findSource(input.source_handle, input.coverage_scope_handle);
     demand.maximum_source_count = occupied(session.sources) + @as(u32, if (source == null) 1 else 0);
@@ -52,7 +56,7 @@ pub fn observe(session: *state.Session, input: *const protocol.SourceSnapshotInp
     // The fact-key validation column shares the observation extent.
     demand.maximum_observation_count = @max(observations, @as(u32, @intCast(facts.len)));
     demand.maximum_bucket_count = buckets;
-    return session.ensureShape(demand, .report_facts);
+    return demand;
 }
 
 pub fn trust(session: *state.Session, input: *const protocol.TrustCommandInput) ResultCode {

@@ -38,4 +38,5 @@ internal static class BackendFreedomPointPositions
     public const ulong WorkerArenaBytes = 0x0001000200280005UL;
     public const ulong ReasonTextCapacity = 0x0001000200280006UL;
     public const ulong AvailabilityCheckIntervalMs = 0x00010002002C0000UL;
+    public const ulong ObservationGrowthLimit = 0x0001000200300000UL;
 }

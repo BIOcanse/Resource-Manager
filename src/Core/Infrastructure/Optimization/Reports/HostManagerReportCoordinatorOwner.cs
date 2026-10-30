@@ -386,6 +386,10 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
                 {
                     break;
                 }
+                catch (ReportSourceObservationException)
+                {
+                    // ObserveSource owns source failure/recovery transitions.
+                }
                 catch (Exception exception)
                 {
                     logger.LogError(
@@ -481,20 +485,27 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
             {
                 targetCatalog[target.Key] = target.Value;
             }
+            ReportSourceObservationException? sourceFailure = null;
             foreach (var source in batch.Sources)
             {
                 if (state.ShouldObserveSource(source))
                 {
-                    ObserveSource(activeWorkspace, plan, state, source);
+                    try { ObserveSource(activeWorkspace, plan, state, source); }
+                    catch (ReportSourceObservationException failure) { sourceFailure ??= failure; }
                 }
             }
+            if (sourceFailure is not null) RecordEvaluationFailure();
+            // Capacity failures must not block retention maintenance or its
+            // persisted deletions, otherwise a smaller new population cannot
+            // recover after the old observations expire.
             await SettleAndPublishAsync(
                 activeWorkspace,
                 plan,
                 state,
                 cancellationToken,
                 interrupts,
-                evaluationCompleted: true);
+                evaluationCompleted: sourceFailure is null);
+            if (sourceFailure is not null) throw sourceFailure;
         }
         catch (Exception exception) when (exception is not OperationCanceledException && Volatile.Read(ref retiring) == 0)
         {
@@ -510,12 +521,16 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     private void RecordEvaluationFailure()
     {
         var current = Volatile.Read(ref readModel);
+        var unavailableRules = coordinatorState is { } state && appliedPlan is { } plan
+            ? UnavailableRules(state, plan) : current.Status.UnavailableRules;
         Volatile.Write(ref readModel, current with
         {
             Status = current.Status with
             {
                 LastEvaluationAt = DateTimeOffset.UtcNow,
-                EvaluationState = "failed"
+                EvaluationState = "failed",
+                UnavailableRules = unavailableRules,
+                AvailableRuleCount = current.Status.ConfiguredRuleCount - unavailableRules.Count
             }
         });
     }

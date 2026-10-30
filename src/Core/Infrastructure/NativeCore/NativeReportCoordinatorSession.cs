@@ -9,9 +9,16 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
     private IntPtr handle;
     private NativeReportCoordinatorCapacity capacity;
     private ulong configurationGeneration;
+    private NativeReportCoordinatorConfiguration configuration;
+    private readonly uint observationGrowthLimit;
 
-    public NativeReportCoordinatorSession(in NativeReportCoordinatorConfiguration configuration)
+    public NativeReportCoordinatorSession(in NativeReportCoordinatorConfiguration configuration, uint observationGrowthLimit = 0)
     {
+        if (observationGrowthLimit != 0 && observationGrowthLimit < configuration.MaximumObservationCount)
+            throw new ArgumentOutOfRangeException(nameof(observationGrowthLimit));
+        this.configuration = configuration;
+        // An omitted grant preserves the raw ABI's fixed-limit behavior.
+        this.observationGrowthLimit = Math.Max(configuration.MaximumObservationCount, observationGrowthLimit);
         var actualVersion = NativeMethods.GetAbiVersion();
         if (actualVersion != NativeReportCoordinatorAbi.Version)
         {
@@ -70,6 +77,7 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
             {
                 capacity = QueryAndValidateCapacity(current, in configuration);
                 configurationGeneration = configuration.Generation;
+                this.configuration = configuration;
             }
             return status;
         }
@@ -105,6 +113,15 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
     {
         lock (sync)
         {
+            _ = RequireHandle();
+            var observations = 0U;
+            foreach (ref readonly var row in rows)
+                if (row.OperationKind == (uint)NativeReportPersistenceKind.Observation) observations++;
+            if (observations > capacity.ObservationCapacity && observations <= observationGrowthLimit)
+            {
+                var reserve = ReserveObservations(observations);
+                if (reserve != NativeReportCoordinatorStatus.Ok) return reserve;
+            }
             fixed (NativeReportPersistenceOperation* rowPointer = rows)
             {
                 try
@@ -145,6 +162,55 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
                 }
             }
         }
+    }
+
+    // One failed attempt, one exact native requirement, at most one reserve and
+    // retry. The retained extent is shared by sources; current fact count alone
+    // cannot size it. A failed reserve preserves the old native arena.
+    internal unsafe NativeReportObservationResult ObserveGrowing(
+        in NativeReportSourceSnapshotInput input, ReadOnlySpan<NativeReportFactInput> facts)
+    {
+        lock (sync)
+        {
+            var status = Observe(in input, facts);
+            if (status == NativeReportCoordinatorStatus.Ok) return new(status, ReportSourceFailureReason.None, 0);
+            if (status == NativeReportCoordinatorStatus.BufferTooSmall
+                || status == NativeReportCoordinatorStatus.AbiMismatch && facts.Length > capacity.ObservationCapacity)
+            {
+                fixed (NativeReportFactInput* pointer = facts)
+                {
+                    var query = (NativeReportCoordinatorStatus)NativeMethods.QueryObservationCount(
+                        RequireHandle(), in input, pointer, checked((uint)facts.Length), out var required);
+                    if (query != NativeReportCoordinatorStatus.Ok)
+                        return new(query, ReportSourceFailureReason.NativeFailure, 0);
+                    if (required > observationGrowthLimit)
+                        return new(NativeReportCoordinatorStatus.BufferTooSmall, ReportSourceFailureReason.ObservationCapacityExceeded, required);
+                    if (required > capacity.ObservationCapacity)
+                    {
+                        status = ReserveObservations(required);
+                        if (status == NativeReportCoordinatorStatus.Ok) status = Observe(in input, facts);
+                    }
+                    return new(status, status == NativeReportCoordinatorStatus.Ok ? ReportSourceFailureReason.None : ReportSourceFailureReason.NativeFailure, required);
+                }
+            }
+            return new(status, ReportSourceFailureReason.NativeFailure, 0);
+        }
+    }
+
+    private NativeReportCoordinatorStatus ReserveObservations(uint required)
+    {
+        try
+        {
+            var status = (NativeReportCoordinatorStatus)NativeMethods.ReserveObservations(RequireHandle(), required);
+            if (status == NativeReportCoordinatorStatus.Ok)
+            {
+                configuration.MaximumObservationCount = required;
+                configuration.ObservationIndexCapacity = System.Numerics.BitOperations.RoundUpToPowerOf2(checked(required * 2));
+                capacity = QueryAndValidateCapacity(RequireHandle(), in configuration);
+            }
+            return status;
+        }
+        finally { ObserveGrowth(); }
     }
 
     public NativeReportCoordinatorStatus CommandTrust(
@@ -330,6 +396,15 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
     private static partial class NativeMethods
     {
         private const string LibraryName = "ResourceManager.NativeCore";
+
+        [LibraryImport(LibraryName, EntryPoint = "rm_report_coordinator_query_observation_count")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static unsafe partial int QueryObservationCount(IntPtr handle,
+            in NativeReportSourceSnapshotInput input, NativeReportFactInput* facts, uint factCount, out uint required);
+
+        [LibraryImport(LibraryName, EntryPoint = "rm_report_coordinator_reserve_observations")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial int ReserveObservations(IntPtr handle, uint required);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_report_coordinator_abi_version")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

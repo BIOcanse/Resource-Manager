@@ -16,6 +16,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner
     // The plan records hold immutable arrays, so record equality would see every
     // republished plan as changed; the compiled module digests compare content.
     private CompiledHostManagerModuleDigests? appliedDigests;
+    // Keep the latest native demand for diagnosis; compare only reason/status
+    // when deciding whether a new transition deserves another log entry.
+    private readonly Dictionary<(ulong Source, ulong Coverage), NativeReportObservationResult> sourceFailures = [];
 
     private async Task ApplyPlanCoreAsync(
         CompiledHostManagerPlan hostPlan,
@@ -102,6 +105,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         workspace = replacement;
         appliedPlan = desired;
         appliedDigests = desiredDigests;
+        foreach (var key in sourceFailures.Keys.ToArray())
+            if (!desired.SourceRuleGroups.Any(group => (group.SourceHandle, group.CoverageScopeHandle) == key))
+                sourceFailures.Remove(key);
         coordinatorState = replacementState;
         PruneRetainedMetadata(replacementState, replacementModel);
         Volatile.Write(ref readModel, replacementModel);
@@ -242,12 +248,24 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             FactCount = checked((uint)facts.Length),
             Status = (uint)source.Status
         };
-        var status = target.Session.Observe(in input, facts);
-        RequireStatus(
-            status,
-            FormattableString.Invariant(
-                $"source observation (source={input.SourceHandle}, coverage={input.CoverageScopeHandle}, providerGeneration={source.ProviderGeneration}, sourceGeneration={input.SourceGeneration}, snapshotEpoch={input.SourceSnapshotEpoch}, status={source.Status}, factCount={facts.Length}, sampleDurationMs={source.SampleDurationMilliseconds}, observedAtUtcMs={input.ObservedAtUtcMilliseconds})"));
+        var result = target.Session.ObserveGrowing(in input, facts);
+        var key = (source.SourceHandle, source.CoverageScopeHandle);
+        if (result.Status != NativeReportCoordinatorStatus.Ok)
+        {
+            var failure = new ReportSourceObservationException(key.SourceHandle, key.CoverageScopeHandle,
+                result, checked((uint)plan.Build.ObservationGrowthLimit));
+            if (!sourceFailures.TryGetValue(key, out var previous)
+                || previous.Reason != result.Reason || previous.Status != result.Status)
+                logger.LogError(failure, "Report source {Source} coverage {Coverage} entered failure: {Reason} ({Status}).",
+                    key.SourceHandle, key.CoverageScopeHandle, result.Reason, result.Status);
+            sourceFailures[key] = result;
+            throw failure;
+        }
         state.CommitSourceObservation(source, sourceFrame, facts);
+        if (sourceFailures.Remove(key))
+            // Match sampling recovery: keep the transition visible in the
+            // Windows service event log's warning-level channel.
+            logger.LogWarning("Report source {Source} coverage {Coverage} recovered.", key.SourceHandle, key.CoverageScopeHandle);
     }
 
     private async Task SettlePendingAsync(CancellationToken cancellationToken)
@@ -475,7 +493,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         }
 
         var evaluation = Volatile.Read(ref readModel).Status;
-        var unavailableRules = state.UnavailableRules(plan);
+        var unavailableRules = UnavailableRules(state, plan);
         var capturedAt = FromUnixMilliseconds(native.LogicalUtcMilliseconds);
         var reports = reportBuilder.ToImmutable();
         var trusted = trustBuilder.ToImmutable();
@@ -517,6 +535,11 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             if (!retainedTargets.Contains(target)) targetCatalog.Remove(target);
         state.PruneFactSequences();
     }
+
+    private IReadOnlyList<string> UnavailableRules(CoordinatorState state, CompiledHostManagerReportCoordinatorPlan plan)
+        => state.UnavailableRules(plan).Concat(plan.Recreate.Rules
+            .Where(rule => sourceFailures.ContainsKey((rule.SourceHandle, rule.CoverageScopeHandle)))
+            .Select(rule => rule.Name)).Distinct(StringComparer.Ordinal).ToArray();
 
     private CommandStamp NextCommandStamp(DateTimeOffset now)
     {

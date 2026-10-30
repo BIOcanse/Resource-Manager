@@ -14,6 +14,93 @@ const rule_generation: u64 = 22;
 const family_handle: u64 = 31;
 const target_handle: u64 = 41;
 
+test "source 14 sixty facts reserve observations and second round performs no allocation" {
+    // Installed initial limit and current development initial limit. One thousand
+    // process instances over the seven-day retention already occupy 2000 rows.
+    for ([_]u32{ 2048, 8192 }) |limit| {
+        var config = testConfig();
+        config.maximum_observation_count = limit;
+        config.observation_index_capacity = limit * 2;
+        config.maximum_persistence_operation_count = 32768;
+        config.planned_persistence_index_capacity = 65536;
+        config.default_retention_milliseconds = 604800000;
+        var rules = [_]protocol.RuleInput{ rule(), rule(), rule(), rule() };
+        for (&rules, 0..) |*row, index| {
+            row.source_handle = if (index < 2) 15 else 14;
+            row.coverage_scope_handle = row.source_handle;
+            row.rule_handle += index;
+            row.predicate_group_handle += index;
+        }
+        const session = try createReadySession(&config, &rules);
+        defer session.destroy();
+        const process_facts = try std.testing.allocator.alloc(protocol.FactInput, limit - 48);
+        defer std.testing.allocator.free(process_facts);
+        for (process_facts, 0..) |*row, index| {
+            row.* = factFor(rules[index % 2].rule_handle, rule_generation, 1, 20);
+            row.target_handle = index / 2 + 1;
+        }
+        var process_input = sourceSnapshot(3, 3, 1, 100, .complete, @intCast(process_facts.len));
+        process_input.source_handle = 15;
+        process_input.coverage_scope_handle = 15;
+        try expectCode(.ok, session_module.observe(session, &process_input, process_facts.ptr, @intCast(process_facts.len)));
+        var facts: [60]protocol.FactInput = undefined;
+        for (&facts, 0..) |*row, index| {
+            row.* = factFor(rules[2 + index % 2].rule_handle, rule_generation, 1, 20);
+            row.target_handle = index / 2 + 1;
+        }
+        var input = sourceSnapshot(4, 4, 1, 110, .complete, facts.len);
+        input.source_handle = 14;
+        input.coverage_scope_handle = 14;
+        try expectCode(.buffer_too_small, session_module.observe(session, &input, &facts, facts.len));
+        try std.testing.expectEqual(limit - 48, @import("growth.zig").occupied(session.observations));
+        const epoch = session.last_operation_epoch;
+        var required: u32 = 0;
+        try expectCode(.ok, session_module.queryObservationCount(session, &input, &facts, facts.len, &required));
+        try std.testing.expectEqual(limit + 12, required);
+        try std.testing.expectEqual(epoch, session.last_operation_epoch);
+        try expectCode(.ok, session.reserveObservations(required));
+        // Reserving observations does not register a new source. Its first
+        // successful snapshot also grows the shared arena's source columns.
+        try std.testing.expectEqual(@as(usize, 1), session.sources.len);
+        var replay_shape = session.allocationShape();
+        replay_shape.maximum_source_count = 2;
+        replay_shape.source_index_capacity = 4;
+        try expectCode(.ok, session_module.observe(session, &input, &facts, facts.len));
+        try std.testing.expectEqual(@as(usize, 2), session.sources.len);
+        try std.testing.expectEqual(@as(usize, limit + 12), session.observations.len);
+        try std.testing.expectEqual(try state.requiredResidentBytes(&replay_shape), session.resident_byte_count);
+        const arena = session.storage.ptr;
+        const resident = session.resident_byte_count;
+        // Deny every allocation on the second round: pointer equality alone
+        // would miss an allocation that happened to reuse the same address.
+        var failing = std.testing.FailingAllocator.init(std.heap.page_allocator, .{ .fail_index = 0 });
+        session.allocator = failing.allocator();
+        defer session.allocator = std.heap.page_allocator;
+        for (&facts) |*row| row.fact_sequence += 1;
+        input.operation_epoch += 1;
+        input.command_monotonic_milliseconds += 1;
+        input.source_snapshot_epoch += 1;
+        try expectCode(.ok, session_module.observe(session, &input, &facts, facts.len));
+        try std.testing.expectEqual(arena, session.storage.ptr);
+        try std.testing.expectEqual(resident, session.resident_byte_count);
+        try std.testing.expectEqual(@as(usize, 0), failing.alloc_index);
+        try std.testing.expect(!failing.has_induced_failure);
+    }
+}
+
+test "observation reserve allocation failure preserves limits and arena" {
+    var fixture = try Fixture.create();
+    defer fixture.destroy();
+    const arena = fixture.session.storage.ptr;
+    const config = fixture.session.config;
+    var failing = std.testing.FailingAllocator.init(std.heap.page_allocator, .{ .fail_index = 0 });
+    fixture.session.allocator = failing.allocator();
+    defer fixture.session.allocator = std.heap.page_allocator;
+    try expectCode(.out_of_memory, fixture.session.reserveObservations(5));
+    try std.testing.expectEqualDeep(config, fixture.session.config);
+    try std.testing.expectEqual(arena, fixture.session.storage.ptr);
+}
+
 test "steady observe and plan run maintenance once without preview or replacement" {
     const report_rules = @import("rules.zig");
     const report_planner = @import("planner.zig");
