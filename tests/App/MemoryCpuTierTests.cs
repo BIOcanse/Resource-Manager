@@ -1,4 +1,5 @@
 using System.Net;
+using Resource_Manager_APP.Tests.KernelEtwFixtures;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Text.Json;

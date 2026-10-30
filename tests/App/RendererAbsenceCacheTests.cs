@@ -322,7 +322,7 @@ public sealed class RendererAbsenceCacheTests
         var overflowIdentity = first with
         {
             ProcessId = first.ProcessId + ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.ProductDefault.Values.RendererAbsenceEntries,
-            ProcessStartKey = (ulong)(first.ProcessStartKey + ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.ProductDefault.Values.RendererAbsenceEntries)
+            ProcessStartKey = first.ProcessStartKey + (ulong)ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.ProductDefault.Values.RendererAbsenceEntries
         };
         cache.PublishAbsent(overflowIdentity, cache.Read(overflowIdentity));
 
