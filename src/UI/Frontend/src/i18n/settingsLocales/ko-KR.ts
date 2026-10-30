@@ -531,6 +531,7 @@ export default createSettingsLocale("ko-KR", {
       "frontendFramework": "프런트엔드 UI 프레임워크",
       "icons": "인터페이스 아이콘",
       "serialization": "Solid 직렬화 의존성",
+      "charts": "결과 차트",
       "webView": "데스크톱 웹 컨테이너",
       "database": "로컬 데이터베이스",
       "nativeCompiler": "네이티브 코어 컴파일러",

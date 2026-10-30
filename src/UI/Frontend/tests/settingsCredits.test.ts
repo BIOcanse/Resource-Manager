@@ -85,7 +85,8 @@ const frontendNotices = new Map([
   ["solid-js", "SolidJS.LICENSE.txt"],
   ["seroval", "Seroval.LICENSE.txt"],
   ["seroval-plugins", "SerovalPlugins.LICENSE.txt"],
-  ["csstype", "CSSType.LICENSE.txt"]
+  ["csstype", "CSSType.LICENSE.txt"],
+  ["uplot", "uPlot.LICENSE.txt"]
 ]);
 
 const runtimeDependencies = Object.entries(lock.packages)

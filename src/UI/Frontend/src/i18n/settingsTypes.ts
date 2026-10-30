@@ -293,6 +293,7 @@ export interface SettingsCopy {
       frontendFramework: string;
       icons: string;
       serialization: string;
+      charts: string;
       webView: string;
       database: string;
       nativeCompiler: string;

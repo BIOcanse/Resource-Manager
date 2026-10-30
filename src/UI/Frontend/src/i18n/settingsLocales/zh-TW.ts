@@ -530,6 +530,7 @@ export default createSettingsLocale("zh-TW", {
       "frontendFramework": "前端 UI 框架",
       "icons": "介面圖示",
       "serialization": "Solid 的序列化依賴",
+      "charts": "結果圖表",
       "webView": "桌面網頁容器",
       "database": "本地資料庫",
       "nativeCompiler": "原生核心編譯器",

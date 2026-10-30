@@ -531,6 +531,7 @@ export default createSettingsLocale("ja-JP", {
       "frontendFramework": "フロントエンド UI フレームワーク",
       "icons": "画面のアイコン",
       "serialization": "Solid のシリアル化依存",
+      "charts": "結果のグラフ",
       "webView": "デスクトップ Web コンテナー",
       "database": "ローカルデータベース",
       "nativeCompiler": "ネイティブコアのコンパイラー",

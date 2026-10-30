@@ -86,12 +86,7 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
     await row.getByRole("button", { name: copy.stop, exact: true }).click();
     await panel.locator(".targeted-report-detail:not([data-exit-ghost])").getByText(new RegExp(copy.stopReasons.user)).waitFor();
     await panel.locator(".targeted-report-summary").getByText(copy.averageFps, { exact: true }).waitFor();
-    assert(await panel.getByRole("img", { name: copy.frameTime, exact: true }).count() === 1, `${language}: no frame chart`);
-    assert(await panel.getByRole("img", { name: copy.distribution, exact: true }).count() === 1, `${language}: no distribution`);
-    assert(await panel.locator(".targeted-report-resource-grid canvas").count() === 4, `${language}: no resource curves`);
-    const memory = panel.getByRole("img", { name: `${copy.software} · ${app.metricLabel["memory.usage"]}`, exact: true });
-    assert(await memory.count() === 1, `${language}: real memory metric label missing`);
-    assert((await memory.locator("..").textContent()).includes("MiB"), `${language}: memory bytes were not formatted`);
+    await checkReportViews(page, panel, app, copy, language, assert);
     if (process.env.RM_BROWSER_ARTIFACT_DIR) {
       await page.screenshot({ path: resolve(process.env.RM_BROWSER_ARTIFACT_DIR, `${language}.png`), fullPage: true });
     }
@@ -119,7 +114,11 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
       await page.route(`**/api/targeted-recordings/${started.id}`, noFrames);
       await panel.getByRole("button", { name: copy.refresh, exact: true }).click();
       await panel.getByText(copy.noFrames, { exact: true }).waitFor();
-      assert(await panel.locator(".targeted-report-resource-grid canvas").count() === 4, "Missing frames hid resources");
+      // Without frames the frame views say so in place; the resource view still draws from the resource samples.
+      await panel.getByRole("region", { name: copy.views.defaultNames.frameTime, exact: true }).first().getByRole("status").first().waitFor();
+      const resourcesView = panel.getByRole("region", { name: copy.views.defaultNames.softwareResources, exact: true }).first();
+      await resourcesView.getByRole("img", { name: copy.views.defaultNames.softwareResources, exact: true }).waitFor();
+      assert(await resourcesView.locator(".targeted-report-view-issues").count() === 0, "Missing frames hid resources");
       await page.unroute(`**/api/targeted-recordings/${started.id}`, noFrames);
       // A failed list read must not be presented as an empty collection.
       const fail = route => route.fulfill({ status: 503, body: "fixture" });
@@ -168,5 +167,91 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
     previous = language;
   }
   assert(failures.length === 0, JSON.stringify(failures));
-  return { languages: checked, startRunningStopReport: true, charts: true, exports: true, deletion: true, historyClear: true, listRecovery: true };
+  return { languages: checked, startRunningStopReport: true, charts: true, views: true, exports: true, deletion: true, historyClear: true, listRecovery: true };
+}
+
+// Result views (docs/targeted_recording_views_2026-10-30.md). The three default views are ordinary views built from the
+// report's series. The journey adds a view, changes its kind and both axes, drags a horizontal range on a time view and
+// resets it, then saves every view as a template, applies it back (appending) and deletes the template through the app dialog.
+async function checkReportViews(page, panel, app, copy, language, assert) {
+  const views = copy.views;
+  const cards = panel.locator("section.targeted-report-view");
+  const card = name => panel.getByRole("region", { name, exact: true }).first();
+  const drawn = (scope, name) => scope.getByRole("img", { name, exact: true }).waitFor();
+  // The standard select's trigger is a combobox; a searchable one is a button (its search field is the combobox).
+  const trigger = (scope, field) => scope.getByRole("combobox", { name: field, exact: true })
+    .or(scope.getByRole("button", { name: field, exact: true })).first();
+  const choose = async (scope, field, option) => {
+    await trigger(scope, field).click();
+    await page.getByRole("listbox", { name: field, exact: true }).getByRole("option", { name: option, exact: true }).click();
+  };
+  const enabled = async (button, value) => page.waitForFunction(([element, value]) => element.disabled !== value,
+    [await button.elementHandle(), value]);
+  const defaults = [views.defaultNames.frameTime, views.defaultNames.frameTimeDistribution, views.defaultNames.softwareResources];
+  for (const name of defaults) {
+    await drawn(card(name), name);
+    assert(await card(name).locator(".targeted-report-view-issues").count() === 0, `${language}: default view ${name} reports issues`);
+  }
+  assert(await cards.count() === 3, `${language}: expected the three default views, found ${await cards.count()}`);
+  const distributionLegend = await card(views.defaultNames.frameTimeDistribution).locator(".u-legend").textContent();
+  assert(distributionLegend.includes(views.cdfOverlay), `${language}: frame time distribution has no cumulative overlay`);
+  const resources = card(views.defaultNames.softwareResources);
+  const legend = resources.locator(".u-legend");
+  for (const metric of ["cpu.usage", "memory.usage"]) {
+    assert((await legend.textContent()).includes(`${copy.software} · ${app.metricLabel[metric]}`),
+      `${language}: real ${metric} metric label missing`);
+  }
+  await resources.locator(".u-over").hover();
+  await legend.filter({ hasText: "MiB" }).waitFor();
+
+  await panel.getByRole("button", { name: views.add, exact: true }).click();
+  const addedName = views.newViewName(4);
+  const added = card(addedName);
+  await drawn(added, addedName);
+  assert(await added.getByRole("button", { name: views.closeEditor, exact: true }).getAttribute("aria-expanded") === "true",
+    `${language}: a new view did not open its editor`);
+  await choose(added, views.fields.kind, views.kinds.scatter);
+  await added.locator(".targeted-report-view-kind").filter({ hasText: views.kinds.scatter }).waitFor();
+  await choose(added, views.fields.x, views.x.frameIndex);
+  await drawn(added, addedName);
+  assert(await added.locator(".targeted-report-view-issues").count() === 0, `${language}: frame index axis lost the frame time series`);
+  await choose(added, views.fields.x, views.x.series(`${copy.software} · ${app.metricLabel["cpu.usage"]}`));
+  await drawn(added, addedName);
+  assert(await added.locator(".targeted-report-view-issues").count() === 0, `${language}: series axis lost the frame time series`);
+  const axis = `${views.fields.series(1)} · ${views.fields.axis}`;
+  await choose(added, axis, views.axes.right);
+  assert((await trigger(added, axis).textContent()).includes(views.axes.right),
+    `${language}: the series did not move to the right axis`);
+  await drawn(added, addedName);
+
+  const frameView = card(views.defaultNames.frameTime);
+  const reset = frameView.getByRole("button", { name: views.resetRange, exact: true });
+  assert(await reset.isDisabled(), `${language}: reset range was available while the range was automatic`);
+  // The mouse moves in viewport coordinates: bring the plot into view before reading its box.
+  await frameView.locator(".u-over").scrollIntoViewIfNeeded();
+  const box = await frameView.locator(".u-over").boundingBox();
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await enabled(reset, true);
+  await drawn(frameView, views.defaultNames.frameTime);
+  await reset.click();
+  await enabled(reset, false);
+
+  const templates = panel.locator(".targeted-report-views-templates");
+  const templateName = `journey ${language}`;
+  await templates.getByRole("textbox", { name: views.templates.name, exact: true }).fill(templateName);
+  await templates.getByRole("button", { name: views.templates.saveAll, exact: true }).click();
+  await choose(templates, views.templates.label, templateName);
+  await templates.getByRole("button", { name: views.templates.apply, exact: true }).click();
+  await cards.nth(7).waitFor();
+  assert(await cards.count() === 8, `${language}: applying a four-view template did not append four views`);
+  await panel.getByRole("img", { name: views.defaultNames.softwareResources, exact: true }).nth(1).waitFor();
+  await templates.getByRole("button", { name: views.templates.remove, exact: true }).click();
+  const confirmRemove = page.getByRole("dialog", { name: views.templates.confirmRemove, exact: true });
+  await confirmRemove.getByRole("button", { name: views.templates.remove, exact: true }).click();
+  await confirmRemove.waitFor({ state: "detached" });
+  assert(await cards.count() === 8, `${language}: deleting a template changed the report's views`);
 }

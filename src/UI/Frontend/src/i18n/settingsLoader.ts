@@ -352,6 +352,7 @@ export const loadingSettingsText: SettingsTextBundle = {
       frontendFramework: "",
       icons: "",
       serialization: "",
+      charts: "",
       webView: "",
       database: "",
       nativeCompiler: "",

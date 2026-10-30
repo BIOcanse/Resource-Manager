@@ -129,6 +129,7 @@ internal sealed record FrontendPreferences
     public FrontendRefresh Refresh { get; init; } = new();
     public FrontendNotifications Notifications { get; init; } = new();
     public JsonElement? Dashboard { get; init; }
+    public JsonElement? TargetedReportViewTemplates { get; init; }
     public IReadOnlyDictionary<string, FrontendOverlayPresentation> Overlays { get; init; } =
         new Dictionary<string, FrontendOverlayPresentation>(StringComparer.OrdinalIgnoreCase);
 
@@ -140,6 +141,7 @@ internal sealed record FrontendPreferences
         Refresh.Validate();
         Notifications.Validate();
         FrontendDashboardCache.Validate(Dashboard);
+        FrontendReportViewTemplatesCache.Validate(TargetedReportViewTemplates);
         foreach (var (id, overlay) in Overlays)
         {
             if (string.IsNullOrWhiteSpace(id) || overlay is null)

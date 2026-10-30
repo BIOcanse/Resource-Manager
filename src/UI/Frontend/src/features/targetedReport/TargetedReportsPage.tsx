@@ -1,4 +1,4 @@
-import { createComputed, createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createComputed, createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import type { SourceLease } from "../../frontendRuntime/source/SourceDescriptor.ts";
@@ -10,15 +10,16 @@ import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface.ts";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand.tsx";
-import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
 import { softwareRecordName } from "../../presentation/softwareFacts.ts";
 import { currentLanguage, uiText } from "../../text.ts";
 import {
   deleteRecording, exportRecording, stopRecording,
   type RecordingHeader, type RecordingReport
 } from "./targetedRecordingApi.ts";
-import { TargetedReportChart, type ChartPoint } from "./TargetedReportCharts.tsx";
-import { curveScale } from "./targetedReportAxis.ts";
+import { ReportViews } from "./views/ReportViews.tsx";
+import { seriesFromReport } from "./views/reportSeriesAdapter.ts";
+import { localizedSeriesLabels } from "./views/seriesLabels.ts";
+import { defaultViews, type ReportView } from "./views/viewModel.ts";
 import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
 import { TargetedRecordingControl } from "./TargetedRecordingControl.tsx";
 import { StandardSelect, type StandardSelectOption } from "../../components/StandardSelect.tsx";
@@ -27,9 +28,10 @@ import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { useReportHistoryClear, type ReportHistoryClearFeedback } from "../reportHistory/useReportHistoryClear.ts";
 import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 
-interface ResourceCurve { scope: "software" | "system"; metric: string }
-
 const activeRecordingRefreshIntervalMs = 2_000;
+
+let viewSerial = 0;
+const nextViewId = () => `view-${++viewSerial}`;
 
 /** 确认对话框和结果提示由路由层经详细信息页传入（删除录制、清空历史）。 */
 export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
@@ -134,25 +136,22 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
     }
   });
 
-  const framePoints = createMemo<ChartPoint[]>(() =>
-    report()?.frameIntervals.map((frame) => ({ x: Date.parse(frame.endedAt), y: frame.durationMs })) ?? []);
-  const distributionPoints = createMemo<ChartPoint[]>(() =>
-    report()?.fpsDistribution.map((bucket) => ({ x: bucket.fromFps, y: bucket.count })) ?? []);
-  const resourceCurves = createMemo<ResourceCurve[]>(() => {
-    const found = new Set<string>();
-    for (const sample of report()?.resourceSamples ?? []) {
-      for (const scope of ["software", "system"] as const) {
-        for (const metric of Object.keys(sample[scope])) found.add(`${scope}:${metric}`);
-      }
-    }
-    return [...found].sort().map((key) => {
-      const separator = key.indexOf(":");
-      return { scope: key.slice(0, separator) as ResourceCurve["scope"], metric: key.slice(separator + 1) };
-    });
+  // 结果页的视图（docs/targeted_recording_views_2026-10-30.md §3）：每份报告一组，第一次打开这份报告时建默认视图，
+  // 之后只由用户增删改；视图只在内存里，删除报告或清空历史时一起删掉。
+  const reportSeries = createMemo(() => {
+    const current = report();
+    return current ? seriesFromReport(current, localizedSeriesLabels()) : null;
   });
-  const start = () => Date.parse(report()?.recording.startedAt ?? "");
-  const end = () => Date.parse(report()?.recording.endedAt ?? "")
-    || Date.parse(report()?.resourceSamples.at(-1)?.capturedAt ?? "") || start() + 1000;
+  const [reportViews, setReportViews] = createStore<Record<string, ReportView[] | undefined>>({});
+  createEffect(() => {
+    const id = report()?.recording.id;
+    if (id !== undefined && untrack(() => reportViews[id]) === undefined) {
+      setReportViews(id, defaultViews(untrack(() => uiText.targetedReport.views.defaultNames), nextViewId));
+    }
+  });
+  const forgetViews = (ids: readonly string[]) => {
+    for (const id of ids) setReportViews(id, undefined);
+  };
 
   const refresh = async () => {
     setActionFailed(false);
@@ -189,6 +188,7 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
     setActionFailed(false);
     try {
       await deleteRecording(runtime.requestClient, id);
+      forgetViews([id]);
       if (selectedId() === id) {
         setSelectedId(null);
         setReportLoading(false);
@@ -207,6 +207,7 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
     kind: "targetedRecordings",
     historyCount: completedCount,
     afterClear: async () => {
+      forgetViews(recordings().filter((item) => item.status === "completed").map((item) => item.id));
       if (recordings().find((item) => item.id === selectedId())?.status === "completed") {
         setSelectedId(null);
         setReportLoading(false);
@@ -375,40 +376,13 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
                 </dl>
               )}
             </Show>
-            <Show when={framePoints().length > 0}>
-              <div class="targeted-report-chart-grid">
-                <section class="targeted-report-card">
-                  <h4>{uiText.targetedReport.frameTime}</h4>
-                  <TargetedReportChart points={framePoints()} from={start()} to={end()}
-                    mode="frames" axis={{ unit: "ms", divisor: 1, integerTicks: false }} ariaLabel={uiText.targetedReport.frameTime} />
-                </section>
-                <section class="targeted-report-card">
-                  <h4>{uiText.targetedReport.distribution}</h4>
-                  <TargetedReportChart points={distributionPoints()}
-                    from={distributionPoints()[0]?.x ?? 0}
-                    to={(distributionPoints().at(-1)?.x ?? 0) + 10}
-                    mode="bars" axis={{ unit: uiText.targetedReport.frameCount, divisor: 1, integerTicks: true }} ariaLabel={uiText.targetedReport.distribution} />
-                </section>
-              </div>
+            <Show when={reportSeries()}>
+              {(set) => (
+                <ReportViews set={set()} views={reportViews[current().recording.id] ?? []}
+                  onChange={(views) => setReportViews(current().recording.id, reconcile(views, { key: "id" }))}
+                  nextViewId={nextViewId} confirmDialog={props.confirmDialog} />
+              )}
             </Show>
-            <h4>{uiText.targetedReport.resources}</h4>
-            <div class="targeted-report-resource-grid">
-              <For each={resourceCurves()}>
-                {(curve) => {
-                  const points = () => current().resourceSamples.map((sample) => ({
-                    x: Date.parse(sample.capturedAt), y: sample[curve.scope][curve.metric] ?? null
-                  }));
-                  const latest = () => current().resourceSamples.at(-1)?.[curve.scope][curve.metric] ?? null;
-                  const scale = () => curveScale(curve.metric, points());
-                  const label = () => `${curve.scope === "software" ? uiText.targetedReport.software : uiText.targetedReport.system} · ${localizedMetricLabel(curve.metric)}`;
-                  return <section class="targeted-report-card">
-                    <h5><span class="targeted-report-card-label">{label()}</span> <span class="targeted-report-card-value">{latest() === null ? "–" : scale().format(latest() as number)}</span></h5>
-                    <TargetedReportChart points={points()} from={start()} to={end()} mode="line"
-                      axis={scale().axis} ariaLabel={label()} />
-                  </section>;
-                }}
-              </For>
-            </div>
           </div>
         )}
       </Show>
@@ -416,15 +390,21 @@ export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
   );
 }
 
+// 录制停止原因。"user" 和 "process-exit" 是旧版后端写进报告的值，存下来的旧报告仍带着它们；
+// 后端以后可能加新值，认不出的原样显示代码，不当作正常完成。
 function stopReason(reason: string | null) {
   const values = uiText.targetedReport.stopReasons;
   switch (reason) {
+    case "user-stop":
     case "user": return values.user;
+    case "all-processes-exited":
     case "process-exit": return values.processExit;
+    case "no-process": return values.noProcess;
     case "max-duration": return values.maxDuration;
     case "interrupted": return values.interrupted;
     case "capture-error": return values.captureError;
-    default: return uiText.targetedReport.completed;
+    case null: return uiText.targetedReport.completed;
+    default: return reason;
   }
 }
 

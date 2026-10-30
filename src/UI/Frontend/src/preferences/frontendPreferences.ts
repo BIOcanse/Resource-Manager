@@ -4,6 +4,7 @@ import type {
   AppAppearanceSettings, AppNotificationSettings, AppPerformanceSettings, AppSettings, AppPresetNumericSetting, DashboardSettings,
   FrontendRefreshIntervals, PerformanceOverlaySettings
 } from "../types.ts";
+import type { TargetedReportViewTemplate } from "../features/targetedReport/views/viewTemplates.ts";
 
 const points = ResourceManager.FrontendPoints;
 const resetListeners = new Set<() => void>();
@@ -25,10 +26,14 @@ export interface FrontendPreferencesCache {
   notifications: AppNotificationSettings;
   overlays: Record<string, OverlayPresentation>;
   dashboard?: DashboardSettings | null;
+  /** 定向录制结果页的视图模板（features/targetedReport/views/viewTemplates.ts）；null 或缺省 = 没有模板。 */
+  targetedReportViewTemplates?: TargetedReportViewTemplate[] | null;
 }
+/** 保存范围：只替换这一段，其他段取写入时的当前值；不带范围时整份替换。 */
+export type FrontendPreferencesScope = "global" | "dashboard" | "targetedReportViewTemplates" | { overlay: string };
 export interface FrontendPreferencesClient {
   read(): Promise<FrontendPreferencesCache>;
-  save(value: FrontendPreferencesCache, scope?: "global" | "dashboard" | { overlay: string }): Promise<FrontendPreferencesCache>;
+  save(value: FrontendPreferencesCache, scope?: FrontendPreferencesScope): Promise<FrontendPreferencesCache>;
   reset(): Promise<FrontendPreferencesCache>;
 }
 
@@ -53,7 +58,7 @@ export function pointPreferences(): FrontendPreferencesCache {
       accessRequestNotify: points.AccessRequestNotify, accessRequestInApp: points.AccessRequestInApp,
       accessRequestSystem: points.AccessRequestSystem, memoryProtectionNotify: points.MemoryProtectionNotify,
       memoryProtectionInApp: points.MemoryProtectionInApp, memoryProtectionSystem: points.MemoryProtectionSystem },
-    overlays: {}, dashboard: null
+    overlays: {}, dashboard: null, targetedReportViewTemplates: null
   };
 }
 
@@ -145,7 +150,8 @@ export function preferencesFromSettings(value: AppSettings, existing: FrontendPr
       monitor: { ...performance.monitorRefreshIntervalMs }, resourceTable: { ...performance.resourceTableRefreshIntervalMs },
       localSystem: { ...performance.localSystemRefreshIntervalMs } },
     notifications: { ...value.notifications! },
-    overlays: existing.overlays, dashboard: existing.dashboard
+    overlays: existing.overlays, dashboard: existing.dashboard,
+    targetedReportViewTemplates: existing.targetedReportViewTemplates ?? null
   };
 }
 
@@ -162,7 +168,7 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
   const host = getHostMessageTransport();
   // Native mode has exactly one owner. A failed native request never switches to browser storage.
   if (host) {
-    const request = (type: string, value?: FrontendPreferencesCache, scope?: "global" | "dashboard" | { overlay: string }) => new Promise<FrontendPreferencesCache>((resolve, reject) => {
+    const request = (type: string, value?: FrontendPreferencesCache, scope?: FrontendPreferencesScope) => new Promise<FrontendPreferencesCache>((resolve, reject) => {
       const requestId = crypto.randomUUID();
       let unsubscribe: (() => void) | null = null;
       const timer = setTimeout(() => { unsubscribe?.(); reject(new Error("preferences-unavailable")); }, 10000);
@@ -209,13 +215,14 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
       notifications: { ...pointPreferences().notifications, ...notifications } };
   };
   let writes = Promise.resolve();
-  const save = (value: FrontendPreferencesCache, scope?: "global" | "dashboard" | { overlay: string }) => {
+  const save = (value: FrontendPreferencesCache, scope?: FrontendPreferencesScope) => {
     const write = writes.then(() => {
       if (!browserStorage) throw new Error("preferences-unavailable");
       const current = readCache();
       let next = value;
       if (scope === "global") next = { ...current, appearance: value.appearance, refresh: value.refresh, notifications: value.notifications };
       else if (scope === "dashboard") next = { ...current, dashboard: value.dashboard ?? null };
+      else if (scope === "targetedReportViewTemplates") next = { ...current, targetedReportViewTemplates: value.targetedReportViewTemplates ?? null };
       else if (scope) {
         const overlays = { ...current.overlays };
         const presentation = cachedOverlay(value, scope.overlay);

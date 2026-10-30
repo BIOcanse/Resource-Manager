@@ -42,13 +42,14 @@ unmodified .NET/WebView2 notices, are part of this acknowledgement too.
 | lucide-solid | 1.24.0 | ISC plus Feather-derived MIT notices; retain all of `Lucide.LICENSE.txt`; Lucide Icons and Contributors, Cole Bemis |
 | seroval | 1.5.4 | MIT; `Seroval.LICENSE.txt`; Copyright (c) 2025 Alexis Munsayac |
 | seroval-plugins | 1.5.4 | MIT; `SerovalPlugins.LICENSE.txt`; Copyright (c) 2025 Alexis Munsayac |
+| uplot | 1.6.32 | MIT; `uPlot.LICENSE.txt`; Copyright (c) 2022 Leon Sorokin |
 | csstype | 3.2.3 | MIT; `CSSType.LICENSE.txt`; Copyright (c) 2017-2018 Fredrik Nicol; type-only dependency |
 
 Seroval and seroval-plugins are transitive Solid dependencies. Bundlers may omit
 unused code; their notices are retained without claiming all their modules ship.
 Upstream: [Solid](https://github.com/solidjs/solid),
 [Lucide](https://lucide.dev/license), [Seroval](https://github.com/lxsmnsyc/seroval),
-[CSSType](https://github.com/frenic/csstype).
+[CSSType](https://github.com/frenic/csstype), [uPlot](https://github.com/leeoniya/uPlot).
 
 ## Backend and desktop SDK
 

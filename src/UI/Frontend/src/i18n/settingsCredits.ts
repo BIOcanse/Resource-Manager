@@ -49,6 +49,17 @@ const creditCatalog: CreditCatalogItem[] = [
     }]
   },
   {
+    group: "runtime", name: "uPlot", role: "charts",
+    subjects: [{
+      name: "uPlot",
+      description: { text: "A small, fast chart for time series, lines, areas, ohlc & bars", source: "https://www.npmjs.com/package/uplot" },
+      links: [
+        { kind: "github", href: "https://github.com/leeoniya/uPlot" },
+        { kind: "license", href: "https://github.com/leeoniya/uPlot/blob/1.6.32/LICENSE" }
+      ]
+    }]
+  },
+  {
     group: "runtime", name: "Microsoft WebView2", role: "webView",
     subjects: [{
       name: "Microsoft WebView2",

@@ -16,6 +16,11 @@ internal sealed partial class FrontendPreferencesOwner
         lock (gate) return Save(Read() with { Dashboard = value.Dashboard });
     }
 
+    internal FrontendPreferences SaveTargetedReportViewTemplates(FrontendPreferences value)
+    {
+        lock (gate) return Save(Read() with { TargetedReportViewTemplates = value.TargetedReportViewTemplates });
+    }
+
     // Migration frontend-dashboard-v1. Retire with the backend file migration
     // after all supported upgrades start beyond dashboard schema 16.
     private void InitializeDashboardImport()

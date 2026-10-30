@@ -960,7 +960,7 @@ async function handleApi(request, response, url) {
     if (!entry || entry.header.status !== "recording") { response.writeHead(404); response.end(); return; }
     if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
     targetedRecordingCompletionTimer = null;
-    completeTargetedRecording(entry.header.id, "user");
+    completeTargetedRecording(entry.header.id, "user-stop");
     return json(response, 200, entry.header);
   }
   if (targetedRecordingMatch && request.method === "GET") {
@@ -3398,6 +3398,7 @@ function completeTargetedRecording(id, stopReason) {
 }
 
 // Deterministic report values, using the production wire shape including nullable metrics.
+// Frame times differ (9, 10, 11 ms) so the distribution views have a spread; the summary keeps the 100 FPS average.
 function targetedRecordingReport(entry) {
   const start = Date.parse(entry.header.startedAt);
   const end = Date.parse(entry.header.endedAt ?? now());
@@ -3408,7 +3409,7 @@ function targetedRecordingReport(entry) {
       onePercentLowFps: 100, pointOnePercentLowFps: 100,
       p50FrameTimeMs: 10, p95FrameTimeMs: 10, p99FrameTimeMs: 10, maxFrameTimeMs: 10 },
     frameIntervals: [0, 1, 2].map((index) => ({ processId: 123, processStartKey: 1234,
-      source: 0, swapChain: 1, endedAt: new Date(start + (end - start) * index / 2).toISOString(), durationMs: 10 })),
+      source: 0, swapChain: 1, endedAt: new Date(start + (end - start) * index / 2).toISOString(), durationMs: [9, 10, 11][index] })),
     fpsDistribution: [{ fromFps: 100, toFps: 110, count: 3 }],
     resourceSamples: [entry.header.startedAt, capturedAt].map((capturedAt) => ({
       capturedAt, software: { "cpu.usage": 25, "memory.usage": 1048576 },

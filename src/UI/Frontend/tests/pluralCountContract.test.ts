@@ -39,6 +39,7 @@ const notCountPhrases: Record<string, string> = {
   filterTrusted: "a tally after a fixed filter name",
   filterUntrusted: "a tally after a fixed filter name",
   rulesUnavailable: "a tally in parentheses",
+  autoBins: "a tally in parentheses",
   activeCount: "the number is followed by an invariant phrase (in progress, laufend, en cours, en curso) or a label",
   taskCenterActive: "the number is followed by an invariant phrase or a label",
   externalSummary: "the numbers are followed by place phrases (on device, expansion) that never agree"

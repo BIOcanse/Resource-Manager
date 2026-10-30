@@ -532,6 +532,7 @@ export default createSettingsLocale("fr-FR", {
       "frontendFramework": "Framework de l’interface",
       "icons": "Icônes de l’interface",
       "serialization": "Dépendances de sérialisation Solid",
+      "charts": "Graphiques des résultats",
       "webView": "Conteneur web de bureau",
       "database": "Base de données locale",
       "nativeCompiler": "Compilateur du cœur natif",

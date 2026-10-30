@@ -370,17 +370,11 @@
   overflow-wrap: anywhere;
 }
 
-.targeted-report-summary,
-.targeted-report-resource-grid,
-.targeted-report-chart-grid {
+.targeted-report-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 10px;
   margin: 0;
-}
-
-.targeted-report-chart-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
 }
 
 .targeted-report-summary > div,
@@ -424,22 +418,174 @@
   overflow-wrap: anywhere;
 }
 
-.targeted-report-card-value {
-  flex: 0 0 auto;
-  font-variant-numeric: tabular-nums;
-}
-
 /* 卡片纵向排列，图表贴底：同一行里标题换行的卡片与其他卡片的图表仍然对齐。 */
 .targeted-report-card {
   display: flex;
   flex-direction: column;
 }
 
-.targeted-report-chart {
-  display: block;
-  width: 100%;
-  height: 160px;
+/* 结果页的视图（views/ReportViews.tsx）。 */
+.targeted-report-views {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.targeted-report-views-toolbar,
+.targeted-report-view-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.targeted-report-views-toolbar h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.targeted-report-view-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr));
+  gap: 10px;
+}
+
+.targeted-report-view {
+  gap: 8px;
+}
+
+.targeted-report-view-header h5 {
+  flex: 1 1 160px;
+  margin: 0;
+}
+
+.targeted-report-view-kind {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.targeted-report-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.targeted-report-view-actions button,
+.targeted-report-view-editor button,
+.targeted-report-views-templates button {
+  min-height: 28px;
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+.targeted-report-view-chart {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
   margin-top: auto;
+}
+
+.targeted-report-view-plot {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+}
+
+.targeted-report-view-plot[hidden] {
+  display: none;
+}
+
+.targeted-report-view-plot .uplot {
+  font-family: inherit;
+  width: 100%;
+}
+
+.targeted-report-view-plot .u-legend {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.targeted-report-view-plot .u-select {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.targeted-report-view-issues {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.targeted-report-view-editor {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.targeted-report-view-editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 10px;
+  min-width: 0;
+}
+
+.targeted-report-view-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 8px 10px 10px;
+}
+
+.targeted-report-view-group legend {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.targeted-report-view-field,
+.targeted-report-view-name {
+  flex: 0 1 180px;
+}
+
+.targeted-report-view-field.wide {
+  flex: 1 1 240px;
+}
+
+.targeted-report-view-number {
+  flex: 0 1 140px;
+}
+
+.targeted-report-view-name input,
+.targeted-report-view-number input {
+  width: 100%;
+  min-width: 0;
+}
+
+.targeted-report-view-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  font-size: 12px;
+}
+
+.targeted-report-view-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.targeted-report-views-templates {
+  align-items: flex-end;
 }
 
 @media (max-width: 720px) {

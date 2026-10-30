@@ -112,6 +112,7 @@ Source: `src/UI/Frontend/package-lock.json`. This list records all 110 non-root 
 | typescript | 6.0.3 | Apache-2.0 | Build dependency |
 | undici-types | 7.16.0 | MIT | Build dependency |
 | update-browserslist-db | 1.2.3 | MIT | Build dependency |
+| uplot | 1.6.32 | MIT | Frontend dependency |
 | vite | 8.1.0 | MIT | Build dependency |
 | vite-plugin-solid | 2.11.12 | MIT | Build dependency |
 | vitefu | 1.1.3 | MIT | Build dependency |

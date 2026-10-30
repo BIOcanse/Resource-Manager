@@ -532,6 +532,7 @@ export default createSettingsLocale("ru-RU", {
       "frontendFramework": "Фреймворк интерфейса",
       "icons": "Значки интерфейса",
       "serialization": "Зависимости сериализации Solid",
+      "charts": "Графики результатов",
       "webView": "Веб-контейнер рабочего стола",
       "database": "Локальная база данных",
       "nativeCompiler": "Компилятор нативного ядра",
