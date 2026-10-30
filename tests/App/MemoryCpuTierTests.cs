@@ -414,7 +414,7 @@ public sealed class MemoryCpuTierTests
         int[] retention = [0, 5000, 10000, 30000, 60000];
         for (var tier = 1; tier <= 5; tier++)
         {
-            using var patched = await fixture.PatchAsync($$"""{"memoryCpuTier":{"tier":{{tier}},"overrides":{}}}""");
+            using var patched = await fixture.PatchAsync($$$"""{"memoryCpuTier":{"tier":{{{tier}}},"overrides":{}}}""");
             Assert.Equal(HttpStatusCode.OK, patched.StatusCode);
             var listed = (await fixture.Client.GetFromJsonAsync<JsonObject>("/api/settings/memory-cpu-tier"))!;
             AssertDecoderInvariants(listed, tier);

@@ -53,6 +53,8 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         && task.Exception!.InnerExceptions.Any(error => ReferenceEquals(error, failure));
     private int disposed;
     private KernelEtwSessionSnapshot? inventorySnapshot;
+    // (process id, start key) of every process in the last inventory handed to the worker.
+    private HashSet<(int ProcessId, long StartKey)> inventoryProcesses = [];
 
     public PortableSoftwareDiscoveryService(
         IKernelEtwSessionBroker kernelEtwSessionBroker,
@@ -355,25 +357,35 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         return true;
     }
 
-    private void EnqueueCurrentProcesses(Channel<PortableProcessCandidate> runStarts)
+    private void EnqueueCurrentProcesses(Channel<PortableProcessCandidate> runStarts, bool onlyNew = false)
     {
-        foreach (var candidate in captureCurrentProcesses())
+        var current = captureCurrentProcesses();
+        var processes = new HashSet<(int ProcessId, long StartKey)>(current.Length);
+        foreach (var candidate in current)
         {
-            if (candidate.ProcessId > 4 && !candidate.HasExited) runStarts.Writer.TryWrite(candidate);
+            if (candidate.ProcessId <= 4 || candidate.HasExited) continue;
+            var key = (candidate.ProcessId, candidate.StartKey ?? 0);
+            processes.Add(key);
+            if (!onlyNew || !inventoryProcesses.Contains(key)) runStarts.Writer.TryWrite(candidate);
         }
+        inventoryProcesses = processes;
     }
 
-    internal void RefreshInventoryAfterLoss(KernelEtwSessionSnapshot snapshot)
-        => RefreshInventoryAfterLoss(snapshot, processStarts, workerCts?.Token ?? CancellationToken.None);
+    internal void RefreshInventoryAfterLoss(KernelEtwSessionSnapshot snapshot, bool force = false)
+        => RefreshInventoryAfterLoss(snapshot, processStarts, workerCts?.Token ?? CancellationToken.None, force);
 
     private void RefreshInventoryAfterLoss(KernelEtwSessionSnapshot snapshot,
         Channel<PortableProcessCandidate> runStarts, CancellationToken cancellationToken, bool force = false)
     {
         if (!snapshot.IsRunning || Volatile.Read(ref disposed) != 0 || cancellationToken.IsCancellationRequested
             || runStarts.Reader.Completion.IsCompleted) return;
-        if (!force && inventorySnapshot is { IsRunning: true } previous
-            && previous.Generation == snapshot.Generation && previous.EventsLost == snapshot.EventsLost) return;
-        EnqueueCurrentProcesses(runStarts);
+        var lossChanged = inventorySnapshot is not { IsRunning: true } previous
+            || previous.Generation != snapshot.Generation || previous.EventsLost != snapshot.EventsLost;
+        if (!force && !lossChanged) return;
+        // A skipped notification publication without a new loss or session can only have hidden process starts,
+        // so only processes missing from the last inventory are new. Re-reading every process image on each skip
+        // was about 1000 file opens a second in the tray state (candidate 0.3.7-beta.20261030.5).
+        EnqueueCurrentProcesses(runStarts, onlyNew: !lossChanged);
         inventorySnapshot = snapshot;
     }
 

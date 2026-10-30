@@ -766,6 +766,27 @@ public sealed class PortableSoftwareDiscoveryLossTests
     }
 
     [Fact]
+    public void SkippedPublicationWithoutNewLossRequeuesOnlyProcessesMissingFromTheLastInventory()
+    {
+        var inventory = new[] { new PortableProcessCandidate(42, StartKey: 1), new PortableProcessCandidate(73, StartKey: 2) };
+        using var service = Create(() => inventory);
+        var queue = Queue(service);
+        service.RefreshInventoryAfterLoss(Snapshot(1, 8));
+        Assert.Equal(new[] { 42, 73 }, Drain(queue));
+
+        // 73 exited, 99 started and PID 42 was reused by a new process; the skipped publication hid both starts.
+        inventory = [new(42, StartKey: 3), new(99, StartKey: 4)];
+        service.RefreshInventoryAfterLoss(Snapshot(1, 8), force: true);
+        Assert.Equal(new[] { 42, 99 }, Drain(queue));
+        service.RefreshInventoryAfterLoss(Snapshot(1, 8), force: true);
+        Assert.Empty(Drain(queue));
+
+        // A new loss still requeues the whole inventory.
+        service.RefreshInventoryAfterLoss(Snapshot(1, 9), force: true);
+        Assert.Equal(new[] { 42, 99 }, Drain(queue));
+    }
+
+    [Fact]
     public void UnavailableOrDisposedSourceDoesNotEnumerateProcesses()
     {
         var scans = 0;
