@@ -217,7 +217,10 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
             ? tier with { Overrides = new System.Collections.ObjectModel.ReadOnlyDictionary<string, JsonElement>(
                 (tier.Overrides ?? new Dictionary<string, JsonElement>()).ToDictionary(
                     static entry => entry.Key, static entry => entry.Value.Clone(), StringComparer.Ordinal)) }
-            : null
+            : null,
+        TargetedRecording = settings.TargetedRecording is { } recording
+            ? new AppTargetedRecordingSettings(Array.AsReadOnly((recording.Profiles ?? []).Select(static profile => profile with
+                { Items = Array.AsReadOnly((profile.Items ?? []).ToArray()) }).ToArray())) : null
     };
 
     public async IAsyncEnumerable<AppSettings> SubscribeAsync(string holder,

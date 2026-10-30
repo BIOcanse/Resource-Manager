@@ -62,7 +62,8 @@ public static class AppSettingsDefaults
             new AppHardwareControlSettings(),
             new AppReportSettings([]),
             new HostMemoryProtectionSettings(Reserves: []),
-            new MemoryCpuTierSettings(MemoryCpuTierSettings.DefaultTier, new Dictionary<string, System.Text.Json.JsonElement>()));
+            new MemoryCpuTierSettings(MemoryCpuTierSettings.DefaultTier, new Dictionary<string, System.Text.Json.JsonElement>()),
+            TargetedRecordingProfileDefaults.Create());
     }
 
 }

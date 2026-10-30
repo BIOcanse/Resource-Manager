@@ -6,4 +6,6 @@ namespace ResourceManager.App.Application.Settings;
 [JsonSerializable(typeof(AppHardwareControlSettings))]
 [JsonSerializable(typeof(AppReportRuleOverride[]))]
 [JsonSerializable(typeof(MemoryCpuTierSettings))]
+[JsonSerializable(typeof(AppTargetedRecordingSettings))]
+[JsonSerializable(typeof(TargetedRecordingProfile[]))]
 internal partial class AppSettingsJsonContext : JsonSerializerContext;

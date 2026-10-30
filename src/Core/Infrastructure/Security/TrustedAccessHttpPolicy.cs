@@ -200,7 +200,10 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/system/open-properties",
             "POST /api/system/search-online",
             "POST /api/targeted-recordings",
-            "POST /api/targeted-recordings/{id}/stop");
+            "POST /api/targeted-recordings/{id}/stop",
+            "POST /api/targeted-recordings/profiles",
+            "PATCH /api/targeted-recordings/profiles/{id}",
+            "DELETE /api/targeted-recordings/profiles/{id}");
         Add(Protected(AccessKeyScopes.Read),
             "GET /api/adapters",
             "GET /api/browser-runtimes",
@@ -304,6 +307,9 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/targeted-recordings",
             "GET /api/targeted-recordings/{id}",
             "GET /api/targeted-recordings/{id}/export",
+            "GET /api/targeted-recordings/targets",
+            "GET /api/targeted-recordings/items/catalog",
+            "GET /api/targeted-recordings/profiles",
             "POST /api/optimization/reports/refresh");
         Add(TrustedAccessHttpRequirement.Anonymous,
             "GET /api/health",

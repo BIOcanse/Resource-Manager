@@ -18,10 +18,22 @@ public sealed record PerformanceOverlayTarget(
     IReadOnlyList<PerformanceOverlayMetricItem> Metrics,
     IReadOnlyList<PerformanceOverlayFrameStream> FrameStreams);
 
+/// <summary>The current value of one requested overlay item, in the targeted recording item contract.
+/// SelectedSource is what the request asked for (auto or a source); ActualSource is where the value came
+/// from. IntervalOrigin is item, natural or profile-default (the subscription interval). SyncPrecision is
+/// echoed only. State is current or unavailable; Reason is target-not-running or value-unavailable.</summary>
+public sealed record PerformanceOverlayItemValue(
+    string Kind, string Id, string? Unit, string SelectedSource, string? ActualSource,
+    int IntervalMs, string IntervalOrigin, string SyncPrecision,
+    double? Value, string State, string? Reason, DateTimeOffset? ObservedAt);
+
 public sealed record PerformanceOverlaySnapshot(
     int Version, DateTimeOffset CapturedAt, IReadOnlyList<PerformanceOverlayTarget> Targets)
 {
     public IReadOnlyList<DeviceMetricFieldSnapshot> Fields { get; init; } = [];
+
+    /// <summary>Values of the request's items, in request order; empty when the request has no items.</summary>
+    public IReadOnlyList<PerformanceOverlayItemValue> Items { get; init; } = [];
 }
 
 public static class PerformanceOverlayProjection

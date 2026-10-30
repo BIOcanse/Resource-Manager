@@ -13,7 +13,9 @@ using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Endpoints;
+using ResourceManager.App.Infrastructure.Monitoring.TargetedRecording;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
@@ -208,6 +210,172 @@ public sealed class PerformanceOverlaySubscriptionTests
     }
 
     // 推送间隔只有 100 ms，改动数据之前可能已经排好下一行；读到目标数符合为止（受测试超时限制）。
+    private const string OverlayItems =
+        """[{"kind":"metric","id":"cpu.usage","source":"auto","intervalMs":200,"syncPrecision":"high"},"""
+        + """{"kind":"frames","id":"frames.present"},"""
+        + """{"kind":"software","id":"cpu.usage","source":"resource-breakdown","intervalMs":300,"syncPrecision":"low"}]""";
+
+    [Fact]
+    public async Task OverlayItemsUseTheRecordingItemContractAndHoldEachItemOnlyWhileTheTargetRuns()
+    {
+        await using var rig = await OverlayItemRig.StartAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var response = await rig.SubscribeAsync(
+            "intervalMs=100&softwareId=game&items=" + Uri.EscapeDataString(OverlayItems), timeout.Token);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+
+        var items = await ReadItemsAsync(reader, timeout.Token);
+        Assert.Equal(new[] { "metric", "frames", "software" }, items.Select(static item => item.GetProperty("kind").GetString()));
+        Assert.All(items, item =>
+        {
+            Assert.Equal("unavailable", item.GetProperty("state").GetString());
+            Assert.Equal("target-not-running", item.GetProperty("reason").GetString());
+        });
+        Assert.Equal(new[] { 200, 100, 300 }, items.Select(static item => item.GetProperty("intervalMs").GetInt32()));
+        Assert.Equal(new[] { "item", "profile-default", "item" },
+            items.Select(static item => item.GetProperty("intervalOrigin").GetString()));
+        Assert.Equal(new[] { "high", "mid", "low" }, items.Select(static item => item.GetProperty("syncPrecision").GetString()));
+        Assert.Equal(new[] { "auto", "auto", "resource-breakdown" },
+            items.Select(static item => item.GetProperty("selectedSource").GetString()));
+        Assert.Equal(0, rig.Metrics.ActiveCount);
+        Assert.Equal(0, rig.Resources.ActiveCount);
+        Assert.Equal(0, rig.Frames.ActiveCount);
+
+        rig.Processes.Current = Snapshot(Process(10, 100));
+        while ((await ReadItemsAsync(reader, timeout.Token))[0].GetProperty("reason").GetString() == "target-not-running")
+        {
+        }
+        // One named holder per item; the subscription asked for no legacy ids, so nothing else is held.
+        Assert.Equal(1, rig.Metrics.ActiveCount);
+        Assert.Equal(1, rig.Resources.ActiveCount);
+        Assert.Equal(1, rig.Frames.ActiveCount);
+        Assert.Equal(new[] { "cpu.usage" }, rig.Resources.LastRequest!.MetricIds);
+
+        rig.Processes.Current = Snapshot();
+        while ((await ReadItemsAsync(reader, timeout.Token))[0].GetProperty("reason").GetString() != "target-not-running")
+        {
+        }
+        Assert.Equal(0, rig.Metrics.ActiveCount);
+        Assert.Equal(0, rig.Resources.ActiveCount);
+        Assert.Equal(0, rig.Frames.ActiveCount);
+        await timeout.CancelAsync();
+    }
+
+    [Fact]
+    public async Task OverlayWithoutItemsKeepsTheSingleIntervalReplyAndAnEmptyItemList()
+    {
+        await using var rig = await OverlayItemRig.StartAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var response = await rig.SubscribeAsync("intervalMs=100&softwareId=game&ids=cpu.usage", timeout.Token);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+        using var document = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
+        var value = document.RootElement.GetProperty("value");
+        Assert.Equal(3, value.GetProperty("version").GetInt32());
+        Assert.Empty(value.GetProperty("items").EnumerateArray());
+        Assert.Empty(value.GetProperty("targets").EnumerateArray());
+        await timeout.CancelAsync();
+    }
+
+    [Theory]
+    [InlineData("not-json")]
+    [InlineData("""[]""")]
+    [InlineData("""[{"kind":"metric","id":"nope"}]""")]
+    [InlineData("""[{"kind":"metric","id":"cpu.usage","source":"load@cpu9"}]""")]
+    [InlineData("""[{"kind":"metric","id":"cpu.usage","intervalMs":50}]""")]
+    [InlineData("""[{"kind":"metric","id":"cpu.usage","syncPrecision":"ultra"}]""")]
+    [InlineData("""[{"kind":"frames","id":"frames.present","intervalMs":500}]""")]
+    [InlineData("""[{"kind":"metric","id":"cpu.usage"},{"kind":"metric","id":"cpu.usage"}]""")]
+    public async Task OverlayRejectsItemsTheRecordingContractRejects(string items)
+    {
+        await using var rig = await OverlayItemRig.StartAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var response = await rig.SubscribeAsync(
+            "intervalMs=100&softwareId=game&items=" + Uri.EscapeDataString(items), timeout.Token);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(0, rig.Resources.IdentityActiveCount);
+    }
+
+    private static async Task<JsonElement[]> ReadItemsAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        using var document = JsonDocument.Parse((await reader.ReadLineAsync(cancellationToken))!);
+        return document.RootElement.GetProperty("value").GetProperty("items").EnumerateArray()
+            .Select(static item => item.Clone()).ToArray();
+    }
+
+    private sealed class OverlayItemRig(WebApplication app, HttpClient client) : IAsyncDisposable
+    {
+        public ProcessSource Processes { get; private init; } = null!;
+        public FrameSource Frames { get; private init; } = null!;
+        public ResourceSource Resources { get; private init; } = null!;
+        public MetricSource Metrics { get; private init; } = null!;
+
+        public static async Task<OverlayItemRig> StartAsync()
+        {
+            var processes = new ProcessSource();
+            var frames = new FrameSource();
+            var resources = new ResourceSource();
+            var metrics = new MetricSource();
+            var builder = WebApplication.CreateBuilder();
+            TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read", "processes.read");
+            builder.WebHost.UseUrls("http://127.0.0.1:0");
+            builder.Services.ConfigureHttpJsonOptions(options =>
+                ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
+            builder.Services.AddSingleton<ISchedulingProcessFactObservationSource>(processes);
+            builder.Services.AddSingleton<IFrameTimingObservationSource>(frames);
+            builder.Services.AddSingleton<IResourceBreakdownObservationSource>(resources);
+            builder.Services.AddSingleton<IMetricSnapshotObservationSource>(metrics);
+            builder.Services.AddSingleton(new HardwareMetricCatalogState());
+            builder.Services.AddSingleton<ITargetedRecordingItemCatalog>(new ItemCatalog());
+            var app = TrustedAccessEndpointTestAuthentication.Build(builder);
+            typeof(ResourceManagerEndpointRouteBuilderExtensions)
+                .GetMethod("MapSubscriptionChannelEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, [app]);
+            await app.StartAsync();
+            var client = new HttpClient
+            {
+                BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
+                    .Features.Get<IServerAddressesFeature>()!.Addresses))
+            };
+            TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
+            return new OverlayItemRig(app, client)
+            {
+                Processes = processes, Frames = frames, Resources = resources, Metrics = metrics
+            };
+        }
+
+        public Task<HttpResponseMessage> SubscribeAsync(string query, CancellationToken cancellationToken)
+            => client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+            {
+                Content = JsonContent.Create(new
+                {
+                    version = 1,
+                    subscriptions = new[] { new { id = "overlay", path = "/api/performance-overlay/subscribe?" + query } }
+                })
+            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        public async ValueTask DisposeAsync()
+        {
+            client.Dispose();
+            await app.StopAsync();
+            await app.DisposeAsync();
+        }
+    }
+
+    private sealed class ItemCatalog : ITargetedRecordingItemCatalog
+    {
+        private static readonly IReadOnlyList<TargetedRecordingCatalogItem> Items =
+        [
+            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesItemId, "ms", [], null),
+            new(TargetedRecordingItemKinds.Software, "cpu.usage", "%", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null),
+            new(TargetedRecordingItemKinds.Metric, "cpu.usage", "%", ["load@cpu0"], null)
+        ];
+        public Task<IReadOnlyList<TargetedRecordingCatalogItem>> ReadAsync(CancellationToken cancellationToken)
+            => Task.FromResult(Items);
+        public IReadOnlyList<TargetedRecordingCatalogItem> ReadCurrent() => Items;
+    }
+
     private static async Task ReadUntilTargetCountAsync(StreamReader reader, int expected, CancellationToken cancellationToken)
     {
         while ((await ReadTargetsAsync(reader, cancellationToken)).Count() != expected)

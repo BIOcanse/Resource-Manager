@@ -102,10 +102,18 @@ public static class AppSettingsMigrator
                 ReadBoolean(root, "control", "keepAlive", false)),
             ReadReports(root),
             ReadMemoryProtection(root),
-            ReadMemoryCpuTier(root));
+            ReadMemoryCpuTier(root),
+            ReadTargetedRecording(root));
 
         return AppSettingsNormalizer.Normalize(settings);
     }
+
+    // An older settings file has no targetedRecording section: it reads as the single 默认 profile.
+    private static AppTargetedRecordingSettings ReadTargetedRecording(JsonElement root)
+        => root.TryGetProperty("targetedRecording", out var section) && section.ValueKind == JsonValueKind.Object
+            ? section.Deserialize<AppTargetedRecordingSettings>(WebJsonOptions)
+                ?? throw new JsonException("targetedRecording must be an object.")
+            : TargetedRecordingProfileDefaults.Create();
 
     private static HostMemoryProtectionSettings ReadMemoryProtection(JsonElement root)
     {

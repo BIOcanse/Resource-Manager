@@ -29,7 +29,24 @@ public static class AppSettingsNormalizer
                 { Reserves = settings.MemoryProtection?.Reserves?.ToArray() ?? [],
                     ProtectedProcesses = settings.MemoryProtection is { } protection ? protection.ProtectedProcesses?.ToArray()! : ["explorer.exe"] },
             // Tier and override values are validated against the tier table by the settings write gate, not rewritten here.
-            NormalizeMemoryCpuTier(settings.MemoryCpuTier));
+            NormalizeMemoryCpuTier(settings.MemoryCpuTier),
+            NormalizeTargetedRecording(settings.TargetedRecording));
+    }
+
+    // A missing section, or one without profiles, is the single default profile. Item values are kept as
+    // written: the coordinator rejects invalid ones before commit instead of rewriting them here.
+    private static AppTargetedRecordingSettings NormalizeTargetedRecording(AppTargetedRecordingSettings? settings)
+    {
+        if (settings?.Profiles is not { Count: > 0 } profiles) return TargetedRecordingProfileDefaults.Create();
+        return new AppTargetedRecordingSettings(profiles.Where(static profile => profile is not null)
+            .Select(static profile => profile with
+            {
+                Items = (profile.Items ?? []).Where(static item => item is not null).Select(static item => item with
+                {
+                    Source = item.Source ?? TargetedRecordingProfileDefaults.AutoSource,
+                    SyncPrecision = item.SyncPrecision ?? TargetedRecordingSyncPrecisions.Mid
+                }).ToArray()
+            }).ToArray());
     }
 
     private static MemoryCpuTierSettings NormalizeMemoryCpuTier(MemoryCpuTierSettings? tier)

@@ -15,9 +15,16 @@ public static partial class ResourceManagerServiceCollectionExtensions
         this IServiceCollection services,
         StartupCapabilitySet startupCapabilities)
     {
+        // The item catalog and the target reader are reads of live sources; the performance overlay uses the
+        // catalog without persistence, so they are registered in every startup.
+        services.AddSingleton<ITargetedRecordingItemCatalog, TargetedRecordingItemCatalog>();
+        services.AddSingleton<ITargetedRecordingProcessReader, ResourceBreakdownTargetedRecordingProcessReader>();
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         {
             services.AddSingleton<ResourceManagerDatabase>();
+            services.AddSingleton<TargetedRecordingProfileService>();
+            services.AddSingleton<ITargetedRecordingProfileReader>(static provider =>
+                provider.GetRequiredService<TargetedRecordingProfileService>());
             services.AddSingleton<TargetedRecordingStore>();
             services.AddSingleton<TargetedRecordingService>();
             services.AddSerialHostedServiceAlias<TargetedRecordingService>();

@@ -143,6 +143,8 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         if (MemoryCpuTierResolver.Validate(settings.MemoryCpuTier) is { } tierRejection)
             return previous with { RuntimeApplicationDisposition = "rejectedBeforeCommit",
                 RuntimeFailureCode = tierRejection.Code, RuntimeFailurePath = tierRejection.Path };
+        if (TargetedRecordingProfileShape.Validate(settings.TargetedRecording) is { } recordingReason)
+            return previous with { RuntimeApplicationDisposition = "rejectedBeforeCommit", RuntimeFailureCode = recordingReason };
         if (!AppSettingsHotkeySafetyValidator.AreEnabledDestructiveHotkeysSafe(settings))
         {
             return previous with

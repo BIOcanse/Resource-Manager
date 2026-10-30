@@ -105,13 +105,16 @@
                 "consumers": [
                   "MonitoringSettings.Compile"
                 ],
-                "description": "Targeted recording. default_maximum_duration_seconds applies when a request names no duration; maximum_duration_limit_seconds is the largest accepted duration; sample_interval_ms is the metric and breakdown subscription interval while recording.",
+                "description": "Targeted recording. default_maximum_duration_seconds applies when a request names no duration; maximum_duration_limit_seconds is the largest accepted duration; sample_interval_ms is the cadence of the target process check while recording (items carry their own intervals); maximum_report_kib caps the stored bytes of one report (a start whose estimate exceeds it is rejected, a running report stops storing and records a size-limit gap); exit_confirmation_ticks is how many consecutive checks must find every known target process gone before the recording ends with all-processes-exited; no_process_ticks is how many consecutive ready checks without any target process end it with no-process.",
                 "id": "targeted_recording",
                 "value_type": "object",
                 "value": {
                   "default_maximum_duration_seconds": 600,
                   "maximum_duration_limit_seconds": 3600,
-                  "sample_interval_ms": 1000
+                  "sample_interval_ms": 1000,
+                  "maximum_report_kib": 2048,
+                  "exit_confirmation_ticks": 2,
+                  "no_process_ticks": 3
                 },
                 "status": "active",
                 "update_class": "rebuild_backend"
