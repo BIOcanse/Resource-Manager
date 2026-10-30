@@ -384,7 +384,7 @@ fn recordIndex(record: SelectedPosition) u32 {
     return record.index;
 }
 /// Binary search over items ascending by `keyOf`; bounded, no recursion.
-fn find(comptime T: type, items: []const T, key: u32, comptime keyOf: fn (T) u32) ?usize {
+pub fn find(comptime T: type, items: []const T, key: u32, comptime keyOf: fn (T) u32) ?usize {
     var low: usize = 0;
     var high: usize = items.len;
     while (low < high) {
@@ -450,7 +450,8 @@ pub fn read(region: []align(8) const u8, selection: *Selection, source: u32, ret
     }
 }
 
-fn holds(status: CopyStatus) bool {
+/// The held copy is a result to keep while the sequence stays the same.
+pub fn holds(status: CopyStatus) bool {
     return status == .has_value or status == .unavailable or status == .ended;
 }
 
@@ -459,25 +460,40 @@ fn fail(held: *SourceCopy, failure: Failure) SourceRead {
     return .{ .failed = failure };
 }
 
-const Round = struct { state: SourceState, reason: u32, write_time_unix_ms: i64, failure: ?Failure = null };
+pub const Round = struct { state: SourceState, reason: u32, write_time_unix_ms: i64, failure: ?Failure = null };
 
-/// One attempt: the source's state, then, with a value, each of its positions'
-/// length and elements.
-fn copyRound(view: Layout, region: []align(8) const u8, selection: *Selection, source: u32) Round {
-    const entry = view.source(region, source);
+/// The source's state, reason and write time in one attempt; a state other
+/// than has value, unavailable or ended fails it.
+pub fn loadRound(entry: *const layout.SourceEntry) Round {
     var round = Round{
         .state = @atomicLoad(SourceState, &entry.state, .acquire),
         .reason = @atomicLoad(u32, &entry.reason, .acquire),
         .write_time_unix_ms = @atomicLoad(i64, &entry.write_time_unix_ms, .acquire),
     };
     switch (round.state) {
-        .has_value => {},
-        .unavailable, .ended => return round,
-        _ => {
-            round.failure = .source_state;
-            return round;
-        },
+        .has_value, .unavailable, .ended => {},
+        _ => round.failure = .source_state,
     }
+    return round;
+}
+
+/// Copies whole elements of `width` (1, 2, 4 or 8) out of the region with
+/// acquire loads.
+pub fn copyElements(width: u32, from: []const u8, to: []u8) void {
+    switch (width) {
+        1 => copyAs(u8, from, to),
+        2 => copyAs(u16, from, to),
+        4 => copyAs(u32, from, to),
+        8 => copyAs(u64, from, to),
+        else => unreachable, // checkSpec admits only these widths
+    }
+}
+
+/// One attempt: the source's state, then, with a value, each of its positions'
+/// length and elements.
+fn copyRound(view: Layout, region: []align(8) const u8, selection: *Selection, source: u32) Round {
+    var round = loadRound(view.source(region, source));
+    if (round.failure != null or round.state != .has_value) return round;
     const from = view.dataArea(region);
     const to = selection.dataSlice();
     for (selection.positionSlice()) |*selected| {
@@ -499,15 +515,7 @@ fn copyRound(view: Layout, region: []align(8) const u8, selection: *Selection, s
         selected.entry.length = length;
         selected.entry.identity_sequence = @atomicLoad(u64, &position.identity_sequence, .acquire);
         const span = @as(usize, length) * width;
-        const source_bytes = from[spec.offset..][0..span];
-        const target = to[@intCast(selected.offset)..][0..span];
-        switch (width) {
-            1 => copyAs(u8, source_bytes, target),
-            2 => copyAs(u16, source_bytes, target),
-            4 => copyAs(u32, source_bytes, target),
-            8 => copyAs(u64, source_bytes, target),
-            else => unreachable, // checked at setup and compared since
-        }
+        copyElements(width, from[spec.offset..][0..span], to[@intCast(selected.offset)..][0..span]);
     }
     return round;
 }

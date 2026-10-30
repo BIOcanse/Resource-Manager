@@ -207,6 +207,11 @@ pub const Failure = enum(u32) {
     layout_changed = 33,
     /// Selected source indexes are not strictly ascending.
     selection_order = 34,
+    /// A selected read names no source.
+    selection_empty = 35,
+    /// A selected read's sources, with the identity owners it adds, exceed
+    /// `selected.selected_source_limit`.
+    selection_too_large = 36,
     _,
 };
 
@@ -239,6 +244,9 @@ pub const Error = error{
     CopyTooSmall,
     IdentityNotSelected,
     SelectionOrder,
+    SelectionEmpty,
+    SelectionTooLarge,
+    LayoutChanged,
 };
 
 pub fn failureOf(err: Error) Failure {
@@ -271,6 +279,9 @@ pub fn failureOf(err: Error) Failure {
         error.CopyTooSmall => .copy_too_small,
         error.IdentityNotSelected => .identity_not_selected,
         error.SelectionOrder => .selection_order,
+        error.SelectionEmpty => .selection_empty,
+        error.SelectionTooLarge => .selection_too_large,
+        error.LayoutChanged => .layout_changed,
     };
 }
 
@@ -354,8 +365,14 @@ pub const Layout = struct {
     /// Loads position `index` once and checks it; `index` must be in the table.
     pub fn checkedSpec(self: Layout, region: []align(8) const u8, index: u32) Error!PositionSpec {
         const spec = loadSpec(self.position(region, index));
-        try checkSpec(index, spec, self.header, RegionTargets{ .layout = self, .region = region });
+        try self.check(region, index, spec);
         return spec;
+    }
+
+    /// Checks `spec`, loaded from position `index`, against this header and
+    /// the positions it references; `index` must be in the table.
+    pub fn check(self: Layout, region: []align(8) const u8, index: u32, spec: PositionSpec) Error!void {
+        try checkSpec(index, spec, self.header, RegionTargets{ .layout = self, .region = region });
     }
 };
 

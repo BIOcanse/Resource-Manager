@@ -5,6 +5,7 @@
 const std = @import("std");
 pub const layout = @import("layout.zig");
 pub const seqlock = @import("seqlock.zig");
+pub const selected = @import("selected.zig");
 
 pub const magic = layout.magic;
 pub const version = layout.version;
@@ -45,12 +46,21 @@ pub const positionValue = seqlock.positionValue;
 pub const stringAt = seqlock.stringAt;
 pub const end = seqlock.end;
 
+pub const selected_source_limit = selected.selected_source_limit;
+pub const SelectedRequirements = selected.SelectedRequirements;
+pub const SelectedCopy = selected.SelectedCopy;
+pub const selectedRequirements = selected.selectedRequirements;
+pub const readSelected = selected.readSelected;
+pub const selectedPositionValue = selected.selectedPositionValue;
+
 // C ABI. Fixed-width arguments; nothing is allocated and nothing is kept
 // between calls, so every result goes to caller memory. Functions return 0 or
 // a `Failure` code, except `read` and `position_value`, which return a status.
-// A region pointer must be 8-byte aligned. `Writer` and `Selection` are caller
-// memory: a writer comes from `write_begin`; a selection from `select`, after
-// the caller sized its arrays with `selection_size`.
+// A region pointer must be 8-byte aligned. `Writer`, `Selection` and
+// `SelectedCopy` are caller memory: a writer comes from `write_begin`; a
+// selection from `select`, after the caller sized its arrays with
+// `selection_size`; a selected copy's tables are sized with
+// `selected_required_size` and filled by `read_selected`.
 
 /// Input to `rm_shared_section_initialize`.
 pub const LayoutSpec = extern struct {
@@ -68,11 +78,13 @@ pub const LayoutSpec = extern struct {
 /// entry for the source.
 pub const ReadStatus = enum(u32) { unchanged = 0, has_value = 1, unavailable = 2, ended = 3, failed = 4 };
 
-/// Returned by `rm_shared_section_position_value`, also in `ValueView.status`.
+/// Returned by `rm_shared_section_position_value` and
+/// `rm_shared_section_selected_position_value`, also in `ValueView.status`.
 pub const PositionStatus = enum(u32) { has_value = 1, unavailable = 2, ended = 3, failed = 4, not_arrived = 5 };
 
 pub const ValueView = extern struct {
-    /// Byte offset of the value in the selection's data, and its byte length.
+    /// Byte offset of the value in the selection's (or selected copy's) data,
+    /// and its byte length.
     offset: u64 = 0,
     byte_length: u64 = 0,
     /// Elements for a scalar, rows for a column or string column, bytes for a
@@ -229,7 +241,11 @@ pub export fn rm_shared_section_position_value(selection: ?*const Selection, pos
         out.* = .{ .status = .failed, .reason = failureCode(error.InvalidArgument) };
         return @intFromEnum(out.status);
     };
-    out.* = switch (positionValue(source, position)) {
+    out.* = viewOf(positionValue(source, position));
+    return @intFromEnum(out.status);
+}
+fn viewOf(result: PositionValue) ValueView {
+    return switch (result) {
         .value => |found| .{
             .offset = found.offset,
             .byte_length = found.bytes.len,
@@ -241,6 +257,42 @@ pub export fn rm_shared_section_position_value(selection: ?*const Selection, pos
         .ended => .{ .status = .ended },
         .failed => |failure| .{ .reason = @intFromEnum(failure), .status = .failed },
     };
+}
+
+/// Layout query for a selected read: what `read_selected` needs for `sources`
+/// (strictly ascending, nonempty, `source_count` entries) over the region.
+/// Writes only `requirements`.
+pub export fn rm_shared_section_selected_required_size(region: ?[*]const u8, length: u64, sources: ?[*]const u32, source_count: u32, requirements: ?*SelectedRequirements) u32 {
+    const out = requirements orelse return failureCode(error.InvalidArgument);
+    const list = tableOf(u32, sources, source_count) catch |err| return failureCode(err);
+    out.* = selectedRequirements(regionOf(region, length) catch |err| return failureCode(err), list) catch |err| return failureCode(err);
+    return 0;
+}
+
+/// Reads the selection for `sources` into `destination` (`selected.readSelected`).
+/// 0 means the call was accepted; each source's outcome, failed included, is
+/// in its `SourceCopy`. Any other code is structural, and every held source
+/// of `destination` is then marked failed with it.
+pub export fn rm_shared_section_read_selected(region: ?[*]const u8, length: u64, sources: ?[*]const u32, source_count: u32, destination: ?*SelectedCopy, retry_limit: u32) u32 {
+    const out = destination orelse return failureCode(error.InvalidArgument);
+    return statusOf(readSelectedFrom(region, length, sources, source_count, out, retry_limit));
+}
+fn readSelectedFrom(region: ?[*]const u8, length: u64, sources: ?[*]const u32, source_count: u32, out: *SelectedCopy, retry_limit: u32) Error!void {
+    errdefer |err| out.markFailed(failureOf(err));
+    try readSelected(try regionOf(region, length), try tableOf(u32, sources, source_count), out, retry_limit);
+}
+
+/// The value of `position` (its index in the region's position table) in
+/// `destination` (`selected.selectedPositionValue`). Returns a
+/// `PositionStatus` and fills `value`; a value's offset indexes the
+/// destination's data.
+pub export fn rm_shared_section_selected_position_value(destination: ?*const SelectedCopy, position: u32, value: ?*ValueView) u32 {
+    const out = value orelse return @intFromEnum(PositionStatus.failed);
+    const copy = destination orelse {
+        out.* = .{ .status = .failed, .reason = failureCode(error.InvalidArgument) };
+        return @intFromEnum(out.status);
+    };
+    out.* = viewOf(selectedPositionValue(copy, position));
     return @intFromEnum(out.status);
 }
 

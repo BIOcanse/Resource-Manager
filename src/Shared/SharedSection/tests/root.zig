@@ -5,4 +5,5 @@ test {
     _ = @import("malformed.zig");
     _ = @import("end.zig");
     _ = @import("c_abi.zig");
+    _ = @import("selected.zig");
 }
