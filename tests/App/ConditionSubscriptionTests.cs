@@ -33,12 +33,17 @@ public sealed partial class ConditionSubscriptionTests
     [Fact]
     public async Task HookDurationOwnersNormalFramesSilenceClearAndReentryThroughHttp()
     {
+        var metrics = new MetricSource();
         var resources = new ResourceSource();
-        await using var host = await Host.StartAsync(new MetricSource(), resources);
+        await using var host = await Host.StartAsync(metrics, resources);
         await using var stream = await host.OpenAsync([Hook(Rule(2))]);
-        await resources.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await DeliverAsync(host, stream, resources, Breakdown(Epoch, 950), 0);
-        await DeliverAsync(host, stream, resources, Breakdown(Epoch.AddSeconds(1), 960), 1);
+        await metrics.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        // A machine condition with top N holds only the machine metric until it is met.
+        Assert.Equal("monitoring-hook:pressure", metrics.Owner);
+        Assert.Equal(TimeSpan.FromMilliseconds(100), metrics.Interval);
+        await DeliverAsync(host, stream, metrics, Memory(Epoch, 950), 0);
+        Assert.Equal(0, resources.Acquired);
+        await DeliverMetWithOwnersAsync(host, metrics, Memory(Epoch.AddSeconds(1), 960), 1, resources, Breakdown(DateTimeOffset.UtcNow.AddDays(1), 960), 1);
         var frame = await stream.ReadFrameAsync();
         Assert.Equal("pressure", frame.GetProperty("hookId").GetString());
         Assert.False(frame.TryGetProperty("subscriptionId", out _));
@@ -50,18 +55,38 @@ public sealed partial class ConditionSubscriptionTests
         Assert.Equal(new[] { 22, 11 }, owners.Select(owner => owner.GetProperty("processId").GetInt32()));
         Assert.Equal(new[] { "large", "small" }, owners.Select(owner => owner.GetProperty("name").GetString()));
         Assert.Equal(new[] { 600d, 200d }, owners.Select(owner => owner.GetProperty("reading").GetDouble()));
-        // No subscription frames or repeated met events may reach the caller.
-        await DeliverAsync(host, stream, resources, Breakdown(Epoch.AddSeconds(2), 980), 1);
-        await DeliverAsync(host, stream, resources, Breakdown(Epoch.AddSeconds(3), 980), 1);
-        await DeliverAsync(host, stream, resources, Breakdown(Epoch.AddSeconds(4), 800), 1);
-        Assert.Equal("cleared", (await stream.ReadAsync()).GetProperty("state").GetString());
-        await DeliverAsync(host, stream, resources, Breakdown(Epoch.AddSeconds(5), 950), 1);
-        await DeliverAsync(host, stream, resources, Breakdown(Epoch.AddSeconds(6), 950), 1);
-        Assert.Equal("met", (await stream.ReadAsync()).GetProperty("state").GetString());
-        Assert.Equal(1, resources.Active);
+        // The owner list is one single fetch under its own holder, released after the met frame.
+        await UntilAsync(() => resources.Active == 0);
         Assert.Equal(1, resources.Acquired);
-        Assert.Equal("monitoring-hook:pressure", resources.Owner);
-        Assert.Equal(TimeSpan.FromMilliseconds(100), resources.Interval);
+        Assert.Equal("monitoring-hook:pressure:top-owners", resources.Owner);
+        Assert.Equal(TimeSpan.FromSeconds(1), resources.Interval);
+        // No subscription frames or repeated met events may reach the caller.
+        await DeliverAsync(host, stream, metrics, Memory(Epoch.AddSeconds(2), 980), 1);
+        await DeliverAsync(host, stream, metrics, Memory(Epoch.AddSeconds(3), 980), 1);
+        await DeliverAsync(host, stream, metrics, Memory(Epoch.AddSeconds(4), 800), 1);
+        Assert.Equal("cleared", (await stream.ReadAsync()).GetProperty("state").GetString());
+        await DeliverAsync(host, stream, metrics, Memory(Epoch.AddSeconds(5), 950), 1);
+        Assert.Equal(1, resources.Acquired);
+        await DeliverMetWithOwnersAsync(host, metrics, Memory(Epoch.AddSeconds(6), 950), 1, resources, Breakdown(DateTimeOffset.UtcNow.AddDays(1), 950), 2);
+        var again = await stream.ReadAsync();
+        Assert.Equal("met", again.GetProperty("state").GetString());
+        Assert.Equal(2, again.GetProperty("owners").GetArrayLength());
+        await UntilAsync(() => resources.Active == 0);
+        Assert.Equal(2, resources.Acquired);
+        Assert.Equal(1, metrics.Active);
+        Assert.Equal(1, metrics.Acquired);
+    }
+
+    /// <summary>Publishes the metric frame that meets a machine hook with top N, then
+    /// answers the single owner fetch the hook opens for that met frame.</summary>
+    internal static async Task DeliverMetWithOwnersAsync(Host host, MetricSource metrics, HardwareMetricSnapshot value, double elapsed,
+        ResourceSource resources, ResourceBreakdownSnapshot owners, int fetch)
+    {
+        host.Clock.Advance(elapsed);
+        var delivered = metrics.PublishAsync(value);
+        await UntilAsync(() => resources.Acquired == fetch && resources.Active == 1);
+        await resources.PublishAsync(owners);
+        await delivered;
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.WebUtilities;
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
 
@@ -219,23 +220,35 @@ public sealed partial class ConditionSubscriptionTests
     }
 
     [Fact]
-    public async Task CommitExampleExpandsOwnersAndReturnsFirstMetFromTheSameResourceSubscription()
+    public async Task CommitExampleHoldsOnlyTheMachineMetricAndFetchesOwnersOnceWhenMet()
     {
+        var metrics = new MetricSource();
         var resources = new ResourceSource();
-        await using var host = await Host.StartAsync(new MetricSource(), resources);
+        await using var host = await Host.StartAsync(metrics, resources);
         await using var stream = await host.OpenAsync([new { id = "commit", condition = "commit >= 95% for 60s top 8" }]);
         var hook = (await stream.ReadAsync()).GetProperty("hook");
         Assert.Equal(8, hook.GetProperty("rule").GetProperty("topOwners").GetInt32());
         Assert.Equal("virtualMemory.usage", hook.GetProperty("rule").GetProperty("metricId").GetString());
-        await resources.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        ResourceBreakdownSnapshot Commit() => Breakdown(Epoch) with
-        { Bars = Breakdown(Epoch).Bars.Select(bar => bar with { MetricId = "virtualMemory.usage" }).ToArray(),
-          Datasets = [new(SamplingDatasetIds.ForProcessMetric("virtualMemory.usage"), "ready", 1, 1, Epoch, Epoch, Epoch, null, null, null)] };
-        await resources.PublishAsync(Commit()); host.Clock.Advance(60); await resources.PublishAsync(Commit());
+        await metrics.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("monitoring-hook:commit", metrics.Owner);
+        HardwareMetricSnapshot Commit() => Memory(Epoch, 950) with
+        { Items = new Dictionary<string, MetricReadingValue>(StringComparer.OrdinalIgnoreCase)
+          { ["virtualMemory.usage"] = new("virtualMemory.usage", 950d, "B", Total: 1000)
+              { Status = SamplingObservationStatus.Current, ObservedAt = Epoch } } };
+        var fresh = DateTimeOffset.UtcNow.AddDays(1);
+        var owners = Breakdown(fresh) with
+        { Bars = Breakdown(fresh).Bars.Select(bar => bar with { MetricId = "virtualMemory.usage" }).ToArray(),
+          Datasets = [new(SamplingDatasetIds.ForProcessMetric("virtualMemory.usage"), "ready", 1, 1, fresh, fresh, fresh, null, null, null)] };
+        await metrics.PublishAsync(Commit());
+        Assert.Equal(0, resources.Acquired);
+        await DeliverMetWithOwnersAsync(host, metrics, Commit(), 60, resources, owners, 1);
         var met = await stream.ReadAsync();
+        Assert.Equal("met", met.GetProperty("state").GetString());
         Assert.Equal(95, met.GetProperty("reading").GetDouble());
         Assert.Equal(2, met.GetProperty("owners").GetArrayLength());
+        await UntilAsync(() => resources.Active == 0);
         Assert.Equal(1, resources.Acquired);
+        Assert.Equal("monitoring-hook:commit:top-owners", resources.Owner);
     }
 
     [Theory]

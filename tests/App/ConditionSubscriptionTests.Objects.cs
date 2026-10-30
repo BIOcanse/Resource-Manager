@@ -23,8 +23,9 @@ public sealed partial class ConditionSubscriptionTests
     [Fact]
     public async Task SoftwareHookUsesOnlyTheSubscriptionsDeliveredProcessesAndOwners()
     {
+        var metrics = new MetricSource();
         var resources = new ResourceSource { Foundations = Foundations() };
-        await using var host = await Host.StartAsync(new MetricSource(), resources);
+        await using var host = await Host.StartAsync(metrics, resources);
         await using var stream = await host.OpenAsync([Hook(ObjectRule("software"))]);
         await resources.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await DeliverAsync(host, stream, resources, ProcessValues(Epoch), 0);
@@ -33,7 +34,12 @@ public sealed partial class ConditionSubscriptionTests
         Assert.Equal("met", met.GetProperty("state").GetString());
         Assert.Equal(800, met.GetProperty("reading").GetDouble());
         Assert.Equal(new[] { 22, 11 }, met.GetProperty("owners").EnumerateArray().Select(owner => owner.GetProperty("processId").GetInt32()));
+        // A software binding evaluates process data, so it keeps its one resource subscription.
         Assert.Equal(1, resources.Acquired);
+        Assert.Equal(1, resources.Active);
+        Assert.Equal("monitoring-hook:pressure", resources.Owner);
+        Assert.Equal(TimeSpan.FromMilliseconds(100), resources.Interval);
+        Assert.Equal(0, metrics.Acquired);
     }
 
     [Fact]

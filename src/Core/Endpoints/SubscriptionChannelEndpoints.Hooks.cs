@@ -9,6 +9,7 @@ using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Endpoints.Transport;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.ProcessFields;
 
 namespace ResourceManager.App.Endpoints;
@@ -148,6 +149,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var hook = new MonitoringHook(request.Id, rule, clock);
         // The hook is the holder passed to the original subscription source. It
         // receives every delivery; no source frame is forwarded to the HTTP caller.
+        // Process or software bindings need process data to evaluate the condition.
         var owner = $"monitoring-hook:{request.Id}";
         if (target.Binding is "process" or "software")
         {
@@ -182,6 +184,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             throw InvalidHook("deviceIdentity does not own this metric");
         if (rule.Quantity != "value" && code is not (MetricFieldCode.MemoryUsed or MetricFieldCode.CommitUsed or MetricFieldCode.GpuMemoryUsed))
             throw InvalidHook("this value has no total");
+        // The condition reads only the machine metric. A machine hook with top N
+        // takes one resource-breakdown sample when it becomes met, then releases it.
+        Func<CancellationToken, Task<IReadOnlyList<MonitoringHookOwner>>>? ownersWhenMet = null;
         if (rule.TopOwners > 0)
         {
             var metric = code switch
@@ -193,19 +198,20 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             } ?? throw InvalidHook("the selected metric has no resource breakdown");
             var resources = services.GetRequiredService<IResourceBreakdownPushSource>();
             var sample = new ResourceBreakdownSampleRequest([metric], new Dictionary<string, string>(), ProcessSampleDetailLevel.ResourceTableBasic);
-            return HookSubscription(request.Id, async (writer, token) =>
-            {
-                await foreach (var current in resources.SubscribeAsync(owner, sample, request.Interval, token))
-                    if (await hook.DeliverAsync(ReadHookMachineOwners(current, metric), writer, token)) break;
-            });
+            ownersWhenMet = token => ReadHookMachineOwnersOnceAsync(resources, $"{owner}:top-owners", sample, metric, token);
         }
         var metrics = services.GetRequiredService<IMetricSnapshotPushSource>();
         return HookSubscription(request.Id, async (writer, token) =>
         {
             await foreach (var current in metrics.SubscribeAsync(owner, MetricSampleRequest.ForIds([address]), request.Interval, token))
-                if (await hook.DeliverAsync(ReadHookMetric(current, address, target, catalogState.Catalog!, unit), writer, token)) break;
+                if (await hook.DeliverAsync(ReadHookMetric(current, address, target, catalogState.Catalog!, unit), writer, token, ownersWhenMet)) break;
         });
     }
+
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Machine monitoring hook condition met")]
+    private static async Task<IReadOnlyList<MonitoringHookOwner>> ReadHookMachineOwnersOnceAsync(IResourceBreakdownPushSource resources,
+        string holder, ResourceBreakdownSampleRequest sample, string metric, CancellationToken token)
+        => await resources.FetchOnceAsync(holder, sample, token) is { } current ? ReadHookMachineOwners(current, metric).Owners : [];
 
     private static CompiledFrontendSubscription HookSubscription(string id,
         Func<FrontendSubscriptionChannelWriter, CancellationToken, Task> run)
@@ -221,7 +227,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private sealed class MonitoringHook(string id, MonitoringHookRule rule, TimeProvider clock)
     {
         private readonly MonitoringHookState state = new(rule, clock);
-        internal async ValueTask<bool> DeliverAsync(HookReading current, FrontendSubscriptionChannelWriter writer, CancellationToken token)
+        internal async ValueTask<bool> DeliverAsync(HookReading current, FrontendSubscriptionChannelWriter writer, CancellationToken token,
+            Func<CancellationToken, Task<IReadOnlyList<MonitoringHookOwner>>>? ownersWhenMet = null)
         {
             if (current.Ended) { await WriteAsync("objectEnded", null, null, current.Reason, []); return true; }
             var number = current.Value;
@@ -229,10 +236,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (rule.Quantity == "percentOfTotal") number = current.Total is > 0 && double.IsFinite(current.Total.Value) ? number * 100 / current.Total.Value : null;
             var change = state.Evaluate(number);
             if (change is null) return false;
+            IReadOnlyList<MonitoringHookOwner> metOwners = change.Value.State != "met" ? []
+                : ownersWhenMet is null ? current.Owners : await ownersWhenMet(token);
             await WriteAsync(change.Value.State, number, change.Value.Since,
                 number is null || !double.IsFinite(number.Value) ? current.Reason ?? "value-unavailable" : null,
-                change.Value.State == "met" ? current.Owners.OrderByDescending(owner => owner.Reading)
-                    .ThenBy(owner => owner.ProcessId).Take(rule.TopOwners).ToArray() : []);
+                metOwners.OrderByDescending(owner => owner.Reading).ThenBy(owner => owner.ProcessId).Take(rule.TopOwners).ToArray());
             return false;
 
             ValueTask WriteAsync(string status, double? value, DateTimeOffset? since, string? reason, IReadOnlyList<MonitoringHookOwner> owners)
