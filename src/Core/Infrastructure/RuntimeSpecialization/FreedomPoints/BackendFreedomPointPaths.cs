@@ -17,6 +17,7 @@ internal static class BackendFreedomPointPaths
     public const string CpuAutomaticExclusivity = "resource-manager/backend/scheduling/placement/runtime/complex/0";
     public const string GpuWindowExecutionLimits = "resource-manager/backend/scheduling/placement/build/complex/0";
     public const string GpuApiObservationWindow = "resource-manager/backend/scheduling/placement/build/simple/0";
+    public const string GpuNoPresentExpiry = "resource-manager/backend/scheduling/placement/build/simple/1";
     public const string SoftwareWelfare = "resource-manager/backend/scoring/build/complex/0";
     public const string BaseScoreTiers = "resource-manager/backend/scoring/runtime/complex/0";
     public const string CpuStateMultipliers = "resource-manager/backend/scoring/cpu/runtime/complex/0";

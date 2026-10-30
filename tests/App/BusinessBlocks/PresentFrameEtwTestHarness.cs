@@ -154,7 +154,8 @@ internal sealed record PresentEtwProviderOperation(
     Guid Provider,
     TraceEventLevel Level = default,
     ulong Keywords = 0,
-    int[]? EventIds = null);
+    int[]? EventIds = null,
+    int[]? ProcessIds = null);
 
 internal sealed class PresentFrameEtwRecordingSession(string name) : IPresentFrameEtwSession
 {
@@ -219,9 +220,9 @@ internal sealed class PresentFrameEtwRecordingSession(string name) : IPresentFra
         finally { processExited.TrySetResult(true); }
     }
 
-    public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds)
+    public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds, int[]? processIds = null)
     {
-        lock (sync) operations.Add(new("enable", provider, level, keywords, eventIds.ToArray()));
+        lock (sync) operations.Add(new("enable", provider, level, keywords, eventIds.ToArray(), processIds?.ToArray()));
         ThrowIfRequested("enable", provider);
         lock (sync) if (!enabled.Contains(provider)) enabled.Add(provider);
         AfterEnable?.Invoke(provider);
@@ -263,6 +264,12 @@ internal sealed class PresentFrameEtwManualTimeProvider : TimeProvider
     private readonly object sync = new();
     private readonly List<ManualTimer> timers = [];
     private DateTimeOffset now = DateTimeOffset.UnixEpoch.AddDays(1);
+
+    internal event Action<DateTimeOffset>? TimerArmed;
+    private void OnTimerArmed(DateTimeOffset deadline) => TimerArmed?.Invoke(deadline);
+
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    public override long GetTimestamp() => GetUtcNow().UtcTicks;
 
     public override DateTimeOffset GetUtcNow()
     {
@@ -306,13 +313,16 @@ internal sealed class PresentFrameEtwManualTimeProvider : TimeProvider
 
         public bool Change(TimeSpan dueTime, TimeSpan nextPeriod)
         {
+            DateTimeOffset? scheduledAt;
             lock (sync)
             {
                 if (disposed) return false;
                 dueAt = dueTime == Timeout.InfiniteTimeSpan ? null : owner.UtcNowUnsafe + dueTime;
                 period = nextPeriod;
-                return true;
+                scheduledAt = dueAt;
             }
+            if (scheduledAt is { } deadline) owner.OnTimerArmed(deadline);
+            return true;
         }
 
         internal void FireThrough(DateTimeOffset now)

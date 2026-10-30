@@ -152,6 +152,7 @@ public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment
                 process.ProcessName, path, null, process.ProcessId, [evidence]), now)) with
             {
                 GraphicsApi = graphicsApi,
+                NoPresentUntil = null,
                 EvidenceSources = CleanEvidenceSources((existing?.EvidenceSources ?? []).Append(evidence))
             };
             var next = current with
@@ -286,7 +287,8 @@ public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment
             process.LastProcessId,
             CleanEvidenceSources(process.EvidenceSources),
             (byte)Math.Clamp((int)process.Confidence, 0, 100),
-            GpuGraphicsApiRoutes.IsIdentified(process.GraphicsApi) ? process.GraphicsApi : null);
+            GpuGraphicsApiRoutes.IsIdentified(process.GraphicsApi) ? process.GraphicsApi : null)
+        { NoPresentUntil = process.NoPresentUntil };
     }
 
     private static GpuPlacementProcessObservationRequest NormalizeRequest(
@@ -392,8 +394,11 @@ public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment
     {
         var ordered = processes.OrderByDescending(static process => process.LastObservedAt)
             .ThenByDescending(static process => process.Confidence).ToArray();
-        return ordered.Where(static process => process.GraphicsApi is not null)
-            .Concat(ordered.Where(static process => process.GraphicsApi is null).Take(MaxProcessesPerSoftware));
+        // Both positive and negative graphics observations are archive results.
+        // The incidental unidentified-process limit must not evict a negative
+        // and permit another PID before its suppression expiry.
+        return ordered.Where(static process => process.GraphicsApi is not null || process.NoPresentUntil is not null)
+            .Concat(ordered.Where(static process => process.GraphicsApi is null && process.NoPresentUntil is null).Take(MaxProcessesPerSoftware));
     }
 
     private static string? InferProcessName(string? executablePath)

@@ -161,6 +161,7 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.ActionTimeoutMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "ActionTimeoutMilliseconds"),
             BackendFreedomPointPositions.GpuWindowExecutionLimits => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "WindowExecution"),
             BackendFreedomPointPositions.GpuApiObservationWindowMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "ApiObservationWindowMilliseconds"),
+            BackendFreedomPointPositions.GpuNoPresentExpirySeconds => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "NoPresentExpirySeconds"),
             BackendFreedomPointPositions.AutomaticExclusivity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "CpuAutomaticExclusivity"),
             BackendFreedomPointPositions.GameStartGraceMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "GameStartGraceMilliseconds"),
             BackendFreedomPointPositions.RequiredConsecutiveDecisions => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "RequiredConsecutiveDecisions"),

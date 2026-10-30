@@ -314,7 +314,10 @@ public sealed record GpuPlacementObservedProcess(
     int? LastProcessId,
     IReadOnlyList<string> EvidenceSources,
     byte Confidence,
-    GpuGraphicsApi? GraphicsApi = null);
+    GpuGraphicsApi? GraphicsApi = null)
+{
+    public DateTimeOffset? NoPresentUntil { get; init; }
+}
 
 public sealed record GpuPlacementProcessObservationRequest(
     string SoftwareId,

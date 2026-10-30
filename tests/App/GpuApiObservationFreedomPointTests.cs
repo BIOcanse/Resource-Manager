@@ -6,6 +6,19 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuApiObservationFreedomPointTests
 {
     [Fact]
+    public void NoPresentExpiryIsVisibleAndOverridesReachTheCompiledObserverSetting()
+    {
+        var baseline = HostManagerTestPlanFactory.CreatePlan();
+        Assert.Equal(86400, baseline.HotPublish.PlacementCoordinator.NoPresentExpirySeconds);
+        var point = Assert.Single(baseline.FreedomPoints.EnumeratePoints(), item => item.Address == BackendFreedomPointPaths.GpuNoPresentExpiry);
+        Assert.Equal("gpu_no_present_expiry_seconds", point.Id);
+        Assert.Equal("rebuild_backend", point.UpdateClass);
+        var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.GpuNoPresentExpiry)["value"] = 3600);
+        Assert.Equal(3600, changed.HotPublish.PlacementCoordinator.NoPresentExpirySeconds);
+        Assert.NotEqual(baseline.BuildSha256, changed.BuildSha256);
+    }
+    [Fact]
     public void ObservationWindowHasOneDeclaredCompiledOwner()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();

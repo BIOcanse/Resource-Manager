@@ -409,6 +409,8 @@ public sealed class RunningGpuPlacementFirstUseTests
         }
         public Task<GpuPlacementSoftwareProcessHistory> ObserveAsync(GpuPlacementProcessObservationRequest request, CancellationToken token)
             => throw new InvalidOperationException("Metadata observation is not part of this action.");
+        public Task SaveNoPresentAsync(string id, string name, GpuPlacementProcessInstance process, DateTimeOffset expiresAt, CancellationToken token)
+            => throw new InvalidOperationException("Metadata observation is not part of this action.");
         public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string id, string name,
             GpuPlacementProcessInstance process, GpuGraphicsApi api, CancellationToken token)
             => failSave ? throw new IOException("save fixture") : inner.SaveFirstGraphicsApiAsync(id, name, process, api, token);

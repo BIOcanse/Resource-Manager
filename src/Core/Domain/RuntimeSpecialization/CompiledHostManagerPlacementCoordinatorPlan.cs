@@ -47,6 +47,8 @@ public sealed record CompiledHostManagerPlacementCoordinatorHotPublishPlan(
     int ApiObservationWindowMilliseconds)
 {
     public CompiledGpuOverflowPolicy? GpuOverflow { get; init; }
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.GpuNoPresentExpirySeconds)]
+    public int NoPresentExpirySeconds { get; init; }
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.AutomaticExclusivity)]
     public CompiledCpuAutomaticExclusivityPolicy? CpuAutomaticExclusivity { get; init; }
 

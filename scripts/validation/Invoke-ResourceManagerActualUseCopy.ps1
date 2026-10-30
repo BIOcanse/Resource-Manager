@@ -6,10 +6,12 @@ param(
     [string]$BuildDirectoryName = 'actual-use-build',
     [string]$RuntimeDirectoryName = 'actual-use-run-001',
     [switch]$FilterOnly,
+    [switch]$PresentObservationOnly,
     [string]$MemoryLimitScript = (Join-Path $PSScriptRoot '..\dev\Invoke-WithMemoryLimit.ps1')
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($FilterOnly -and $PresentObservationOnly) { throw 'Select one measurement mode.' }
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Invoke this script from the existing elevated CONTROL SESSION. The script never elevates itself.'
@@ -33,13 +35,17 @@ $failure = $null
 try {
     $bound = Get-Content -LiteralPath $source -Raw | ConvertFrom-Json
     $ownPath = [IO.Path]::GetFullPath($PSCommandPath)
-    $ownBinding = @($bound.firstPartySources | Where-Object { [string]$_.path -eq $ownPath })
+    # The reviewed script may be invoked from dev after a worktree image was
+    # accepted. Bind its exact bytes, while allowing that deliberate path move.
+    $ownBinding = @($bound.firstPartySources | Where-Object {
+        [string]$_.path -match '[/\\]scripts[/\\]validation[/\\]Invoke-ResourceManagerActualUseCopy\.ps1$'
+    })
     if ($ownBinding.Count -ne 1 -or (Get-FileHash -LiteralPath $ownPath -Algorithm SHA256).Hash -ne $ownBinding[0].sha256) {
         throw 'This invocation script is not the source-bound reviewed script.'
     }
     # The helper owns the complete child tree with a 4 GiB Job limit.
     & $MemoryLimitScript -FilePath $dotnet -ArgumentList @(
-        (Join-Path $image 'ResourceManager.ControlDecisionAcceptance.dll'), $(if ($FilterOnly) { '--gpu-filter-only' } else { '--actual-use' }),
+        (Join-Path $image 'ResourceManager.ControlDecisionAcceptance.dll'), $(if ($PresentObservationOnly) { '--present-observation' } elseif ($FilterOnly) { '--gpu-filter-only' } else { '--actual-use' }),
         '--registered-root', $build, '--runtime-root', $runtime,
         '--artifact-manifest', $manifest, '--source-manifest', $source
     ) -LimitGiB 4
@@ -51,21 +57,22 @@ finally {
     # Runtime data is part of the supplied registered task, whose lifecycle is
     # owned by its caller; do not close that task or unrelated validation batches.
     [void][IO.Directory]::CreateDirectory($runtime)
-    $receiptPath = Join-Path $runtime $(if ($FilterOnly) { 'evidence/gpu-filter-only.json' } else { 'evidence/acceptance.json' })
+    $receiptPath = Join-Path $runtime $(if ($PresentObservationOnly) { 'evidence/present-observation.json' } elseif ($FilterOnly) { 'evidence/gpu-filter-only.json' } else { 'evidence/acceptance.json' })
     $receipt = if (Test-Path -LiteralPath $receiptPath) { Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json } else { $null }
     $passed = $probeExit -eq 0 -and $null -eq $failure -and $null -ne $receipt -and $receipt.status -eq 'passed'
-    $stateNames = if ($FilterOnly) { @('filtered-no-capture','filtered-capture','filtered-capture-reenabled','unfiltered-baseline','owned-session-cleanup') } else { @('a-no-subscriptions','b-30-second-residency-two-windows','c-tray-smart-with-interrupt-report','gpu-allocation-filter','e-subscriptions-removed','cleanup','owned-session-cleanup') }
+    $stateNames = if ($PresentObservationOnly) { @() } elseif ($FilterOnly) { @('filtered-no-capture','filtered-capture','filtered-capture-reenabled','unfiltered-baseline','owned-session-cleanup') } else { @('a-no-subscriptions','b-30-second-residency-two-windows','c-tray-smart-with-interrupt-report','gpu-allocation-filter','e-subscriptions-removed','cleanup','owned-session-cleanup') }
     $states = foreach ($name in $stateNames) {
         $found = if ($null -ne $receipt) { @($receipt.cases | Where-Object Name -EQ $name) } else { @() }
         [ordered]@{ name = $name; passed = $found.Count -eq 1 -and $found[0].status -eq 'passed'; detail = $found }
     }
     if (@($states | Where-Object { -not $_.passed }).Count -gt 0) { $passed = $false }
+    if ($PresentObservationOnly -and ($null -eq $receipt -or $receipt.measuredSeconds -lt 600)) { $passed = $false }
     $verdict = [ordered]@{ contract = 'resource-manager-actual-use-verdict-v2'; status = $(if ($passed) { 'passed' } else { 'failed' });
-        generatedUtc = [DateTime]::UtcNow.ToString('o'); image = $image; runtime = $runtime; mode = $(if ($FilterOnly) { 'gpu-filter-only' } else { 'actual-use' }); exitCode = $probeExit;
+        generatedUtc = [DateTime]::UtcNow.ToString('o'); image = $image; runtime = $runtime; mode = $(if ($PresentObservationOnly) { 'present-observation' } elseif ($FilterOnly) { 'gpu-filter-only' } else { 'actual-use' }); exitCode = $probeExit;
         artifactManifestSha256 = $(if (Test-Path -LiteralPath $manifest) { (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash } else { $null });
         sourceManifestSha256 = $(if (Test-Path -LiteralPath $source) { (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash } else { $null });
         states = @($states); error = $failure; acceptanceReceipt = $receiptPath }
-    $verdict | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $runtime $(if ($FilterOnly) { 'gpu-filter-only-verdict.json' } else { 'actual-use-verdict.json' })) -Encoding utf8
+    $verdict | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $runtime $(if ($PresentObservationOnly) { 'present-observation-verdict.json' } elseif ($FilterOnly) { 'gpu-filter-only-verdict.json' } else { 'actual-use-verdict.json' })) -Encoding utf8
     $verdict | ConvertTo-Json -Depth 12
 }
 if ($passed) { exit 0 }

@@ -15,6 +15,7 @@ internal static class BackendFreedomPointPositions
     public const ulong BoostEntryExitPolicy = 0x0001000200130000UL;
     public const ulong GameBoostNotification = 0x0001000200130001UL;
     public const ulong GpuApiObservationWindowMs = 0x0001000200140000UL;
+    public const ulong GpuNoPresentExpirySeconds = 0x0001000200140001UL;
     public const ulong GpuWindowExecutionLimits = 0x0001000200150000UL;
     public const ulong ActionTimeoutMs = 0x0001000200160000UL;
     public const ulong AutomaticExclusivity = 0x0001000200170000UL;

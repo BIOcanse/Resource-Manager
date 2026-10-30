@@ -204,6 +204,17 @@
                     "value_source": "registry",
                     "value": 5000,
                     "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
+                  },
+                  {
+                    "index": 1,
+                    "id": "gpu_no_present_expiry_seconds",
+                    "description": "Persistent per-image empty Present observation expires after 86400 seconds by default; retry requires a subsequent inventory or GPU-use fact. PID replacement and observer restart do not reset it.",
+                    "value_type": "positive_int32",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": 86400,
+                    "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
                   }
                 ],
                 "complex": [

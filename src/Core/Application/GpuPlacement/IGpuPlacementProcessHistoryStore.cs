@@ -4,6 +4,8 @@ namespace ResourceManager.App.Application.GpuPlacement;
 
 public interface IGpuPlacementProcessHistoryStore
 {
+    Task SaveNoPresentAsync(string softwareId, string softwareName,
+        GpuPlacementProcessInstance process, DateTimeOffset expiresAt, CancellationToken cancellationToken);
     Task<GpuPlacementSoftwareProcessHistory> GetSoftwareHistoryAsync(
         string softwareId,
         string softwareName,

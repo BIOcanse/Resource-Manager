@@ -147,9 +147,14 @@ public sealed partial class PresentFrameEtwSource(
     private void UpdateProviders(IPresentFrameEtwSession current, int? previousFrameLeases)
     {
         var run = activeRun!;
-        bool pending;
-        lock (gate) pending = graphicsApiSubscriptions.Any(item => item.NeedsEvents);
+        int[] observedPids;
+        lock (gate) observedPids = graphicsApiSubscriptions.Where(item => item.NeedsEvents)
+            .Select(item => item.Process.ProcessId).Distinct().Order().ToArray();
+        var pending = observedPids.Length != 0;
         var frames = frameLeases > 0;
+        // ETW permits at most eight PIDs per provider. Above that limit preserve
+        // coverage on this session; frame consumers also require all processes.
+        var pidFilter = !frames && observedPids.Length <= 8 ? observedPids : null;
         var desired = new List<ProviderSelection>();
         if (frames || pending)
         {
@@ -158,9 +163,9 @@ public sealed partial class PresentFrameEtwSource(
                 [ProcessStart, ProcessStop]));
             desired.Add(new(DxgiProvider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
                 frames ? [DxgiPresentStart, DxgiPresentStop, DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop]
-                    : [DxgiPresentStart, DxgiMultiplaneOverlayPresentStart]));
+                    : [DxgiPresentStart, DxgiMultiplaneOverlayPresentStart], pidFilter));
             desired.Add(new(Direct3D9Provider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
-                frames ? [Direct3D9PresentStart, Direct3D9PresentStop] : [Direct3D9PresentStart]));
+                frames ? [Direct3D9PresentStart, Direct3D9PresentStop] : [Direct3D9PresentStart], pidFilter));
         }
         if (frames)
         {
@@ -173,7 +178,7 @@ public sealed partial class PresentFrameEtwSource(
         foreach (var selection in desired)
         {
             if (run.Providers.TryGetValue(selection.Provider, out var old) && old.SameFilter(selection)) continue;
-            current.EnableProvider(selection.Provider, selection.Level, selection.Keywords, selection.EventIds);
+            current.EnableProvider(selection.Provider, selection.Level, selection.Keywords, selection.EventIds, selection.ProcessIds);
             run.Providers[selection.Provider] = selection;
         }
         foreach (var provider in run.Providers.Keys.Where(provider => !desired.Any(item => item.Provider == provider)).ToArray())
@@ -255,10 +260,11 @@ public sealed partial class PresentFrameEtwSource(
         return used;
     }
 
-    private sealed record ProviderSelection(Guid Provider, TraceEventLevel Level, ulong Keywords, int[] EventIds)
+    private sealed record ProviderSelection(Guid Provider, TraceEventLevel Level, ulong Keywords, int[] EventIds, int[]? ProcessIds = null)
     {
         internal bool SameFilter(ProviderSelection other) => Level == other.Level && Keywords == other.Keywords
-            && EventIds.SequenceEqual(other.EventIds);
+            && EventIds.SequenceEqual(other.EventIds)
+            && (ProcessIds is null ? other.ProcessIds is null : other.ProcessIds is not null && ProcessIds.SequenceEqual(other.ProcessIds));
     }
 
     internal static bool Apply(PresentFrameLedger target, TraceEvent data)

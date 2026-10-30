@@ -72,6 +72,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
     IResourceBreakdownPushSource,
     ISchedulingProcessFactSource,
     ISchedulingProcessFactObservationSource,
+    ISchedulingProcessFactPublicationSource,
     IRuntimeSoftwareObservationSource,
     IHostedService,
     IDisposable
@@ -136,6 +137,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
     private int disposed;
     private int ownedResourcesDisposed;
     private SamplingPublicationSignal publicationSignal => processFieldOwner.Publications;
+    SamplingPublicationSignal ISchedulingProcessFactPublicationSource.Publications => publicationSignal;
 
     // Production DI selects this internal route explicitly; the public 11-argument
     // CLR constructor remains the original ordinary-storage entry point.

@@ -6,6 +6,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservationSource
 {
+    public event Action? ObservationChanged;
     private readonly List<GraphicsApiSubscription> graphicsApiSubscriptions = [];
 
     public IPresentGraphicsApiSubscription AcquireGraphicsApiSubscription(GpuPlacementProcessInstance process)
@@ -63,6 +64,7 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
                     && timestampUtc.ToFileTimeUtc() >= (long)subscription.Process.ProcessStartKey)
                 {
                     subscription.Api = api;
+                    subscription.ObservedApi = api;
                     used = true;
                 }
         }
@@ -102,6 +104,7 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
             UpdateOutputProviders(frameLeases);
             PublishSubscriptionActivity(wasActive);
         }
+        ObservationChanged?.Invoke();
     }
 
     internal PresentHolder[] ReadHolders()
@@ -124,23 +127,42 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         internal string Id { get; } = $"gpu-placement-api-history:{id}";
         internal bool Active { get; set; } = true;
         internal GpuGraphicsApi? Api { get; set; }
+        // Historical image evidence survives process exit; Read still rejects
+        // a stopped/reused live instance, while Complete must not call it empty.
+        internal GpuGraphicsApi? ObservedApi { get; set; }
         internal bool NeedsEvents => Active && Api is null;
+        public bool IsComplete
+        {
+            get
+            {
+                var current = Volatile.Read(ref owner);
+                if (current is null) return true;
+                lock (current.gate) return !ReferenceEquals(Volatile.Read(ref owner), current) || !NeedsEvents;
+            }
+        }
         public GpuGraphicsApi? Read()
         {
             var current = Volatile.Read(ref owner);
             if (current is null) return null;
             lock (current.gate) return ReferenceEquals(Volatile.Read(ref owner), current) && Active ? Api : null;
         }
-        public void Dispose()
+        public void Dispose() => _ = Complete();
+        public GpuGraphicsApi? Complete()
         {
             var current = Interlocked.Exchange(ref owner, null);
-            if (current is null) return;
+            if (current is null) return null;
             lock (current.lifecycle)
             {
                 var wasActive = current.HasActiveSubscriptions;
-                lock (current.gate) current.graphicsApiSubscriptions.Remove(this);
+                GpuGraphicsApi? result;
+                lock (current.gate)
+                {
+                    result = ObservedApi;
+                    current.graphicsApiSubscriptions.Remove(this);
+                }
                 current.UpdateOutputProviders(current.frameLeases);
                 current.PublishSubscriptionActivity(wasActive);
+                return result;
             }
         }
     }

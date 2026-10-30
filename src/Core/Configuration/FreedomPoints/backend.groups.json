@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "CC1A115314D9B7AA8DB9AF1C354D656D93CC03F876BAD4967A9C46E3FAC9FC91",
+  "contractFingerprint": "0FCEF79CE9AD75DC08B8848C53013FFACEDB3230B0189FF624292515F08D022A",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -64,6 +64,7 @@
       "order": 1,
       "points": [
         "0001000200140000",
+        "0001000200140001",
         "0001000200150000",
         "0001000200160000",
         "0001000200170000"
@@ -141,16 +142,6 @@
       "order": 6,
       "points": [
         "00010002002C0000"
-      ]
-    },
-    {
-      "key": "resource-manager/backend/reports",
-      "parent": "resource-manager/backend",
-      "name": "reports",
-      "description": "Backend report coordinator observation storage.",
-      "order": 7,
-      "points": [
-        "0001000200300000"
       ]
     }
   ]

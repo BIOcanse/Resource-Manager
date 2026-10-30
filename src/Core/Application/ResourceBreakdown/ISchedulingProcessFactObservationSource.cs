@@ -2,6 +2,12 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 
 namespace ResourceManager.App.Application.ResourceBreakdown;
 
+/// <summary>Passive wakes from existing publications; registering never requests sampling.</summary>
+public interface ISchedulingProcessFactPublicationSource
+{
+    ResourceManager.ReadWrite.Publications.SamplingPublicationSignal Publications { get; }
+}
+
 public interface ISchedulingProcessFactObservationSource
 {
     IDisposable AcquireSubscription(

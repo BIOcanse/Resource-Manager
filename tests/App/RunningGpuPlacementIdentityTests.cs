@@ -72,6 +72,8 @@ public sealed class RunningGpuPlacementIdentityTests
         }
         public Task<GpuPlacementSoftwareProcessHistory> ObserveAsync(GpuPlacementProcessObservationRequest request, CancellationToken token)
             => throw new InvalidOperationException("An action must not identify or update software information.");
+        public Task SaveNoPresentAsync(string softwareId, string softwareName, GpuPlacementProcessInstance process, DateTimeOffset expiresAt, CancellationToken token)
+            => throw new InvalidOperationException("An action must not identify or update software information.");
         public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
             GpuPlacementProcessInstance process, GpuGraphicsApi graphicsApi, CancellationToken token)
             => throw new InvalidOperationException("Preparation and selection only read committed software information.");

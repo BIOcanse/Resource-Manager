@@ -681,6 +681,7 @@ public sealed class ExternalGpuPlacementTests
 
     private sealed class RecordingHistory : IGpuPlacementProcessHistoryStore
     {
+        public Task SaveNoPresentAsync(string id, string name, GpuPlacementProcessInstance process, DateTimeOffset expiresAt, CancellationToken token) => throw new NotSupportedException();
         public string? SoftwareId { get; private set; }
         public string? SoftwareName { get; private set; }
         public GpuPlacementProcessInstance? Process { get; private set; }
@@ -707,6 +708,7 @@ public sealed class ExternalGpuPlacementTests
 
     private sealed class UnusedHistory : IGpuPlacementProcessHistoryStore
     {
+        public Task SaveNoPresentAsync(string id, string name, GpuPlacementProcessInstance process, DateTimeOffset expiresAt, CancellationToken token) => throw new NotSupportedException();
         public Task<GpuPlacementSoftwareProcessHistory> GetSoftwareHistoryAsync(string softwareId, string softwareName,
             CancellationToken cancellationToken) => throw new InvalidOperationException("Not used by the legacy-plan rejection test.");
         public Task<GpuPlacementSoftwareProcessHistory> ObserveAsync(GpuPlacementProcessObservationRequest request,

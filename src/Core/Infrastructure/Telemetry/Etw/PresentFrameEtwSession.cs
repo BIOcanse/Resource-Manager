@@ -11,7 +11,7 @@ internal interface IPresentFrameEtwSession : IDisposable
     void Bind(Action<TraceEvent> handler);
     void BindUsage(Func<TraceEvent, bool> handler) => Bind(data => { handler(data); });
     void Process();
-    void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds);
+    void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds, int[]? processIds = null);
     void DisableProvider(Guid provider);
     void Flush();
 }
@@ -55,10 +55,10 @@ internal sealed class TraceEventPresentFrameEtwSession : IPresentFrameEtwSession
         processingSource.UnhandledEvents += run.RecordUnhandled;
     }
     public void Process() => cleanup.Process();
-    public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds)
+    public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds, int[]? processIds = null)
     {
         session.EnableProvider(provider, level, keywords,
-            new TraceEventProviderOptions { EventIDsToEnable = eventIds });
+            new TraceEventProviderOptions { EventIDsToEnable = eventIds, ProcessIDFilter = processIds });
         Drops.EnableProvider(provider.ToString("D"), keywords);
     }
     public void DisableProvider(Guid provider)

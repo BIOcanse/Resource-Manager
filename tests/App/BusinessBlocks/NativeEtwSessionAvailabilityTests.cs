@@ -310,7 +310,7 @@ public sealed class NativeEtwSessionAvailabilityTests
             completion.TrySetResult(error);
             completed?.Invoke(error);
         }
-        public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds) => EnableProvider(provider);
+        public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds, int[]? processIds = null) => EnableProvider(provider);
         public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
         {
             Interlocked.Increment(ref Enables);

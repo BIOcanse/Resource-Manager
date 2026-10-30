@@ -319,6 +319,7 @@ public sealed class GpuStartupProviderPolicyTests
 
     private sealed class KnownHistory(GpuPlacementProcessPolicy process) : IGpuPlacementProcessHistoryStore
     {
+        public Task SaveNoPresentAsync(string id, string name, GpuPlacementProcessInstance instance, DateTimeOffset expiresAt, CancellationToken token) => throw new NotSupportedException();
         public Task<GpuPlacementSoftwareProcessHistory> GetSoftwareHistoryAsync(string id, string name, CancellationToken cancellationToken)
             => Task.FromResult(new GpuPlacementSoftwareProcessHistory(id, name,
                 [new(process.ProcessKey, process.ProcessName, process.ExecutablePath, "x64", DateTimeOffset.UnixEpoch,

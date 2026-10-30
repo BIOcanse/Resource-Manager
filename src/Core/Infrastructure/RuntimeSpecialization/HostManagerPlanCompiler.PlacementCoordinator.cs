@@ -62,6 +62,8 @@ public sealed partial class HostManagerPlanCompiler
         const string consumer = "HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish";
         var timeout = freedom.Consume<int>(BackendFreedomPointPaths.PlacementActionTimeout, consumer);
         var observationWindow = freedom.Consume<int>(BackendFreedomPointPaths.GpuApiObservationWindow, consumer);
+        var noPresentExpiry = freedom.Consume<int>(BackendFreedomPointPaths.GpuNoPresentExpiry, consumer);
+        ValidatePositive(noPresentExpiry, BackendFreedomPointPaths.GpuNoPresentExpiry);
         var overflow = new CompiledGpuOverflowPolicy(
             performance.GpuOverflowUsagePercent, performance.GpuOverflowDedicatedMemoryPercent);
         var exclusivity = freedom.Consume<CompiledCpuAutomaticExclusivityPolicy>(
@@ -86,7 +88,7 @@ public sealed partial class HostManagerPlanCompiler
             source.MaximumFutureSkewMilliseconds,
             new(window.MaximumWindowCount, window.CleanupReserveMilliseconds, window.MaximumFrameBytes,
                 window.PipeBufferBytes, window.PreparationMaximumFrameBytes), observationWindow)
-        { GpuOverflow = overflow, CpuAutomaticExclusivity = exclusivity };
+        { GpuOverflow = overflow, CpuAutomaticExclusivity = exclusivity, NoPresentExpirySeconds = noPresentExpiry };
     }
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
