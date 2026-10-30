@@ -376,7 +376,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const resourceBarsObservation = createMemo(() => pushObservation(breakdownBindings.bars()));
   const resourceTableObservation = createMemo(() => pushObservation(tableSourceSnapshot()));
   const orderedSnapshotBars = createMemo(() => resourceBarViews(resourceBreakdownSnapshot()?.bars ?? [], activeResourceBars(), processFields()));
-  // 目录订阅每个探测周期推一次，内容通常不变；内容相同就不算变化，卡片目录和指标选择器不跟着重建。
+  // 目录订阅只在后端提交了新内容时推一帧（后端按内容指纹去重）；重连后的首帧和上次相同时也不算变化，卡片目录和指标选择器不跟着重建。
   const fieldCatalogSnapshot = usePushSource(options.metricFieldCatalogSource, () => ({
     active: options.metricSnapshotActive(), intervalMs: options.metricSnapshotIntervalMs()
   })).snapshot;
