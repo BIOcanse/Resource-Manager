@@ -22,6 +22,7 @@ internal sealed unsafe class NativeApi
     internal readonly delegate* unmanaged[Cdecl]<void*, uint, uint, int> SetMode;
     internal readonly delegate* unmanaged[Cdecl]<void*, uint, NativeTableView*, int> GetTableView;
     internal readonly delegate* unmanaged[Cdecl]<void*, uint, NativeDevelopmentStatistics*, int> GetDevelopmentStatistics;
+    internal readonly delegate* unmanaged[Cdecl]<void*, NativeLeaseAnalysisRecord*, ulong, NativeLeaseAnalysisSummary*, int> GetLeaseAnalysis;
     internal readonly delegate* unmanaged[Cdecl]<void*, void*, ulong, NativeTickResult*, int> Tick;
     internal readonly delegate* unmanaged[Cdecl]<void*, uint, delegate* unmanaged[Cdecl]<void*, byte*, ulong, ulong, void>, void*, NativeSubscriptionHandle*, int> Subscribe;
     internal readonly delegate* unmanaged[Cdecl]<void*, NativeSubscriptionHandle*, int> Unsubscribe;
@@ -45,6 +46,13 @@ internal sealed unsafe class NativeApi
         GetTableView = (delegate* unmanaged[Cdecl]<void*, uint, NativeTableView*, int>)(void*)NativeLibrary.GetExport(library, "rm_ledger_get_table_view");
         if (NativeLibrary.TryGetExport(library, "rm_ledger_get_development_statistics", out nint statistics))
             GetDevelopmentStatistics = (delegate* unmanaged[Cdecl]<void*, uint, NativeDevelopmentStatistics*, int>)(void*)statistics;
+        bool hasAnalysis = NativeLibrary.TryGetExport(library, "rm_ledger_get_lease_analysis", out nint analysis);
+        if (hasAnalysis)
+        {
+            if (sizeof(NativeLeaseAnalysisRecord) != 128 || sizeof(NativeLeaseAnalysisSummary) != 48)
+                throw new InvalidOperationException("Managed lease-analysis record layout is invalid.");
+            GetLeaseAnalysis = (delegate* unmanaged[Cdecl]<void*, NativeLeaseAnalysisRecord*, ulong, NativeLeaseAnalysisSummary*, int>)(void*)analysis;
+        }
         Tick = (delegate* unmanaged[Cdecl]<void*, void*, ulong, NativeTickResult*, int>)(void*)NativeLibrary.GetExport(library, "rm_ledger_tick");
         Subscribe = (delegate* unmanaged[Cdecl]<void*, uint, delegate* unmanaged[Cdecl]<void*, byte*, ulong, ulong, void>, void*, NativeSubscriptionHandle*, int>)(void*)NativeLibrary.GetExport(library, "rm_ledger_subscribe");
         Unsubscribe = (delegate* unmanaged[Cdecl]<void*, NativeSubscriptionHandle*, int>)(void*)NativeLibrary.GetExport(library, "rm_ledger_unsubscribe");

@@ -377,10 +377,8 @@ fn Driver(comptime bits: u16, comptime candidate: CandidateKind) type {
                 .index_workspace = tx_buffers.workspace,
             };
 
-            var ledger = if (comptime candidate == .c2)
-                try Ledger.init(rows[0..], shells[0..], table_states[0..], bindings[0..], nodes[0..], index_storage.items[0..], subscriber_rows[0..])
-            else
-                try Ledger.init(rows[0..], shells[0..], table_states[0..], bindings[0..], nodes[0..], index_storage.items[0..], subscriber_rows[0..]);
+            var ledger: Ledger = undefined;
+            try Ledger.init(&ledger, rows[0..], shells[0..], table_states[0..], bindings[0..], nodes[0..], index_storage.items[0..], subscriber_rows[0..]);
             defer {
                 for (&rows) |*row| row.resource.forceRelease() catch @panic("payload benchmark cleanup failed");
             }

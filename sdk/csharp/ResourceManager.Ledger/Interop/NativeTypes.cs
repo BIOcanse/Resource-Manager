@@ -3,6 +3,38 @@ using System.Runtime.InteropServices;
 namespace ResourceManager.Ledger.Interop;
 
 [StructLayout(LayoutKind.Sequential)]
+internal unsafe struct NativeLeaseAnalysisRecord
+{
+    internal fixed byte Uid[32];
+    internal uint Slot;
+    internal uint State;
+    internal ulong AllocationNumber;
+    internal ulong UseGeneration;
+    internal ulong StartedEpoch;
+    internal ulong EndedEpoch;
+    internal ulong StartedMilliseconds;
+    internal ulong EndedMilliseconds;
+    internal ulong WriteWindowCount;
+    internal ulong DirtyPageSamples;
+    internal ulong LastObservedWriteMilliseconds;
+    internal ulong MaximumNoWriteGapMilliseconds;
+    internal uint SupportFlags;
+    internal uint ObservationFlags;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeLeaseAnalysisSummary
+{
+    internal uint RecordCapacity;
+    internal uint WrittenCount;
+    internal ulong ActiveCount;
+    internal ulong CompletedCount;
+    internal ulong DroppedRecords;
+    internal ulong UnavailableWriteSamples;
+    internal ulong SnapshotMilliseconds;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct NativeLease
 {
     internal uint Slot;

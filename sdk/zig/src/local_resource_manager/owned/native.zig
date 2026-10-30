@@ -40,6 +40,9 @@ pub const Status = enum(i32) {
     invalid_state = 17,
     partition_created = 18,
     partition_exists = 19,
+    ended_cleanup_failed = 20,
+    abandoned = 21,
+    cleanup_pending = 22,
     internal_error = 255,
 };
 
@@ -91,6 +94,8 @@ pub const TableView = extern struct {
 };
 
 pub const DevelopmentStatistics = @import("allocation_statistics.zig").Counters;
+pub const LeaseAnalysisRecord = types.LeaseAnalysisRecord;
+pub const LeaseAnalysisSummary = types.LeaseAnalysisSummary;
 
 pub const TickResult = extern struct {
     released: u64,
@@ -162,9 +167,19 @@ pub fn Binding(
     comptime fixed: []const types.For(uid_module.Identifier(config.uid_width)).Fixed,
     comptime identity: BuildIdentity,
 ) type {
+    return WithRegion(config, declarations, fixed, identity, @import("../memory_region.zig").Region);
+}
+
+pub fn WithRegion(
+    comptime config: types.Config,
+    comptime declarations: []const types.Table,
+    comptime fixed: []const types.For(uid_module.Identifier(config.uid_width)).Fixed,
+    comptime identity: BuildIdentity,
+    comptime Region: type,
+) type {
     const Uid = uid_module.Identifier(config.uid_width);
     const Index = c2_index.Candidate(Uid, .c2_chain);
-    const Ledger = owner_module.Owner(config, declarations, fixed, Index);
+    const Ledger = owner_module.WithRegion(config, declarations, fixed, Index, Region);
     const Notifier = notifications.Notifier(Uid);
 
     const dimensions = comptime blk: {
@@ -332,6 +347,7 @@ pub fn Binding(
         pub const OperationWorkspaceType = OperationWorkspace;
         pub const TickWorkspaceType = TickWorkspace;
         pub const DestroyWorkspaceType = DestroyWorkspace;
+        pub const development_lease_analysis_enabled = config.development_lease_analysis;
 
         /// Referencing this function from the generated composition root makes
         /// every generic export part of that consumer build.
@@ -355,7 +371,35 @@ pub fn Binding(
             _ = &Self.rm_ledger_unsubscribe;
             if (config.development_allocation_statistics)
                 _ = &Self.DevelopmentStatisticsApi.rm_ledger_get_development_statistics;
+            if (config.development_lease_analysis) {
+                _ = &Self.LeaseAnalysisApi.rm_ledger_get_lease_analysis;
+            }
         }
+
+        pub const LeaseAnalysisApi = if (config.development_lease_analysis) struct {
+            pub export fn rm_ledger_get_lease_analysis(
+                raw_instance: ?*anyopaque,
+                raw_records: ?[*]LeaseAnalysisRecord,
+                capacity: u64,
+                out_summary: ?*LeaseAnalysisSummary,
+            ) callconv(.c) i32 {
+                const out = validOutput(LeaseAnalysisSummary, out_summary, raw_instance) catch return code(.input_error);
+                const storage = instance(raw_instance) catch |err| return code(errorStatus(err));
+                const bytes = std.math.mul(u64, capacity, @sizeOf(LeaseAnalysisRecord)) catch return code(.input_error);
+                if (bytes > std.math.maxInt(usize)) return code(.input_error);
+                var records: []LeaseAnalysisRecord = &.{};
+                if (raw_records) |pointer| {
+                    const address = @intFromPtr(pointer);
+                    const length: usize = @intCast(bytes);
+                    if (address % @alignOf(LeaseAnalysisRecord) != 0 or !validAddressRange(address, length)) return code(.input_error);
+                    if (length != 0 and (inputOverlapsStorage(raw_instance, address, length) or
+                        overlaps(address, length, @intFromPtr(out), @sizeOf(LeaseAnalysisSummary)))) return code(.input_error);
+                    records = pointer[0..@intCast(capacity)];
+                } else if (capacity != 0) return code(.input_error);
+                out.* = storage.ledger.getLeaseAnalysis(records) catch |err| return code(errorStatus(err));
+                return code(.ok);
+            }
+        } else struct {};
 
         pub const DevelopmentStatisticsApi = if (config.development_allocation_statistics) struct {
             pub export fn rm_ledger_get_development_statistics(
@@ -398,7 +442,8 @@ pub fn Binding(
             }
             var subscriber_slices: [table_count][]Notifier.Record = undefined;
             for (0..table_count) |table| subscriber_slices[table] = storage.records[table][0..];
-            storage.ledger = Ledger.init(
+            Ledger.init(
+                &storage.ledger,
                 &storage.rows,
                 &storage.shells,
                 &storage.tables,
@@ -599,11 +644,14 @@ pub fn Binding(
             const end_disposition: lifecycle.EndDisposition = switch (disposition) {
                 0 => .complete,
                 1 => .discard,
+                2 => .abandon,
                 else => return code(.input_error),
             };
             return switch (storage.ledger.endUse(lease, end_disposition) catch |err| return code(errorStatus(err))) {
                 .completed => code(.completed),
                 .force_released => code(.force_released),
+                .cleanup_failed => code(.ended_cleanup_failed),
+                .abandoned => code(.abandoned),
             };
         }
 
@@ -1145,6 +1193,7 @@ pub fn Binding(
                 err == error.SizeOverflow or err == error.AllocationTooSmall)
                 return .input_error;
             if (err == error.AllocationFailed) return .allocation_failed;
+            if (err == error.CleanupPending) return .cleanup_pending;
             if (err == error.InUse) return .in_use;
             if (err == error.Blocked) return .blocked;
             if (err == error.Nonexistent or err == error.NonexistentHandle) return .nonexistent;

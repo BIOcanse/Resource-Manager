@@ -44,7 +44,11 @@ param(
     [string] $NativeHeaderPath,
 
     [Parameter(Mandatory = $true)]
-    [string] $WorkRoot
+    [string] $WorkRoot,
+
+    # Optional frozen sources of the selected dependency version. Used only to
+    # rebuild embedded tool dependencies with the same publication path map.
+    [string] $FreedomPointBuildSourceRoot
 )
 
 Set-StrictMode -Version Latest
@@ -134,6 +138,8 @@ function Invoke-DotNetPack {
         '-m:1',
         '-nodeReuse:false',
         '-p:UseSharedCompilation=false',
+        '-p:ContinuousIntegrationBuild=true',
+        ('-p:PathMap=' + $publicationPathMap),
         "-p:RestorePackagesPath=$RestorePackagesDirectory"
     )
     foreach ($property in $Properties) { $arguments += "-p:$property" }
@@ -181,6 +187,7 @@ if ($registeredRoot -cne $workRootFull) {
 $runtimeProject = Join-Path $repositoryRoot 'sdk\csharp\ResourceManager.Ledger\ResourceManager.Ledger.csproj'
 $toolProject = Join-Path $repositoryRoot 'sdk\csharp\ResourceManager.Ledger.Build\ResourceManager.Ledger.Build.csproj'
 $configurationProject = Join-Path $repositoryRoot 'sdk\csharp\ResourceManager.Ledger.Configuration\ResourceManager.Ledger.Configuration.csproj'
+$analyzerProject = Join-Path $repositoryRoot 'sdk\csharp\ResourceManager.Ledger.Analyzers\ResourceManager.Ledger.Analyzers.csproj'
 $sourceManifestPath = Join-Path $PSScriptRoot 'ledger-native-source-files.json'
 $nativeBuilderPath = Join-Path $PSScriptRoot 'Build-LedgerNative.ps1'
 $zigRootFull = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot 'sdk\zig'))
@@ -249,6 +256,7 @@ $projectInputRows = @{
     runtime = @(Get-ProjectInputRows -ProjectPath $runtimeProject)
     buildTool = @(Get-ProjectInputRows -ProjectPath $toolProject)
     configuration = @(Get-ProjectInputRows -ProjectPath $configurationProject)
+    analyzers = @(Get-ProjectInputRows -ProjectPath $analyzerProject)
 }
 $nativeHeaderHash = Get-Sha256 -Path $headerPath
 $sourceAllowlistHash = Get-Sha256 -Path $sourceManifestPath
@@ -261,6 +269,43 @@ $candidatesRoot = Join-Path $workRootFull 'ledger-sdk-candidates'
 $stageRoot = Join-Path $workRootFull ('.ledger-sdk-stage-' + $Version + '-' + $candidateId)
 $candidateRoot = Join-Path $candidatesRoot ($Version + '-' + $candidateId)
 New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
+# Published packages carry no machine path: Invoke-DotNetPack passes this map with ContinuousIntegrationBuild, so the
+# compiler maps the stage (obj, generated sources, copied dependency sources) to /_stage/ and the checkout to /_/, in
+# the DLL's PDB path, the PDB documents and the SourceLink map. The stage is listed first because a WorkRoot may sit
+# inside the checkout. MSBuild reads a comma in -p as a property separator, hence %2C.
+$publicationPathMap = $stageRoot.TrimEnd('\','/') + '\=/_stage/%2C' + $repositoryRoot.TrimEnd('\','/') + '\=/_/'
+$dependencyBuild = $null
+$dependencyBuildProperties = @()
+if (-not [string]::IsNullOrWhiteSpace($FreedomPointBuildSourceRoot)) {
+    $dependencySource = [System.IO.Path]::GetFullPath($FreedomPointBuildSourceRoot)
+    $dependencyCopy = Join-Path $stageRoot 'dependency-source/freedom-point'
+    $dependencyRows = [System.Collections.Generic.List[object]]::new()
+    foreach ($name in @('Core','Generators')) {
+        $project = Join-Path $dependencySource "src/$name/FreedomPoint.$name.csproj"
+        [xml]$projectXml = Get-Content -LiteralPath $project -Raw
+        if ([string]$projectXml.Project.PropertyGroup.Version -cne $FreedomPointSdkVersion) {
+            throw "Frozen $name source does not declare the selected dependency version."
+        }
+        foreach ($inputRow in @(Get-ProjectInputRows -ProjectPath $project)) {
+            $relative = "src/$name/$($inputRow.path)"
+            $destination = Join-Path $dependencyCopy $relative
+            [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $destination))
+            Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $project) $inputRow.path) -Destination $destination
+            $dependencyRows.Add([pscustomobject]@{path=$relative;length=$inputRow.length;sha256=$inputRow.sha256})
+        }
+    }
+    Copy-Item -LiteralPath (Join-Path $dependencySource 'README.md') -Destination (Join-Path $dependencyCopy 'README.md')
+    $dependencyBuildProperties = @('FreedomPointBuildSourceRoot=' + $dependencyCopy)
+    $dependencyBuild = [pscustomobject]@{
+        kind = 'same-version-frozen-source-path-mapped-rebuild'
+        version = $FreedomPointSdkVersion
+        sourceFiles = @($dependencyRows)
+        verification = 'Consumer receipt must verify managed method bodies and resources against the official baseline packages.'
+    }
+    foreach ($dependencyRow in $fpDependencyRows) {
+        $dependencyRow | Add-Member -NotePropertyName role -NotePropertyValue 'official-package-baseline-for-embedded-source-rebuild'
+    }
+}
 $packageDirectory = Join-Path $stageRoot 'packages'
 $toolsDirectory = Join-Path $stageRoot 'tools'
 $nativeDirectory = Join-Path $stageRoot 'native-source'
@@ -291,7 +336,7 @@ $nativeReadme = @'
 
 This archive contains the production C2 ledger Native source closure under `src/local_resource_manager`, the public `src/ledger.zig` module root, the paired C ABI header, and the public `tools/Build-LedgerNative.ps1` build entry. The package is a candidate until an installed-package consumer run succeeds.
 
-Use the packaged `ledger-configuration` tool to generate the selected FreedomPoint structure and values. Use the packaged `ledger-build native` command with the owner's canonical JSON, exact `ledger_values.zig`, and UID width to generate `LedgerOwnerShape.zig`, `LedgerNativeEntry.zig`, `LedgerOwnerBuild.g.cs`, and `ledger-native-build.json`. The Native build script verifies that manifest, then builds the DLL from this source root using Zig 0.16 and records input/output fingerprints.
+Use the packaged `ledger-configuration` tool to generate the selected FreedomPoint structure and values. Use the packaged `ledger-build native` command with the owner's canonical JSON, exact `ledger_values.zig`, and UID width to generate `LedgerOwnerShape.zig`, `LedgerNativeEntry.zig`, `LedgerOwnerBuild.g.cs`, `LedgerOwnerBuild.props`, and `ledger-native-build.json`. The generated props are paired build metadata. Development analysis is automatic in the selected Native build; consumers do not add read/write or coverage markers. The Native build script verifies that manifest, then builds the DLL from this source root using Zig 0.16 and records input/output fingerprints.
 
 Generated owner/value/structure files remain consumer build inputs. They are not copied into this archive. From the extracted archive root, invoke the public builder with the installed build tool, generated files, and an existing output workspace:
 
@@ -372,18 +417,12 @@ This tool manifest pins `ledger-build` and `ledger-configuration` to the candida
 '@
 [System.IO.File]::WriteAllText((Join-Path $toolsDirectory 'README.md'), $toolsReadme + "`n", [System.Text.UTF8Encoding]::new($false))
 
-# Published packages carry no machine path: the compiler maps the stage (obj, generated sources) to /_build/ and the
-# checkout to /_/, in the DLL's PDB path, the PDB documents and the SourceLink map. The stage is listed first because
-# a WorkRoot may sit inside the checkout. MSBuild reads a comma in -p as a property separator, hence %2C.
-$pathMap = (Join-Path $stageRoot '') + '=/_build/%2C' + (Join-Path $repositoryRoot '') + '=/_/'
 $baseProperties = @(
     "PackageVersion=$Version",
     'IsPackable=true',
     ('PackageOutputPath=' + $packageDirectory),
     'Authors=BIOcanse',
-    'ContinuousIntegrationBuild=true',
-    'Deterministic=true',
-    "PathMap=$pathMap"
+    'Deterministic=true'
 )
 $previousNugetPackages = $env:NUGET_PACKAGES
 $previousDotnetCliHome = $env:DOTNET_CLI_HOME
@@ -406,8 +445,7 @@ try {
         'ToolCommandName=ledger-build',
         'Description=Build-time shape and Native source generator for ResourceManager.Ledger.'
     )) -ProjectName 'ResourceManager.Ledger.Build' -ArtifactsDirectory $buildArtifactsDirectory -RestorePackagesDirectory $restorePackagesDirectory
-    Invoke-DotNetPack -ProjectPath $configurationProject -Properties ($baseProperties + @(
-        'PackageId=ResourceManager.Ledger.Configuration',
+    Invoke-DotNetPack -ProjectPath $configurationProject -Properties ($baseProperties + $dependencyBuildProperties + @(
         'PackAsTool=true',
         'ToolCommandName=ledger-configuration',
         "FreedomPointSdkVersion=$FreedomPointSdkVersion",
@@ -446,6 +484,7 @@ if ((Get-Sha256 -Path $headerPath) -cne $nativeHeaderHash -or
 Test-ProjectInputsStable -ProjectPath $runtimeProject -BeforeRows $projectInputRows.runtime
 Test-ProjectInputsStable -ProjectPath $toolProject -BeforeRows $projectInputRows.buildTool
 Test-ProjectInputsStable -ProjectPath $configurationProject -BeforeRows $projectInputRows.configuration
+Test-ProjectInputsStable -ProjectPath $analyzerProject -BeforeRows $projectInputRows.analyzers
 foreach ($dependency in $fpDependencyRows) {
     if ((Get-Sha256 -Path $dependency.feedPath) -cne $dependency.sha256) {
         throw "FreedomPoint package changed during pack: $($dependency.feedPath)"
@@ -513,6 +552,8 @@ $manifest = [pscustomobject]@{
         files = @($expandedSourceRows)
     }
     isolatedBuild = [pscustomobject]@{
+        continuousIntegrationBuild = $true
+        pathMap = @('stage-root=/_stage/', 'ledger-source-root=/_/')
         artifactsPath = 'build-artifacts'
         restorePackagesPath = 'nuget-packages'
         dotnetCliHome = 'dotnet-cli-home'
@@ -521,8 +562,12 @@ $manifest = [pscustomobject]@{
         runtime = @($projectInputRows.runtime)
         buildTool = @($projectInputRows.buildTool)
         configuration = @($projectInputRows.configuration)
+        analyzers = @($projectInputRows.analyzers)
     }
     packagingScriptSha256 = $packScriptHash
+}
+if ($null -ne $dependencyBuild) {
+    $manifest | Add-Member -NotePropertyName embeddedFreedomPointBuild -NotePropertyValue $dependencyBuild
 }
 Write-Utf8Json -Path (Join-Path $stageRoot 'manifest.json') -Value $manifest
 

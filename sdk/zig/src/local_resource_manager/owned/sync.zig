@@ -11,6 +11,37 @@ pub const Lock = struct {
     }
 };
 
+/// Writer admission closes before draining the short shared metadata readers.
+/// A user lease never owns this gate. Pending writers cannot starve behind hits.
+pub const SharedLock = struct {
+    writer: Lock = .{},
+    state: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    const closed: u32 = 1 << 31;
+    pub fn lockShared(self: *SharedLock) void {
+        var value = self.state.load(.monotonic);
+        while (true) {
+            if (value >= closed - 1) {
+                std.atomic.spinLoopHint();
+                value = self.state.load(.monotonic);
+            } else if (self.state.cmpxchgWeak(value, value + 1, .acquire, .monotonic)) |changed| {
+                value = changed;
+            } else return;
+        }
+    }
+    pub fn unlockShared(self: *SharedLock) void {
+        _ = self.state.fetchSub(1, .release);
+    }
+    pub fn lock(self: *SharedLock) void {
+        self.writer.lock();
+        _ = self.state.fetchOr(closed, .acquire);
+        while (self.state.load(.acquire) != closed) std.atomic.spinLoopHint();
+    }
+    pub fn unlock(self: *SharedLock) void {
+        self.state.store(0, .release);
+        self.writer.unlock();
+    }
+};
+
 pub const Counter = struct {
     next: std.atomic.Value(u64) = std.atomic.Value(u64).init(1),
     pub fn take(self: *Counter) error{SpecificationLimit}!u64 {

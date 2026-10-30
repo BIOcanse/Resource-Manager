@@ -4,42 +4,52 @@ const std = @import("std");
 const builtin = @import("builtin");
 const memory = @import("memory_region.zig");
 
-pub const Registration = struct {
-    allocation_bytes: u64,
-    region: ?memory.Region = null,
+pub const Registration = Configured(false);
 
-    pub fn fixed(allocation_bytes: u64) memory.Error!Registration {
-        _ = try memory.requiredBytes(allocation_bytes);
-        return .{ .allocation_bytes = allocation_bytes };
-    }
+pub fn Configured(comptime write_watch: bool) type {
+    return WithRegion(write_watch, memory.Region);
+}
 
-    pub fn dynamic(allocation_bytes: u64) memory.Error!Registration {
-        return fixed(allocation_bytes);
-    }
+/// Compile-time page descriptor injection, also used by deterministic OS-failure tests.
+pub fn WithRegion(comptime write_watch: bool, comptime Region: type) type {
+    return struct {
+        const Self = @This();
+        allocation_bytes: u64,
+        region: ?Region = null,
 
-    pub fn enterMemory(self: *Registration) memory.Error![]u8 {
-        if (self.region) |region| return region.bytes();
-        const region = try memory.Region.allocate(self.allocation_bytes);
-        self.region = region;
-        return region.bytes();
-    }
+        pub fn fixed(allocation_bytes: u64) memory.Error!Self {
+            _ = try memory.requiredBytes(allocation_bytes);
+            return .{ .allocation_bytes = allocation_bytes };
+        }
 
-    pub fn update(self: *Registration, allocation_bytes: u64) memory.Error!?[]u8 {
-        _ = try memory.requiredBytes(allocation_bytes);
-        if (self.region) |*region| try region.resize(allocation_bytes);
-        self.allocation_bytes = allocation_bytes;
-        return if (self.region) |region| region.bytes() else null;
-    }
+        pub fn dynamic(allocation_bytes: u64) memory.Error!Self {
+            return fixed(allocation_bytes);
+        }
 
-    pub fn unload(self: *Registration) memory.Error!void {
-        if (self.region) |*region| try region.release();
-        self.region = null;
-    }
+        pub fn enterMemory(self: *Self) memory.Error![]u8 {
+            if (self.region) |region| return region.bytes();
+            const region = try Region.allocateWriteWatch(self.allocation_bytes, write_watch);
+            self.region = region;
+            return region.bytes();
+        }
 
-    pub fn allocatedPageBytes(self: Registration) usize {
-        return if (self.region) |region| region.page_bytes else 0;
-    }
-};
+        pub fn update(self: *Self, allocation_bytes: u64) memory.Error!?[]u8 {
+            _ = try memory.requiredBytes(allocation_bytes);
+            if (self.region) |*region| try region.resizeWriteWatch(allocation_bytes, write_watch);
+            self.allocation_bytes = allocation_bytes;
+            return if (self.region) |region| region.bytes() else null;
+        }
+
+        pub fn unload(self: *Self) memory.Error!void {
+            if (self.region) |*region| try region.release();
+            self.region = null;
+        }
+
+        pub fn allocatedPageBytes(self: Self) usize {
+            return if (self.region) |region| region.page_bytes else 0;
+        }
+    };
+}
 
 test "fixed unload keeps registration and update changes the next actual allocation" {
     if (builtin.os.tag != .windows and builtin.os.tag != .linux) return error.SkipZigTest;

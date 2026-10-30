@@ -23,6 +23,9 @@ public enum LedgerStatus : int
     InvalidState = 17,
     PartitionCreated = 18,
     PartitionExists = 19,
+    EndedCleanupFailed = 20,
+    Abandoned = 21,
+    CleanupPending = 22,
     InternalError = 255,
 }
 
@@ -105,12 +108,17 @@ public readonly record struct LedgerTableView(ulong RegisteredBytes, ulong Syste
 
 public readonly record struct LedgerTickResult(ulong Released, ulong Scanned);
 
-public readonly record struct LedgerEndResult(LedgerStatus Status);
+public readonly record struct LedgerEndResult(LedgerStatus Status)
+{
+    public bool HasEnded => Status is LedgerStatus.Completed or LedgerStatus.ForceReleased
+        or LedgerStatus.EndedCleanupFailed or LedgerStatus.Abandoned;
+    public bool CleanupFailed => Status == LedgerStatus.EndedCleanupFailed;
+}
 
 public readonly record struct LedgerNotice<TUid>(TUid Uid, ulong AllocationNumber)
     where TUid : unmanaged, Identity.ILedgerUid<TUid>;
 
-public sealed class LedgerException : Exception
+public class LedgerException : Exception
 {
     public LedgerException(LedgerStatus status, string operation)
         : base($"Ledger operation '{operation}' returned {status} ({(int)status}).")
@@ -121,6 +129,15 @@ public sealed class LedgerException : Exception
 
     public LedgerStatus Status { get; }
     public string Operation { get; }
+}
+
+/// <summary>Preserves whether the exact use ended, including failures after that boundary.</summary>
+public sealed class LedgerEndException : LedgerException
+{
+    public LedgerEndException(LedgerEndResult result)
+        : base(result.Status, result.HasEnded ? "clean up ended use" : "end use before commit") => Result = result;
+    public LedgerEndResult Result { get; }
+    public bool HasEnded => Result.HasEnded;
 }
 
 /// <summary>Build-generated expectations required to pair managed and Native artifacts.</summary>

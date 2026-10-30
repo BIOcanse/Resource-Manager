@@ -26,7 +26,7 @@ public sealed class LedgerPoints
             throw new FreedomPointException("ledger_table_count_invalid", detail: tableCount.ToString());
 
         TableCount = tableCount;
-        var points = new List<PointDeclaration>(3 + PerTablePointCount * tableCount);
+        var points = new List<PointDeclaration>(8 + PerTablePointCount * tableCount);
         var values = ImmutableDictionary.CreateBuilder<PointPath, PointValueSet>();
         var pointPaths = ImmutableDictionary.CreateBuilder<string, PointPath>(StringComparer.Ordinal);
 
@@ -37,7 +37,17 @@ public sealed class LedgerPoints
             "Global build-time bitmap width. Supported values are exactly 8, 16, 32 and 64.");
         AddGlobalUnsigned(2, "development_allocation_statistics", 0, 0, 1, "enabled",
             "Build-time development allocation facts; zero removes Native collection and query code.");
+        AddGlobalUnsigned(3, "development_lease_analysis", 0, 0, 1, "enabled",
+            "Build-time lease usage analysis; zero removes Native analysis and write observation.");
+        AddGlobalUnsigned(4, "development_lease_analysis_capacity", 256, 1, 65536, "records",
+            "Global build-time bounded lease analysis record capacity.");
 
+        AddGlobalUnsigned(5, "use_window_cache", 0, 0, 1, "enabled",
+            "Build-time internal window borrow optimization. Call syntax and real pin safety are unchanged.");
+        AddGlobalUnsigned(6, "use_window_cache_slots", 64, 1, 65536, "hints",
+            "Bounded internal slot hint count, not a second UID index.");
+        AddGlobalUnsigned(7, "development_lease_analysis_write_watch_pages", 16384, 1, 1048576, "pages",
+            "Build-time write observation scratch bound; oversized regions are reported unavailable.");
         for (var tableIndex = 0; tableIndex < tableCount; tableIndex++)
         {
             var tableOwner2 = checked((ushort)(owner2 + tableIndex + 1));

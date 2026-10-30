@@ -86,13 +86,39 @@ fn FixtureConfiguration(comptime bits: u16, comptime policies: [2]types.Policy, 
         work: [2]O.Workspace = undefined,
         pub fn initialize(self: *@This()) !void {
             var subscriptions = [_][]notify.Notifier(U).Record{ &self.records[0], &self.records[1] };
-            self.ledger = try O.init(&self.rows, &self.shells, &self.tables, &self.bindings, &self.nodes, &self.homes, &subscriptions);
+            try O.init(&self.ledger, &self.rows, &self.shells, &self.tables, &self.bindings, &self.nodes, &self.homes, &subscriptions);
             for (&self.work, 0..) |*work, i| work.* = .{ .candidates = &self.candidates[i], .rows = &self.captures[i], .shells = &self.shell_work[i], .homes = &self.home_work[i], .notes = &self.notes[i], .remove_ids = &self.remove_id_work[i], .puts = &self.put_work[i], .index_workspace = .{ .homes = &self.home_work[i], .nodes = &self.node_work[i], .publications = &self.publication_work[i], .removals = &self.removal_work[i], .inserts = &self.insert_work[i] }, .cells = &self.cells[i], .children = &self.children[i], .child_slots = &self.child_slots[i], .numbers = &self.numbers[i], .merge_a = &self.merge_a[i], .merge_b = &self.merge_b[i], .best_numbers = &self.best_numbers[i] };
         }
         pub fn cleanup(self: *@This()) void {
             for (&self.rows) |*row| row.resource.forceRelease() catch @panic("fixture OS cleanup failed");
         }
     };
+}
+
+test "loading end lock upgrade revalidates a forced fixed allocation" {
+    inline for (.{ 128, 256 }) |bits| {
+        var fixture = Fixture(bits){};
+        try fixture.initialize();
+        defer fixture.cleanup();
+        const manager = &fixture.ledger;
+        const fixed_uid = key(Fixture(bits).Uid, 1);
+        const borrow = (try manager.push(.{ .table = 0 }, fixed_uid, null, &fixture.work[0])).newly_allocated;
+        // forceRelease in the lock-upgrade gap keeps a fixed row's registration
+        // and allocation number. Exercise the exact locked continuation, before
+        // a fresh allocation can conceal the missing forced-through check.
+        try manager.forceRelease(fixed_uid, &fixture.work[0]);
+        const row = &fixture.rows[borrow.lease.slot];
+        try std.testing.expectEqual(borrow.lease.allocation_number, row.resource.generation);
+        const before = try manager.view(0);
+        manager.tables[0].write.lock();
+        row.lock.lock();
+        const result = manager.endLoadingLocked(borrow.lease, .discard);
+        row.lock.unlock();
+        manager.tables[0].write.unlock();
+        try std.testing.expectEqual(@import("../memory_resource.zig").EndResult.force_released, try result);
+        try std.testing.expectEqualDeep(before, try manager.view(0));
+        try std.testing.expectEqual(@as(u32, 0), manager.tables[0].pending_discards);
+    }
 }
 
 test "owned ledger actual pages fixed binding counted leases and allocation numbers at both UID widths" {

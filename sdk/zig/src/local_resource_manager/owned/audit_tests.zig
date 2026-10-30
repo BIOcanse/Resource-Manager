@@ -75,7 +75,8 @@ fn Fixture() type {
 
         pub fn initialize(self: *@This()) !void {
             var subscriptions = [_][]notifications.Notifier(Uid).Record{&self.records};
-            self.ledger = try Owner.init(
+            try Owner.init(
+                &self.ledger,
                 &self.rows,
                 &self.shells,
                 &self.tables,

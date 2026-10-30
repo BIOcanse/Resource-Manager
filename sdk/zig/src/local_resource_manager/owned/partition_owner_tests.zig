@@ -137,7 +137,8 @@ fn PartitionFixture() type {
 
         pub fn initialize(self: *@This()) !void {
             var subscriptions = [_][]Notifier.Record{self.records[0..]};
-            self.ledger = try Ledger.init(
+            try Ledger.init(
+                &self.ledger,
                 &self.rows,
                 &self.shells,
                 &self.tables,

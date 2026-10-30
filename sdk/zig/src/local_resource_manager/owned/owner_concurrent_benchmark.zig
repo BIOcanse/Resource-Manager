@@ -761,7 +761,8 @@ fn Driver(comptime bits: u16, comptime capacity: usize, comptime candidate: Cand
             var table2_subscribers = [_]Notifier.Record{.{}};
             var table3_subscribers = [_]Notifier.Record{.{}};
             const subscriber_slices = [_][]Notifier.Record{ &table0_subscribers, &table1_subscribers, &table2_subscribers, &table3_subscribers };
-            var ledger = try Ledger.init(rows, &.{}, table_states, &.{}, nodes, homes, &subscriber_slices);
+            var ledger: Ledger = undefined;
+            try Ledger.init(&ledger, rows, &.{}, table_states, &.{}, nodes, homes, &subscriber_slices);
             defer for (rows) |*row| row.resource.forceRelease() catch @panic("concurrent benchmark cleanup failed");
 
             const action_capacity: usize = @intCast(values.table_0_tick_maximum_actions);

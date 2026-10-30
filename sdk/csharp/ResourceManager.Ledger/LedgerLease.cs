@@ -1,12 +1,11 @@
 using System.Buffers;
-using System.Runtime.ExceptionServices;
 using ResourceManager.Ledger.Identity;
 using ResourceManager.Ledger.Interop;
 
 namespace ResourceManager.Ledger;
 
 /// <summary>One counted Native use and its region view.</summary>
-public sealed unsafe class LedgerLease<TUid> : IDisposable
+public sealed unsafe partial class LedgerLease<TUid> : IDisposable, IAsyncDisposable
     where TUid : unmanaged, ILedgerUid<TUid>
 {
     private readonly object _gate = new();
@@ -18,9 +17,10 @@ public sealed unsafe class LedgerLease<TUid> : IDisposable
     private bool _publishOnDispose;
     private bool _disposeRequested;
     private bool _endIssued;
+    private bool _abandonRequested;
+    private bool _endResultTaken;
     private int _pins;
     private LedgerEndResult? _endResult;
-    private Exception? _endException;
     private TaskCompletionSource<LedgerEndResult>? _endCompletion;
 
     internal LedgerLease(LedgerOwner<TUid> owner, NativeLease credential, byte* region, ulong length, bool loading)
@@ -38,6 +38,24 @@ public sealed unsafe class LedgerLease<TUid> : IDisposable
     public bool IsLoading => _loading;
     public ulong Length { get { lock (_gate) return _length; } }
     public int ActiveMemoryPins { get { lock (_gate) return _pins; } }
+    public bool HasEnded { get { lock (_gate) return _endIssued; } }
+    public LedgerEndResult? EndResult { get { lock (_gate) return _endResult; } }
+
+    /// <summary>Claims the confirmed terminal result once, for an adapter's one-time lifecycle accounting.</summary>
+    public bool TryTakeEndResult(out LedgerEndResult result)
+    {
+        lock (_gate)
+        {
+            if (_endIssued && !_endResultTaken && _endResult is LedgerEndResult ended)
+            {
+                _endResultTaken = true;
+                result = ended;
+                return true;
+            }
+            result = default;
+            return false;
+        }
+    }
 
     /// <summary>Returns the entire region as a span when it fits in a managed span.</summary>
     public Span<byte> Span
@@ -126,15 +144,21 @@ public sealed unsafe class LedgerLease<TUid> : IDisposable
 
     /// <summary>Requests the one Native end. If memory is pinned, completion waits for the final unpin.</summary>
     public ValueTask<LedgerEndResult> EndUseAsync()
+        => RequestEnd(abandon: false);
+
+    /// <summary>Ends this use without publishing an incomplete load or attempting fallible page cleanup.</summary>
+    public ValueTask<LedgerEndResult> AbandonAsync()
+        => RequestEnd(abandon: true);
+
+    private ValueTask<LedgerEndResult> RequestEnd(bool abandon)
     {
         if (NativeCallbackBridge.IsInCallback)
             throw new InvalidOperationException("Ledger callbacks must not reenter the ledger.");
         lock (_gate)
         {
             if (_endResult is LedgerEndResult result) return ValueTask.FromResult(result);
-            if (_endException is Exception exception)
-                return new ValueTask<LedgerEndResult>(Task.FromException<LedgerEndResult>(exception));
             if (_endIssued) throw new InvalidOperationException("Ledger lease ended without a recorded result.");
+            _abandonRequested |= abandon;
             _disposeRequested = true;
             if (_pins == 0) return ValueTask.FromResult(CompleteEndUse());
             _endCompletion ??= new TaskCompletionSource<LedgerEndResult>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -150,13 +174,16 @@ public sealed unsafe class LedgerLease<TUid> : IDisposable
         {
             if (_endIssued)
             {
-                if (_endException is Exception exception) ExceptionDispatchInfo.Capture(exception).Throw();
+                ThrowIfCleanupFailed(_endResult!.Value);
                 return;
             }
             _disposeRequested = true;
-            if (_pins == 0) _ = CompleteEndUse();
+            if (_pins == 0) ThrowIfCleanupFailed(CompleteEndUse());
         }
     }
+
+    /// <summary>Ends the code scope after all asynchronous memory pins have drained.</summary>
+    public ValueTask DisposeAsync() => LedgerLeaseAsyncEnd.Complete(EndUseAsync());
 
     internal Span<byte> GetSpanForMemory(ulong offset, int length)
     {
@@ -211,24 +238,29 @@ public sealed unsafe class LedgerLease<TUid> : IDisposable
     {
         if (_endIssued)
         {
-            if (_endException is Exception exception) ExceptionDispatchInfo.Capture(exception).Throw();
             return _endResult ?? throw new InvalidOperationException("Ledger lease ended without a recorded result.");
         }
-        _endIssued = true;
         try
         {
-            uint disposition = _loading && !_publishOnDispose ? 1u : 0u;
+            uint disposition = _abandonRequested ? 2u : _loading && !_publishOnDispose ? 1u : 0u;
             LedgerEndResult result = _owner.EndUse(_credential, disposition);
+            if (!result.HasEnded) throw new LedgerEndException(result);
+            _endIssued = true;
             _endResult = result;
             _endCompletion?.TrySetResult(result);
             return result;
         }
         catch (Exception exception)
         {
-            _endException = exception;
             _endCompletion?.TrySetException(exception);
+            _endCompletion = null;
             throw;
         }
+    }
+
+    private static void ThrowIfCleanupFailed(LedgerEndResult result)
+    {
+        if (result.CleanupFailed) throw new LedgerEndException(result);
     }
 
     private void CompleteLocallyAfterForceRelease()
@@ -263,6 +295,15 @@ public sealed unsafe class LedgerLease<TUid> : IDisposable
 
     private static bool SameCredential(NativeLease left, NativeLease right) =>
         left.Slot == right.Slot && left.AllocationNumber == right.AllocationNumber && left.UseGeneration == right.UseGeneration;
+}
+
+internal static class LedgerLeaseAsyncEnd
+{
+    internal static async ValueTask Complete(ValueTask<LedgerEndResult> completion)
+    {
+        LedgerEndResult result = await completion.ConfigureAwait(false);
+        if (!result.HasEnded || result.CleanupFailed) throw new LedgerEndException(result);
+    }
 }
 
 internal sealed unsafe class LedgerRegionMemoryManager<TUid> : MemoryManager<byte>

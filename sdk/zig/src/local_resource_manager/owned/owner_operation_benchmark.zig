@@ -325,7 +325,8 @@ fn ProductFixture(comptime bits: u16, comptime flavor: Candidate) type {
 
             var subscribers: [table_count][]Notifier.Record = undefined;
             for (&subscribers, 0..) |*records, table| records.* = subscriber_records[table .. table + 1];
-            const ledger = try Ledger.init(rows, shells, table_states, bindings, nodes, homes, &subscribers);
+            var ledger: Ledger = undefined;
+            try Ledger.init(&ledger, rows, shells, table_states, bindings, nodes, homes, &subscribers);
             return .{
                 .rows = rows,
                 .shells = shells,

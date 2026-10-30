@@ -313,7 +313,7 @@ foreach ($inputPath in @($nativeManifestPath, $ownerPath, $structurePath, $value
     Assert-PathsDisjoint -Left $globalCacheFull -Right $inputPath -Description 'GlobalCacheDirectory and file input'
 }
 
-$expectedGeneratedFiles = @('LedgerNativeEntry.zig', 'LedgerOwnerShape.zig', 'LedgerOwnerShape.g.cs', 'LedgerOwnerBuild.g.cs')
+$expectedGeneratedFiles = @('LedgerNativeEntry.zig', 'LedgerOwnerShape.zig', 'LedgerOwnerShape.g.cs', 'LedgerOwnerBuild.g.cs', 'LedgerOwnerBuild.props')
 foreach ($name in $expectedGeneratedFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $generatedRoot $name) -PathType Leaf)) {
         throw "Generated consumer source is missing: $name"

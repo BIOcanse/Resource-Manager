@@ -341,6 +341,15 @@ pub fn Candidate(comptime Uid: type, comptime kind: CandidateKind) type {
         /// Removes the current entry for an owner node. A stale home observation
         /// is retried if the same node is concurrently reused in another home.
         pub fn remove(self: *Self, node_id: u32) !void {
+            return self.removeAfter(node_id, {}, struct {
+                fn run(_: void) !void {}
+            }.run);
+        }
+
+        /// Prepare the complete publication, then perform the fallible payload
+        /// cleanup while the home is excluded. A failed action publishes nothing;
+        /// after it succeeds, unlink/epoch publication cannot return an error.
+        pub fn removeAfter(self: *Self, node_id: u32, context: anytype, comptime action: anytype) !void {
             if (@as(usize, node_id) >= self.nodes.len) return error.InvalidNode;
 
             while (true) {
@@ -361,6 +370,11 @@ pub fn Candidate(comptime Uid: type, comptime kind: CandidateKind) type {
                     return err;
                 };
 
+                action(context) catch |err| {
+                    self.unlockNode(plan.node_id);
+                    home.writer.unlock();
+                    return err;
+                };
                 self.beginPublishLocked(publication);
                 self.commitRemoveLocked(plan);
                 self.finishPublishLocked(publication);

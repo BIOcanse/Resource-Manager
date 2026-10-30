@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Every C# compiler host loads netstandard2.0 analyzers, including Visual Studio on .NET Framework. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+    <!-- The pinned package brings the Roslyn meta-analyzers: keep the analyzer within the compiler-host API rules.
+         Release tracking files (RS2008) are not used; the rule IDs and their contract live in the SDK README. -->
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Minimum compiler: Roslyn 5.0.0, the compiler of the first .NET 10 SDK and Visual Studio 2026 18.0.
+         Every compiler that can build against the net10.0 runtime library loads this analyzer; an older one
+         reports CS9057 and skips RML001/RML002. Raise this only together with the documented minimum. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

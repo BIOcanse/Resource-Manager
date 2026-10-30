@@ -59,7 +59,16 @@ pub const Config = struct {
     activity_width: u8,
     index_buckets: u32,
     development_allocation_statistics: bool = false,
+    development_lease_analysis: bool = false,
+    development_lease_analysis_capacity: u32 = 256,
+    development_lease_analysis_write_watch_pages: u32 = 16384,
+    use_window_cache: bool = false,
+    use_window_cache_slots: u32 = 64,
 };
+
+pub const LeaseAnalysis = @import("lease_analysis.zig");
+pub const LeaseAnalysisRecord = LeaseAnalysis.Record;
+pub const LeaseAnalysisSummary = LeaseAnalysis.Summary;
 
 pub fn For(comptime Uid: type) type {
     return struct {

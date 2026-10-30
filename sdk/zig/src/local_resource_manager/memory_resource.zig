@@ -4,18 +4,18 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const memory = @import("memory_region.zig");
-const Registration = @import("allocation_registration.zig").Registration;
+const registrations = @import("allocation_registration.zig");
 const activity = @import("activity_window.zig");
 
-pub const Error = memory.Error || activity.Error || error{ InvalidArgument, InvalidLease, NotRegistered, GenerationExhausted, AllocationTooSmall };
+pub const Error = memory.Error || activity.Error || error{ InvalidArgument, InvalidLease, NotRegistered, GenerationExhausted, AllocationTooSmall, CleanupPending };
 pub const Retention = enum { fixed, dynamic };
 /// `resource_generation` carries the owner-assigned allocation number.
 pub const Lease = struct { resource_generation: u64, use_generation: u64 };
 pub const Borrow = struct { lease: Lease, region: []u8 };
 pub const UseResult = union(enum) { in_memory: Borrow, not_in_memory, loading };
 pub const PushResult = union(enum) { resident: Borrow, fresh: Borrow, loading };
-pub const EndDisposition = enum { complete, discard };
-pub const EndResult = enum { completed, force_released };
+pub const EndDisposition = enum { complete, discard, abandon };
+pub const EndResult = enum { completed, force_released, cleanup_failed, abandoned };
 pub const CloseResult = enum { closed, in_use };
 pub const UpdateResult = union(enum) { resident: []u8, registration_only, nonexistent, in_use, force_released };
 
@@ -25,8 +25,15 @@ pub const Resource = Configured(.{
     .idle_epochs = (activity.Policy{}).idle_epochs,
 });
 
-pub fn Configured(comptime config: activity.Configuration) type {
-    const Activity = activity.Configured(config);
+pub const Configuration = struct { width: u8, score_epochs: u8, idle_epochs: u8, development_write_watch: bool = false };
+
+pub fn Configured(comptime config: Configuration) type {
+    return WithRegion(config, memory.Region);
+}
+
+pub fn WithRegion(comptime config: Configuration, comptime Region: type) type {
+    const Activity = activity.Configured(.{ .width = config.width, .score_epochs = config.score_epochs, .idle_epochs = config.idle_epochs });
+    const Registration = registrations.WithRegion(config.development_write_watch, Region);
     return struct {
         const Self = @This();
         // This is the global allocation number of the current/last resident
@@ -54,30 +61,49 @@ pub fn Configured(comptime config: activity.Configuration) type {
 
         pub fn push(self: *Self, current_epoch: u64, allocation_number: u64) Error!PushResult {
             const registration = if (self.registration) |*value| value else return error.NotRegistered;
+            if (self.discardPending()) return error.CleanupPending;
             if (self.loading) return .loading;
             try self.canAcquire();
-            // Validate the epoch before allocation, but do not publish a fresh
-            // load into history until its caller reports completion.
-            _ = try self.activity_history.aligned(current_epoch);
+            // Loading is also a lease: its covered rounds are active, without
+            // publishing the content before the loading endUse succeeds.
+            const history = if (self.use_count == 0)
+                try self.activity_history.withAccess(current_epoch)
+            else
+                try self.historyAt(current_epoch);
             if (registration.region) |region| {
-                const history = try self.activity_history.withAccess(current_epoch);
                 return .{ .resident = self.acquire(region.bytes(), history) };
             }
             if (allocation_number == 0 or allocation_number <= self.generation) return error.InvalidArgument;
             const region = try registration.enterMemory();
             self.generation = allocation_number;
-            const borrow = self.acquire(region, null);
+            const borrow = self.acquire(region, history);
             self.loading = true;
             return .{ .fresh = borrow };
         }
 
         pub fn use(self: *Self, current_epoch: u64) Error!UseResult {
+            if (self.discardPending()) return .not_in_memory;
             const registration = self.registration orelse return .not_in_memory;
             const region = registration.region orelse return .not_in_memory;
             if (self.loading) return .loading;
             try self.canAcquire();
-            const history = try self.activity_history.withAccess(current_epoch);
+            const history = if (self.use_count == 0)
+                try self.activity_history.withAccess(current_epoch)
+            else
+                try self.historyAt(current_epoch);
             return .{ .in_memory = self.acquire(region.bytes(), history) };
+        }
+
+        /// Queries project live holds through the requested round without writes.
+        /// The existing last-activity epoch is also the start of any unmaterialized
+        /// held interval, so no per-lease production log or extra epoch field is needed.
+        pub fn historyAt(self: Self, current_epoch: u64) Error!Activity.History {
+            return if (self.use_count != 0)
+                self.activity_history.withContinuousUse(current_epoch)
+            else blk: {
+                _ = try self.activity_history.aligned(current_epoch);
+                break :blk self.activity_history;
+            };
         }
 
         pub fn update(self: *Self, allocation_bytes: u64, caller: ?Lease) Error!UpdateResult {
@@ -88,6 +114,7 @@ pub fn Configured(comptime config: activity.Configuration) type {
                 if (lease.use_generation >= self.next_use_generation or self.use_count == 0) return error.InvalidLease;
             }
             if (caller != null and self.use_count == 1 and caller.?.use_generation != self.active_use_xor) return error.InvalidLease;
+            if (self.discardPending()) return error.CleanupPending;
             const registration = if (self.registration) |*value| value else return .nonexistent;
             const new_page_bytes = try memory.requiredBytes(allocation_bytes);
             if (registration.region) |region| {
@@ -112,20 +139,31 @@ pub fn Configured(comptime config: activity.Configuration) type {
             // Loading admits exactly its fresh lease. Published resources may have
             // several linear leases; callers return each once, in any order.
             if (self.loading and lease.use_generation != self.next_use_generation - 1) return error.InvalidLease;
-            if (self.loading and disposition == .complete) {
-                const history = try self.activity_history.withAccess(current_epoch);
-                self.activity_history = history;
-            } else if (self.loading and disposition == .discard) {
-                // Discard ends a failed load without publishing activity. Fixed
-                // declarations retain registration; dynamic rows are removed.
-                const registration = if (self.registration) |*value| value else return error.NotRegistered;
-                try registration.unload();
-                if (self.retention == .dynamic) self.registration = null;
-            }
+            const history = try self.historyAt(current_epoch);
+            const discard_loading = self.loading and disposition != .complete;
+            self.activity_history = history;
             self.use_count -= 1;
             self.active_use_xor ^= lease.use_generation;
-            self.loading = false;
+            // loading with no holder is precisely an unpublished discard waiting
+            // for cleanup. It is not a hidden use and cannot expose failed data.
+            self.loading = discard_loading;
+            if (disposition == .abandon) return .abandoned;
+            if (discard_loading) self.cleanupDiscard() catch return .cleanup_failed;
             return .completed;
+        }
+
+        pub fn discardPending(self: Self) bool {
+            return self.loading and self.use_count == 0;
+        }
+
+        /// No lease is consumed here. A failed OS release preserves every page
+        /// descriptor; an owner must prepare its index removal before this call.
+        pub fn cleanupDiscard(self: *Self) Error!void {
+            if (!self.discardPending()) return error.InvalidArgument;
+            const registration = if (self.registration) |*value| value else return error.NotRegistered;
+            try registration.unload();
+            if (self.retention == .dynamic) self.registration = null;
+            self.loading = false;
         }
 
         /// Safe unload retains a fixed declaration but removes a dynamic resource.
@@ -135,6 +173,7 @@ pub fn Configured(comptime config: activity.Configuration) type {
             if (self.use_count != 0) return .in_use;
             if (self.registration) |*registration| try registration.unload();
             if (self.retention == .dynamic) self.registration = null;
+            self.loading = false;
             return .closed;
         }
 
@@ -144,6 +183,7 @@ pub fn Configured(comptime config: activity.Configuration) type {
             if (self.use_count != 0) return .in_use;
             if (self.registration) |*registration| try registration.unload();
             if (self.retention == .dynamic) self.registration = null;
+            self.loading = false;
             return .closed;
         }
 
@@ -172,6 +212,27 @@ pub fn Configured(comptime config: activity.Configuration) type {
     };
 }
 
+test "failed discarded-load unload consumes its lease and permits cleanup retry without another end" {
+    const fault = @import("owned/end_failure_pages.zig");
+    const R = WithRegion(.{ .width = 8, .score_epochs = 8, .idle_epochs = 8 }, fault.Region);
+    var resource = try R.dynamic(33);
+    defer resource.forceRelease() catch @panic("end-contract fixture cleanup failed");
+    defer fault.failures = 0;
+    const loading = (try resource.push(1, 1)).fresh;
+    loading.region[0] = 0x91;
+    fault.failures = 1;
+    try std.testing.expectEqual(.cleanup_failed, try resource.endUse(loading.lease, .discard, 4));
+    try std.testing.expectEqual(@as(u64, 0), resource.use_count);
+    try std.testing.expectEqual(@as(u64, 0), resource.active_use_xor);
+    try std.testing.expect(resource.discardPending());
+    try std.testing.expectEqual(.not_in_memory, try resource.use(4));
+    try std.testing.expectError(error.InvalidLease, resource.endUse(loading.lease, .complete, 4));
+    try std.testing.expectEqual(@as(u8, 0x91), resource.registration.?.region.?.bytes()[0]);
+    try resource.cleanupDiscard();
+    try std.testing.expect(resource.registration == null);
+    try std.testing.expectEqual(@as(u64, 4), resource.activity_history.last_activity_epoch);
+}
+
 test "configured resource rows compile each bitmap width without runtime type switching" {
     if (builtin.os.tag != .windows and builtin.os.tag != .linux) return error.SkipZigTest;
     inline for (.{ 8, 16, 32, 64 }) |width| {
@@ -185,7 +246,7 @@ test "configured resource rows compile each bitmap width without runtime type sw
         try std.testing.expectEqual(@as(u8, 0), try resource.activity_history.score(width + 1, .{}));
         const next = (try resource.use(width + 1)).in_memory;
         try std.testing.expectEqual(@as(u8, 1), try resource.activity_history.score(width + 1, .{}));
-        _ = try resource.endUse(next.lease, .complete, 1);
+        _ = try resource.endUse(next.lease, .complete, width + 1);
     }
 }
 
@@ -201,7 +262,7 @@ test "owner supplies fresh allocation numbers and hits ignore unused reservation
     const first = (try resource.push(1, 7)).fresh;
     try std.testing.expectEqual(@as(u64, 7), resource.generation);
     try std.testing.expectEqual(@as(u64, 7), first.lease.resource_generation);
-    try std.testing.expectEqual(@as(u8, 0), try resource.activity_history.score(1, .{}));
+    try std.testing.expectEqual(@as(u8, 1), try resource.activity_history.score(1, .{}));
     _ = try resource.endUse(first.lease, .complete, 1);
     const published = resource.activity_history;
     try std.testing.expectError(error.InvalidLease, resource.endUse(first.lease, .complete, 9));
@@ -212,7 +273,7 @@ test "owner supplies fresh allocation numbers and hits ignore unused reservation
     const hit_history = resource.activity_history;
     try std.testing.expectEqual(@as(u64, 1), published.last_activity_epoch);
     try std.testing.expectEqual(@as(u64, 2), hit_history.last_activity_epoch);
-    _ = try resource.endUse(hit.lease, .discard, 9);
+    _ = try resource.endUse(hit.lease, .discard, 2);
     try std.testing.expectEqualDeep(hit_history, resource.activity_history);
 
     try std.testing.expectEqual(CloseResult.closed, try resource.unload());
@@ -246,7 +307,7 @@ test "stale update is checked before a dynamic registration that force release r
     try std.testing.expectEqualDeep(forced, resource);
 }
 
-test "fresh loads record at completion while ordinary lease return update and force do not" {
+test "loading holds cover every queried round and same-round acquisitions do not repeat bitmap work" {
     if (builtin.os.tag != .windows and builtin.os.tag != .linux) return error.SkipZigTest;
     var resource = try Resource.fixed(41);
     defer resource.forceRelease() catch @panic("memory resource cleanup failed");
@@ -254,12 +315,14 @@ test "fresh loads record at completion while ordinary lease return update and fo
     try std.testing.expectEqual(@as(u8, 0), try resource.activity_history.score(1, policy));
     const loaded = (try resource.push(1, 1)).fresh;
     const before_publish = resource.activity_history;
-    try std.testing.expectEqual(@as(u8, 0), try before_publish.score(1, policy));
+    try std.testing.expectEqual(@as(u8, 1), try before_publish.score(1, policy));
     try std.testing.expectEqual(UseResult.loading, try resource.use(20));
     try std.testing.expectEqual(PushResult.loading, try resource.push(20, 0));
     try std.testing.expectEqualDeep(before_publish, resource.activity_history);
-    try std.testing.expectEqual(@as(u8, 0), try resource.activity_history.score(20, policy));
-    try std.testing.expect(try resource.activity_history.idle(20, policy));
+    const projected = try resource.historyAt(20);
+    try std.testing.expectEqual(@as(u8, 8), try projected.score(20, policy));
+    try std.testing.expect(!try projected.idle(20, policy));
+    try std.testing.expectEqualDeep(before_publish, resource.activity_history);
     try std.testing.expectEqual(CloseResult.in_use, try resource.unload());
     _ = try resource.endUse(loaded.lease, .complete, 1);
     const first_history = resource.activity_history;
@@ -290,7 +353,7 @@ test "fresh loads record at completion while ordinary lease return update and fo
     try std.testing.expectEqualDeep(successful_history, resource.activity_history);
 }
 
-test "epoch validation precedes allocation and failed loads retain fixed registration without activity" {
+test "epoch validation precedes allocation and failed loads retain fixed registration without publication" {
     if (builtin.os.tag != .windows and builtin.os.tag != .linux) return error.SkipZigTest;
     var resource = try Resource.fixed(41);
     defer resource.forceRelease() catch @panic("memory resource cleanup failed");
@@ -472,9 +535,9 @@ test "shared resize is blocked without changing pages declaration leases or acti
         second.region[0] = 0x72;
         try std.testing.expectEqual(@as(u8, 0x72), first.region[0]);
     }
-    _ = try resource.endUse(second.lease, .complete, 1);
+    _ = try resource.endUse(second.lease, .complete, 2);
     try std.testing.expectEqual(UpdateResult.in_use, try resource.update(std.heap.pageSize() + 9, null));
-    _ = try resource.endUse(first.lease, .complete, 1);
+    _ = try resource.endUse(first.lease, .complete, 3);
     try std.testing.expectEqual(@as(u64, 0), resource.active_use_xor);
     const resized = (try resource.update(std.heap.pageSize() + 9, null)).resident;
     try std.testing.expectEqual(@as(u8, 0x72), resized[0]);
@@ -507,8 +570,8 @@ test "resident allocation cannot shrink and shared same-page growth preserves is
     for (grown[41..]) |byte| try std.testing.expectEqual(@as(u8, 0), byte);
     second.region[40] = 0x52;
     try std.testing.expectEqual(@as(u8, 0x52), first.region[40]);
-    _ = try resource.endUse(first.lease, .complete, 1);
-    _ = try resource.endUse(second.lease, .complete, 1);
+    _ = try resource.endUse(first.lease, .complete, 2);
+    _ = try resource.endUse(second.lease, .complete, 2);
     const unleased = resource;
     try std.testing.expectError(error.AllocationTooSmall, resource.update(41, null));
     try std.testing.expectEqualDeep(unleased, resource);
@@ -547,7 +610,7 @@ test "only the remaining linear lease can resize after arbitrary returns or forc
         try std.testing.expectEqual(@as(u8, 0x63), resized[40]);
         try std.testing.expectEqual(@as(u8, 0), resized[41]);
         try std.testing.expectEqualDeep(before.activity_history, resource.activity_history);
-        _ = try resource.endUse(sole, .complete, 1);
+        _ = try resource.endUse(sole, .complete, 2);
         const unleased = resource;
         try std.testing.expectError(error.InvalidLease, resource.update(13, sole));
         try std.testing.expectEqualDeep(unleased, resource);
@@ -590,9 +653,9 @@ test "force invalidates every counted lease and late returns do not decrement re
     _ = try resource.endUse(replacement.lease, .complete, 3);
     const first = (try resource.use(3)).in_memory;
     const second = (try resource.use(3)).in_memory;
-    _ = try resource.endUse(second.lease, .complete, 1);
+    _ = try resource.endUse(second.lease, .complete, 3);
     try std.testing.expectEqual(CloseResult.in_use, try resource.close());
-    _ = try resource.endUse(first.lease, .complete, 1);
+    _ = try resource.endUse(first.lease, .complete, 3);
     try std.testing.expectEqual(@as(u64, 0), resource.use_count);
     try std.testing.expectEqual(CloseResult.closed, try resource.unload());
 }

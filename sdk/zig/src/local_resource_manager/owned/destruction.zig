@@ -47,10 +47,12 @@ pub fn For(comptime Owner: type) type {
                 const start = Owner.resourceStart(table);
                 const subscribed = owner.tables[table].notifier.hasSubscribers();
                 for (owner.rows[start..][0..declaration.capacity], start..) |*row, slot| {
+                    owner.flushWindowCache(row);
                     if (row.table != table) return error.InvalidState;
                     const entry = try owner.index.entryAt(@intCast(slot));
                     if (row.uid) |uid| {
                         const registered = row.resource.registration orelse return error.InvalidState;
+                        if (!forced and row.resource.discardPending()) return error.CleanupPending;
                         const indexed = entry orelse return error.InvalidState;
                         if (!indexed.uid.eql(uid) or indexed.location.kind != .resource or
                             indexed.location.table != table or indexed.location.slot != slot)
@@ -63,7 +65,7 @@ pub fn For(comptime Owner: type) type {
                                 if (release_check.check(declaration.policy.release_check, registered.allocation_bytes, registered.allocation_bytes, false) != .allowed)
                                     return error.ChangedBeyondTolerance;
                             }
-                            if (subscribed) try saveNotice(work, &notice_count, .{
+                            if (subscribed and !row.resource.discardPending()) try saveNotice(work, &notice_count, .{
                                 .table = @intCast(table),
                                 .uid = uid,
                                 .allocation_number = row.resource.generation,
@@ -107,6 +109,7 @@ pub fn For(comptime Owner: type) type {
             // failure remains after the first payload is returned to the OS.
             for (owner.rows) |*row| {
                 if (row.uid == null) continue;
+                owner.collectLeaseWrites(row);
                 if (forced) row.resource.forceRelease() catch @panic("ledger OS release invariant failed") else {
                     const result = row.resource.unload() catch @panic("ledger OS release invariant failed");
                     if (result != .closed) @panic("ledger destruction preflight invariant failed");
@@ -145,6 +148,7 @@ pub fn For(comptime Owner: type) type {
                 }
                 owner.tables[table].registered_bytes = 0;
                 owner.tables[table].system_page_bytes = 0;
+                owner.tables[table].pending_discards = 0;
                 owner.tables[table].first_partition = types.no_slot;
                 owner.tables[table].free_partition = if (declaration.partition_capacity == 0)
                     types.no_slot

@@ -454,7 +454,8 @@ fn Driver(comptime bits: u16, comptime capacity: usize, comptime candidate: Cand
             defer allocator.free(trace_indices);
 
             var subscriber_rows = [_][]Notifier.Record{&.{}};
-            var ledger = try Ledger.init(rows, shells, table_states, bindings, nodes, homes, &subscriber_rows);
+            var ledger: Ledger = undefined;
+            try Ledger.init(&ledger, rows, shells, table_states, bindings, nodes, homes, &subscriber_rows);
             var work = Ledger.Workspace{
                 .candidates = &.{},
                 .rows = &.{},

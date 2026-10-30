@@ -14,12 +14,29 @@ const partition_planning = @import("partition_planning.zig");
 const auditing = @import("audit.zig");
 const destroying = @import("destruction.zig");
 const allocation_statistics = @import("allocation_statistics.zig");
+const lease_analysis_module = @import("lease_analysis.zig");
+const use_cache = @import("window_use_cache.zig");
+const builtin = @import("builtin");
 
 pub fn Owner(comptime config: types.Config, comptime declarations: []const types.Table, comptime fixed: []const types.For(uid_module.Identifier(config.uid_width)).Fixed, comptime Index: type) type {
+    return WithRegion(config, declarations, fixed, Index, region.Region);
+}
+
+/// Compile-time descriptor selection; no runtime allocator or failure policy.
+pub fn WithRegion(comptime config: types.Config, comptime declarations: []const types.Table, comptime fixed: []const types.For(uid_module.Identifier(config.uid_width)).Fixed, comptime Index: type, comptime Region: type) type {
+    if (config.use_window_cache and (config.use_window_cache_slots == 0 or config.use_window_cache_slots > 65536))
+        @compileError("window cache slots must be 1..65536");
+    // A compiler-rt 16-byte atomic fallback uses a process-global lock table.
+    // Never silently turn the shared hit path into that fallback. Baseline and
+    // other targets keep the unchanged false-cache path; primary owns target flags.
+    if (config.use_window_cache and (builtin.cpu.arch != .x86_64 or !builtin.cpu.has(.x86, .cx16)))
+        @compileError("window cache requires native 128-bit atomics: x86_64 + cx16");
+    if (config.development_lease_analysis_capacity == 0 or config.development_lease_analysis_capacity > 65536)
+        @compileError("lease analysis capacity must be 1..65536");
     const Uid = uid_module.Identifier(config.uid_width);
     const T = types.For(Uid);
     const Activity = window.Window(config.activity_width);
-    const Resource = lifecycle.Configured(.{ .width = config.activity_width, .score_epochs = config.activity_width, .idle_epochs = config.activity_width });
+    const Resource = lifecycle.WithRegion(.{ .width = config.activity_width, .score_epochs = config.activity_width, .idle_epochs = config.activity_width, .development_write_watch = config.development_lease_analysis }, Region);
     const Notifier = notifications.Notifier(Uid);
     const Planning = partition_planning.For(Activity.Bitmap);
     const counts = comptime blk: {
@@ -52,8 +69,12 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
         pub const partition_capacity = counts.partitions;
         pub const table_count = declarations.len;
         pub const development_statistics_enabled = config.development_allocation_statistics;
+        pub const development_lease_analysis_enabled = config.development_lease_analysis;
+        pub const LeaseAnalysisRecord = types.LeaseAnalysisRecord;
+        pub const LeaseAnalysisSummary = types.LeaseAnalysisSummary;
         pub const table_declarations = declarations;
         pub const fixed_declarations = fixed;
+        pub const window_cache_enabled = config.use_window_cache;
         pub const PartitionPlanning = Planning;
         pub const Audit = auditing.For(Self);
         pub const Destruction = destroying.For(Self);
@@ -62,7 +83,8 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
             parent_number: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
         };
         pub const Row = struct {
-            lock: synchronization.Lock = .{},
+            lock: if (config.use_window_cache) synchronization.SharedLock else synchronization.Lock = .{},
+            cache: if (config.use_window_cache) use_cache.Entry else void = if (config.use_window_cache) .{} else {},
             uid: ?Uid = null,
             table: u32,
             parent: ?u32 = null,
@@ -86,11 +108,17 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
         };
         pub const TableState = struct {
             write: synchronization.Lock = .{},
+            cache_head: if (config.use_window_cache) u32 else void = if (config.use_window_cache) types.no_slot else {},
             mode: types.Mode = .normal,
             concentrated: bool = false,
             last_smooth_epoch: u64 = 0,
             registered_bytes: u64 = 0,
             system_page_bytes: u64 = 0,
+            pending_discards: u32 = 0,
+            /// Table-relative row where Tick resumes pending-discard cleanup:
+            /// just after the row it tried last, so rows that keep failing
+            /// cannot take the whole budget of every Tick.
+            pending_cursor: u32 = 0,
             first_partition: u32 = types.no_slot,
             free_partition: u32 = types.no_slot,
             notifier: Notifier,
@@ -126,14 +154,31 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
         bindings: []FixedBinding,
         index: Index,
         numbers: synchronization.Counter = .{},
+        cache_hints: if (config.use_window_cache) use_cache.Hints(config.use_window_cache_slots) else void = if (config.use_window_cache) .{} else {},
+        cache_diagnostics: if (config.use_window_cache and builtin.is_test) CacheCounters else void = if (config.use_window_cache and builtin.is_test) .{} else {},
         epoch: std.atomic.Value(u64) = std.atomic.Value(u64).init(1),
+        lease_analysis: if (config.development_lease_analysis) lease_analysis_module.StorageWithWriteWatch(config.development_lease_analysis_capacity, config.development_lease_analysis_write_watch_pages) else void = if (config.development_lease_analysis) .{} else {},
 
-        pub fn init(rows: []Row, shells: []Shell, tables: []TableState, bindings: []FixedBinding, nodes: []Index.Node, homes: []Index.Home, subscribers: []const []Notifier.Record) !Self {
+        /// Initializes the owner in its final caller-owned block. Analysis records,
+        /// write-watch scratch and cache hints can reach many MiB at their allowed
+        /// maxima, so the owner is never built as a stack value and returned.
+        pub fn init(self: *Self, rows: []Row, shells: []Shell, tables: []TableState, bindings: []FixedBinding, nodes: []Index.Node, homes: []Index.Home, subscribers: []const []Notifier.Record) !void {
             if (rows.len != counts.resources or shells.len != counts.partitions or
                 tables.len != declarations.len or bindings.len != fixed.len or
                 nodes.len != rows.len + shells.len or homes.len != config.index_buckets or
                 subscribers.len != tables.len) return error.InvalidArgument;
-            var self = Self{ .rows = rows, .shells = shells, .tables = tables, .bindings = bindings, .index = Index.init(nodes, homes) };
+            self.rows = rows;
+            self.shells = shells;
+            self.tables = tables;
+            self.bindings = bindings;
+            self.index = Index.init(nodes, homes);
+            self.numbers = .{};
+            if (comptime config.use_window_cache) {
+                for (&self.cache_hints.slots) |*hint| hint.* = std.atomic.Value(u32).init(types.no_slot);
+            }
+            if (comptime config.use_window_cache and builtin.is_test) self.cache_diagnostics = .{};
+            self.epoch = std.atomic.Value(u64).init(1);
+            if (comptime config.development_lease_analysis) self.lease_analysis.init();
             for (bindings) |*binding| binding.* = .{};
             for (declarations, 0..) |decl, t| {
                 tables[t] = .{ .notifier = try Notifier.init(subscribers[t]), .free_partition = if (decl.partition_capacity == 0) types.no_slot else @intCast(partitionStart(t)) };
@@ -146,7 +191,6 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
             }
             for (fixed, 0..) |f, i| if (f.parent == null)
                 try self.registerFixed(@intCast(i), @intCast(resourceStart(f.table) + f.ordinal), null);
-            return self;
         }
 
         pub fn resourceStart(table: usize) usize {
@@ -184,6 +228,21 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
         }
 
         pub fn use(self: *Self, uid: Uid) !T.UseResult {
+            if (comptime config.use_window_cache) {
+                const hint = &self.cache_hints.slots[use_cache.Hints(config.use_window_cache_slots).position(uid)];
+                const slot = hint.load(.acquire);
+                if (slot < self.rows.len) {
+                    const row = &self.rows[slot];
+                    row.lock.lockShared();
+                    defer row.lock.unlockShared();
+                    if (row.uid != null and row.uid.?.eql(uid) and cacheIdentity(row)) {
+                        if (row.resource.loading) return .loading;
+                        self.cacheHit();
+                        return .{ .in_memory = try self.cacheBorrow(slot) };
+                    }
+                }
+                return self.useCacheMiss(uid);
+            }
             while (try self.index.find(uid)) |position| {
                 if (position.kind != .resource) return .not_in_memory;
                 const row = &self.rows[position.slot];
@@ -205,6 +264,7 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
             return self.useFixedBody(@intCast(declaration));
         }
         fn useFixedBody(self: *Self, declaration: usize) !T.UseResult {
+            if (comptime config.use_window_cache) return self.useFixedCached(declaration);
             while (true) {
                 const parent_number = self.bindings[declaration].parent_number.load(.acquire);
                 const slot = self.bindings[declaration].slot.load(.acquire);
@@ -221,19 +281,224 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
             }
         }
         fn useLocked(self: *Self, slot: u32) !T.UseResult {
-            return switch (try self.rows[slot].resource.use(self.epoch.load(.acquire))) {
-                .in_memory => |borrow| .{ .in_memory = wrap(slot, borrow) },
+            if (comptime config.use_window_cache) {
+                const row = &self.rows[slot];
+                if (row.cache.physical != null) {
+                    if (row.resource.loading) return .loading;
+                    return .{ .in_memory = try self.cacheBorrow(slot) };
+                }
+                const epoch = self.epoch.load(.acquire);
+                if (row.resource.registration) |registration| {
+                    if (registration.region != null and !row.resource.loading) try cacheStampAvailable(row);
+                }
+                return switch (try row.resource.use(epoch)) {
+                    .in_memory => |borrow| .{ .in_memory = try self.cacheStart(slot, borrow) },
+                    .loading => .loading,
+                    .not_in_memory => .not_in_memory,
+                };
+            }
+            const epoch = self.epoch.load(.acquire);
+            return switch (try self.rows[slot].resource.use(epoch)) {
+                .in_memory => |borrow| .{ .in_memory = try self.wrap(slot, borrow, epoch) },
                 .loading => .loading,
                 .not_in_memory => .not_in_memory,
             };
         }
-        fn wrap(slot: u32, borrow: lifecycle.Borrow) T.Borrow {
-            return .{ .lease = .{ .slot = slot, .allocation_number = borrow.lease.resource_generation, .use_generation = borrow.lease.use_generation }, .region = borrow.region, .allocation_number = borrow.lease.resource_generation };
+        fn wrap(self: *Self, slot: u32, borrow: lifecycle.Borrow, epoch: u64) !T.Borrow {
+            if (comptime config.use_window_cache) return self.cacheStart(slot, borrow);
+            const result = T.Borrow{ .lease = .{ .slot = slot, .allocation_number = borrow.lease.resource_generation, .use_generation = borrow.lease.use_generation }, .region = borrow.region, .allocation_number = borrow.lease.resource_generation };
+            self.recordLeaseBegin(slot, result.lease, epoch);
+            return result;
         }
         fn rowLease(lease: T.Lease) lifecycle.Lease {
             return .{ .resource_generation = lease.allocation_number, .use_generation = lease.use_generation };
         }
 
+        const CacheCounters = struct {
+            hits: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+            index_lookups: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+            exclusive_entries: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+        };
+        pub fn cacheDiagnostics(self: *Self) struct { hits: u64, index_lookups: u64, exclusive_entries: u64 } {
+            if (comptime config.use_window_cache and builtin.is_test) return .{
+                .hits = self.cache_diagnostics.hits.load(.monotonic),
+                .index_lookups = self.cache_diagnostics.index_lookups.load(.monotonic),
+                .exclusive_entries = self.cache_diagnostics.exclusive_entries.load(.monotonic),
+            };
+            return .{ .hits = 0, .index_lookups = 0, .exclusive_entries = 0 };
+        }
+        fn cacheHit(self: *Self) void {
+            if (comptime builtin.is_test) _ = self.cache_diagnostics.hits.fetchAdd(1, .monotonic);
+        }
+        fn cacheStampAvailable(row: *Row) !void {
+            if (row.cache.stamps.next.load(.monotonic) == std.math.maxInt(u64)) return error.SpecificationLimit;
+        }
+        fn cacheIdentity(row: *const Row) bool {
+            const physical = row.cache.physical orelse return false;
+            const registration = row.resource.registration orelse return false;
+            return physical.lease.resource_generation == row.resource.generation and registration.region != null;
+        }
+        fn cacheBorrow(self: *Self, slot: u32) !T.Borrow {
+            const row = &self.rows[slot];
+            std.debug.assert(cacheIdentity(row));
+            const physical = row.cache.physical.?;
+            const stamp = try row.cache.acquire();
+            const result = T.Borrow{ .lease = .{ .slot = slot, .allocation_number = physical.lease.resource_generation, .use_generation = stamp }, .region = physical.region, .allocation_number = physical.lease.resource_generation };
+            self.recordLeaseBegin(slot, result.lease, self.epoch.load(.acquire));
+            return result;
+        }
+        fn cacheStart(self: *Self, slot: u32, physical: lifecycle.Borrow) !T.Borrow {
+            const row = &self.rows[slot];
+            std.debug.assert(row.cache.physical == null and row.cache.count() == 0);
+            row.cache.physical = physical;
+            self.linkCache(slot);
+            self.cache_hints.slots[use_cache.Hints(config.use_window_cache_slots).position(row.uid.?)].store(slot, .release);
+            return self.cacheBorrow(slot);
+        }
+        fn useCacheMiss(self: *Self, uid: Uid) !T.UseResult {
+            while (true) {
+                if (comptime builtin.is_test) _ = self.cache_diagnostics.index_lookups.fetchAdd(1, .monotonic);
+                const position = (try self.index.find(uid)) orelse return .not_in_memory;
+                if (position.kind != .resource) return .not_in_memory;
+                // Only cache creation/retirement needs structure ownership. Hits
+                // never acquire this table lock or consult the UID index.
+                self.tables[position.table].write.lock();
+                defer self.tables[position.table].write.unlock();
+                const row = &self.rows[position.slot];
+                row.lock.lock();
+                defer row.lock.unlock();
+                if (comptime builtin.is_test) _ = self.cache_diagnostics.exclusive_entries.fetchAdd(1, .monotonic);
+                if (row.uid == null or !row.uid.?.eql(uid)) continue;
+                return self.useLocked(position.slot);
+            }
+        }
+        fn fixedMatches(self: *Self, declaration: usize, slot: u32, parent_number: u64) bool {
+            const row = &self.rows[slot];
+            return self.bindings[declaration].slot.load(.acquire) == slot and
+                self.bindings[declaration].parent_number.load(.acquire) == parent_number and
+                row.fixed_parent_number == parent_number and row.fixed_declaration == @as(u32, @intCast(declaration)) and
+                row.uid != null and row.uid.?.eql(fixed[declaration].uid);
+        }
+        fn useFixedCached(self: *Self, declaration: usize) !T.UseResult {
+            while (true) {
+                const parent_number = self.bindings[declaration].parent_number.load(.acquire);
+                const slot = self.bindings[declaration].slot.load(.acquire);
+                if (slot == types.no_slot) return .not_in_memory;
+                const row = &self.rows[slot];
+                {
+                    row.lock.lockShared();
+                    defer row.lock.unlockShared();
+                    if (!self.fixedMatches(declaration, slot, parent_number)) continue;
+                    if (cacheIdentity(row)) {
+                        if (row.resource.loading) return .loading;
+                        self.cacheHit();
+                        return .{ .in_memory = try self.cacheBorrow(slot) };
+                    }
+                }
+                self.tables[fixed[declaration].table].write.lock();
+                defer self.tables[fixed[declaration].table].write.unlock();
+                row.lock.lock();
+                defer row.lock.unlock();
+                if (comptime builtin.is_test) _ = self.cache_diagnostics.exclusive_entries.fetchAdd(1, .monotonic);
+                if (!self.fixedMatches(declaration, slot, parent_number)) continue;
+                return self.useLocked(slot);
+            }
+        }
+        // These links are mutated only under table.write and the row EXCLUSIVE
+        // gate. Tick also owns table.write, so no detached/reused list nodes exist.
+        fn linkCache(self: *Self, slot: u32) void {
+            const row = &self.rows[slot];
+            std.debug.assert(!row.cache.linked);
+            const head = &self.tables[row.table].cache_head;
+            row.cache.previous = types.no_slot;
+            row.cache.next = head.*;
+            if (head.* != types.no_slot) self.rows[head.*].cache.previous = slot;
+            head.* = slot;
+            row.cache.linked = true;
+        }
+        fn unlinkCache(self: *Self, slot: u32) void {
+            const row = &self.rows[slot];
+            if (!row.cache.linked) return;
+            if (row.cache.previous == types.no_slot) self.tables[row.table].cache_head = row.cache.next else self.rows[row.cache.previous].cache.next = row.cache.next;
+            if (row.cache.next != types.no_slot) self.rows[row.cache.next].cache.previous = row.cache.previous;
+            row.cache.next = types.no_slot;
+            row.cache.previous = types.no_slot;
+            row.cache.linked = false;
+        }
+        /// Caller owns table.write + exclusive row gate. An idle pin is internal
+        /// bookkeeping, never a payload release or notification.
+        pub fn flushWindowCache(self: *Self, row: *Row) void {
+            if (comptime config.use_window_cache) {
+                if (row.cache.physical == null or row.cache.count() != 0) return;
+                const physical = row.cache.physical.?;
+                _ = row.resource.endUse(physical.lease, .complete, row.cache.last_end_epoch.load(.acquire)) catch
+                    @panic("window pin retirement invariant failed");
+                self.unlinkCache(@intCast((@intFromPtr(row) - @intFromPtr(self.rows.ptr)) / @sizeOf(Row)));
+                row.cache.invalidate();
+            }
+        }
+        fn endCached(self: *Self, lease: T.Lease, disposition: lifecycle.EndDisposition) !lifecycle.EndResult {
+            if (lease.slot >= self.rows.len) return error.InvalidArgument;
+            if (lease.allocation_number == 0 or lease.use_generation == 0) return error.InvalidLease;
+            const row = &self.rows[lease.slot];
+            {
+                row.lock.lockShared();
+                defer row.lock.unlockShared();
+                if (row.uid == null or row.resource.generation != lease.allocation_number or
+                    lease.use_generation <= row.cache.retired_through) return .force_released;
+                if (!row.resource.loading) {
+                    const holders = row.cache.count();
+                    try row.cache.end(lease.use_generation);
+                    row.cache.endedAt(self.epoch.load(.acquire));
+                    if (comptime config.development_lease_analysis) self.lease_analysis.collectResource(row.resource, self.epoch.load(.acquire), holders);
+                    const result: lifecycle.EndResult = if (disposition == .abandon) .abandoned else .completed;
+                    self.recordLeaseEnd(lease, result, self.epoch.load(.acquire));
+                    return result;
+                }
+            }
+            self.tables[row.table].write.lock();
+            defer self.tables[row.table].write.unlock();
+            row.lock.lock();
+            defer row.lock.unlock();
+            if (row.uid == null or row.resource.generation != lease.allocation_number or
+                lease.use_generation <= row.cache.retired_through) return .force_released;
+            if (!row.cache.valid(lease.use_generation) or row.cache.count() != 1 or !row.resource.loading) return error.InvalidLease;
+            self.collectLeaseWrites(row);
+            const result = try row.resource.endUse(row.cache.physical.?.lease, if (disposition == .discard) .abandon else disposition, self.epoch.load(.acquire));
+            self.recordLeaseEnd(lease, result, self.epoch.load(.acquire));
+            self.unlinkCache(lease.slot);
+            row.cache.invalidate();
+            if (row.resource.discardPending()) self.tables[row.table].pending_discards += 1;
+            if (disposition == .discard) {
+                self.finishDiscardLocked(lease.slot) catch return .cleanup_failed;
+                return .completed;
+            }
+            return result;
+        }
+
+        fn advanceCacheEpoch(self: *Self, next_epoch: u64) void {
+            // Never freeze unrelated rows through a global epoch publication.
+            // A late zero-ref entry retires at its recorded logical end epoch,
+            // so it cannot invent activity even if it survives this pass.
+            for (self.tables) |*table| {
+                table.write.lock();
+                var slot = table.cache_head;
+                var visited: usize = 0;
+                while (slot != types.no_slot) {
+                    if (visited >= self.rows.len or slot >= self.rows.len) @panic("window cache list invariant failed");
+                    const row = &self.rows[slot];
+                    const next = row.cache.next;
+                    row.lock.lock();
+                    self.collectLeaseWrites(row);
+                    self.flushWindowCache(row);
+                    row.lock.unlock();
+                    slot = next;
+                    visited += 1;
+                }
+                table.write.unlock();
+            }
+            self.epoch.store(next_epoch, .release);
+        }
         pub fn push(self: *Self, target: T.Target, uid: Uid, allocation_bytes: ?u64, work: *Workspace) !T.PushResult {
             while (true) {
                 // Hits share exactly the passive use path, and ignore new inputs.
@@ -262,6 +527,7 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                     row.lock.lock();
                     defer row.lock.unlock();
                     if (row.uid == null or !row.uid.?.eql(uid)) return error.Nonexistent;
+                    if (row.resource.discardPending()) return error.CleanupPending;
                     if (row.resource.registration.?.region != null) {
                         return switch (try self.useLocked(slot)) {
                             .in_memory => |borrow| .{ .in_memory = borrow },
@@ -280,12 +546,14 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                     replacement.next_use_generation = row.resource.next_use_generation;
                     replacement.forced_through_use_generation = row.resource.forced_through_use_generation;
                     replacement.activity_history = row.resource.activity_history;
-                    const fresh = (try replacement.push(self.epoch.load(.acquire), number)).fresh;
+                    const epoch = self.epoch.load(.acquire);
+                    if (comptime config.use_window_cache) try cacheStampAvailable(row);
+                    const fresh = (try replacement.push(epoch, number)).fresh;
                     row.resource = replacement;
                     self.tables[table].registered_bytes = next_total;
                     self.tables[table].system_page_bytes = next_pages;
                     self.recordAllocation(row, size);
-                    return .{ .newly_allocated = wrap(slot, fresh) };
+                    return .{ .newly_allocated = try self.wrap(slot, fresh, epoch) };
                 }
                 if (known != null) continue;
                 const size = allocation_bytes orelse return error.InvalidArgument;
@@ -311,7 +579,9 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                 const next_total = try addBytes(self.tables[table].registered_bytes, size);
                 const next_pages = try addBytes(self.tables[table].system_page_bytes, try region.requiredBytes(size));
                 var value = try Resource.dynamic(size);
-                const fresh = (try value.push(self.epoch.load(.acquire), number)).fresh;
+                const epoch = self.epoch.load(.acquire);
+                if (comptime config.use_window_cache) try cacheStampAvailable(row);
+                const fresh = (try value.push(epoch, number)).fresh;
                 self.index.insert(slot.?, uid, .{ .kind = .resource, .table = table, .slot = slot.? }) catch |err| {
                     value.forceRelease() catch @panic("ledger allocation rollback failed");
                     if (err == error.DuplicateUid) continue;
@@ -324,16 +594,18 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                 self.tables[table].registered_bytes = next_total;
                 self.tables[table].system_page_bytes = next_pages;
                 self.recordAllocation(row, size);
+                const borrow = try self.wrap(slot.?, fresh, epoch);
                 row.lock.unlock();
                 row_locked = false;
                 self.tables[table].write.unlock();
                 locked = false;
                 self.flush(table, work);
-                return .{ .newly_allocated = wrap(slot.?, fresh) };
+                return .{ .newly_allocated = borrow };
             }
         }
 
         pub fn endUse(self: *Self, lease: T.Lease, disposition: lifecycle.EndDisposition) !lifecycle.EndResult {
+            if (comptime config.use_window_cache) return self.endCached(lease, disposition);
             if (lease.slot >= self.rows.len) return error.InvalidArgument;
             const row = &self.rows[lease.slot];
             row.lock.lock();
@@ -341,9 +613,14 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                 row.lock.unlock();
                 return .force_released;
             }
-            if (disposition != .discard or !row.resource.loading) {
+            if (disposition == .complete or !row.resource.loading) {
                 defer row.lock.unlock();
-                return row.resource.endUse(rowLease(lease), disposition, self.epoch.load(.acquire));
+                const epoch = self.epoch.load(.acquire);
+                const holders = row.resource.use_count;
+                const result = try row.resource.endUse(rowLease(lease), disposition, epoch);
+                if (comptime config.development_lease_analysis) if (result == .completed) self.lease_analysis.collectResource(row.resource, epoch, holders);
+                self.recordLeaseEnd(lease, result, epoch);
+                return result;
             }
             const table = row.table;
             row.lock.unlock();
@@ -351,21 +628,48 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
             defer self.tables[table].write.unlock();
             row.lock.lock();
             defer row.lock.unlock();
+            return self.endLoadingLocked(lease, disposition);
+        }
+
+        /// Revalidate after upgrading from the row lock to table.write + row.
+        /// A fixed row can survive forceRelease with its allocation number intact.
+        pub fn endLoadingLocked(self: *Self, lease: T.Lease, disposition: lifecycle.EndDisposition) !lifecycle.EndResult {
+            const row = &self.rows[lease.slot];
+            const table = row.table;
+            if (lease.allocation_number == 0 or lease.use_generation == 0) return error.InvalidLease;
             if (row.uid == null or row.resource.generation != lease.allocation_number) return .force_released;
+            if (lease.use_generation <= row.resource.forced_through_use_generation) return .force_released;
             if (row.resource.use_count != 1 or lease.use_generation != row.resource.active_use_xor)
                 return error.InvalidLease;
-            const old_registered = row.resource.registration.?.allocation_bytes;
-            const old_pages = row.resource.registration.?.allocatedPageBytes();
-            if (row.resource.retention == .dynamic) try self.index.remove(lease.slot);
-            const result = row.resource.endUse(rowLease(lease), disposition, self.epoch.load(.acquire)) catch
-                @panic("ledger loading-discard release failed");
+            const epoch = self.epoch.load(.acquire);
+            self.collectLeaseWrites(row);
+            // Consume the valid use before any fallible cleanup. The no-cleanup
+            // abandon primitive also gives callers a guaranteed terminal exit.
+            const result = try row.resource.endUse(rowLease(lease), .abandon, epoch);
+            self.recordLeaseEnd(lease, result, epoch);
+            self.tables[table].pending_discards += 1;
+            if (disposition == .abandon) return .abandoned;
+            self.finishDiscardLocked(lease.slot) catch return .cleanup_failed;
+            return .completed;
+        }
+
+        /// Caller owns table.write and the row. There is no outstanding public
+        /// or physical use. No notice is sent for an unpublished discard.
+        pub fn finishDiscardLocked(self: *Self, slot: u32) !void {
+            const row = &self.rows[slot];
+            if (!row.resource.discardPending()) return error.InvalidState;
+            const reg = row.resource.registration orelse return error.InvalidState;
+            const old_pages = reg.allocatedPageBytes();
+            if (row.resource.retention == .dynamic) {
+                try self.index.removeAfter(slot, &row.resource, Resource.cleanupDiscard);
+            } else try row.resource.cleanupDiscard();
             self.recordAllocationRelease(row);
-            self.tables[table].system_page_bytes -= old_pages;
+            self.tables[row.table].system_page_bytes -= old_pages;
+            self.tables[row.table].pending_discards -= 1;
             if (row.resource.registration == null) {
-                self.tables[table].registered_bytes -= old_registered;
+                self.tables[row.table].registered_bytes -= reg.allocation_bytes;
                 row.uid = null;
             }
-            return result;
         }
 
         /// Establish one shell, replacing complete direct children only after
@@ -481,10 +785,12 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                 for (self.rows[shell.start..][0..shell.capacity]) |*row| {
                     row.lock.lock();
                     defer row.lock.unlock();
+                    self.flushWindowCache(row);
                     if (row.uid == null) continue;
-                    summary.score = @max(summary.score, try row.resource.activity_history.score(epoch, activity_policy));
-                    summary.aligned_bits |= try row.resource.activity_history.aligned(epoch);
-                    summary.latest_access = @max(summary.latest_access, row.resource.activity_history.last_activity_epoch);
+                    const history = try row.resource.historyAt(epoch);
+                    summary.score = @max(summary.score, try history.score(epoch, activity_policy));
+                    summary.aligned_bits |= try history.aligned(epoch);
+                    summary.latest_access = @max(summary.latest_access, history.last_activity_epoch);
                     if (row.resource.registration) |registration| {
                         if (registration.region != null and (row.resource.use_count != 0 or row.resource.loading or !row.attributes.safe()))
                             summary.safe = false;
@@ -549,9 +855,14 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
             row.lock.lock();
             defer row.lock.unlock();
             if (row.uid == null or row.resource.generation != lease.allocation_number) return .force_released;
+            if (comptime config.use_window_cache) return self.updateCachedLocked(lease.slot, lease, change);
             return self.updateLocked(lease.slot, rowLease(lease), change);
         }
         fn updateLocked(self: *Self, slot: u32, caller: ?lifecycle.Lease, change: T.Update) !T.UpdateResult {
+            if (comptime config.use_window_cache) {
+                std.debug.assert(caller == null);
+                return self.updateCachedLocked(slot, null, change);
+            }
             const row = &self.rows[slot];
             if (caller) |lease| {
                 if (lease.resource_generation != row.resource.generation or
@@ -567,12 +878,56 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                 const previous_pages = row.resource.registration.?.allocatedPageBytes();
                 const next_total = try replaceBytes(self.tables[row.table].registered_bytes, previous, size);
                 const next_pages = try replaceBytes(self.tables[row.table].system_page_bytes, previous_pages, if (row.resource.registration.?.region != null) try region.requiredBytes(size) else 0);
+                const prior_base = if (row.resource.registration.?.region) |r| r.base else null;
+                self.collectLeaseWrites(row);
                 switch (try row.resource.update(size, caller)) {
                     .in_use => return .in_use,
                     .force_released => return .force_released,
                     .nonexistent => return error.Nonexistent,
                     .registration_only => result = .registration_only,
                     .resident => |bytes| result = .{ .updated = if (caller != null) bytes else null },
+                }
+                if (comptime config.development_lease_analysis) {
+                    const after_base = if (row.resource.registration.?.region) |r| r.base else null;
+                    if (prior_base != after_base) self.lease_analysis.resetResource(row.resource, self.epoch.load(.acquire));
+                }
+                self.tables[row.table].registered_bytes = next_total;
+                self.tables[row.table].system_page_bytes = next_pages;
+            }
+            if (change.attributes) |attrs| row.attributes = attrs.apply(row.attributes);
+            return result;
+        }
+
+        fn updateCachedLocked(self: *Self, slot: u32, caller: ?T.Lease, change: T.Update) !T.UpdateResult {
+            const row = &self.rows[slot];
+            if (caller) |lease| {
+                if (lease.allocation_number != row.resource.generation or lease.use_generation <= row.cache.retired_through) return .force_released;
+                if (!row.cache.valid(lease.use_generation)) return error.InvalidLease;
+            }
+            var result: T.UpdateResult = .{ .updated = null };
+            if (change.allocation_bytes) |size| {
+                self.flushWindowCache(row);
+                const registration = row.resource.registration orelse return error.Nonexistent;
+                const next_total = try replaceBytes(self.tables[row.table].registered_bytes, registration.allocation_bytes, size);
+                const next_pages = try replaceBytes(self.tables[row.table].system_page_bytes, registration.allocatedPageBytes(), if (registration.region != null) try region.requiredBytes(size) else 0);
+                // One physical pin can represent many logical users. Only the
+                // sole validated public caller may authorize pointer movement.
+                const physical_caller = if (caller != null and row.cache.count() == 1) row.cache.physical.?.lease else null;
+                const prior_base = if (row.resource.registration.?.region) |r| r.base else null;
+                self.collectLeaseWrites(row);
+                switch (try row.resource.update(size, physical_caller)) {
+                    .in_use => return .in_use,
+                    .force_released => return .force_released,
+                    .nonexistent => return error.Nonexistent,
+                    .registration_only => result = .registration_only,
+                    .resident => |bytes| {
+                        if (row.cache.physical) |*physical| physical.region = bytes;
+                        result = .{ .updated = if (caller != null) bytes else null };
+                    },
+                }
+                if (comptime config.development_lease_analysis) {
+                    const after_base = if (row.resource.registration.?.region) |r| r.base else null;
+                    if (prior_base != after_base) self.lease_analysis.resetResource(row.resource, self.epoch.load(.acquire));
                 }
                 self.tables[row.table].registered_bytes = next_total;
                 self.tables[row.table].system_page_bytes = next_pages;
@@ -603,6 +958,13 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                     row.lock.lock();
                     defer row.lock.unlock();
                     if (row.uid == null or !row.uid.?.eql(uid)) return error.Nonexistent;
+                    if (row.resource.discardPending()) {
+                        // Only a failed OS page release leaves a retryable pending
+                        // discard; an index or state error is returned as itself.
+                        self.finishDiscardLocked(position.slot) catch |err|
+                            return if (err == error.ReleaseFailed) error.CleanupPending else err;
+                        return;
+                    }
                     try self.releaseLocked(position.slot, row.resource.registration.?.allocation_bytes, forced, false, work);
                 }
                 self.tables[position.table].write.unlock();
@@ -613,6 +975,7 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
         }
         fn releaseLocked(self: *Self, slot: u32, decision_bytes: u64, forced: bool, remove_fixed: bool, work: *Workspace) !void {
             const row = &self.rows[slot];
+            self.flushWindowCache(row);
             const reg = row.resource.registration orelse return;
             const resident = reg.region != null;
             if (!forced and resident) {
@@ -626,10 +989,13 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
             errdefer work.note_count = previous_note_count;
             if (remove_registration) try self.index.remove(slot);
             const old_pages = reg.allocatedPageBytes();
+            const final_history = row.resource.historyAt(self.epoch.load(.acquire)) catch unreachable;
+            self.collectLeaseWrites(row);
             if (forced) row.resource.forceRelease() catch @panic("ledger OS release invariant failed") else {
                 const result = row.resource.unload() catch @panic("ledger OS release invariant failed");
                 if (result != .closed) unreachable;
             }
+            row.resource.activity_history = final_history;
             self.tables[row.table].system_page_bytes -= old_pages;
             self.recordAllocationRelease(row);
             if (remove_registration) {
@@ -644,6 +1010,7 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
         // Only called under the existing table write lock. Comptime false
         // removes the calls and both zero-sized storage fields entirely.
         inline fn recordAllocation(self: *Self, row: *Row, bytes: u64) void {
+            if (comptime config.development_lease_analysis) self.lease_analysis.resetResource(row.resource, self.epoch.load(.acquire));
             if (comptime config.development_allocation_statistics) {
                 row.allocation_birth = .{ .epoch = self.epoch.load(.acquire), .allocation_bytes = bytes };
                 const counters = &self.tables[row.table].allocation_statistics;
@@ -656,6 +1023,17 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
         }
 
         pub inline fn recordAllocationRelease(self: *Self, row: *Row) void {
+            if (comptime config.use_window_cache) {
+                self.unlinkCache(@intCast((@intFromPtr(row) - @intFromPtr(self.rows.ptr)) / @sizeOf(Row)));
+                row.cache.forceInvalidate();
+            }
+            // Every committed owner/tree/destruction release reaches this hook
+            // before row identity is cleared, with the row lock already held.
+            if (comptime config.development_lease_analysis) {
+                self.lease_analysis.lock.lock();
+                defer self.lease_analysis.lock.unlock();
+                self.lease_analysis.tracker.invalidate(row.resource.generation, self.epoch.load(.acquire), lease_analysis_module.monotonicMilliseconds());
+            }
             if (comptime config.development_allocation_statistics) {
                 const birth = row.allocation_birth;
                 if (birth.epoch == 0) return;
@@ -666,6 +1044,40 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                 }
                 row.allocation_birth = .{};
             }
+        }
+
+        inline fn recordLeaseEnd(self: *Self, lease: T.Lease, result: lifecycle.EndResult, epoch: u64) void {
+            if (comptime config.development_lease_analysis) {
+                if (result == .force_released) return;
+                self.lease_analysis.lock.lock();
+                defer self.lease_analysis.lock.unlock();
+                self.lease_analysis.tracker.finish(lease, epoch, lease_analysis_module.monotonicMilliseconds());
+            }
+        }
+
+        pub inline fn collectLeaseWrites(self: *Self, row: *Row) void {
+            if (comptime config.development_lease_analysis) {
+                const holders = if (comptime config.use_window_cache) row.cache.count() else row.resource.use_count;
+                self.lease_analysis.collectResource(row.resource, self.epoch.load(.acquire), holders);
+            }
+        }
+
+        fn recordLeaseBegin(self: *Self, slot: u32, lease: T.Lease, epoch: u64) void {
+            if (comptime config.development_lease_analysis) {
+                self.collectLeaseWrites(&self.rows[slot]);
+                self.lease_analysis.lock.lock();
+                defer self.lease_analysis.lock.unlock();
+                self.lease_analysis.tracker.begin(&self.rows[slot].uid.?.bytes, lease, epoch, lease_analysis_module.monotonicMilliseconds());
+            }
+        }
+        /// One coherent, read-only physical-order snapshot; [] is summary-only.
+        /// Active duration is summary.snapshot_ms - started_ms (ended_ms stays 0).
+        pub fn getLeaseAnalysis(self: *Self, records: []LeaseAnalysisRecord) !LeaseAnalysisSummary {
+            if (comptime config.development_lease_analysis) {
+                self.lease_analysis.lock.lock();
+                defer self.lease_analysis.lock.unlock();
+                return self.lease_analysis.tracker.snapshot(records, lease_analysis_module.monotonicMilliseconds());
+            } else return error.LeaseAnalysisDisabled;
         }
 
         pub const DevelopmentStatistics = if (config.development_allocation_statistics) struct {
@@ -705,6 +1117,31 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                     self.flush(@intCast(t), work);
                 }
                 var budget = decl.policy.tick_maximum_actions;
+                // Finishing a prior discard is not a new safe-release decision.
+                // Count failed attempts as well, so a persistent OS failure is
+                // bounded and cannot stall another table or force content out.
+                // Resume after the row tried last and stop once every pending
+                // row has been tried, so unfinished cleanup continues next Tick.
+                var pending_left = state.pending_discards;
+                var offset = state.pending_cursor;
+                var visited: u32 = 0;
+                const row_start = resourceStart(t);
+                while (budget != 0 and pending_left != 0 and visited < decl.capacity) : (visited += 1) {
+                    const slot: u32 = @intCast(row_start + offset);
+                    offset = if (offset + 1 == decl.capacity) 0 else offset + 1;
+                    result.scanned += 1;
+                    const row = &self.rows[slot];
+                    row.lock.lock();
+                    if (row.resource.discardPending()) {
+                        budget -= 1;
+                        pending_left -= 1;
+                        state.pending_cursor = offset;
+                        if (self.finishDiscardLocked(slot)) |_| {
+                            result.released += 1;
+                        } else |_| {}
+                    }
+                    row.lock.unlock();
+                }
                 var free = self.freeCapacity(t);
                 var capacity_target: usize = 0;
                 var wanted: u32 = 0;
@@ -750,7 +1187,16 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                 locked = false;
                 self.flush(@intCast(t), work);
             }
-            self.epoch.store(epoch + 1, .release);
+            if (comptime config.use_window_cache) self.advanceCacheEpoch(epoch + 1) else {
+                if (comptime config.development_lease_analysis) {
+                    for (self.rows) |*row| {
+                        row.lock.lock();
+                        self.collectLeaseWrites(row);
+                        row.lock.unlock();
+                    }
+                }
+                self.epoch.store(epoch + 1, .release);
+            }
             return result;
         }
 
@@ -790,7 +1236,8 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
             }
             return done;
         }
-        fn safe(_: *Self, row: *const Row) bool {
+        fn safe(self: *Self, row: *Row) bool {
+            self.flushWindowCache(row);
             const registration = row.resource.registration orelse return false;
             return row.uid != null and registration.region != null and row.resource.use_count == 0 and
                 !row.resource.loading and row.attributes.safe();
@@ -843,7 +1290,9 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
         }
         const Snapshot = struct { attributes: types.Attributes, score: u8, size: u64, history: Activity.History, number: u64 };
         pub fn snapshotLocked(self: *Self, row: *const Row) Snapshot {
-            return .{ .attributes = row.attributes, .score = row.resource.activity_history.score(self.epoch.load(.acquire), .{ .score_epochs = declarations[row.table].policy.score_epochs, .idle_epochs = declarations[row.table].policy.idle_epochs }) catch unreachable, .size = if (row.resource.registration) |reg| reg.allocation_bytes else 0, .history = row.resource.activity_history, .number = row.resource.generation };
+            const epoch = self.epoch.load(.acquire);
+            const history = row.resource.historyAt(epoch) catch unreachable;
+            return .{ .attributes = row.attributes, .score = history.score(epoch, .{ .score_epochs = declarations[row.table].policy.score_epochs, .idle_epochs = declarations[row.table].policy.idle_epochs }) catch unreachable, .size = if (row.resource.registration) |reg| reg.allocation_bytes else 0, .history = history, .number = row.resource.generation };
         }
         fn capacityEligible(_: *Self, table: usize, slot: usize) bool {
             const d = declarations[table];
@@ -923,6 +1372,7 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
             for (self.rows[target.start..][0..target.capacity], target.start..) |*row, slot| {
                 row.lock.lock();
                 defer row.lock.unlock();
+                self.flushWindowCache(row);
                 if (row.parent != target.parent or row.fixed_declaration != null or row.uid == null) continue;
                 work.candidates[count] = .{ .slot = @intCast(slot), .decision_bytes = row.resource.registration.?.allocation_bytes, .snapshot = self.snapshotLocked(row) };
                 count += 1;
@@ -935,6 +1385,7 @@ pub fn Owner(comptime config: types.Config, comptime declarations: []const types
                 row.lock.lock();
                 defer row.lock.unlock();
                 if (!self.safe(row)) continue;
+                if (comptime config.use_window_cache) try cacheStampAvailable(row);
                 const registration = row.resource.registration.?;
                 _ = try replaceBytes(self.tables[target.table].registered_bytes, registration.allocation_bytes, allocation_bytes);
                 _ = try replaceBytes(self.tables[target.table].system_page_bytes, registration.allocatedPageBytes(), try region.requiredBytes(allocation_bytes));

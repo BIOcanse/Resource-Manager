@@ -9,6 +9,7 @@ internal static partial class Program
 {
     private const string NativeEntryFileName = "LedgerNativeEntry.zig";
     private const string BuildIdentityFileName = "LedgerOwnerBuild.g.cs";
+    private const string BuildPropsFileName = "LedgerOwnerBuild.props";
 
     private static int RunNative(string[] args)
     {
@@ -33,6 +34,7 @@ internal static partial class Program
         string structureHex = Convert.ToHexString(structureHash).ToLowerInvariant();
         string policyHex = Convert.ToHexString(policyHash).ToLowerInvariant();
         OwnerShape shape = ParseShape(ownerBytes, width);
+        bool developmentLeaseAnalysis = ReadDevelopmentLeaseAnalysis(valuesBytes);
 
         // Represent counts exactly; the selected owner checks structural legality.
         ulong resources = 0;
@@ -47,13 +49,15 @@ internal static partial class Program
         uint nodeCount = checked((uint)(resources + partitions));
 
         string native = GenerateNativeEntry(structureHash, policyHash);
-        string managed = GenerateBuildIdentity(shape, width, resourceCount, partitionCount, nodeCount, structureHex, policyHex);
+        string managed = GenerateBuildIdentity(shape, width, resourceCount, partitionCount, nodeCount, structureHex, policyHex,
+            developmentLeaseAnalysis);
         var outputs = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [ZigFileName] = GenerateZig(shape, width, structureHex),
             [CSharpFileName] = GenerateCSharp(shape, width, structureHex),
             [NativeEntryFileName] = native,
             [BuildIdentityFileName] = managed,
+            [BuildPropsFileName] = GenerateBuildProps(developmentLeaseAnalysis),
         };
         Directory.CreateDirectory(outputPath);
         foreach ((string file, string content) in outputs) WriteIfChanged(Path.Combine(outputPath, file), content);
@@ -124,7 +128,7 @@ internal static partial class Program
 
         VerifyFileHash(ReadString(fields["ownerPath"], "ownerPath"), ReadString(fields["structureSha256"], "structureSha256"));
         VerifyFileHash(ReadString(fields["valuesPath"], "valuesPath"), ReadString(fields["policySha256"], "policySha256"));
-        var remaining = new HashSet<string>([ZigFileName, CSharpFileName, NativeEntryFileName, BuildIdentityFileName], StringComparer.Ordinal);
+        var remaining = new HashSet<string>([ZigFileName, CSharpFileName, NativeEntryFileName, BuildIdentityFileName, BuildPropsFileName], StringComparer.Ordinal);
         if (fields["outputs"].ValueKind != JsonValueKind.Array) throw new FormatException("outputs must be an array.");
         foreach (JsonElement item in fields["outputs"].EnumerateArray())
         {
@@ -134,6 +138,18 @@ internal static partial class Program
             VerifyFileHash(Path.Combine(directory, name), ReadString(row["sha256"], "output.sha256"));
         }
         if (remaining.Count != 0) throw new FormatException("Native build manifest omits generated source files.");
+        // Bind selected-value outputs to the original input as well as their manifest hashes.
+        // Rehashing a stale props/companion in the manifest must not bless a different switch.
+        bool developmentLeaseAnalysis = ReadDevelopmentLeaseAnalysis(
+            File.ReadAllBytes(ReadString(fields["valuesPath"], "valuesPath")));
+        RequireGeneratedContent(directory, BuildPropsFileName, GenerateBuildProps(developmentLeaseAnalysis));
+        OwnerShape shape = ParseShape(File.ReadAllBytes(ReadString(fields["ownerPath"], "ownerPath")), checked((ushort)width));
+        RequireGeneratedContent(directory, BuildIdentityFileName, GenerateBuildIdentity(shape, checked((ushort)width),
+            ReadUInt32(fields["resourceCapacity"], "resourceCapacity"),
+            ReadUInt32(fields["partitionCapacity"], "partitionCapacity"),
+            ReadUInt32(fields["indexNodeCount"], "indexNodeCount"),
+            ReadString(fields["structureSha256"], "structureSha256"),
+            ReadString(fields["policySha256"], "policySha256"), developmentLeaseAnalysis));
         Console.WriteLine("Native build inputs and generated source hashes match.");
         return 0;
     }
@@ -148,25 +164,82 @@ internal static partial class Program
             throw new InvalidOperationException("Native build input changed; generate again: " + path);
     }
 
+    private static bool ReadDevelopmentLeaseAnalysis(byte[] valuesBytes)
+    {
+        // Read the scalar Bound initializer emitted by FreedomPoint, not arbitrary Zig.
+        // Reject other expressions rather than guessing or selecting a fallback value.
+        using var reader = new StringReader(new UTF8Encoding(false, true).GetString(valuesBytes));
+        string structureImport = string.Concat(Encoding.UTF8.GetBytes("ledger_structure")
+            .Select(value => "\\x" + value.ToString("X2", CultureInfo.InvariantCulture)));
+        if (reader.ReadLine() != "// Generated selected values." ||
+            reader.ReadLine() != $"const __fpStructure = @import(\"{structureImport}\");" ||
+            reader.ReadLine() != "pub const Bound = __fpStructure.Bind(.{")
+            throw new FormatException("Expected the FreedomPoint-generated ledger_values.zig Bound initializer.");
+
+        var selected = new Dictionary<string, ulong>(StringComparer.Ordinal);
+        string? line;
+        while ((line = reader.ReadLine()) is not null && line != "});")
+        {
+            const string prefix = "    .@\"";
+            const string separator = "\" = @as(u64, @as(u64, ";
+            const string suffix = ")),";
+            int split = line.IndexOf(separator, StringComparison.Ordinal);
+            if (!line.StartsWith(prefix, StringComparison.Ordinal) || split <= prefix.Length ||
+                !line.EndsWith(suffix, StringComparison.Ordinal))
+                throw new FormatException("Expected an unsigned scalar selected value in ledger_values.zig.");
+            string name = line[prefix.Length..split];
+            string number = line[(split + separator.Length)..^suffix.Length];
+            if (name.Any(static character => !char.IsAsciiLetterOrDigit(character) && character != '_') ||
+                number.Length == 0 || number.Any(static character => character is < '0' or > '9') ||
+                !ulong.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out ulong value) ||
+                !selected.TryAdd(name, value))
+                throw new FormatException("Invalid or repeated selected value in ledger_values.zig: " + name);
+        }
+        if (line != "});" || reader.ReadLine() is not null)
+            throw new FormatException("Expected the end of the generated ledger_values.zig Bound initializer.");
+        if (!selected.TryGetValue("development_lease_analysis", out ulong enabled) || enabled > 1)
+            throw new FormatException("development_lease_analysis must be a selected unsigned 0 or 1.");
+        if (!selected.TryGetValue("development_lease_analysis_capacity", out ulong capacity) || capacity is < 1 or > 65536)
+            throw new FormatException("development_lease_analysis_capacity must be a selected unsigned integer from 1 through 65536.");
+        return enabled != 0;
+    }
+
+    private static string GenerateBuildProps(bool developmentLeaseAnalysis)
+    {
+        // Fixed LF bytes make this selected-values output independent of the host OS.
+        return developmentLeaseAnalysis
+            ? "<Project>\n  <PropertyGroup>\n    <DefineConstants>$(DefineConstants);LEDGER_DEVELOPMENT_LEASE_ANALYSIS</DefineConstants>\n  </PropertyGroup>\n</Project>\n"
+            : "<Project>\n</Project>\n";
+    }
+
+    private static void RequireGeneratedContent(string directory, string name, string expected)
+    {
+        if (!File.ReadAllBytes(Path.Combine(directory, name)).AsSpan().SequenceEqual(Utf8WithoutBom.GetBytes(expected)))
+            throw new InvalidOperationException("Generated output differs from selected build inputs; generate again: " + name);
+    }
+
     private static string GenerateBuildIdentity(OwnerShape shape, ushort width, uint resources, uint partitions,
-        uint nodes, string structureHash, string policyHash)
+        uint nodes, string structureHash, string policyHash, bool developmentLeaseAnalysis)
     {
         // The generated metadata is immutable and contains no live resource state.
         string Number(uint value) => value.ToString(CultureInfo.InvariantCulture) + "u";
         var output = new StringBuilder();
-        output.AppendLine("// <auto-generated />");
-        output.AppendLine("namespace ResourceManager.Ledger.Generated;");
-        output.AppendLine("public static class LedgerOwnerBuild");
-        output.AppendLine("{");
-        output.AppendLine($"    public const ushort UidWidthBits = {width};");
-        output.AppendLine($"    public const string StructureSha256 = \"{structureHash}\";");
-        output.AppendLine($"    public const string PolicySha256 = \"{policyHash}\";");
-        output.AppendLine("    public static readonly global::ResourceManager.Ledger.LedgerBuildIdentity Identity = new(");
-        output.AppendLine($"        {Number(checked((uint)shape.Tables.Length))}, {Number(checked((uint)shape.FixedResources.Length))},");
-        output.AppendLine($"        {Number(resources)}, {Number(partitions)}, {Number(nodes)}, {Number(shape.IndexBucketCount)},");
-        output.AppendLine("        global::System.Convert.FromHexString(StructureSha256),");
-        output.AppendLine("        global::System.Convert.FromHexString(PolicySha256));");
-        output.AppendLine("}");
+        // Fixed LF: verify regenerates this file and compares bytes, so the bytes cannot depend on the host newline.
+        void Line(string text) => output.Append(text).Append('\n');
+        Line("// <auto-generated />");
+        Line("namespace ResourceManager.Ledger.Generated;");
+        Line("public static class LedgerOwnerBuild");
+        Line("{");
+        Line($"    public const ushort UidWidthBits = {width};");
+        Line($"    public const bool DevelopmentLeaseAnalysis = {(developmentLeaseAnalysis ? "true" : "false")};");
+        Line($"    public const string StructureSha256 = \"{structureHash}\";");
+        Line($"    public const string PolicySha256 = \"{policyHash}\";");
+        Line("    public static readonly global::ResourceManager.Ledger.LedgerBuildIdentity Identity = new(");
+        Line($"        {Number(checked((uint)shape.Tables.Length))}, {Number(checked((uint)shape.FixedResources.Length))},");
+        Line($"        {Number(resources)}, {Number(partitions)}, {Number(nodes)}, {Number(shape.IndexBucketCount)},");
+        Line("        global::System.Convert.FromHexString(StructureSha256),");
+        Line("        global::System.Convert.FromHexString(PolicySha256));");
+        Line("}");
         return output.ToString();
     }
 }

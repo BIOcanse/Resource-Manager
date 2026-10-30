@@ -1,8 +1,8 @@
 # Ledger FreedomPoint configuration
 
-This project defines three global build facts and thirteen configuration points
+This project defines eight global build facts and thirteen configuration points
 for every structural table. For `tableCount = N`, the registry has exactly
-`3 + 13N` active declarations. Table and partition capacities, allocation
+`8 + 13N` active declarations. Table and partition capacities, allocation
 sizes, and fixed resource identities remain structural declarations supplied
 by the adopter.
 
@@ -18,6 +18,11 @@ does not implement a second resolver or source emitter.
 | Global | `ledger.uid_width_bits` | 128 | Exactly 128 or 256 through unsigned minimum, maximum and step |
 | Global | `ledger.activity_bitmap_width` | 8 | Exactly 8, 16, 32 or 64 |
 | Global | `ledger.development_allocation_statistics` | 0 (off) | Build-time unsigned 0/1; disabled Native builds omit statistic storage, collection and the query export |
+| Global | `ledger.development_lease_analysis` | 0 (off) | Build-time unsigned 0/1; disabled builds omit Native analysis storage, collection, clocks and write observation |
+| Global | `ledger.development_lease_analysis_capacity` | 256 | Unsigned 1 through 65536 records, independent of resource capacity |
+| Global | `ledger.use_window_cache` | 0 (off) | Build-time unsigned 0/1; transparent internal optimization, currently x86_64+cx16 only |
+| Global | `ledger.use_window_cache_slots` | 64 | Unsigned 1 through 65536 bounded slot hints |
+| Global | `ledger.development_lease_analysis_write_watch_pages` | 16384 | Unsigned 1 through 1048576 pages; explicit unavailable status beyond the bound |
 | Per table | `activity_score_epochs` | 8 | K, from 1 through the global bitmap width |
 | Per table | `idle_epochs` | 8 | N, from 0 through the global bitmap width; zero disables idle unload |
 | Per table | `capacity_protection_method` | `concentrated` | `concentrated` or `smooth` |
@@ -36,7 +41,8 @@ Per-table point names and source pointers use the canonical form
 `ledger.table.N.field`. Their `PointPath` owner2 is distinct per table, and
 generated value members are named `table_N_field`. The global bitmap point is
 the single dynamic maximum for every table's K and N. Each scope uses dense
-zero-based point indexes: global bitmap 0, UID width 1 and development statistics 2; each table's thirteen
+zero-based point indexes: global bitmap 0, UID width 1, development statistics 2,
+lease analysis 3 and lease analysis capacity 4; each table's thirteen
 points use 0 through 12, with capacity method at 12. The removed pending A/B
 points do not leave holes in the catalog.
 
@@ -140,3 +146,10 @@ build.
 
 Configurations are resolved independently for each build. Selected values are
 build inputs and are never checked in as defaults.
+
+For analysis, pass this build's exact ledger_values.zig to ledger-build native.
+The selected flag remains in generated build metadata and its manifest. Current
+analysis requires no caller markers or consumer symbol for per-access code.
+The optional Native query and structured managed snapshot report automatic
+Windows write facts, unavailable pure reads, shared attribution and bounded loss.
+The Build tool README describes generation and verification.

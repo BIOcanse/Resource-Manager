@@ -46,6 +46,9 @@ typedef int32_t rm_ledger_status;
 #define RM_LEDGER_INVALID_STATE              ((rm_ledger_status)17)
 #define RM_LEDGER_PARTITION_CREATED          ((rm_ledger_status)18)
 #define RM_LEDGER_PARTITION_EXISTS           ((rm_ledger_status)19)
+#define RM_LEDGER_ENDED_CLEANUP_FAILED       ((rm_ledger_status)20)
+#define RM_LEDGER_ABANDONED                  ((rm_ledger_status)21)
+#define RM_LEDGER_CLEANUP_PENDING            ((rm_ledger_status)22)
 #define RM_LEDGER_INTERNAL_ERROR             ((rm_ledger_status)255)
 
 #define RM_LEDGER_TARGET_TABLE      0u
@@ -54,6 +57,7 @@ typedef int32_t rm_ledger_status;
 #define RM_LEDGER_MODE_NORMAL       1u
 #define RM_LEDGER_MODE_OPTIMIZE     2u
 #define RM_LEDGER_END_COMPLETE      0u
+#define RM_LEDGER_END_ABANDON       2u
 #define RM_LEDGER_END_DISCARD       1u
 #define RM_LEDGER_RECOVERABILITY_NOT_RECOVERABLE 0u
 #define RM_LEDGER_RECOVERABILITY_RECOVERABLE     1u
@@ -187,7 +191,9 @@ RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_create(
    Active subscriptions remain rooted through destroy's synchronous committed
    notifications. Failure preserves subscriptions; release callback roots only
    after successful return. Then no further call, including a lease return, is
-   valid for this instance. */
+   valid for this instance. With forced 0, CLEANUP_PENDING (22) means an
+   unpublished discard still awaits page cleanup; nothing has been released.
+   Finish it with close(uid) or Tick, or destroy with forced 1. */
 RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_destroy(
     void *instance,
     uint32_t forced,
@@ -205,6 +211,9 @@ RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_use_fixed(
     uint32_t fixed_declaration,
     rm_ledger_borrow *out_borrow);
 
+/* CLEANUP_PENDING (22): the UID names an allocation whose unpublished discard
+   still awaits page cleanup. Nothing changes and no lease is issued; push again
+   after close(uid) or a Tick has finished that cleanup. */
 RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_push(
     void *instance,
     const rm_ledger_target *target,
@@ -215,6 +224,8 @@ RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_push(
     void *operation_workspace,
     uint64_t operation_workspace_bytes,
     rm_ledger_borrow *out_borrow);
+/* CLEANUP_PENDING (22): a direct child the new partition would replace still
+   awaits discard cleanup. Nothing changes. */
 RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_push_partition(
     void *instance,
     const rm_ledger_target *target,
@@ -226,10 +237,20 @@ RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_push_partition(
     uint64_t operation_workspace_bytes,
     rm_ledger_partition_result *out_result);
 
+/* 5, 6, 20 and 21 confirm that this exact use has ended. 20 retains an
+   unpublished, zero-holder allocation for SDK cleanup; never call end again.
+   2 (ABANDON) ends only this use, never publishes an incomplete load and does
+   no fallible page/index cleanup. close(uid) or Tick finishes deferred cleanup.
+   Other returned errors precede the use-count commit and leave it unchanged.
+   Raw credentials are linear: do not infer completion from a duplicate/invalid
+   credential. These guarantees require a live instance and valid call pointers. */
 RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_end_use(
     void *instance,
     const rm_ledger_lease *lease,
     uint32_t disposition);
+/* With UPDATE_ALLOCATION_BYTES, CLEANUP_PENDING (22) means the allocation's
+   unpublished discard still awaits page cleanup; nothing changes. An
+   attribute-only update still applies. */
 RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_update_uid(
     void *instance,
     const uint8_t *uid_bytes,
@@ -237,19 +258,31 @@ RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_update_uid(
     const rm_ledger_update *update);
 /* On UPDATED with UPDATE_ALLOCATION_BYTES present, out_borrow contains the
    same lease credential and refreshed region; this call acquires no lease.
-   For an attribute-only update the output borrow is zero. */
+   For an attribute-only update the output borrow is zero. An allocation that
+   awaits discard cleanup has no holder, so a valid lease never meets 22 here. */
 RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_update_lease(
     void *instance,
     const rm_ledger_lease *lease,
     const rm_ledger_update *update,
     rm_ledger_borrow *out_borrow);
 
+/* For an allocation whose unpublished discard awaits cleanup, close retries that
+   cleanup: OK once its pages and index entry are gone, or CLEANUP_PENDING (22)
+   when the OS page release failed again, with pages, index and accounting
+   unchanged; retry later or let Tick finish it. Other failures are reported as
+   themselves (for example INVALID_STATE or INTERNAL_ERROR for an index fault)
+   and are not fixed by retrying. Closing a partition whose subtree still holds
+   such an allocation returns 22 before anything is released. */
 RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_close(
     void *instance,
     const uint8_t *uid_bytes,
     uint64_t uid_length,
     void *operation_workspace,
     uint64_t operation_workspace_bytes);
+/* For a UID that names an allocation awaiting discard cleanup, this performs that
+   cleanup exactly like close: OK, or CLEANUP_PENDING (22) when the OS page
+   release failed again; other failures are reported as themselves. A forced
+   partition release does not report 22. */
 RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_force_release(
     void *instance,
     const uint8_t *uid_bytes,
@@ -279,6 +312,51 @@ RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_get_development_statisti
     void *instance,
     uint32_t table,
     rm_ledger_development_statistics *out_statistics);
+#endif
+/* Optional development lease analysis. These records do not change the base
+   descriptor or required export set. UID128 bytes are zero-padded to 32 bytes.
+   Writes are observed automatically on Windows via MEM_WRITE_WATCH.
+   Pure reads are unobservable. Counts saturate and never mean read/write instructions. */
+typedef struct rm_ledger_lease_analysis_record {
+    uint8_t uid[32];
+    uint32_t slot;
+    uint32_t state; /* 1 active, 2 ended normally (including discard), 3 forced */
+    uint64_t allocation_number;
+    uint64_t use_generation;
+    uint64_t started_epoch;
+    uint64_t ended_epoch;
+    uint64_t started_ms;
+    uint64_t ended_ms;
+    uint64_t write_window_count;
+    uint64_t dirty_page_samples;
+    uint64_t last_observed_write_ms;
+    uint64_t maximum_no_write_gap_ms;
+    uint32_t support_flags;
+    uint32_t observation_flags;
+} rm_ledger_lease_analysis_record; /* 128 bytes, alignment 8 */
+
+typedef struct rm_ledger_lease_analysis_summary {
+    uint32_t record_capacity;
+    uint32_t written_count;
+    uint64_t active_count;
+    uint64_t completed_count;
+    uint64_t dropped_records;
+    uint64_t unavailable_write_samples;
+    uint64_t snapshot_ms;
+} rm_ledger_lease_analysis_summary; /* 48 bytes, alignment 8 */
+
+#if defined(RM_LEDGER_DEVELOPMENT_LEASE_ANALYSIS) && RM_LEDGER_DEVELOPMENT_LEASE_ANALYSIS
+/* NULL/0 queries summary only. Stable physical retained-record order; query does
+   not mark activity. Observation is automatic at lease/round/mutation boundaries.
+   support_flags: 1 Windows WriteWatch, 2 pure reads unavailable.
+   observation_flags: 1 shared attribution, 2 scratch bound, 4 OS error,
+   8 unsupported platform. Dirty page samples can count a page again after reset;
+   write_window_count deduplicates by epoch. Gaps mean no observed writes only.
+   No credential marker API: ended, evicted or dropped samples cannot be marked.
+   Bounded overflow drops diagnostic records without affecting real leases. */
+RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_get_lease_analysis(
+    void *instance, rm_ledger_lease_analysis_record *records, uint64_t capacity,
+    rm_ledger_lease_analysis_summary *summary);
 #endif
 RM_LEDGER_API rm_ledger_status RM_LEDGER_CALL rm_ledger_tick(
     void *instance,

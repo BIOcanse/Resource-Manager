@@ -3,6 +3,7 @@
   "sourceRoot": "sdk/zig",
   "archiveRoot": ".",
   "files": [
+    "src/ledger_lease_analysis_tests.zig",
     "src/local_resource_manager/uid.zig",
     "src/local_resource_manager/protocol.zig",
     "src/local_resource_manager/memory_region.zig",
@@ -10,12 +11,21 @@
     "src/local_resource_manager/memory_region/linux.zig",
     "src/local_resource_manager/allocation_registration.zig",
     "src/local_resource_manager/activity_window.zig",
+    "src/local_resource_manager/lease_window_tests.zig",
     "src/local_resource_manager/release_check.zig",
     "src/local_resource_manager/memory_resource.zig",
     "src/local_resource_manager/owned/native.zig",
     "src/local_resource_manager/owned/owner.zig",
     "src/local_resource_manager/owned/types.zig",
     "src/local_resource_manager/owned/allocation_statistics.zig",
+    "src/local_resource_manager/owned/lease_analysis.zig",
+    "src/local_resource_manager/owned/write_watch.zig",
+    "src/local_resource_manager/owned/window_use_cache.zig",
+    "src/local_resource_manager/owned/owner_cache_tests.zig",
+    "src/local_resource_manager/owned/owner_cache_benchmark.zig",
+    "src/ledger_cache_tests.zig",
+    "src/ledger_cache_benchmark.zig",
+    "src/local_resource_manager/owned/lease_analysis_tests.zig",
     "src/local_resource_manager/owned/index.zig",
     "src/local_resource_manager/owned/index_tests.zig",
     "src/local_resource_manager/owned/index_transactions.zig",
@@ -24,6 +34,8 @@
     "src/local_resource_manager/owned/tree.zig",
     "src/local_resource_manager/owned/partition_planning.zig",
     "src/local_resource_manager/owned/audit.zig",
-    "src/local_resource_manager/owned/destruction.zig"
+    "src/local_resource_manager/owned/destruction.zig",
+    "src/ledger_end_fault_fixture.zig",
+    "src/local_resource_manager/owned/end_failure_pages.zig"
   ]
 }

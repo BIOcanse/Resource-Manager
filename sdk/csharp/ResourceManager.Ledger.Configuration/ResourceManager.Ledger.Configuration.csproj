@@ -8,8 +8,12 @@
     <FreedomPointSdkVersion>0.1.0-dev.39</FreedomPointSdkVersion>
     <RestoreSources Condition="'$(RestoreSources)' == ''">$(MSBuildThisFileDirectory)../../../sdk/freedom-point/packages</RestoreSources>
   </PropertyGroup>
-  <ItemGroup>
+  <ItemGroup Condition="'$(FreedomPointBuildSourceRoot)' == ''">
     <PackageReference Include="FreedomPoint.Core" Version="$(FreedomPointSdkVersion)" />
     <PackageReference Include="FreedomPoint.Generators" Version="$(FreedomPointSdkVersion)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(FreedomPointBuildSourceRoot)' != ''">
+    <ProjectReference Include="$(FreedomPointBuildSourceRoot)/src/Core/FreedomPoint.Core.csproj" GlobalPropertiesToRemove="PackageId;Description;PackAsTool;ToolCommandName;IsPackable;PackageVersion;PackageOutputPath" />
+    <ProjectReference Include="$(FreedomPointBuildSourceRoot)/src/Generators/FreedomPoint.Generators.csproj" GlobalPropertiesToRemove="PackageId;Description;PackAsTool;ToolCommandName;IsPackable;PackageVersion;PackageOutputPath" />
   </ItemGroup>
 </Project>

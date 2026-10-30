@@ -24,6 +24,14 @@ const SystemPages = struct {
         };
     }
 
+    fn allocateWriteWatch(bytes: usize, comptime enabled: bool) Error![*]u8 {
+        return switch (builtin.os.tag) {
+            .windows => windows.allocateWriteWatch(bytes, enabled),
+            .linux => linux.allocate(bytes),
+            else => error.UnsupportedPlatform,
+        };
+    }
+
     fn release(base: [*]u8, page_bytes: usize) Error!void {
         switch (builtin.os.tag) {
             .windows => try windows.release(base),
@@ -33,7 +41,7 @@ const SystemPages = struct {
     }
 };
 
-fn RegionFor(comptime Pages: type) type {
+pub fn RegionFor(comptime Pages: type) type {
     return struct {
         const Self = @This();
 
@@ -42,9 +50,13 @@ fn RegionFor(comptime Pages: type) type {
         page_bytes: usize = 0,
 
         pub fn allocate(allocation_bytes: u64) Error!Self {
+            return allocateWriteWatch(allocation_bytes, false);
+        }
+
+        pub fn allocateWriteWatch(allocation_bytes: u64, comptime enabled: bool) Error!Self {
             const page_bytes = try requiredBytes(allocation_bytes);
             return .{
-                .base = if (page_bytes == 0) null else try Pages.allocate(page_bytes),
+                .base = if (page_bytes == 0) null else if (comptime enabled and @hasDecl(Pages, "allocateWriteWatch")) try Pages.allocateWriteWatch(page_bytes, enabled) else try Pages.allocate(page_bytes),
                 .allocation_bytes = @intCast(allocation_bytes),
                 .page_bytes = page_bytes,
             };
@@ -57,6 +69,10 @@ fn RegionFor(comptime Pages: type) type {
         /// Caller owns exclusive access while replacing a region. Previously
         /// returned views must be refreshed after success; failure preserves them.
         pub fn resize(self: *Self, allocation_bytes: u64) Error!void {
+            return self.resizeWriteWatch(allocation_bytes, false);
+        }
+
+        pub fn resizeWriteWatch(self: *Self, allocation_bytes: u64, comptime enabled: bool) Error!void {
             const page_bytes = try requiredBytes(allocation_bytes);
             const new_length: usize = @intCast(allocation_bytes);
             if (page_bytes == self.page_bytes) {
@@ -69,7 +85,7 @@ fn RegionFor(comptime Pages: type) type {
                 return;
             }
 
-            var replacement = try Self.allocate(allocation_bytes);
+            var replacement = try Self.allocateWriteWatch(allocation_bytes, enabled);
             const preserved = @min(self.allocation_bytes, replacement.allocation_bytes);
             @memcpy(replacement.bytes()[0..preserved], self.bytes()[0..preserved]);
             self.release() catch |err| {

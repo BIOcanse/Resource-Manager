@@ -30,7 +30,20 @@ pub fn Configured(comptime config: Configuration) type {
             last_activity_epoch: u64 = 0,
 
             pub fn withAccess(self: @This(), current_epoch: u64) Error!@This() {
+                // Once this round is active, repeated acquisitions do no bitmap work.
+                if (current_epoch != 0 and self.last_activity_epoch == current_epoch and self.bits & 1 != 0)
+                    return self;
                 return .{ .bits = (try self.aligned(current_epoch)) | 1, .last_activity_epoch = current_epoch };
+            }
+            /// A live lease covers every round from the last materialized activity
+            /// through now. Fill the bounded window in constant time, never per epoch.
+            pub fn withContinuousUse(self: @This(), current_epoch: u64) Error!@This() {
+                if (self.last_activity_epoch == 0) return self.withAccess(current_epoch);
+                if (current_epoch == self.last_activity_epoch) return self.withAccess(current_epoch);
+                const aligned_bits = try self.aligned(current_epoch);
+                const elapsed = current_epoch - self.last_activity_epoch;
+                const used: u8 = if (elapsed >= width - 1) width else @intCast(elapsed + 1);
+                return .{ .bits = aligned_bits | mask(used), .last_activity_epoch = current_epoch };
             }
             pub fn score(self: @This(), current_epoch: u64, policy: Self.Policy) Error!u8 {
                 if (!policy.valid()) return error.InvalidArgument;

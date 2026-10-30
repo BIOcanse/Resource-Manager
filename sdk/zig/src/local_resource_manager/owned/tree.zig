@@ -229,6 +229,7 @@ pub fn For(comptime Owner: type) type {
 
             for (work.rows[0..candidate_count]) |*candidate| {
                 const row = &owner.rows[candidate.slot];
+                owner.flushWindowCache(row);
                 if (row.table != range.table) return error.InvalidState;
                 const in_tree = if (row.parent) |parent| containsSorted(closed_shells, parent) else false;
                 if (!in_tree and row.parent != restore_parent) return error.InvalidState;
@@ -248,6 +249,10 @@ pub fn For(comptime Owner: type) type {
                     try validateResourceIndex(owner, range.table, candidate.slot, resource_uid);
                     if (row.fixed_declaration != null) try validateFixedRow(owner, range.table, candidate.slot, row);
                     if (!forced and reg.region != null) {
+                        if (row.resource.discardPending()) {
+                            if (install != null) work.blocked_slot = candidate.slot;
+                            return error.CleanupPending;
+                        }
                         if (row.resource.use_count != 0 or row.resource.loading) {
                             if (install != null) work.blocked_slot = candidate.slot;
                             return error.InUse;
@@ -272,7 +277,7 @@ pub fn For(comptime Owner: type) type {
                     registered_sub = try addBytes(registered_sub, reg.allocation_bytes);
                     page_sub = try addBytes(page_sub, @intCast(reg.allocatedPageBytes()));
                     candidate.decision_bytes = reg.allocation_bytes;
-                    if (reg.region != null) try owner.saveNote(range.table, work, resource_uid, row.resource.generation);
+                    if (reg.region != null and !row.resource.discardPending()) try owner.saveNote(range.table, work, resource_uid, row.resource.generation);
                 } else if (row.resource.registration != null or row.fixed_declaration != null or
                     row.resource.use_count != 0 or row.resource.loading)
                 {
@@ -375,12 +380,15 @@ pub fn For(comptime Owner: type) type {
             for (work.rows[0..candidate_count]) |candidate| {
                 const row = &owner.rows[candidate.slot];
                 if (row.uid == null) continue;
+                owner.collectLeaseWrites(row);
+                const was_discard = row.resource.discardPending();
                 if (forced) {
                     row.resource.forceRelease() catch @panic("ledger OS release invariant failed");
                 } else {
                     const result = row.resource.unload() catch @panic("ledger OS release invariant failed");
                     if (result != .closed) @panic("ledger close preflight invariant failed");
                 }
+                if (was_discard) owner.tables[row.table].pending_discards -= 1;
             }
 
             for (work.rows[0..candidate_count]) |candidate|
@@ -602,12 +610,14 @@ pub fn For(comptime Owner: type) type {
             const row = &owner.rows[slot];
             row.lock.lock();
             defer row.lock.unlock();
+            owner.flushWindowCache(row);
             if (row.table != table or row.uid == null or !row.uid.?.eql(uid)) return error.Nonexistent;
             const registration = row.resource.registration orelse return error.InvalidState;
             if (row.fixed_declaration != null) try validateFixedRow(owner, table, slot, row);
             try validateResourceIndex(owner, table, slot, uid);
             const resident = registration.region != null;
             if (!forced and resident) {
+                if (row.resource.discardPending()) return error.CleanupPending;
                 if (row.resource.use_count != 0 or row.resource.loading) return error.InUse;
                 if (!row.attributes.safe()) return error.Blocked;
                 if (release.check(
@@ -626,7 +636,7 @@ pub fn For(comptime Owner: type) type {
                 owner.tables[table].registered_bytes;
             const note_start = work.note_count;
             errdefer work.note_count = note_start;
-            if (resident) try owner.saveNote(table, work, uid, row.resource.generation);
+            if (resident and !row.resource.discardPending()) try owner.saveNote(table, work, uid, row.resource.generation);
 
             const Transactions = @TypeOf(owner.index).Transactions;
             var index_transaction: ?Transactions.Prepared = null;
@@ -643,12 +653,15 @@ pub fn For(comptime Owner: type) type {
                 );
             }
 
+            owner.collectLeaseWrites(row);
+            const was_discard = row.resource.discardPending();
             if (forced) {
                 row.resource.forceRelease() catch @panic("ledger OS release invariant failed");
             } else {
                 const result = row.resource.unload() catch @panic("ledger OS release invariant failed");
                 if (result != .closed) @panic("ledger close preflight invariant failed");
             }
+            if (was_discard) owner.tables[table].pending_discards -= 1;
             owner.recordAllocationRelease(row);
             if (index_transaction) |*prepared| prepared.commit();
             owner.tables[table].registered_bytes = next_registered;

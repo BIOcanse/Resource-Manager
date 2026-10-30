@@ -8,7 +8,7 @@ The command accepts one canonical JSON declaration and an output directory:
 dotnet run --project sdk/csharp/ResourceManager.Ledger.Build -- shape <owner.json> <consumer-obj-directory> --uid-width=128|256
 ```
 
-The consumer build must pass the UID width selected by that build's FreedomPoint values. `LedgerOwnerShape.zig` checks the supplied width against `ledger_values.uid_width_bits` at Zig compile time. The generator does not resolve FreedomPoint, copy policy values, choose an index candidate, or choose an ABI.
+The consumer build must pass the UID width selected by that build's FreedomPoint values. `LedgerOwnerShape.zig` checks the supplied width against `ledger_values.uid_width_bits` at Zig compile time. The generator does not resolve FreedomPoint, copy table policy values, choose an index candidate, or choose an ABI.
 
 The owner shape emits each table's policy using explicit members such as
 `ledger_values.table_0_activity_score_epochs`. These are references to the
@@ -26,8 +26,32 @@ ResourceManager.Ledger.Build native <owner.json> <ledger_values.zig> <consumer-o
 
 This also generates the two shape files. `LedgerNativeEntry.zig` imports modules named `ledger_sdk` and `ledger_owner_shape` and instantiates the SDK's single Native binding. `LedgerOwnerBuild.g.cs` supplies the corresponding immutable `LedgerBuildIdentity`. The structure fingerprint is SHA-256 of the exact owner JSON bytes; the policy fingerprint is SHA-256 of the exact selected `ledger_values.zig` bytes. `ledger-native-build.json` records those inputs, fingerprints and output hashes for the consumer build to verify before compilation. Both languages receive identical fingerprints; the Native descriptor validates their pairing at load time. Generated input paths are build provenance, not runtime configuration.
 
-Before compiling, run `ResourceManager.Ledger.Build verify <ledger-native-build.json>`. It requires both original inputs and all four generated source files to retain their recorded hashes. Module wiring must use the manifest's selected values file. Changing the owner declaration, values, or generated source requires generation again.
+Before compiling, run `ResourceManager.Ledger.Build verify <ledger-native-build.json>`. It requires both original inputs and all five generated outputs (including `LedgerOwnerBuild.props`) to retain their recorded hashes. It also recomputes the props and managed companion from the selected input, so changing an output's recorded hash cannot approve a mismatched switch. Module wiring must use the manifest's selected values file. Changing the owner declaration, values, or generated output requires generation again. Older manifests without the props output require regeneration.
 
+The selected `ledger_values.zig` must be the unsigned scalar `Bound` initializer
+emitted by the FreedomPoint configuration tool. The Native command reads the
+two lease analysis selections from those exact hashed bytes. Missing, repeated,
+out-of-range or noncanonical values are rejected; no separate input or default
+is used. Native config uses `ledger_values.development_lease_analysis != 0` and
+`@intCast(ledger_values.development_lease_analysis_capacity)` directly. Run the
+configuration tool's `check` with the same choices first to validate the complete
+point catalog, including the flag's 0/1 and capacity's 1..65536 contracts.
+
+`LedgerOwnerBuild.g.cs` and LedgerOwnerBuild.props retain selected-build metadata
+and are covered by verify. The props define LEDGER_DEVELOPMENT_LEASE_ANALYSIS
+only for the enabled selection. Both files use deterministic UTF-8/LF bytes on
+every host, because verify regenerates them and compares bytes. This is
+build metadata, not an instruction to add caller access markers. Current analysis
+is automatic in the selected Native build; consumers do not write RecordRead,
+RecordWrite or coverage declarations, and need no per-access conditional symbol.
+Include the managed identity used to pair the Native descriptor as usual.
+
+The owner shape also projects use_window_cache, use_window_cache_slots and
+development_lease_analysis_write_watch_pages directly from selected values.
+The enabled window-cache candidate requires x86_64+cx16; compile it with
+-mcpu=baseline+cx16 on Zig 0.16. Unsupported enabled targets fail compilation
+instead of silently using a process-global atomic lock fallback. The default
+disabled path keeps prior target support. No C#/use syntax changes are needed.
 The Native command only generates source. It does not build a library, resolve configuration or publish a package. The delivered C2/ABI v1 passed compiled layout and installed-package consumer acceptance at UID128 and UID256 on Windows x64. Build-time module wiring must supply the same values file named in the manifest.
 
 ## Canonical JSON schema, version 1
@@ -79,4 +103,4 @@ The output directory receives:
 
 Both outputs embed the same lowercase SHA-256 hash of the exact canonical JSON file bytes. They are generated into the consumer's `obj` directory and are not checked-in FreedomPoint structure products. The checked-in FreedomPoint declarations remain configuration-independent; selected values remain per-build inputs.
 
-The `native` command additionally writes the Native entry, managed identity and build manifest described above. It does not introduce per-resource exports, a fixed-declaration switch, a UID map or an ABI10 compatibility route.
+The `native` command additionally writes the Native entry, managed identity, selected-values build props and build manifest described above. It does not introduce per-resource exports, a fixed-declaration switch, a UID map or an ABI10 compatibility route.

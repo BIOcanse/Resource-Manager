@@ -33,6 +33,9 @@ pub const Status = enum(i32) {
     changed_beyond_tolerance = 15,
     unsupported_platform = 16,
     invalid_state = 17,
+    ended_cleanup_failed = 20,
+    abandoned = 21,
+    cleanup_pending = 22,
     internal_error = 255,
 };
 
@@ -242,7 +245,8 @@ const Storage = struct {
             for (table_cells) |*cell| cell.* = .{};
         }
         var subscribers = [_][]Notifier.Record{ &self.records[0], &self.records[1] };
-        self.ledger = try Ledger.init(
+        try Ledger.init(
+            &self.ledger,
             &self.rows,
             &self.shells,
             &self.tables,
@@ -283,6 +287,7 @@ fn errorStatus(err: anyerror) Status {
         err == error.SizeOverflow or err == error.AllocationTooSmall)
         return .input_error;
     if (err == error.AllocationFailed) return .allocation_failed;
+    if (err == error.CleanupPending) return .cleanup_pending;
     if (err == error.InUse) return .in_use;
     if (err == error.Blocked) return .blocked;
     if (err == error.Nonexistent or err == error.NonexistentHandle) return .nonexistent;
@@ -651,6 +656,7 @@ pub fn endUse(
     const end_disposition: lifecycle.EndDisposition = switch (disposition) {
         0 => .complete,
         1 => .discard,
+        2 => .abandon,
         else => return code(.input_error),
     };
     const result = storage.ledger.endUse(.{
@@ -661,6 +667,8 @@ pub fn endUse(
     return switch (result) {
         .completed => code(.completed),
         .force_released => code(.force_released),
+        .cleanup_failed => code(.ended_cleanup_failed),
+        .abandoned => code(.abandoned),
     };
 }
 

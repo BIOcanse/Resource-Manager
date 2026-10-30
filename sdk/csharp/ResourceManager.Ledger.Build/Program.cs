@@ -224,6 +224,11 @@ internal static partial class Program
         output.AppendLine("    .uid_width = uid_width_bits,");
         output.AppendLine("    .activity_width = @intCast(ledger_values.activity_bitmap_width),");
         output.AppendLine("    .development_allocation_statistics = ledger_values.development_allocation_statistics != 0,");
+        output.AppendLine("    .development_lease_analysis = ledger_values.development_lease_analysis != 0,");
+        output.AppendLine("    .development_lease_analysis_capacity = @intCast(ledger_values.development_lease_analysis_capacity),");
+        output.AppendLine("    .development_lease_analysis_write_watch_pages = @intCast(ledger_values.development_lease_analysis_write_watch_pages),");
+        output.AppendLine("    .use_window_cache = ledger_values.use_window_cache != 0,");
+        output.AppendLine("    .use_window_cache_slots = @intCast(ledger_values.use_window_cache_slots),");
         output.AppendLine($"    .index_buckets = {shape.IndexBucketCount},");
         output.AppendLine("};");
         output.AppendLine("comptime {");

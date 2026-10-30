@@ -88,6 +88,7 @@ pub fn For(comptime Owner: type) type {
 
             while (table_locks < table_count) : (table_locks += 1) owner.tables[table_locks].write.lock();
             while (row_locks < resource_count) : (row_locks += 1) owner.rows[row_locks].lock.lock();
+            for (owner.rows) |*row| owner.flushWindowCache(row);
             while (home_locks < owner.index.homes.len) : (home_locks += 1) {
                 owner.index.lockHome(@intCast(home_locks)) catch return error.InvalidState;
             }
@@ -111,7 +112,13 @@ pub fn For(comptime Owner: type) type {
             try auditFixedBindings(owner, workspace, &stats);
             try auditAllocationNumbers(owner, workspace, &stats, node_count);
 
-            for (workspace.table_views[0..table_count], owner.tables[0..table_count]) |actual, table| {
+            for (workspace.table_views[0..table_count], owner.tables[0..table_count], 0..) |actual, table, table_id| {
+                var pending: u32 = 0;
+                const start = Owner.resourceStart(table_id);
+                for (owner.rows[start..][0..Owner.table_declarations[table_id].capacity]) |row| {
+                    if (row.resource.discardPending()) pending += 1;
+                }
+                if (pending != table.pending_discards) return error.InvalidState;
                 if (actual.registered_bytes != table.registered_bytes or
                     actual.system_page_bytes != table.system_page_bytes)
                 {
@@ -338,7 +345,7 @@ pub fn For(comptime Owner: type) type {
                         {
                             return error.InvalidState;
                         }
-                        if (row.resource.loading and (row.resource.use_count != 1 or
+                        if (row.resource.loading and !row.resource.discardPending() and (row.resource.use_count != 1 or
                             row.resource.next_use_generation <= 1 or
                             row.resource.active_use_xor != row.resource.next_use_generation - 1))
                         {
@@ -350,7 +357,7 @@ pub fn For(comptime Owner: type) type {
                         {
                             return error.InvalidState;
                         }
-                        if ((row.resource.use_count == 0 and (row.resource.active_use_xor != 0 or row.resource.loading)) or
+                        if ((row.resource.use_count == 0 and row.resource.active_use_xor != 0) or
                             (row.resource.use_count != 0 and registration.region == null))
                         {
                             return error.InvalidState;

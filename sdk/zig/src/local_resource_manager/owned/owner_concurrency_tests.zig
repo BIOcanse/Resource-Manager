@@ -164,7 +164,8 @@ fn Fixture(comptime bits: u16, comptime flavor: CandidateFlavor) type {
 
         pub fn initialize(self: *@This()) !void {
             var subscriptions = [_][]Notifier.Record{ &self.records[0], &self.records[1] };
-            self.ledger = try Ledger.init(
+            try Ledger.init(
+                &self.ledger,
                 &self.rows,
                 &self.shells,
                 &self.tables,

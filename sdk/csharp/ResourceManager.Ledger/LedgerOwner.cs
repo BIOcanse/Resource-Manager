@@ -5,7 +5,7 @@ using ResourceManager.Ledger.Interop;
 namespace ResourceManager.Ledger;
 
 /// <summary>One explicitly paired Native ledger instance.</summary>
-public sealed unsafe class LedgerOwner<TUid> : IDisposable
+public sealed unsafe partial class LedgerOwner<TUid> : IDisposable
     where TUid : unmanaged, ILedgerUid<TUid>
 {
     private readonly object _lifecycleGate = new();
