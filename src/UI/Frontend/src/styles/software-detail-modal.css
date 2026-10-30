@@ -447,6 +447,41 @@
   margin-top: 0;
 }
 
+/* 基础分来源链：说明下面一行生效值，再一列五层；字号和颜色同说明，生效的一层用正文色。 */
+.software-base-score-source {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.software-base-score-layers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.software-base-score-layer {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.software-base-score-layer.deciding {
+  color: var(--text);
+}
+
+.software-base-score-deciding {
+  font-weight: 600;
+}
+
 /* 保护：在“调度参与”组第一行，文字在左、设置页同款开关在右，整行可点；说明在开关下方。 */
 .software-protection-section {
   min-width: 0;

@@ -288,6 +288,16 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
       await details.getByRole("checkbox", { name: label, exact: true }).waitFor();
       await details.getByText(hint, { exact: true }).waitFor();
     }
+    // 基础分：生效一行、五层来源链和输入框占位，按当前语言显示（模拟后端：类型 other 默认 35，其余层没有值）。
+    const scoreCopy = app.softwareDetail.baseScoreSource;
+    await details.getByText(scoreCopy.effective("35", scoreCopy.sources.type_default, "other"), { exact: true }).waitFor();
+    const scoreLayers = details.getByRole("list", { name: scoreCopy.chainLabel, exact: true });
+    await scoreLayers.getByText(scoreCopy.layerWithKey(scoreCopy.sources.type_default, "35", "other"), { exact: true }).waitFor();
+    for (const source of ["catalog_group", "catalog_process", "user_software", "user_process"]) {
+      await scoreLayers.getByText(scoreCopy.layer(scoreCopy.sources[source], scoreCopy.noValue), { exact: true }).waitFor();
+    }
+    await scoreLayers.getByText(scoreCopy.deciding, { exact: true }).waitFor();
+    await details.getByPlaceholder(scoreCopy.placeholder("35"), { exact: true }).waitFor();
     const protection = protectionGroup.getByRole("checkbox", { name: app.softwareDetail.protection.enabled, exact: true });
     await page.waitForFunction(() => !document.querySelector('.policy-toggle:not([data-exit-ghost] *) input')?.disabled);
     await protection.check();

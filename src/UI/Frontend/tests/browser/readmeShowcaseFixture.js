@@ -7,6 +7,8 @@
  * 形状照后端合同（与 mockFrontendServer.mjs 里同名接口的夹具相同），模拟后端在场景打开时改用这里的值。
  */
 
+import { mockBaseScoreResolution } from "./baseScoreFixture.mjs";
+
 const GiB = 1024 ** 3;
 const MiB = 1024 ** 2;
 
@@ -325,7 +327,8 @@ export function showcaseRestResponse(path, method) {
 
 // 单个软件的调度策略（后端 GpuPlacementSoftwareView）：全部是默认值，没有进程历史。
 function showcasePlacementPolicy(softwareId) {
-  const softwareName = inventory.find((row) => row[0] === softwareId)?.[1] ?? softwareId;
+  const row = inventory.find((item) => item[0] === softwareId);
+  const softwareName = row?.[1] ?? softwareId;
   return {
     softwareId, softwareName,
     softwarePolicy: {
@@ -337,7 +340,9 @@ function showcasePlacementPolicy(softwareId) {
     processPolicies: [],
     processHistory: { softwareId, softwareName, processes: [] },
     targetInventory: { state: "current", exactTargets: [] },
-    processCapabilities: []
+    processCapabilities: [],
+    baseScore: mockBaseScoreResolution(softwareId, row?.[2] ?? null, null),
+    processBaseScores: {}
   };
 }
 

@@ -48,6 +48,7 @@ import { metricOfferedInPicker } from "./presentation/metricPresentation.ts";
 import { cpuTopologyDecoder, cpuResidencyDecoder, cpuExclusiveBindingsDecoder } from "./data/cpu/cpuSourceDecoders.ts";
 import { decodeRuntimePolicySaveResult } from "./api/runtimePolicySaveResultDecoder.ts";
 import { decodeSoftwarePolicy } from "./data/softwarePolicy/softwarePolicyDecoder.ts";
+import { decodeBaseScoreResolution, decodeProcessBaseScores } from "./data/softwarePolicy/baseScoreResolutionDecoder.ts";
 import { uiText } from "./text.ts";
 import { exactProcessActionResult } from "./processes/processActionResult.ts";
 
@@ -347,7 +348,12 @@ export async function getGpuPlacementSoftwareSettings(softwareId: string, softwa
   }
   const snapshot = await getJson<GpuPlacementSoftwareSettingsSnapshot>(
     `/api/gpu-placement/software/${encodeURIComponent(softwareId)}?${params.toString()}`, { signal });
-  return { ...snapshot, softwarePolicy: decodeSoftwarePolicy(snapshot.softwarePolicy, "$.softwarePolicy") };
+  return {
+    ...snapshot,
+    softwarePolicy: decodeSoftwarePolicy(snapshot.softwarePolicy, "$.softwarePolicy"),
+    baseScore: decodeBaseScoreResolution(snapshot.baseScore, "$.baseScore"),
+    processBaseScores: decodeProcessBaseScores(snapshot.processBaseScores, "$.processBaseScores")
+  };
 }
 
 export async function getDefaultGpuPlacementSoftwarePolicy(softwareId: string, softwareName: string, softwareKind?: string) {

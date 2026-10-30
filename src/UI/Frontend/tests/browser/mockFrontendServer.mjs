@@ -4,6 +4,7 @@ import { reportRules } from "../fixtures/reportRuleSettings.ts";
 import { kernelLeakReportFrames } from "../fixtures/kernelLeakReports.js";
 import * as showcase from "./readmeShowcaseFixture.js";
 import { createMemoryProtectionFixture, defaultMemoryProtectionSettings, memoryProtectionScenarios, defaultSoftwarePolicy, invalidMemoryProtectionPatch } from "./memoryProtectionFixture.mjs";
+import { mockBaseScoreResolution } from "./baseScoreFixture.mjs";
 import { loadSliceReplay } from "../realData/replaySlice.mjs";
 import { generatedMetricDefinitions, generatedMetricItems, generatedGpuScores, generatedFieldDevices } from "../realData/generatedMockData.mjs";
 import { generateScenario } from "../realData/generateScenario.mjs";
@@ -1148,15 +1149,19 @@ async function handleApi(request, response, url) {
   if (softwareSettingsRead && request.method === "GET") {
     const softwareId = decodeURIComponent(softwareSettingsRead[1]);
     const softwareName = url.searchParams.get("softwareName") ?? mockSoftware.name;
+    const softwarePolicy = softwarePolicies.get(softwareId.toLowerCase()) ?? defaultSoftwarePolicy(softwareId, softwareName);
     return json(response, 200, {
       softwareId,
       softwareName,
-      softwarePolicy: softwarePolicies.get(softwareId.toLowerCase()) ?? defaultSoftwarePolicy(softwareId, softwareName),
+      softwarePolicy,
       processPolicies: [],
       processHistory: { softwareId, softwareName, processes: [], updatedAt: "2026-10-27T05:00:00Z" },
       startupInterceptions: [],
       targetInventory: { state: "current", exactTargets: [] },
-      processCapabilities: []
+      processCapabilities: [],
+      // 后端 CompiledBaseScorePlan.Resolve：五层固定顺序，模拟后端没有软件目录，进程键是历史进程和进程策略的并集（这里都为空）。
+      baseScore: mockBaseScoreResolution(softwareId, url.searchParams.get("softwareKind"), softwarePolicy.baseScoreOverride ?? null),
+      processBaseScores: {}
     });
   }
   if (path === "/api/operations") {

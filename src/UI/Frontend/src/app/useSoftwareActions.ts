@@ -546,6 +546,25 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       });
   }
 
+  // 保存以后重读软件详情，只换基础分和来源链：显示的是后端当前运行计划里生效的值，不是草稿。
+  // 发布失败时重读到的仍是生效中的旧值；软件这一级等运行计划发布后再读一次。重读失败显示读取失败的提示。
+  async function rereadBaseScores(softwareId: string) {
+    const model = softwareDetail();
+    if (!options.gpuPlacementEnabled() || model?.type !== "software" || model.id !== softwareId) {
+      return;
+    }
+    try {
+      const snapshot = await getGpuPlacementSoftwareSettings(model.id, model.name, model.kind);
+      setGpuPlacementSettings((current) => current && current.softwareId === snapshot.softwareId
+        ? { ...current, baseScore: snapshot.baseScore, processBaseScores: snapshot.processBaseScores }
+        : current);
+    } catch {
+      if (softwareDetail()?.id === softwareId) {
+        setSoftwareDetailNotice({ message: uiText.softwareActions.policyReadFailed, tone: "error", details: [] });
+      }
+    }
+  }
+
   async function saveGpuPlacementSoftwarePolicyFromDetail(policy: GpuPlacementSoftwarePolicy) {
     if (!options.gpuPlacementEnabled()) {
       return;
@@ -561,8 +580,12 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       setSoftwareDetailNotice({
         message: pending ? uiText.softwareActions.processPolicySavedRuntimePending : uiText.softwareActions.softwarePolicySaved,
         tone: pending ? "warning" : "success",
-        onRuntimePublished: pending ? () => setSoftwareDetailNotice({ message: uiText.softwareActions.softwarePolicySaved, tone: "success" }) : undefined
+        onRuntimePublished: pending ? () => {
+          setSoftwareDetailNotice({ message: uiText.softwareActions.softwarePolicySaved, tone: "success" });
+          void rereadBaseScores(saved.softwareId);
+        } : undefined
       });
+      await rereadBaseScores(saved.softwareId);
     } catch (error) {
       setSoftwareDetailNotice({
         message: uiText.softwareActions.softwarePolicySaveFailed,
@@ -612,6 +635,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         tone: runtimePending || interceptionPending ? "warning" : "success",
         details: undefined
       });
+      await rereadBaseScores(saved.policy.softwareId);
     } catch (error) {
       setSoftwareDetailNotice({
         message: uiText.softwareActions.processPolicySaveFailed,

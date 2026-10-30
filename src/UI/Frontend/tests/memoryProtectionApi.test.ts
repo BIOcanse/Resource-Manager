@@ -58,10 +58,21 @@ try {
   await assert.rejects(createNormalRunningPoint(client), (error: unknown) => error instanceof RequestProblem && error.status === 503);
   status = 200; payload = {};
   await assert.rejects(createNormalRunningPoint(client), (error: unknown) => error instanceof RequestProblem && error.kind === "invalid-response");
-  payload = { softwarePolicy };
+  const baseScore = { value: 35, source: "type_default", layers: [
+    { source: "type_default", value: 35, key: "other" }, { source: "catalog_group", value: null, key: null },
+    { source: "catalog_process", value: null, key: null }, { source: "user_software", value: null, key: null },
+    { source: "user_process", value: null, key: null }] };
+  payload = { softwarePolicy, baseScore, processBaseScores: {} };
   const loaded = await getGpuPlacementSoftwareSettings("example-software", "Example");
   assert.equal(loaded.softwarePolicy.hostMemoryProtectionNoDump, true);
   assert.equal(loaded.softwarePolicy.hostMemoryProtectionNeverTerminate, true);
+  assert.deepEqual(loaded.baseScore, baseScore, "the read carries the decoded base score chain");
+  payload = { softwarePolicy, processBaseScores: {} };
+  await assert.rejects(getGpuPlacementSoftwareSettings("example-software", "Example"), ResponseDecodeError,
+    "a read without the base score fails visibly");
+  payload = { softwarePolicy, baseScore: { ...baseScore, value: 90 }, processBaseScores: {} };
+  await assert.rejects(getGpuPlacementSoftwareSettings("example-software", "Example"), ResponseDecodeError,
+    "a chain whose value is not its deciding layer's fails visibly");
   payload = { ...softwarePolicy, hostMemoryProtectionNoDump: false };
   assert.equal((await getDefaultGpuPlacementSoftwarePolicy("example-software", "Example")).hostMemoryProtectionNoDump, false);
   const edited = { ...loaded.softwarePolicy, cpuSchedulingExcluded: true };

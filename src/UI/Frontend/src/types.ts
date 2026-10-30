@@ -1122,6 +1122,27 @@ export interface GpuPlacementSoftwareSettingsSnapshot {
   startupInterceptions?: GpuLaunchInterceptionStatus[] | null;
   targetInventory?: GpuPlacementTargetInventory | null;
   processCapabilities?: GpuPlacementProcessCapabilities[] | null;
+  /** 软件这一级的基础分：当前运行计划里生效的值和五层来源链。 */
+  baseScore: BaseScoreResolution;
+  /** 按 processKey：历史进程和已存进程策略的并集，每个进程的基础分和来源链。 */
+  processBaseScores: Record<string, BaseScoreResolution>;
+}
+
+/** 基础分来源链的五层，固定顺序：后面有值的层覆盖前面的（docs/scheduling_protection_2026-10-29.md §3.3）。 */
+export type BaseScoreLayerSource = "type_default" | "catalog_group" | "catalog_process" | "user_software" | "user_process";
+
+/** 来源链的一层：没有值时 value 和 key 都是 null；key 依次是类型、目录 groupId、目录 processEntryKey、softwareId、processKey。 */
+export interface BaseScoreLayer {
+  source: BaseScoreLayerSource;
+  value: number | null;
+  key: string | null;
+}
+
+/** 生效的基础分：value 和 source 是最后一个有值的层。 */
+export interface BaseScoreResolution {
+  value: number;
+  source: BaseScoreLayerSource;
+  layers: BaseScoreLayer[];
 }
 
 /** 后端为该软件登记的叠加层注入模块：都没有、只有一部分、全部。只读，来自后端的启动模块选择。 */

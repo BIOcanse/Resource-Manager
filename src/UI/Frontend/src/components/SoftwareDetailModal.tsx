@@ -22,6 +22,7 @@ import {
 } from "../ui/primitives/Tabs.tsx";
 import { StandardSelect } from "./StandardSelect";
 import { SoftwareProtectionControl } from "./SoftwareProtectionControl";
+import { baseScorePlaceholder, processBaseScore, ProcessBaseScoreLine, SoftwareBaseScoreSource } from "./SoftwareBaseScoreSource.tsx";
 import { cpuMaximumOccupancyOptions, runtimeSwitchMethodOptions } from "./softwarePlacementOptions";
 import type {
   CpuCcdModel,
@@ -520,13 +521,17 @@ function GpuPlacementPolicySection(props: {
                   <PolicyNumberInput
                     label={uiText.softwareDetail.label.softwareBaseScore}
                     value={current().baseScoreOverride}
-                    placeholder={uiText.softwareDetail.label.softwareBaseScorePlaceholder}
+                    placeholder={baseScorePlaceholder(props.settings?.baseScore ?? null, "user_software",
+                      uiText.softwareDetail.label.softwareBaseScorePlaceholder)}
                     onChange={(baseScoreOverride) => updateDraft({ baseScoreOverride })}
                   />
                 </div>
                 <p class="software-detail-hint">
                   {uiText.softwareDetail.baseScoreHint}
                 </p>
+                <Show when={props.settings?.baseScore}>
+                  {(resolution) => <SoftwareBaseScoreSource resolution={resolution()} />}
+                </Show>
               </div>
               <div class="software-policy-group">
                 <Show when={current().cpuSchedulingExcluded}>
@@ -1016,6 +1021,7 @@ function GpuPlacementProcessSection(props: {
               {(_pair) => {
                 const process = () => selectedProcess()!;
                 const policy = () => selectedPolicy()!;
+                const processResolution = () => processBaseScore(props.settings?.processBaseScores, process().processKey);
                 return (
                   <div class="process-policy-editor">
                     <h4>{process().processName}</h4>
@@ -1046,7 +1052,8 @@ function GpuPlacementProcessSection(props: {
                       <PolicyNumberInput
                         label={uiText.softwareDetail.label.processBaseScore}
                         value={policy().baseScoreOverride}
-                        placeholder={uiText.softwareDetail.label.processBaseScorePlaceholder}
+                        placeholder={baseScorePlaceholder(processResolution(), "user_process",
+                          uiText.softwareDetail.label.processBaseScorePlaceholder)}
                         disabled={policy().inherit}
                         onChange={(baseScoreOverride) => props.onUpdateProcess(process(), { baseScoreOverride })}
                       />
@@ -1066,6 +1073,7 @@ function GpuPlacementProcessSection(props: {
                         />
                       </label>
                     </div>
+                    <ProcessBaseScoreLine resolution={processResolution()} />
                     <Show when={gpuSchedulingExcluded()}>
                       <p class="software-detail-hint">{uiText.softwareDetail.participation.gpuExcludedHint}</p>
                     </Show>
