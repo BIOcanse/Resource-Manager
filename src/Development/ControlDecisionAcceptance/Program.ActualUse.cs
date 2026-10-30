@@ -452,73 +452,6 @@ internal static partial class Program
                 }, deadline.Token);
 
 
-                var interruptIntervals = ReadSamplingHolders(interrupts)
-                    .Where(value => value.InUse && value.Interval is { } interval && interval > TimeSpan.Zero)
-                    .Select(value => value.Interval!.Value).ToArray();
-                if (interruptIntervals.Length == 0) throw new InvalidDataException("Interrupt report has no timed publication holder.");
-                var interruptCadence = interruptIntervals.Min();
-                var interruptGrace = TimeSpan.FromMilliseconds(app.Services.GetRequiredService<RuntimePlanProvider>().Current.HostManager.RequirePublished()
-                    .SamplingSubscription.HotPublish.Roles.Single(value => value.RoleId == 5).FreshnessGraceMilliseconds);
-                var interruptObservation = TimeSpan.FromSeconds(4);
-                // Resume resets coverage. The first native due can be just before the
-                // complete bucket; the following due publishes it, at most one cadence later.
-                var interruptResumeBudget = SystemInterruptWindowAggregator.BucketDuration + interruptCadence + interruptGrace;
-                var interruptPhaseBudget = interruptObservation + interruptResumeBudget + interruptObservation + TimeSpan.FromMilliseconds(500);
-                await RunCaseAsync(cases, evidence, "d-interrupt-freeze-and-resume", interruptPhaseBudget, async token =>
-                {
-                    var transitions = new List<object>();
-                    var conditions = new List<object>();
-                    var phaseClock = Stopwatch.StartNew();
-                    var stage = "freeze";
-                    void Mark(string value)
-                    {
-                        stage = value;
-                        var snapshot = interrupts.Read();
-                        transitions.Add(new { stage, at = DateTimeOffset.UtcNow, elapsed = phaseClock.Elapsed,
-                            snapshot.Available, snapshot.CapturedAt, snapshot.Window, providerState = snapshot.ProviderState.State });
-                    }
-                    var modules = ReadInterruptModules(interrupts);
-                    var generation = broker.GetSnapshot().Generation;
-                    try
-                    {
-                        interrupts.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-                        Mark("frozen-observation");
-                        await Observe("d-interrupt-frozen", interruptObservation, false, token, requireMetadata: true);
-                        var frozenNative = QueryOwnedKernel(names[0]);
-                        var frozenModules = ReadInterruptModules(interrupts);
-                        if ((frozenNative.Flags & (uint)KernelTraceEventParser.Keywords.ImageLoad) == 0
-                            || !ReferenceEquals(modules.Map, frozenModules.Map) || frozenModules.Count == 0
-                            || !interrupts.Read().ProviderState.State.Equals("frozen", StringComparison.OrdinalIgnoreCase))
-                            throw new InvalidDataException("Freeze lost module metadata or ImageLoad ownership.");
-                        interrupts.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-                        Mark("waiting-for-complete-resumed-publication");
-                        var resumed = Stopwatch.StartNew();
-                        await WaitAsync(() =>
-                        {
-                            var snapshot = interrupts.Read();
-                            conditions.Add(new { at = DateTimeOffset.UtcNow, elapsed = resumed.Elapsed, snapshot.Available,
-                                snapshot.CapturedAt, snapshot.Window, snapshot.EventCount, buckets = snapshot.Buckets.Count,
-                                providerState = snapshot.ProviderState.State, broker = broker.GetSnapshot() });
-                            if (snapshot.Available) return true;
-                            if (resumed.Elapsed > interruptResumeBudget)
-                                throw new InvalidDataException($"Interrupts did not publish complete resumed coverage within bucket + actual cadence + grace ({interruptResumeBudget}).");
-                            return false;
-                        }, token);
-                        Mark("resumed-observation");
-                        await Observe("d-interrupt-resumed", interruptObservation, true, token, requireMetadata: true);
-                        if (broker.GetSnapshot().Generation != generation || !ReferenceEquals(modules.Map, ReadInterruptModules(interrupts).Map))
-                            throw new InvalidDataException("Freeze/resume replaced the held metadata session.");
-                        Mark("complete");
-                    }
-                    finally
-                    {
-                        interrupts.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-                        await SaveAsync(evidence, "d-timing.json", new { at = DateTimeOffset.UtcNow, stage,
-                            elapsed = phaseClock.Elapsed, interruptCadence, bucket = SystemInterruptWindowAggregator.BucketDuration,
-                            interruptGrace, interruptResumeBudget, interruptObservation, interruptPhaseBudget, transitions, conditions,
-                            final = interrupts.Read() });
-                    }
-                }, deadline.Token);
                 await RunCaseAsync(cases, evidence, "gpu-allocation-filter", ActualUseGpuFilterBudget(app.Services),
                     token => RunActualUseGpuFilterPhaseAsync(app.Services, broker, evidence, token), deadline.Token);
                 await RunCaseAsync(cases, evidence, "e-subscriptions-removed", TimeSpan.FromSeconds(75), async token =>
@@ -530,7 +463,7 @@ internal static partial class Program
                     await Observe("e-subscriptions-removed", TimeSpan.FromSeconds(30), false, token, noUsers: true);
                 }, deadline.Token);
             }
-            else foreach (var phase in new[] { "a-no-subscriptions", "b-30-second-residency-two-windows", "c-tray-smart-with-interrupt-report", "d-interrupt-freeze-and-resume", "gpu-allocation-filter", "e-subscriptions-removed" })
+            else foreach (var phase in new[] { "a-no-subscriptions", "b-30-second-residency-two-windows", "c-tray-smart-with-interrupt-report", "gpu-allocation-filter", "e-subscriptions-removed" })
                 await RecordNotRunAsync(cases, evidence, phase, "startup failed");
         }
         finally
@@ -601,30 +534,28 @@ internal static partial class Program
     private sealed record ActualUseSample(string Phase, DateTimeOffset At, bool WindowActive,
         NativeKernelQuery Native, KernelEtwSessionSnapshot Managed, bool StableWindow, ActualUseHolders Holders);
 
-    private sealed record NativeExpectedUse(string Name, bool InUse, bool Permitted, bool Available, bool Unfrozen, bool Expected,
+    private sealed record NativeExpectedUse(string Name, bool InUse, bool Permitted, bool Available, bool Expected,
         ActualUseGpuCapture? GpuCapture = null);
     private sealed record ActualUseNativeSample(string Phase, DateTimeOffset At, NativeExpectedUse[] Before,
         NativeKernelQuery[] Actual, NativeExpectedUse[] After, ActualUseHolders Holders);
     private static NativeExpectedUse[] ReadNativeExpectedUse(IServiceProvider services)
     {
         var authority = services.GetRequiredService<BusinessBlockScheduler>().Authority;
-        NativeExpectedUse Read(string name, int block, int inUseUid, int availableUid, int? unfrozenUid)
+        NativeExpectedUse Read(string name, int block, int inUseUid, int availableUid)
         {
             var use = authority.Read<bool>(inUseUid);
             var permit = authority.Read<bool>(new StateItemKey(StateItemUids.HostStartPermitted, block));
             var available = authority.Read<bool>(availableUid);
-            var mode = unfrozenUid is { } uid ? authority.Read<bool>(uid) : StateRead<bool>.FromValue(true);
-            var unfrozen = mode.HasValue ? mode.Value : mode.NoValueReason == NoValueReason.NotPublished;
             if (!use.HasValue || !permit.HasValue || !available.HasValue)
                 throw new InvalidDataException($"Native ETW input facts missing for {name}.");
-            return new(name, use.Value, permit.Value, available.Value, unfrozen,
-                use.Value && permit.Value && available.Value && unfrozen);
+            return new(name, use.Value, permit.Value, available.Value,
+                use.Value && permit.Value && available.Value);
         }
-        var gpu = Read("GpuAllocation", BlockUids.GpuAllocationCollector, StateItemUids.ProcessDedicatedGpuMemoryInUse, StateItemUids.GpuAllocationNativeSessionAvailable, null);
+        var gpu = Read("GpuAllocation", BlockUids.GpuAllocationCollector, StateItemUids.ProcessDedicatedGpuMemoryInUse, StateItemUids.GpuAllocationNativeSessionAvailable);
         var capture = ReadGpuCaptureUse(services.GetRequiredService<GpuAllocationCollector>());
         gpu = gpu with { Expected = gpu.Expected && capture.NeedsNativeSession, GpuCapture = capture };
-        return [Read("Present", BlockUids.PresentFrameEtwSource, StateItemUids.GraphicsApiObservationInUse, StateItemUids.PresentNativeSessionAvailable, StateItemUids.PresentUnfrozen), gpu,
-            Read("VidMm", BlockUids.DxgkrnlVidMmEtwTelemetryZone, StateItemUids.VramResidualInUse, StateItemUids.VidMmNativeSessionAvailable, StateItemUids.VidMmUnfrozen)];
+        return [Read("Present", BlockUids.PresentFrameEtwSource, StateItemUids.GraphicsApiObservationInUse, StateItemUids.PresentNativeSessionAvailable), gpu,
+            Read("VidMm", BlockUids.DxgkrnlVidMmEtwTelemetryZone, StateItemUids.VramResidualInUse, StateItemUids.VidMmNativeSessionAvailable)];
     }
 
     private sealed record KernelRegistrationEvidence(string Id, KernelTraceEventParser.Keywords Keywords);

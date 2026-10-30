@@ -113,8 +113,7 @@ internal static class NativeSnapshotConsumer
         var metrics = new NativeMetricSnapshotMetricPlanOutput[session.Capacity.MetricPlanCapacity];
         Ok(session.Plan(in input,
             [new() { StructSize = Size<NativeMetricSnapshotPlanMetricInput>(), MetricHandle = 1 }],
-            [new() { StructSize = Size<NativeMetricSnapshotSourceModeInput>(), SourceHandle = 1, CapabilityGeneration = 1,
-                ZoneMode = (uint)NativeMetricSnapshotZoneMode.Normal, Availability = (uint)NativeMetricSnapshotSourceAvailability.Available }],
+            [new() { StructSize = Size<NativeMetricSnapshotSourceStateInput>(), SourceHandle = 1, CapabilityGeneration = 1, Availability = (uint)NativeMetricSnapshotSourceAvailability.Available }],
             out var result, sources, metrics));
         Require(result.SourcePlanCount == 1 && result.MetricPlanCount == 1 && sources[0].RequestedRuleCount == 1,
             "real native plan selects the exact explicit source/rule");

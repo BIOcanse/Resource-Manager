@@ -144,7 +144,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 hostStopRequestedAtQpcTicks,
                 hostStopReturnedAtQpcTicks);
 
-            fixture.AssertNoMemoryCleanupAttemptEntries();
             var effectCounters = fixture.CaptureHostedScoreOnlyEffectCounters();
             effectCounters.AssertAllZero();
             var rollbackIncarnationAfter =

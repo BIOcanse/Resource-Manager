@@ -25,7 +25,6 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
     private readonly WindowsMetricControlFields controlFields;
     private readonly WindowsHardwareMetricTopologySource topologySource;
     private readonly LastSuccessfulHardwareMetricSnapshot current = new();
-    private readonly Func<string, NativeMetricSnapshotZoneMode> modeProvider;
     private readonly WindowsMetricResourceOptions resourceOptions;
     private NativeMetricSnapshotWorkspace? workspace;
     private NativeMetricSnapshotCatalogTopologySnapshot? topology;
@@ -38,44 +37,37 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
 
     public WindowsHardwareMetricOwner(WindowsMetricConfiguration configuration,
         WindowsMetricResourceOptions? resourceOptions = null,
-        Func<string, NativeMetricSnapshotZoneMode>? modeProvider = null,
         TimeSpan? unavailableCooldown = null, TimeProvider? clock = null)
         : this(configuration, WindowsHardwareMetricResources.CreateDefault(configuration.PdhOptions,
-            resourceOptions, clock), resourceOptions ?? new(), modeProvider, unavailableCooldown)
+            resourceOptions, clock), resourceOptions ?? new(), unavailableCooldown)
     { }
 
     /// <summary>Explicit original reader/control borrowing. The resource bundle
     /// disposes only resources registered as owned by its actual default factory;
     /// supplied callback/control resources remain caller-owned.</summary>
     public WindowsHardwareMetricOwner(WindowsMetricConfiguration configuration, WindowsHardwareMetricResources resources,
-        WindowsMetricResourceOptions resourceOptions, Func<string, NativeMetricSnapshotZoneMode>? modeProvider = null,
+        WindowsMetricResourceOptions resourceOptions,
         TimeSpan? unavailableCooldown = null)
     {
         this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         this.resourceOptions = resourceOptions;
-        this.modeProvider = modeProvider ?? (static _ => NativeMetricSnapshotZoneMode.Normal);
         this.resources = resources;
         nvidiaWriter = resources.NvidiaControl is { } writer ? new(writer, resources.ReadGpuInventory) : null;
-        controlFields = new(resources.Controls ?? new(), resources.ReadGpuInventory,
-            source => this.modeProvider(source) == NativeMetricSnapshotZoneMode.Freeze);
+        controlFields = new(resources.Controls ?? new(), resources.ReadGpuInventory);
         topologySource = new(new(resources.ReadGpuInventory, resources.ReadStorageIdentities, resources.ReadFanIdentities,
             resources.ReadBatteryIdentities, resources.ReadNetworkIdentities, resources.ReadNumaIdentities)
-            { OpenIgclFanDirectory = (inventory, maximum, prior) => this.modeProvider(NativeMetricSnapshotSources.IntelGcl) == NativeMetricSnapshotZoneMode.Freeze
-                ? new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []) : resources.OpenIgclFanDirectory(inventory, maximum, prior),
-                OpenNpuEngineDirectory = (maximum, prior) => this.modeProvider(NativeMetricSnapshotSources.WindowsNpuEngine) == NativeMetricSnapshotZoneMode.Freeze
-                    ? new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []) : resources.OpenNpuEngineDirectory(maximum, prior),
-                ReadAmdCcdIdentities = (cpu, maximum) => this.modeProvider(NativeMetricSnapshotSources.AmdSmn) == NativeMetricSnapshotZoneMode.Freeze
-                    ? new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []) : resources.ReadAmdCcdIdentities(cpu, maximum),
+            { OpenIgclFanDirectory = resources.OpenIgclFanDirectory,
+                OpenNpuEngineDirectory = resources.OpenNpuEngineDirectory,
+                ReadAmdCcdIdentities = resources.ReadAmdCcdIdentities,
                 ReadNvmlFanIdentities = resources.ReadNvmlFanIdentities, ReadNpuMemoryIdentities = resources.ReadNpuMemoryIdentities },
             resources.Controls?.ControlReadCpuTopology
                 ?? (static () => new WindowsCpuOsTopologyReader().ReadInformation(includeUsage: false)));
-        capture = new(resources, this.modeProvider, unavailableCooldown ?? TimeSpan.FromSeconds(5),
+        capture = new(resources, unavailableCooldown ?? TimeSpan.FromSeconds(5),
             new AmdIntegratedGpuSensorRoute(), () => topologyRefreshRequested = true);
     }
 
-    public static WindowsHardwareMetricOwner CreateDefault(WindowsMetricResourceOptions? resourceOptions = null,
-        Func<string, NativeMetricSnapshotZoneMode>? modeProvider = null)
-        => new(WindowsMetricConfiguration.CreateDefault(), resourceOptions, modeProvider);
+    public static WindowsHardwareMetricOwner CreateDefault(WindowsMetricResourceOptions? resourceOptions = null)
+        => new(WindowsMetricConfiguration.CreateDefault(), resourceOptions);
 
     public HardwareMetricSnapshot? ReadCachedSnapshot() => current.Read();
 
@@ -103,8 +95,7 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
     {
         if (controlFields.IsControlBinding(binding)) return controlFields.ReadSupport(binding);
         var dependencies = MetricReadWriteBackend.DependenciesOf(binding.SourceId);
-        if (modeProvider(binding.SourceId) == NativeMetricSnapshotZoneMode.Freeze)
-            return new(false, "source-frozen-by-caller", dependencies);
+
         if (binding.SourceId == NativeMetricSnapshotSources.IntelMsr
             && (resourceOptions.IntelModulePath is null || resourceOptions.PawnIoLibraryPath is null))
             return new(false, "intel-pawnio-paths-not-supplied", dependencies);
@@ -164,7 +155,7 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
                 sourceQueriesCompleted: sourceQueriesCompleted,
                 fieldCatalog: Volatile.Read(ref catalogSnapshot)?.CreateSnapshot());
             if (request.IsCatalogProbe && snapshot is not null)
-                nvidiaWriter?.Discover(snapshot, modeProvider(NativeMetricSnapshotSources.NvidiaNvml) == NativeMetricSnapshotZoneMode.Freeze);
+                nvidiaWriter?.Discover(snapshot);
             if (!request.IsCatalogProbe && snapshot is not null)
             {
                 Publications.Publish(readingCatalogChanged
@@ -217,8 +208,7 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
             ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
             if (controlFields.IsControlBinding(binding))
                 return await controlFields.WriteAsync(field, binding, value, cancellationToken);
-            if (modeProvider(binding.SourceId) == NativeMetricSnapshotZoneMode.Freeze)
-                return new(field, "unsupported", "source-frozen-by-caller");
+
             return nvidiaWriter is null ? new(field, "unsupported", "metric-write-owner-not-bound")
                 : await nvidiaWriter.WriteAsync(field, binding, value, cancellationToken);
         }

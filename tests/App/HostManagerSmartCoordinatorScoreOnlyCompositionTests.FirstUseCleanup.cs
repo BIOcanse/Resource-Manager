@@ -30,7 +30,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         using var store = new JsonHostManagerRollbackStateStore(path, TimeProvider.System, TimeSpan.FromMinutes(1));
         await store.ReserveNativeHostSessionIncarnationAsync(default);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            processFactsSnapshot: facts, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology),
             automaticPlacementTopology: topology, runningGpuActions: actions, rollbackStateStoreOverride: store,

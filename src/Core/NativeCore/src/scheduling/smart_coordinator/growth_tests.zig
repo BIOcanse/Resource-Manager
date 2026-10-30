@@ -30,12 +30,18 @@ test "smart full shape byte calculations distinguish runtime maxima from build s
     // build_specialize capacity limits only constrain allowed configurations.
     const build_ceiling = state.BankDemand{ .processes = 32768, .softwares = 32768, .gpus = 262144, .reservations = 131072, .atomic_groups = 32768 };
     const runtime_maxima = state.BankDemand{ .processes = 4096, .softwares = 2048, .gpus = 32768, .reservations = 8192, .atomic_groups = 4096 };
-    try std.testing.expectEqual(@as(u64, 71_828_592), try shapeBytes(build_ceiling));
-    try std.testing.expectEqual(@as(u64, 6_014_064), try shapeBytes(runtime_maxima));
+    // Session=976; retained process/software/GPU/reservation/group rows are
+    // 184/136/56/256/32 bytes. Each power-of-two bank has a 2*count u32 index,
+    // adding 8 bytes per row: 192/144/64/264/40 bytes respectively.
+    const expected_build: u64 = 976 + 32768 * 192 + 32768 * 144 + 262144 * 64 + 131072 * 264 + 32768 * 40;
+    const expected_runtime: u64 = 976 + 4096 * 192 + 2048 * 144 + 32768 * 64 + 8192 * 264 + 4096 * 40;
+    try std.testing.expectEqual(expected_build, try shapeBytes(build_ceiling));
+    try std.testing.expectEqual(expected_runtime, try shapeBytes(runtime_maxima));
     // Alternate 300-process/300-software/300-GPU retained content shape:
     // each identity bank doubles to 512; no feedback actions/groups are present.
     const with_gpu = state.BankDemand{ .processes = 512, .softwares = 512, .gpus = 512, .reservations = 1, .atomic_groups = 1 };
-    try std.testing.expectEqual(@as(u64, 284_088), try shapeBytes(with_gpu));
+    const expected_with_gpu: u64 = 976 + 512 * 192 + 512 * 144 + 512 * 64 + 264 + 40;
+    try std.testing.expectEqual(expected_with_gpu, try shapeBytes(with_gpu));
 }
 
 fn seedBanks(session: *state.Session) void {
@@ -55,9 +61,6 @@ fn seedBanks(session: *state.Session) void {
     session.softwares[0] = state.SoftwareState.empty();
     session.softwares[0].occupied = true;
     session.softwares[0].software_key = 14;
-    session.softwares[0].cpu_transition.owned = true;
-    session.softwares[0].cpu_transition.pending_count = 2;
-    session.softwares[0].gpu_transition.retry_not_before_ms = 10000;
     session.softwares[0].freeze_compensation_active = true;
     session.gpus[0] = std.mem.zeroes(state.GpuState);
     session.gpus[0].occupied = true;
@@ -69,7 +72,6 @@ fn seedBanks(session: *state.Session) void {
     session.reservations[0].occupied = true;
     session.reservations[0].action.action_id = 101;
     session.reservations[0].process_slot = 0;
-    session.reservations[0].software_slot = 0;
     session.reservations[0].atomic_group_slot = 0;
     session.reservations[0].feedback_received = true;
     session.reservations[0].validation_epoch = 21;
@@ -184,7 +186,7 @@ test "smart proven no growth score only and warm normal plans allocate nothing" 
                 .atomic_groups = config.max_atomic_groups,
             }));
         }
-        var row = corpus.processFact(0, 100, 200, 300, 400, 100, .general_application, protocol.InputFlags.foreground_focused, protocol.ProcessGrade.normal, .normal, .normal, 0);
+        var row = corpus.processFact(0, 100, 200, 300, 400, 100, .general_application, protocol.InputFlags.foreground_focused, protocol.ProcessGrade.normal, 0);
         row = corpus.metricFact(row, 0, .cpu_usage_percent, 100, 0);
         const process_pointer = session.processes.ptr;
         const reservation_pointer = session.reservations.ptr;
@@ -220,7 +222,7 @@ test "smart plan growth failure precedes reservation expiry and confirmation mut
     const before_process = session.processes[0];
     const before_reservation = session.reservations[0];
     const revision = session.state_revision;
-    var row = corpus.processFact(0, 100, 200, 300, 400, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    var row = corpus.processFact(0, 100, 200, 300, 400, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     row = corpus.metricFact(row, 0, .gpu_usage_percent, 80, 2);
     var input = corpus.cycle(&config, 2, 100000, 1, false);
     input.flags &= ~protocol.CycleFlags.full_process_snapshot;
@@ -248,7 +250,7 @@ test "smart late reservation growth failure rolls back confirmations and issued 
         const before = session.*;
         var rows: [4]protocol.InputRow = undefined;
         for (0..2) |i| {
-            rows[2 * i] = corpus.processFact(@intCast(2 * i), 100 + i, 200 + i, @intCast(300 + i), 400 + i, 100, .general_application, protocol.InputFlags.foreground_focused, protocol.ProcessGrade.normal, .normal, .normal, 0);
+            rows[2 * i] = corpus.processFact(@intCast(2 * i), 100 + i, 200 + i, @intCast(300 + i), 400 + i, 100, .general_application, protocol.InputFlags.foreground_focused, protocol.ProcessGrade.normal, 0);
             rows[2 * i + 1] = corpus.metricFact(rows[2 * i], @intCast(2 * i + 1), .cpu_usage_percent, 100, 0);
         }
         const input = corpus.cycle(&config, 1, 1000, rows.len, true);
@@ -277,7 +279,7 @@ test "smart late atomic group growth failure leaves live grouping and confirmati
     const before = session.*;
     var rows: [8]protocol.InputRow = undefined;
     for (0..4) |i| {
-        rows[2 * i] = corpus.processFact(@intCast(2 * i), 100 + i, 200 + i / 2, @intCast(300 + i), 400 + i, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+        rows[2 * i] = corpus.processFact(@intCast(2 * i), 100 + i, 200 + i / 2, @intCast(300 + i), 400 + i, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
         rows[2 * i + 1] = corpus.metricFact(rows[2 * i], @intCast(2 * i + 1), .cpu_usage_percent, 0, 0);
         corpus.setSoftwareScore(&rows[2 * i + 1], 0, 2);
     }
@@ -316,7 +318,7 @@ test "smart growth produces identical actions feedback and snapshots to full ban
         // identities and their transition history remain when input disappears.
         const count: usize = @min(sequence, 4);
         for (0..count) |i| {
-            const base = corpus.processFact(@intCast(2 * i), 100 + i, 200 + i, @intCast(300 + i), 400 + i, 20, .general_application, 0, protocol.ProcessGrade.level1, .optimize, .optimize, protocol.InputFlags.owns_process_grade | protocol.InputFlags.owns_cpu_grade | protocol.InputFlags.owns_gpu_grade);
+            const base = corpus.processFact(@intCast(2 * i), 100 + i, 200 + i, @intCast(300 + i), 400 + i, 20, .general_application, 0, protocol.ProcessGrade.level1, protocol.InputFlags.owns_process_grade);
             rows[2 * i] = corpus.metricFact(base, @intCast(2 * i), .cpu_usage_percent, 80, 0);
             rows[2 * i + 1] = corpus.metricFact(base, @intCast(2 * i + 1), .gpu_usage_percent, 80, 2);
         }
@@ -371,7 +373,7 @@ test "smart actual diagnostics count 300 owned processes as 300 states" {
     try std.testing.expectEqual(@as(u32, 1), before.process_capacity);
     var rows: [300]protocol.InputRow = undefined;
     for (&rows, 0..) |*row, i| {
-        row.* = corpus.processFact(@intCast(i), 1000 + i, 2000 + i, @intCast(3000 + i), 4000 + i, 20, .general_application, 0, protocol.ProcessGrade.level1, .normal, .normal, protocol.InputFlags.owns_process_grade);
+        row.* = corpus.processFact(@intCast(i), 1000 + i, 2000 + i, @intCast(3000 + i), 4000 + i, 20, .general_application, 0, protocol.ProcessGrade.level1, protocol.InputFlags.owns_process_grade);
     }
     var input = corpus.cycle(&config, 1, 1000, rows.len, true);
     var actions: [2048]protocol.Action = undefined;

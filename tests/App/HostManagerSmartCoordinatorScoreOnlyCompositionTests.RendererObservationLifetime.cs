@@ -16,8 +16,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         using var cache = new RendererAbsenceCache(broker);
         var actions = new RecordingRunningGpuActions { AcquireObservation = cache.Acquire };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true, scoreOnlyEnabled: false, policyExecutionEnabled: false,
-            automaticMemoryCleanupEnabled: false, runningGpuActions: actions);
+            warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false, runningGpuActions: actions);
         fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
         {
             Version = 2,
@@ -63,8 +62,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         using var cache = new RendererAbsenceCache(broker);
         var actions = new RecordingRunningGpuActions { AcquireObservation = cache.Acquire };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true, scoreOnlyEnabled: false, policyExecutionEnabled: false,
-            automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.Normal,
+            warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.Normal,
             runningGpuActions: actions);
         await fixture.Coordinator.StartAsync(CancellationToken.None);
         try
@@ -73,12 +71,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             while (ReadPrivateReference(fixture.Coordinator, "smartSubscriptions") is null)
                 await Task.Delay(1, timeout.Token);
             var coordinatorGate = (SemaphoreSlim)ReadPrivateReference(fixture.Coordinator, "gate")!;
-            async Task PublishAndSynchronize(bool gpuMode, bool providerEnabled, bool scoreOnly, bool hardwareEnabled = true)
+            async Task PublishAndSynchronize(bool gpuMode, bool providerEnabled, bool scoreOnly)
             {
                 await coordinatorGate.WaitAsync(timeout.Token);
                 try
                 {
-                    fixture.ControlZones.HardwarePlacementEnabled = hardwareEnabled;
                     var current = fixture.RuntimePlanProvider.Current;
                     fixture.RuntimePlanProvider.Publish(current with
                     {
@@ -112,12 +109,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(2, broker.Acquires);
             await PublishAndSynchronize(true, true, true);
             Assert.Equal(2, broker.Releases);
-            await PublishAndSynchronize(true, true, false, hardwareEnabled: false);
-            Assert.Equal(2, broker.Acquires);
             await PublishAndSynchronize(true, true, false);
             Assert.Equal(3, broker.Acquires);
-            await PublishAndSynchronize(true, true, false, hardwareEnabled: false);
-            Assert.Equal(3, broker.Releases);
         }
         finally { await fixture.Coordinator.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10)); }
         Assert.Equal(broker.Acquires, broker.Releases);

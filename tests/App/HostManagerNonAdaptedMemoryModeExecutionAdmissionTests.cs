@@ -681,7 +681,6 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
             {
                 [identity] = ownership
             },
-            new Dictionary<ulong, NativeAppliedOwnershipRecord>(),
             new Dictionary<
                 NativeAppliedOwnershipProcessIncarnation,
                 NativeAppliedOwnershipProcessAnchor>

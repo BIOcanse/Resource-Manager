@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using ResourceManager.App.Application.Monitoring;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Hosting;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -10,7 +9,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class IntelMsrThermalCollectorTests
 {
     [Fact]
-    public void RealProductionRegistrationKeepsEverySourceZoneInstanceAndIntelFreezeMode()
+    public void RealProductionRegistrationKeepsEverySourceZoneInstance()
     {
         var services = new ServiceCollection().AddLogging()
             .AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
@@ -25,9 +24,6 @@ public sealed partial class IntelMsrThermalCollectorTests
             foreach (var zone in zones) Assert.Same(zone, registry.GetZone(zone.DisplayName));
             var intel = provider.GetRequiredService<IntelMsrMonitoringZone>();
             Assert.Same(intel, registry.GetZone(MonitoringSourceZoneIds.VendorIntelMsr));
-            intel.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            Assert.Equal(ResourceManagerComputeZoneMode.Freeze, registry.GetZone(MonitoringSourceZoneIds.VendorIntelMsr).CurrentMode);
-            Assert.False(intel.CanRead);
             foreach (var source in HostManagerTestPlanFactory.CreatePlan().MetricSnapshot.HotPublish.SourcePolicies)
                 Assert.NotNull(registry.GetZone(NativeMetricSnapshotSourceCatalog.ResolveZoneId(source.SourceId)));
         }

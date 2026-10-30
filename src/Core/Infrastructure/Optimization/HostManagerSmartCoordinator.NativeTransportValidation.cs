@@ -10,21 +10,19 @@ public sealed partial class HostManagerSmartCoordinator
         using var view = workspace.CreateScratchView();
         var actions = view.Actions;
         var snapshot = workspace.Snapshot;
-        if (workspace.PlannedActionCount > checked(snapshot.ProcessCount + snapshot.SoftwareCount))
+        if (workspace.PlannedActionCount > snapshot.ProcessCount)
         {
             throw new InvalidDataException(
-                "Host Manager smart coordinator action count exceeds its process/software snapshot.");
+                "Host Manager smart coordinator action count exceeds its process snapshot.");
         }
 
         var actionIds = new HashSet<ulong>();
         var claimedDomains = new HashSet<NativeActionDomainIdentity>();
         var processEntities = new HashSet<(ulong TargetKey, uint ProcessId, ulong ProcessStartKey)>();
-        var softwareEntities = new HashSet<ulong>();
         var groups = new Dictionary<ulong, NativeAtomicGroupShape>();
         var atomicGroupBySoftware = new Dictionary<ulong, ulong>();
         uint requiredFeedbackCount = 0;
         uint processActionCount = 0;
-        uint softwareActionCount = 0;
         NativeSmartCoordinatorAction? previous = null;
         for (uint index = 0; index < workspace.PlannedActionCount; index++)
         {
@@ -48,15 +46,6 @@ public sealed partial class HostManagerSmartCoordinator
                 {
                     throw new InvalidDataException(
                         $"Host Manager smart coordinator repeated process entity {action.TargetKey}/{action.ProcessId}/{action.ProcessStartKey}.");
-                }
-            }
-            else
-            {
-                softwareActionCount++;
-                if (!softwareEntities.Add(action.SoftwareKey))
-                {
-                    throw new InvalidDataException(
-                        $"Host Manager smart coordinator repeated software entity {action.SoftwareKey}.");
                 }
             }
             if (!actionIds.Add(action.ActionId))
@@ -137,10 +126,8 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         if (processActionCount > snapshot.ProcessCount
-            || softwareActionCount > snapshot.SoftwareCount
             || processEntities.Count != processActionCount
-            || softwareEntities.Count != softwareActionCount
-            || checked(processActionCount + softwareActionCount) != workspace.PlannedActionCount
+            || processActionCount != workspace.PlannedActionCount
             || groups.Count > workspace.Capacity.AtomicGroupCapacity
             || requiredFeedbackCount > snapshot.InflightCount
             || requiredFeedbackCount > workspace.Capacity.FeedbackCapacity)
@@ -219,14 +206,6 @@ public sealed partial class HostManagerSmartCoordinator
         {
             yield return NativeSmartCoordinatorGradeDomains.Process;
         }
-        if (domains.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu))
-        {
-            yield return NativeSmartCoordinatorGradeDomains.Cpu;
-        }
-        if (domains.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu))
-        {
-            yield return NativeSmartCoordinatorGradeDomains.Gpu;
-        }
     }
 
     internal static unsafe void ValidateNativeAction(
@@ -251,9 +230,7 @@ public sealed partial class HostManagerSmartCoordinator
             || !reserved1IsZero
             || action.WakeAfterMilliseconds != snapshot.WakeAfterMilliseconds
             || (action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.CpuScore)
-                && (!double.IsFinite(action.CpuScore) || action.CpuScore < 0))
-            || (action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.GpuScore)
-                && (!double.IsFinite(action.GpuScore) || action.GpuScore < 0)))
+                && (!double.IsFinite(action.CpuScore) || action.CpuScore < 0)))
         {
             throw new InvalidDataException(
                 $"Host Manager smart coordinator action {action.ActionId} failed its POD contract.");
@@ -272,7 +249,7 @@ public sealed partial class HostManagerSmartCoordinator
                     | NativeSmartCoordinatorActionFlags.Retry)) != 0))
         {
             throw new InvalidDataException(
-                $"Host Manager smart coordinator action {action.ActionId} has an inconsistent execution shape: scope={action.Scope}; disposition={action.Disposition}; flags={action.Flags}; valid={action.ValidMask}; domains={action.DomainMask}; cpuScore={action.CpuScore}; gpuScore={action.GpuScore}.");
+                $"Host Manager smart coordinator action {action.ActionId} has an inconsistent execution shape: scope={action.Scope}; disposition={action.Disposition}; flags={action.Flags}; valid={action.ValidMask}; domains={action.DomainMask}; cpuScore={action.CpuScore}.");
         }
 
         var atomic = action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.Atomic);
@@ -313,10 +290,6 @@ public sealed partial class HostManagerSmartCoordinator
                     != (action.SoftwareKey != 0)
                 || !Enum.IsDefined(action.FromProcessGrade)
                 || !Enum.IsDefined(action.ToProcessGrade)
-                || action.FromCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                || action.ToCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                || action.FromGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                || action.ToGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
                 || (action.Disposition == NativeSmartCoordinatorActionDisposition.Restore
                     && action.ToProcessGrade != NativeSmartCoordinatorProcessGrade.Normal)
                 || (action.Disposition == NativeSmartCoordinatorActionDisposition.Apply
@@ -324,56 +297,6 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 throw new InvalidDataException(
                     $"Host Manager process action {action.ActionId} failed its identity or grade contract.");
-            }
-        }
-        else
-        {
-            var allowed = NativeSmartCoordinatorActionValidity.SoftwareIdentity
-                | NativeSmartCoordinatorActionValidity.CpuGrade
-                | NativeSmartCoordinatorActionValidity.GpuGrade
-                | NativeSmartCoordinatorActionValidity.CpuScore
-                | NativeSmartCoordinatorActionValidity.GpuScore;
-            if ((action.ValidMask & NativeSmartCoordinatorActionValidity.SoftwareIdentity) == 0
-                || (action.ValidMask & ~allowed) != 0
-                || action.TargetKey == 0
-                || action.TargetKey != action.SoftwareKey
-                || action.ProcessId != 0
-                || action.ProcessStartKey != 0
-                || action.FromProcessGrade != NativeSmartCoordinatorProcessGrade.Normal
-                || action.ToProcessGrade != NativeSmartCoordinatorProcessGrade.Normal
-                || (requiresFeedback && action.DomainMask == NativeSmartCoordinatorGradeDomains.None)
-                || action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.CpuGrade)
-                    != action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                || action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.GpuGrade)
-                    != action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                || (action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.CpuScore)
-                    && !action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu))
-                || (action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.GpuScore)
-                    && !action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu))
-                || !Enum.IsDefined(action.FromCpuGrade)
-                || !Enum.IsDefined(action.ToCpuGrade)
-                || !Enum.IsDefined(action.FromGpuGrade)
-                || !Enum.IsDefined(action.ToGpuGrade)
-                || (action.Disposition == NativeSmartCoordinatorActionDisposition.Restore
-                    && ((action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                            && action.ToCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal)
-                        || (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                            && action.ToGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal)))
-                || (action.Disposition == NativeSmartCoordinatorActionDisposition.Apply
-                    && ((action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                            && action.ToCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                            && !action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.CpuScore))
-                        || (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                            && action.ToGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                            && !action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.GpuScore))))
-                || (action.Disposition == NativeSmartCoordinatorActionDisposition.Apply
-                    && (!action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                            || action.ToCpuGrade == NativeSmartCoordinatorAdapterGrade.Normal)
-                    && (!action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                            || action.ToGpuGrade == NativeSmartCoordinatorAdapterGrade.Normal)))
-            {
-                throw new InvalidDataException(
-                    $"Host Manager adapter action {action.ActionId} failed its identity or grade contract.");
             }
         }
     }
@@ -398,22 +321,14 @@ public sealed partial class HostManagerSmartCoordinator
     {
         var reservedIsZero = feedback.Reserved0[0] == 0
             && feedback.Reserved0[1] == 0
-            && feedback.Reserved0[2] == 0;
-        var actualMask = feedback.ValidMask & (NativeSmartCoordinatorFeedbackValidity.ActualProcessGrade
-            | NativeSmartCoordinatorFeedbackValidity.ActualCpuGrade
-            | NativeSmartCoordinatorFeedbackValidity.ActualGpuGrade);
+            && feedback.Reserved0[2] == 0
+            && feedback.Reserved0[3] == 0
+            && feedback.Reserved0[4] == 0;
+        var actualMask = feedback.ValidMask & NativeSmartCoordinatorFeedbackValidity.ActualProcessGrade;
         var expectedActualMask = NativeSmartCoordinatorFeedbackValidity.None;
         if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Process))
         {
             expectedActualMask |= NativeSmartCoordinatorFeedbackValidity.ActualProcessGrade;
-        }
-        if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu))
-        {
-            expectedActualMask |= NativeSmartCoordinatorFeedbackValidity.ActualCpuGrade;
-        }
-        if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu))
-        {
-            expectedActualMask |= NativeSmartCoordinatorFeedbackValidity.ActualGpuGrade;
         }
 
         if (feedback.StructSize != NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorFeedback>()
@@ -435,24 +350,14 @@ public sealed partial class HostManagerSmartCoordinator
             || feedback.Reserved1 != 0
             || (actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualProcessGrade)
                 && !Enum.IsDefined(feedback.ActualProcessGrade))
-            || (actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualCpuGrade)
-                && !Enum.IsDefined(feedback.ActualCpuGrade))
-            || (actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualGpuGrade)
-                && !Enum.IsDefined(feedback.ActualGpuGrade))
             || (!actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualProcessGrade)
-                && (int)feedback.ActualProcessGrade != 0)
-            || (!actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualCpuGrade)
-                && (int)feedback.ActualCpuGrade != 0)
-            || (!actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualGpuGrade)
-                && (int)feedback.ActualGpuGrade != 0))
+                && (int)feedback.ActualProcessGrade != 0))
         {
             throw new InvalidDataException(
                 $"Host Manager smart coordinator feedback {feedback.ActionId} failed its POD or reservation identity contract.");
         }
 
-        var ownershipFlags = feedback.Flags & (NativeSmartCoordinatorFeedbackFlags.ProcessOwned
-            | NativeSmartCoordinatorFeedbackFlags.CpuOwned
-            | NativeSmartCoordinatorFeedbackFlags.GpuOwned);
+        var ownershipFlags = feedback.Flags & (NativeSmartCoordinatorFeedbackFlags.ProcessOwned);
         var resultProofFlags = ownershipFlags |
             (feedback.Flags & NativeSmartCoordinatorFeedbackFlags.RollbackPayloadPersisted);
         switch (feedback.Status)
@@ -464,23 +369,9 @@ public sealed partial class HostManagerSmartCoordinator
                 {
                     expectedOwnership |= NativeSmartCoordinatorFeedbackFlags.ProcessOwned;
                 }
-                if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                    && action.ToCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal)
-                {
-                    expectedOwnership |= NativeSmartCoordinatorFeedbackFlags.CpuOwned;
-                }
-                if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                    && action.ToGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal)
-                {
-                    expectedOwnership |= NativeSmartCoordinatorFeedbackFlags.GpuOwned;
-                }
                 if (actualMask != expectedActualMask
                     || (actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualProcessGrade)
                         && feedback.ActualProcessGrade != action.ToProcessGrade)
-                    || (actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualCpuGrade)
-                        && feedback.ActualCpuGrade != action.ToCpuGrade)
-                    || (actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualGpuGrade)
-                        && feedback.ActualGpuGrade != action.ToGpuGrade)
                     || ownershipFlags != expectedOwnership
                     || (expectedOwnership != NativeSmartCoordinatorFeedbackFlags.None
                         && !feedback.Flags.HasFlag(NativeSmartCoordinatorFeedbackFlags.RollbackPayloadPersisted)))
@@ -494,10 +385,6 @@ public sealed partial class HostManagerSmartCoordinator
                 if ((actualMask & ~expectedActualMask) != 0
                     || (actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualProcessGrade)
                         && feedback.ActualProcessGrade != action.FromProcessGrade)
-                    || (actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualCpuGrade)
-                        && feedback.ActualCpuGrade != action.FromCpuGrade)
-                    || (actualMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualGpuGrade)
-                        && feedback.ActualGpuGrade != action.FromGpuGrade)
                     || resultProofFlags != NativeSmartCoordinatorFeedbackFlags.None)
                 {
                     throw new InvalidDataException(
@@ -526,22 +413,12 @@ public sealed partial class HostManagerSmartCoordinator
         DateTimeOffset completedAt,
         NativeSmartCoordinatorFeedbackFlags flags = NativeSmartCoordinatorFeedbackFlags.None,
         uint systemErrorCode = 0,
-        NativeSmartCoordinatorProcessGrade? actualProcessGrade = null,
-        NativeSmartCoordinatorAdapterGrade? actualCpuGrade = null,
-        NativeSmartCoordinatorAdapterGrade? actualGpuGrade = null)
+        NativeSmartCoordinatorProcessGrade? actualProcessGrade = null)
     {
         var validMask = NativeSmartCoordinatorFeedbackValidity.CompletedAt;
         if (actualProcessGrade.HasValue)
         {
             validMask |= NativeSmartCoordinatorFeedbackValidity.ActualProcessGrade;
-        }
-        if (actualCpuGrade.HasValue)
-        {
-            validMask |= NativeSmartCoordinatorFeedbackValidity.ActualCpuGrade;
-        }
-        if (actualGpuGrade.HasValue)
-        {
-            validMask |= NativeSmartCoordinatorFeedbackValidity.ActualGpuGrade;
         }
 
         return new NativeSmartCoordinatorFeedback
@@ -561,8 +438,6 @@ public sealed partial class HostManagerSmartCoordinator
             Status = status,
             Scope = action.Scope,
             ActualProcessGrade = actualProcessGrade.GetValueOrDefault(),
-            ActualCpuGrade = actualCpuGrade.GetValueOrDefault(),
-            ActualGpuGrade = actualGpuGrade.GetValueOrDefault()
         };
     }
 }

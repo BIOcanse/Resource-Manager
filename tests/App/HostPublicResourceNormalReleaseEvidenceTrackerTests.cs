@@ -82,7 +82,6 @@ public sealed class HostPublicResourceNormalReleaseEvidenceTrackerTests
             new HostManagerMemoryCleanupExecutionResult(
                 HostManagerMemoryCleanupRoundDisposition.CompleteKnownFull,
                 CandidateCount: 1,
-                BlockedCandidateCount: 0,
                 PlannerStateRevision: 1,
                 PlannedCount: 1,
                 RequestedCount: 1,

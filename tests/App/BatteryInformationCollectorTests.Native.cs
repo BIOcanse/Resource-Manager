@@ -19,8 +19,8 @@ public sealed partial class BatteryInformationCollectorTests
         var bindings = catalog.MetricBindings.Values.Where(binding => binding.SourceId == NativeMetricSnapshotSourceCatalog.WindowsBattery).ToArray();
         Assert.Equal(20, bindings.Length);
         var plan = workspace.PlanCollection(bindings.Select(static b => b.MetricHandle).ToArray(),
-            catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-                NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray(), false, now);
+            catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+                NativeMetricSnapshotSourceAvailability.Available)).ToArray(), false, now);
         var source = Assert.Single(plan.Sources);
         var values = batteries.Select(battery => WindowsBatteryReader.Project(battery.ExactIdentityKey, battery.Information,
             Status(5, battery.DisplayIndex == 0 ? 25000U : 10000U), 3600, AllFields)).ToArray();

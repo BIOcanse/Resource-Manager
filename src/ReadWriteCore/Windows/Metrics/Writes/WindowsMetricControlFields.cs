@@ -17,7 +17,7 @@ namespace ResourceManager.ReadWrite.Windows.Metrics.Writes;
 /// discovery declaration metadata is retained; numeric current, baselines, helper
 /// lifecycle and native context remain with their original owners.</summary>
 public sealed class WindowsMetricControlFields(WindowsMetricControlResources resources,
-    Func<WindowsGpuAdapterInventoryRead> readInventory, Func<string, bool>? isFrozen = null)
+    Func<WindowsGpuAdapterInventoryRead> readInventory)
 {
     private bool HasResources => resources.IntelCpuControl is not null || resources.AmdCpuControl is not null
         || resources.AmdDesktopGpuControl is not null || resources.IntegratedGpuControl is not null;
@@ -108,21 +108,18 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
     public OperationSupport Query(MetricDeviceFieldBinding binding)
     {
         var found = Find(binding);
-        var frozen = found is not null && Frozen(found.Entry);
+
         return found is null ? OperationSupport.Unsupported("control-field-not-discovered")
-            : new(found.CanWrite && !frozen, frozen ? "source-frozen-by-caller"
-                : found.CanWrite ? null : found.Reason ?? "control-field-unavailable", found.Entry.WriteDependencies);
+            : new(found.CanWrite, found.CanWrite ? null : found.Reason ?? "control-field-unavailable", found.Entry.WriteDependencies);
     }
     public OperationSupport ReadSupport(MetricDeviceFieldBinding binding)
     {
         var found = Find(binding);
-        var frozen = found is not null && Frozen(found.Entry);
+
         return found is null ? OperationSupport.Unsupported("control-field-not-discovered")
-            : new(found.CanRead && !frozen, frozen ? "source-frozen-by-caller"
-                : found.CanRead ? null : found.Reason ?? "control-setting-read-unavailable", found.Entry.ReadDependencies);
+            : new(found.CanRead, found.CanRead ? null : found.Reason ?? "control-setting-read-unavailable", found.Entry.ReadDependencies);
     }
     public FieldWriteContract? GetContract(MetricDeviceFieldBinding binding) => Find(binding)?.Contract;
-    private bool Frozen(WindowsMetricControlBinding entry) => isFrozen?.Invoke(entry.SourceId) == true;
 
     /// <summary>The native projection already ignores these explicit addresses.
     /// This helper preserves request flags and never parses field names for routing.</summary>
@@ -157,7 +154,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
             var status = SamplingObservationStatus.Unavailable;
             if (!entry.Implemented || !declaration.CanRead) status = !entry.Implemented || entry.ReadDependencies.IsEmpty
                 ? SamplingObservationStatus.Unsupported : SamplingObservationStatus.Unavailable;
-            else if (!Frozen(entry) && ResolveFresh(binding, entry, facts, out var adapter))
+            else if (ResolveFresh(binding, entry, facts, out var adapter))
             {
                 try
                 {
@@ -340,7 +337,6 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
     private Declaration Probe(MetricDeviceFieldBinding binding, WindowsMetricControlBinding entry, WindowsGpuAdapter? adapter, CancellationToken token = default)
     {
         if (!entry.Implemented) return new(binding, entry, false, false, "control-field-not-implemented", entry.DeclaredRange);
-        if (Frozen(entry)) return new(binding, entry, false, false, "source-frozen-by-caller", entry.DeclaredRange);
         var rawId = binding.ControlTarget!.RawObjectId!;
         try
         {

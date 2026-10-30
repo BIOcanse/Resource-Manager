@@ -386,7 +386,7 @@ test "full identity controls lookup mutation and canonical tie break" {
     try std.testing.expect(records[0].identity.target_id < records[1].identity.target_id);
 }
 
-test "scope domain and three grade contracts reject semantic drift" {
+test "scope and surviving grade contracts reject semantic drift" {
     var config = corpus.createConfig(4);
     const journal = try state.Session.create(&config);
     defer journal.destroy();
@@ -399,7 +399,8 @@ test "scope domain and three grade contracts reject semantic drift" {
     process_cpu.domain_mask = protocol.DomainBits.cpu;
     try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.prepare(journal, &process_cpu));
 
-    var negative_cpu = corpus.softwarePrepare(7, 3, 1, 100);
+    // Surviving process records must reject stray retired grade fields.
+    var negative_cpu = corpus.processPrepare(7, 3, 1, 100, .none_required);
     negative_cpu.cpu_to_grade = -1;
     try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.prepare(journal, &negative_cpu));
 
@@ -409,15 +410,16 @@ test "scope domain and three grade contracts reject semantic drift" {
     memory_as_cpu.cpu_to_grade = 1;
     try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.prepare(journal, &memory_as_cpu));
 
-    var unknown_domain = corpus.softwarePrepare(7, 5, 1, 100);
+    var unknown_domain = corpus.processPrepare(7, 5, 1, 100, .none_required);
     unknown_domain.domain_mask |= 1 << 31;
     try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.prepare(journal, &unknown_domain));
-    var zero_domain = corpus.softwarePrepare(7, 6, 1, 100);
+    var zero_domain = corpus.processPrepare(7, 6, 1, 100, .none_required);
     zero_domain.domain_mask = 0;
     try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.prepare(journal, &zero_domain));
 
-    var valid_software = corpus.softwarePrepare(7, 7, 1, 100);
-    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &valid_software));
+    var retired_software = corpus.softwarePrepare(7, 7, 1, 100);
+    // Scope 2 has no valid identity; prepare rejects it before payload validation.
+    try std.testing.expectEqual(protocol.Status.invalid_identity, session_module.prepare(journal, &retired_software));
 }
 
 test "physical memory process lifecycle preserves the memory tag and ownership" {
@@ -499,7 +501,7 @@ test "old and new action generations coexist and reopen together" {
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &old_generation));
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &new_generation));
 
-    var image: [maximum_test_image]u8 = undefined;
+    var image: [@sizeOf(protocol.ImageHeader) + 4 * @sizeOf(protocol.Record)]u8 = undefined;
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
     var opened: ?*state.Session = null;
@@ -662,7 +664,7 @@ test "recovery evidence owns retry blocked and authoritative resync classificati
     try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &exited_prepare.identity, &output));
     try std.testing.expectEqual(@intFromEnum(protocol.Phase.authoritative_resync_pending), output.phase);
 
-    var software_prepare = corpus.softwarePrepare(7, 5, journal.journal_revision, 190);
+    var software_prepare = corpus.resourcePrepare(7, 5, journal.journal_revision, 190);
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &software_prepare));
     var invalid_process_exit = corpus.recoveryEvidence(
         software_prepare.identity,
@@ -855,7 +857,7 @@ test "payload and feedback validity are strict" {
     try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.stageFeedback(journal, &unknown_status));
 }
 
-test "successful restore feedback releases process and adapter ownership" {
+test "successful restore feedback releases process ownership" {
     var config = corpus.createConfig(2);
     const journal = try state.Session.create(&config);
     defer journal.destroy();
@@ -879,31 +881,7 @@ test "successful restore feedback releases process and adapter ownership" {
     process_feedback.actual_process_grade = @intFromEnum(protocol.ProcessGrade.normal);
     try std.testing.expectEqual(protocol.Status.ok, session_module.stageFeedback(journal, &process_feedback));
 
-    var software_prepare = corpus.softwarePrepare(7, 2, 4, 200);
-    software_prepare.disposition = @intFromEnum(protocol.Disposition.restore);
-    software_prepare.cpu_from_grade = @intFromEnum(protocol.AdapterGrade.optimize);
-    software_prepare.cpu_to_grade = @intFromEnum(protocol.AdapterGrade.normal);
-    software_prepare.gpu_from_grade = @intFromEnum(protocol.AdapterGrade.freeze);
-    software_prepare.gpu_to_grade = @intFromEnum(protocol.AdapterGrade.normal);
-    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &software_prepare));
-    var software_effect = corpus.mutation(
-        software_prepare.identity,
-        5,
-        1,
-        .prepared,
-        .confirm_effect_observed,
-        210,
-    );
-    try std.testing.expectEqual(protocol.Status.ok, session_module.mutate(journal, &software_effect));
-    var software_feedback = corpus.processFeedback(software_prepare.identity, 6, 2, 220, .none_required);
-    software_feedback.feedback_valid_mask = protocol.FeedbackValid.completed_at |
-        protocol.FeedbackValid.actual_cpu_grade |
-        protocol.FeedbackValid.actual_gpu_grade;
-    software_feedback.feedback_flags = 0;
-    software_feedback.actual_process_grade = 0;
-    software_feedback.actual_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal);
-    software_feedback.actual_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal);
-    try std.testing.expectEqual(protocol.Status.ok, session_module.stageFeedback(journal, &software_feedback));
+
 }
 
 test "capacity full is explicit and does not mutate revision" {
@@ -953,33 +931,12 @@ test "prepare protects only overlapping unresolved target domains" {
     var unrelated_process = corpus.processPrepare(7, 5, 3, 140, .durable);
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &unrelated_process));
 
-    var cpu = corpus.softwarePrepare(7, 6, 4, 150);
-    cpu.domain_mask = protocol.DomainBits.cpu;
-    cpu.grade_valid_mask = protocol.GradeValid.cpu;
-    cpu.gpu_from_grade = 0;
-    cpu.gpu_to_grade = 0;
-    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &cpu));
-
-    var same_cpu = corpus.softwarePrepare(7, 7, 5, 160);
-    same_cpu.domain_mask = protocol.DomainBits.cpu;
-    same_cpu.grade_valid_mask = protocol.GradeValid.cpu;
-    same_cpu.gpu_from_grade = 0;
-    same_cpu.gpu_to_grade = 0;
-    try std.testing.expectEqual(protocol.Status.invalid_transition, session_module.prepare(journal, &same_cpu));
-
-    var gpu = corpus.softwarePrepare(7, 8, 5, 170);
-    gpu.domain_mask = protocol.DomainBits.gpu;
-    gpu.grade_valid_mask = protocol.GradeValid.gpu;
-    gpu.cpu_from_grade = 0;
-    gpu.cpu_to_grade = 0;
-    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &gpu));
-
-    var resource = corpus.resourcePrepare(7, 9, 6, 180);
+    var resource = corpus.resourcePrepare(7, 9, 4, 180);
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &resource));
-    var same_resource = corpus.resourcePrepare(7, 10, 7, 190);
+    var same_resource = corpus.resourcePrepare(7, 10, 5, 190);
     same_resource.identity.target_id = resource.identity.target_id;
     try std.testing.expectEqual(protocol.Status.invalid_transition, session_module.prepare(journal, &same_resource));
-    var other_resource = corpus.resourcePrepare(7, 11, 7, 200);
+    var other_resource = corpus.resourcePrepare(7, 11, 5, 200);
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &other_resource));
 }
 
@@ -995,7 +952,7 @@ test "resident byte budget is explicit and enforced on create and reopen" {
     try std.testing.expectEqual(try state.requiredResidentBytes(2), capacity.resident_bytes);
     try std.testing.expect(capacity.resident_bytes <= config.maximum_resident_bytes);
 
-    var image: [maximum_test_image]u8 = undefined;
+    var image: [@sizeOf(protocol.ImageHeader) + 4 * @sizeOf(protocol.Record)]u8 = undefined;
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
     var larger_open_config = corpus.openConfig(4);
@@ -1030,7 +987,7 @@ test "effect observed survives restart and stages feedback after reopen" {
     const journal = try state.Session.create(&config);
     defer journal.destroy();
     const identity = try prepareAndObserveEffect(journal, 7, 1, .durable, 100);
-    var image: [maximum_test_image]u8 = undefined;
+    var image: [@sizeOf(protocol.ImageHeader) + 4 * @sizeOf(protocol.Record)]u8 = undefined;
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
     const opened = try openImage(image[0..@intCast(written)], 2);
@@ -1046,7 +1003,7 @@ test "durable feedback survives restart and exact ACK completes it" {
     const identity = try prepareAndObserveEffect(journal, 7, 1, .durable, 100);
     var feedback = corpus.processFeedback(identity, 3, 2, 120, .durable);
     try std.testing.expectEqual(protocol.Status.ok, session_module.stageFeedback(journal, &feedback));
-    var image: [maximum_test_image]u8 = undefined;
+    var image: [@sizeOf(protocol.ImageHeader) + 4 * @sizeOf(protocol.Record)]u8 = undefined;
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
     const opened = try openImage(image[0..@intCast(written)], 2);
@@ -1095,7 +1052,7 @@ test "decode isolates invalid rows while preserving image structure checks" {
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &second));
     third.expected_journal_revision = 3;
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &third));
-    var image: [maximum_test_image]u8 = undefined;
+    var image: [@sizeOf(protocol.ImageHeader) + 4 * @sizeOf(protocol.Record)]u8 = undefined;
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
     const length: usize = @intCast(written);
@@ -1252,7 +1209,7 @@ test "hot mutation snapshot encode decode paths do not allocate" {
     var snapshot = corpus.emptySnapshot();
     var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 2;
     try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(journal, &snapshot, &records));
-    var image: [maximum_test_image]u8 = undefined;
+    var image: [@sizeOf(protocol.ImageHeader) + 4 * @sizeOf(protocol.Record)]u8 = undefined;
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
     try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, image[0..@intCast(written)]));
@@ -1328,4 +1285,62 @@ test "empty snapshot query reports actual rows and phase counts for exact buffer
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
     try std.testing.expectEqual(@as(u64, image.len), written);
+}
+
+test "upgrade drops retired software journal rows and preserves process and resource rows" {
+    var config = corpus.createConfig(4);
+    const source = try state.Session.create(&config);
+    defer source.destroy();
+    var process = corpus.processPrepare(7, 1, 1, 100, .durable);
+    var retired = corpus.resourcePrepare(7, 2, 2, 110);
+    var resource = corpus.resourcePrepare(7, 3, 3, 120);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(source, &process));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(source, &retired));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(source, &resource));
+    var image: [@sizeOf(protocol.ImageHeader) + 4 * @sizeOf(protocol.Record)]u8 = undefined;
+    var written: u64 = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(source, &image, &written));
+    const base = codec.header_size + codec.record_size;
+    codec.writeU32(&image, base + 64, 2); // Retired Software scope, never reused.
+    codec.writeU32(&image, base + 72, protocol.DomainBits.cpu);
+    codec.writeU32(&image, base + 80, protocol.GradeValid.cpu);
+    codec.writeI32(&image, base + 104, 2); // Historical Normal -> Optimize.
+    codec.writeI32(&image, base + 108, 1);
+    rewriteChecksum(image[0..written]);
+    var open_config = corpus.openConfig(4);
+    var reopened: ?*state.Session = null;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.openExisting(&open_config, image[0..written], &reopened));
+    defer reopened.?.destroy();
+    try std.testing.expectEqual(@as(u32, 2), reopened.?.count);
+    try std.testing.expectEqual(@as(u64, 4), reopened.?.journal_revision);
+    var record = std.mem.zeroes(protocol.Record);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(reopened.?, &process.identity, &record));
+    try std.testing.expect(std.meta.eql(source.records[0], record));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(reopened.?, &resource.identity, &record));
+    try std.testing.expectEqual(@as(u32, 3), record.scope);
+    try std.testing.expect(std.meta.eql(source.records[2], record));
+    try std.testing.expectEqual(protocol.Status.no_data, session_module.get(reopened.?, &retired.identity, &record));
+    var canonical: [@sizeOf(protocol.ImageHeader) + 4 * @sizeOf(protocol.Record)]u8 = undefined;
+    var canonical_written: u64 = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(reopened.?, &canonical, &canonical_written));
+    try std.testing.expectEqual(@as(u32, 2), codec.readU32(&canonical, 48));
+    var again: ?*state.Session = null;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.openExisting(&open_config, canonical[0..canonical_written], &again));
+    defer again.?.destroy();
+    try std.testing.expectEqual(@as(u32, 2), again.?.count);
+    // A scope-2 row with process/system-state evidence is quarantined, never discarded.
+    codec.writeU64(&image, base + 48, 123);
+    codec.writeU32(&image, base + 56, 123);
+    codec.writeU32(&image, base + 72, protocol.DomainBits.process);
+    rewriteChecksum(image[0..written]);
+    var protected: ?*state.Session = null;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.openExisting(&open_config, image[0..written], &protected));
+    defer protected.?.destroy();
+    try std.testing.expectEqual(@as(u32, 3), protected.?.count);
+    var protected_identity = retired.identity;
+    protected_identity.process_start_key = 123;
+    protected_identity.process_id = 123;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(protected.?, &protected_identity, &record));
+    try std.testing.expectEqual(@intFromEnum(protocol.Scope.process), record.scope);
+    try std.testing.expectEqual(@intFromEnum(protocol.Phase.recovery_blocked), record.phase);
 }

@@ -220,12 +220,9 @@ public sealed partial class IntelGpuInformationCollectorTests
     }
 
     [Fact]
-    public void FrozenSourceDoesNotOpenSessionAndReturnsOnOriginalNormalMode()
+    public void ZoneReadsThroughOriginalSession()
     {
         var sdk = new Sdk(); var zone = new IntelGclMonitoringZone(new IntelGclReader(sdk.Open));
-        zone.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
-        Assert.Empty(zone.Read(Inventory(), Request(9), CancellationToken.None)); Assert.Equal(0, sdk.Opens);
-        zone.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Normal);
         Assert.Single(zone.Read(Inventory(), Request(9), CancellationToken.None)); Assert.Equal(1, sdk.Opens);
     }
 

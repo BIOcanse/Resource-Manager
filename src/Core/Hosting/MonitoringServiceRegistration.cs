@@ -105,7 +105,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<WindowsPlatformSensorReader>(),
             provider.GetRequiredService<HostManagerMetricSnapshotOwner>(),
             provider.GetRequiredService<HardwareMetricCatalogState>(),
-            provider.GetRequiredService<IMonitoringSourceZoneRegistry>(),
+
             provider.GetRequiredService<HostManagerSamplingSubscriptionOwner>(),
             provider.GetRequiredService<RuntimePlanProvider>(),
             provider.GetRequiredService<ILogger<WindowsHardwareMetricSampler>>(),
@@ -232,7 +232,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<KernelEtwSessionBroker>();
         services.AddSingleton<IKernelEtwSessionBroker>(static provider => provider.GetRequiredService<KernelEtwSessionBroker>());
 
-
         services.AddSingleton<PortableSoftwareDiscoveryService>();
         services.AddSingleton<IPortableSoftwareDiscovery>(static provider => provider.GetRequiredService<PortableSoftwareDiscoveryService>());
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
@@ -253,7 +252,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<ICpuCoreResidencyReader>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
-        services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
         services.AddHostedServiceAlias<EtwCpuCoreResidencyReader>(BlockUids.EtwCpuCoreResidencyReader, static service => service.ExecuteTask,
             forwardRunFailureToHost: false);
 
@@ -263,7 +261,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<ILogger<EtwSystemInterruptSnapshotSource>>(),
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<ISystemInterruptSnapshotSource>(static provider => provider.GetRequiredService<EtwSystemInterruptSnapshotSource>());
-        services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwSystemInterruptSnapshotSource>());
         services.AddHostedServiceAlias<EtwSystemInterruptSnapshotSource>(BlockUids.EtwSystemInterruptSnapshotSource, static service => service.ExecuteTask,
             forwardRunFailureToHost: false);
 
@@ -273,14 +270,11 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<IPhysicalDiskIoAttributionReader>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
-        services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddHostedServiceAlias<EtwPhysicalDiskIoAttributionReader>(BlockUids.EtwPhysicalDiskIoAttributionReader);
 
         services.AddSingleton<DxgkrnlVidMmEtwTelemetryZone>();
-        services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>());
         services.AddSingleton<PresentFrameEtwSource>();
         services.AddSingleton<IFrameTimingObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
-        services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         services.AddSingleton<DxgkrnlVidMmEtwResidualBreakdownProvider>();
         services.AddSingleton<WindowsResourceResidualBreakdownProvider>();
         services.AddSingleton<IResourceResidualBreakdownProvider>(static provider => provider.GetRequiredService<WindowsResourceResidualBreakdownProvider>());

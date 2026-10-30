@@ -183,9 +183,6 @@ fn sameTargetAndDomain(
             left_identity.process_id == right_identity.process_id and
             left_identity.process_start_key == right_identity.process_start_key and
             domainsOverlap(left_domain_mask, right_domain_mask),
-        @intFromEnum(protocol.Scope.software) =>
-            left_identity.software_id == right_identity.software_id and
-            domainsOverlap(left_domain_mask, right_domain_mask),
         @intFromEnum(protocol.Scope.resource) =>
             left_identity.software_id == right_identity.software_id and
             left_identity.target_id == right_identity.target_id,

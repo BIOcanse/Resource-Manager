@@ -20,8 +20,8 @@ public sealed partial class NumaMemoryInformationCollectorTests
         var bindings = catalog.MetricBindings.Values.Where(static binding => binding.SourceId == NativeMetricSnapshotSourceCatalog.WindowsMemory).ToArray();
         Assert.Equal(8, bindings.Length);
         var requested = bindings.Select(static binding => binding.MetricHandle).ToArray();
-        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var global = new MemoryMetrics(UsedBytes: 10, TotalBytes: 20, UsagePercent: 50, IsUsageAvailable: true) { AvailableBytes = 10 };
         var first = Publish(1, global, new Dictionary<string, ulong> { ["windows-numa-node|0"] = exact, ["windows-numa-node|9"] = ulong.MaxValue },
             new Dictionary<string, ulong> { ["windows-numa-node|0"] = 0, ["windows-numa-node|9"] = uint.MaxValue });

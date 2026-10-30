@@ -1,5 +1,4 @@
 using ResourceManager.Adapter.SharedMemory;
-using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Infrastructure.PublicResources;
@@ -33,18 +32,16 @@ public sealed partial class HostManagerSmartCoordinator
         IReadOnlyList<HostPublicResourceAdapterCapacityObservation> adapters = [];
         if (capture is { } sample && sample.RoundNumber > lastPublicResourceCapacityRound)
         {
-            var policyExecutionEnabled = hostManagerSmartControlZones.CanRun(
-                HostManagerSmartControlZoneIds.PolicyExecution);
             var hardware = sample.Hardware;
             lastPublicResourceCapacityRound = sample.RoundNumber;
             var idle = CreateIdleCapacity(hardware);
             var observedMemory = HostPublicResourceCapacityObserver.ObserveMemory(
-                policyExecutionEnabled,
+                true,
                 desired.HostPlan.HotPublish.MemoryCleanup,
                 idle.MemoryFreeRatio,
                 idle.MemoryFreeRatioCurrent);
             var observedVideoMemory = HostPublicResourceCapacityObserver.ObserveVideoMemory(
-                policyExecutionEnabled,
+                true,
                 desired.HostPlan.HotPublish.ResourceScheduler.Configuration,
                 hardware.GpuInventory);
             memory = observedMemory;

@@ -21,28 +21,28 @@ public sealed class StateAuthorityTests
         var authority = CreateAuthority();
         var current = false;
         var reads = 0;
-        var function = authority.ClaimReadFunction<bool>(BackendItems.PresentUnfrozen, () =>
+        var function = authority.ClaimReadFunction<bool>(BackendItems.PresentNativeSessionAvailable, () =>
         {
             reads++;
             return StateRead<bool>.FromValue(current);
         });
-        Assert.Throws<InvalidOperationException>(() => authority.ClaimCell<bool>(BackendItems.PresentUnfrozen));
-        Assert.False(authority.Read<bool>(BackendItems.PresentUnfrozen).Value);
+        Assert.Throws<InvalidOperationException>(() => authority.ClaimCell<bool>(BackendItems.PresentNativeSessionAvailable));
+        Assert.False(authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).Value);
         current = true;
-        Assert.True(authority.Read<bool>(BackendItems.PresentUnfrozen).Value);
+        Assert.True(authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).Value);
         var notifications = 0;
-        using var subscription = authority.Subscribe(BackendItems.PresentUnfrozen, "read-function", _ =>
+        using var subscription = authority.Subscribe(BackendItems.PresentNativeSessionAvailable, "read-function", _ =>
         { notifications++; return Task.CompletedTask; });
         var before = reads;
         await function.NotifyChangedAsync(Reason);
         Assert.Equal(before, reads);
         Assert.Equal(1, notifications);
         await function.UnbindAsync(Reason);
-        Assert.Equal(NoValueReason.OwnerStopped, authority.Read<bool>(BackendItems.PresentUnfrozen).NoValueReason);
+        Assert.Equal(NoValueReason.OwnerStopped, authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).NoValueReason);
         Assert.Equal(before, reads);
         current = false;
         await function.BindAsync(Reason);
-        Assert.False(authority.Read<bool>(BackendItems.PresentUnfrozen).Value);
+        Assert.False(authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).Value);
         Assert.Equal(before + 1, reads);
     }
 
@@ -50,8 +50,8 @@ public sealed class StateAuthorityTests
     public void ReadFunctionReportsReadFailedWhenItsOwnerThrows()
     {
         var authority = CreateAuthority();
-        authority.ClaimReadFunction<bool>(BackendItems.PresentUnfrozen, () => throw new InvalidOperationException("read"));
-        Assert.Equal(NoValueReason.ReadFailed, authority.Read<bool>(BackendItems.PresentUnfrozen).NoValueReason);
+        authority.ClaimReadFunction<bool>(BackendItems.PresentNativeSessionAvailable, () => throw new InvalidOperationException("read"));
+        Assert.Equal(NoValueReason.ReadFailed, authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).NoValueReason);
         Assert.Throws<InvalidOperationException>(() => authority.ClaimReadFunction<bool>(BackendItems.ProgramShuttingDown,
             () => StateRead<bool>.FromValue(true)));
     }
@@ -60,12 +60,12 @@ public sealed class StateAuthorityTests
     public void CurrentReadFunctionDoesNotAllocateManagedMemory()
     {
         var authority = CreateAuthority();
-        authority.ClaimReadFunction<bool>(BackendItems.PresentUnfrozen, static () => StateRead<bool>.FromValue(true));
-        for (var index = 0; index < 4096; index++) _ = authority.Read<bool>(BackendItems.PresentUnfrozen);
+        authority.ClaimReadFunction<bool>(BackendItems.PresentNativeSessionAvailable, static () => StateRead<bool>.FromValue(true));
+        for (var index = 0; index < 4096; index++) _ = authority.Read<bool>(BackendItems.PresentNativeSessionAvailable);
         var before = GC.GetAllocatedBytesForCurrentThread();
         var observed = 0;
         for (var index = 0; index < 100_000; index++)
-            if (authority.Read<bool>(BackendItems.PresentUnfrozen).Value) observed++;
+            if (authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).Value) observed++;
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal(100_000, observed);
         Assert.Equal(0L, allocated);
@@ -75,19 +75,19 @@ public sealed class StateAuthorityTests
     public async Task DynamicHoldersAreUniquePerItemAndReleaseOnlyTheirOwnRegistration()
     {
         var authority = CreateAuthority();
-        var cell = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
+        var cell = authority.ClaimCell<bool>(BackendItems.PresentNativeSessionAvailable);
         var calls = 0;
         Func<BusinessBlockReason, Task> reader = _ => { calls++; return Task.CompletedTask; };
-        using var first = authority.Subscribe(BackendItems.PresentUnfrozen, "first", reader);
-        Assert.Throws<InvalidOperationException>(() => authority.Subscribe(BackendItems.PresentUnfrozen, "first", reader));
-        using var second = authority.Subscribe(BackendItems.PresentUnfrozen, "second", reader);
+        using var first = authority.Subscribe(BackendItems.PresentNativeSessionAvailable, "first", reader);
+        Assert.Throws<InvalidOperationException>(() => authority.Subscribe(BackendItems.PresentNativeSessionAvailable, "first", reader));
+        using var second = authority.Subscribe(BackendItems.PresentNativeSessionAvailable, "second", reader);
         await cell.PublishAsync(true, Reason);
         Assert.Equal(2, calls);
         first.Dispose();
         first.Dispose();
         await cell.PublishAsync(false, Reason);
         Assert.Equal(3, calls);
-        using var replacement = authority.Subscribe(BackendItems.PresentUnfrozen, "first", reader);
+        using var replacement = authority.Subscribe(BackendItems.PresentNativeSessionAvailable, "first", reader);
         first.Dispose();
         await cell.PublishAsync(true, Reason);
         Assert.Equal(5, calls);
@@ -104,13 +104,13 @@ public sealed class StateAuthorityTests
         Assert.Throws<InvalidOperationException>(() => authority.ClaimWrite<bool>(BackendItems.ProgramShuttingDown));
         Assert.False(authority.Read<bool>(BackendItems.ProgramShuttingDown).Value);
 
-        Assert.Throws<InvalidOperationException>(() => authority.ClaimWrite<bool>(BackendItems.PresentUnfrozen));
-        Assert.Throws<InvalidOperationException>(() => authority.ClaimCell<int>(BackendItems.PresentUnfrozen));
-        var cell = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
+        Assert.Throws<InvalidOperationException>(() => authority.ClaimWrite<bool>(BackendItems.PresentNativeSessionAvailable));
+        Assert.Throws<InvalidOperationException>(() => authority.ClaimCell<int>(BackendItems.PresentNativeSessionAvailable));
+        var cell = authority.ClaimCell<bool>(BackendItems.PresentNativeSessionAvailable);
         await cell.PublishAsync(true, Reason);
-        Assert.Throws<InvalidOperationException>(() => authority.ClaimCell<bool>(BackendItems.PresentUnfrozen));
-        Assert.True(authority.Read<bool>(BackendItems.PresentUnfrozen).Value);
-        Assert.Throws<InvalidOperationException>(() => authority.Read<int>(BackendItems.PresentUnfrozen));
+        Assert.Throws<InvalidOperationException>(() => authority.ClaimCell<bool>(BackendItems.PresentNativeSessionAvailable));
+        Assert.True(authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).Value);
+        Assert.Throws<InvalidOperationException>(() => authority.Read<int>(BackendItems.PresentNativeSessionAvailable));
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public sealed class StateAuthorityTests
         Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(int.MaxValue));
         Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(BackendItems.HostStartPermitted));
         Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(new(BackendItems.HostStartPermitted, int.MaxValue)));
-        Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(new(BackendItems.PresentUnfrozen, BackendUids.PresentFrameEtwSource)));
+        Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(new(BackendItems.PresentNativeSessionAvailable, BackendUids.PresentFrameEtwSource)));
         Assert.Equal(NoValueReason.NotPublished,
             authority.Read<bool>(new(BackendItems.HostStartPermitted, BackendUids.PresentFrameEtwSource)).NoValueReason);
     }
@@ -129,32 +129,32 @@ public sealed class StateAuthorityTests
     public async Task ReferenceUnbindPublishesOwnerStoppedUntilTheOwnerBindsItsCurrentValueAgain()
     {
         var authority = CreateAuthority();
-        Assert.Equal(NoValueReason.NotPublished, authority.Read<bool>(BackendItems.PresentUnfrozen).NoValueReason);
-        var cell = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
-        Assert.Equal(NoValueReason.NotPublished, authority.Read<bool>(BackendItems.PresentUnfrozen).NoValueReason);
+        Assert.Equal(NoValueReason.NotPublished, authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).NoValueReason);
+        var cell = authority.ClaimCell<bool>(BackendItems.PresentNativeSessionAvailable);
+        Assert.Equal(NoValueReason.NotPublished, authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).NoValueReason);
         await cell.PublishAsync(true, Reason);
-        var previous = authority.Read<bool>(BackendItems.PresentUnfrozen);
+        var previous = authority.Read<bool>(BackendItems.PresentNativeSessionAvailable);
         await cell.UnbindAsync(Reason);
-        var stopped = authority.Read<bool>(BackendItems.PresentUnfrozen);
+        var stopped = authority.Read<bool>(BackendItems.PresentNativeSessionAvailable);
         Assert.False(stopped.HasValue);
         Assert.Equal(NoValueReason.OwnerStopped, stopped.NoValueReason);
         Assert.Throws<InvalidOperationException>(() => stopped.Value);
         Assert.True(previous.Value);
 
         await cell.PublishAsync(false, Reason);
-        Assert.Equal(NoValueReason.OwnerStopped, authority.Read<bool>(BackendItems.PresentUnfrozen).NoValueReason);
+        Assert.Equal(NoValueReason.OwnerStopped, authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).NoValueReason);
         await cell.BindAsync(Reason);
-        Assert.False(authority.Read<bool>(BackendItems.PresentUnfrozen).Value);
+        Assert.False(authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).Value);
         await cell.PublishNoValueAsync(NoValueReason.ReadFailed, Reason);
-        Assert.Equal(NoValueReason.ReadFailed, authority.Read<bool>(BackendItems.PresentUnfrozen).NoValueReason);
+        Assert.Equal(NoValueReason.ReadFailed, authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).NoValueReason);
     }
 
     [Fact]
     public async Task CurrentBooleanAndNoValueReadsAllocateNoManagedMemory()
     {
         var authority = CreateAuthority();
-        await authority.ClaimCell<bool>(BackendItems.PresentUnfrozen).PublishAsync(true, Reason);
-        var present = new StateItemKey(BackendItems.PresentUnfrozen);
+        await authority.ClaimCell<bool>(BackendItems.PresentNativeSessionAvailable).PublishAsync(true, Reason);
+        var present = new StateItemKey(BackendItems.PresentNativeSessionAvailable);
         var unpublished = new StateItemKey(BackendItems.ProgramShuttingDown);
         var total = 0;
         for (var index = 0; index < 4096; index++)
@@ -178,16 +178,16 @@ public sealed class StateAuthorityTests
     public async Task RuleReadOfAnUndeclaredItemFaultsThePublishRoundWithoutStartingAnyBlock()
     {
         var authority = CreateAuthority();
-        var cell = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
+        var cell = authority.ClaimCell<bool>(BackendItems.PresentNativeSessionAvailable);
         var block = new HoldingBlock();
-        var rule = new BusinessBlockDecisionRegistration(BackendUids.Program, [BackendItems.PresentUnfrozen],
-            input => input.Read<bool>(BackendItems.VidMmUnfrozen).GetValueOrDefault(false)
+        var rule = new BusinessBlockDecisionRegistration(BackendUids.Program, [BackendItems.PresentNativeSessionAvailable],
+            input => input.Read<bool>(BackendItems.VidMmNativeSessionAvailable).GetValueOrDefault(false)
                 ? [BackendUids.PresentFrameEtwSource] : []);
         await using var scheduler = CreateSingleBlockScheduler(authority, block, rule);
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => cell.PublishAsync(true, Reason).WaitAsync(Timeout));
         Assert.Contains("undeclared", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(BackendItems.VidMmUnfrozen.ToString(), error.Message, StringComparison.Ordinal);
+        Assert.Contains(BackendItems.VidMmNativeSessionAvailable.ToString(), error.Message, StringComparison.Ordinal);
         Assert.Equal(0, block.Runs);
         Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(BackendUids.PresentFrameEtwSource));
     }
@@ -199,10 +199,10 @@ public sealed class StateAuthorityTests
     public async Task RuleExplicitlyTreatsEachNoValueReasonAsFalse(NoValueReason reason)
     {
         var authority = CreateAuthority();
-        var cell = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
+        var cell = authority.ClaimCell<bool>(BackendItems.PresentNativeSessionAvailable);
         var block = new HoldingBlock();
-        var rule = new BusinessBlockDecisionRegistration(BackendUids.Program, [BackendItems.PresentUnfrozen],
-            input => input.Read<bool>(BackendItems.PresentUnfrozen).GetValueOrDefault(false)
+        var rule = new BusinessBlockDecisionRegistration(BackendUids.Program, [BackendItems.PresentNativeSessionAvailable],
+            input => input.Read<bool>(BackendItems.PresentNativeSessionAvailable).GetValueOrDefault(false)
                 ? [BackendUids.PresentFrameEtwSource] : []);
         await using var scheduler = CreateSingleBlockScheduler(authority, block, rule);
         try
@@ -213,17 +213,17 @@ public sealed class StateAuthorityTests
             await Until(() => scheduler.ReadState(BackendUids.PresentFrameEtwSource) == BusinessBlockState.Running);
             await cell.PublishNoValueAsync(reason, Reason).WaitAsync(Timeout);
             await Until(() => scheduler.ReadState(BackendUids.PresentFrameEtwSource) == BusinessBlockState.Stopped);
-            Assert.Equal(reason, authority.Read<bool>(BackendItems.PresentUnfrozen).NoValueReason);
+            Assert.Equal(reason, authority.Read<bool>(BackendItems.PresentNativeSessionAvailable).NoValueReason);
             Assert.Equal(1, block.Runs);
         }
         finally { await Stop(scheduler); }
     }
 
     [Fact]
-    public async Task CustomRuleThatDoesNotReadModeIsNotFilteredWhenModeBecomesFrozen()
+    public async Task CustomRuleDoesNotReadOrReactToUnrelatedAvailability()
     {
         var authority = CreateAuthority();
-        var cell = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
+        var cell = authority.ClaimCell<bool>(BackendItems.PresentNativeSessionAvailable);
         await cell.PublishAsync(true, Reason);
         var block = new HoldingBlock();
         var executionKey = new StateItemKey(BackendItems.HostStartPermitted, BackendUids.PresentFrameEtwSource);
@@ -236,12 +236,12 @@ public sealed class StateAuthorityTests
             await permit.PublishAsync(true, Reason).WaitAsync(Timeout);
             await Until(() => scheduler.ReadState(BackendUids.PresentFrameEtwSource) == BusinessBlockState.Running);
             await cell.PublishAsync(false, Reason).WaitAsync(Timeout);
-            // Force an actual completed decision after the unrelated mode publication.
+            // Force an actual completed decision after the unrelated availability publication.
             await permit.PublishAsync(true, Reason).WaitAsync(Timeout);
             Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(BackendUids.PresentFrameEtwSource));
             Assert.Equal(1, block.Runs);
             Assert.DoesNotContain(scheduler.Read().CurrentDecisions.Single().Items,
-                item => item.ItemUid == BackendItems.PresentUnfrozen);
+                item => item.ItemUid == BackendItems.PresentNativeSessionAvailable);
             Assert.DoesNotContain(scheduler.Read().History, transition => transition.To == BusinessBlockState.Stopping);
         }
         finally { await Stop(scheduler); }

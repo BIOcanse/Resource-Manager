@@ -79,10 +79,9 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 projection.MetricHandles["memory.usage"];
             var runtimeModes = projection.Sources
                 .Select(static source =>
-                    new NativeMetricSnapshotSourceRuntimeMode(
+                    new NativeMetricSnapshotSourceRuntimeState(
                         source.SourceHandle,
                         1,
-                        NativeMetricSnapshotZoneMode.Normal,
                         NativeMetricSnapshotSourceAvailability.Available))
                 .ToArray();
             var plan = workspace.PlanCollection(
@@ -496,10 +495,9 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 metricHandle = projection.MetricHandles["memory.usage"];
                 var runtimeModes = projection.Sources
                     .Select(static source =>
-                        new NativeMetricSnapshotSourceRuntimeMode(
+                        new NativeMetricSnapshotSourceRuntimeState(
                             source.SourceHandle,
                             10,
-                            NativeMetricSnapshotZoneMode.Normal,
                             NativeMetricSnapshotSourceAvailability.Available))
                     .ToArray();
                 var plan = original.PlanCollection(
@@ -584,10 +582,9 @@ public sealed class NativeMetricSnapshotWorkspaceTests
 
             var restoredModes = restoredProjection.Sources
                 .Select(static source =>
-                    new NativeMetricSnapshotSourceRuntimeMode(
+                    new NativeMetricSnapshotSourceRuntimeState(
                         source.SourceHandle,
                         1,
-                        NativeMetricSnapshotZoneMode.Normal,
                         NativeMetricSnapshotSourceAvailability.Available))
                 .ToArray();
             var nextPlan = restored.PlanCollection(
@@ -712,10 +709,9 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 projection.MetricHandles["memory.usage"];
             var runtimeModes = projection.Sources
                 .Select(static source =>
-                    new NativeMetricSnapshotSourceRuntimeMode(
+                    new NativeMetricSnapshotSourceRuntimeState(
                         source.SourceHandle,
                         1,
-                        NativeMetricSnapshotZoneMode.Normal,
                         NativeMetricSnapshotSourceAvailability.Available))
                 .ToArray();
             var plan = workspace.PlanCollection(
@@ -935,10 +931,9 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 projection.MetricHandles["memory.usage"];
             var runtimeModes = projection.Sources
                 .Select(static source =>
-                    new NativeMetricSnapshotSourceRuntimeMode(
+                    new NativeMetricSnapshotSourceRuntimeState(
                         source.SourceHandle,
                         1,
-                        NativeMetricSnapshotZoneMode.Normal,
                         NativeMetricSnapshotSourceAvailability.Available))
                 .ToArray();
             var first = workspace.PlanCollection(
@@ -994,8 +989,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
         ulong incarnation)
     {
         var modes = catalog.Sources.Select(static source =>
-            new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-                NativeMetricSnapshotZoneMode.Normal,
+            new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
                 NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var plan = workspace.PlanCollection([catalog.MetricHandles["gpu.0.usage"]],
             modes, includeGpuInventory: true, DateTimeOffset.UtcNow);

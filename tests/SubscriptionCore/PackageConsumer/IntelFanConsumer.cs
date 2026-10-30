@@ -23,7 +23,7 @@ internal static class IntelFanConsumer
         if (!OperatingSystem.IsWindows()) return;
         var fixture = new RecordedIntelFanResources();
         using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.CreateDefault(), fixture.Create(), new(),
-            modeProvider: fixture.Mode, unavailableCooldown: TimeSpan.Zero);
+            unavailableCooldown: TimeSpan.Zero);
         using var http = new HttpClient();
         var core = new ReadWriteCore(owner.CreateBackend(), new DependencyActions(http, []));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -74,10 +74,6 @@ internal static class IntelFanConsumer
         var repeated = Fields(await core.DiscoverAsync(timeout.Token));
         Require(repeated.SequenceEqual(fields) && owner.ReadCachedSnapshot()!.WorkspaceIdentity == beforeProbe.WorkspaceIdentity,
             "unchanged recorded directory keeps field references and workspace");
-        var directoryReads = fixture.DirectoryReads;
-        fixture.Frozen = true;
-        await core.DiscoverAsync(timeout.Token);
-        Require(fixture.DirectoryReads == directoryReads, "frozen source does not reopen/probe directory");
         Console.WriteLine("[INTEL-FAN-PACKAGE-RECORDED] gpu_fan; RPM=0/1450; exact-session-targets; selected-only; same-current; null-failure; cancellation/retirement; stable-catalog-probe; no-live-capture.");
     }
     internal static ImmutableArray<FieldReference> Fields(ReadWriteCatalog catalog)
@@ -100,14 +96,13 @@ internal sealed class RecordedIntelFanResources
     internal const string Name = "gpu_intel_fan_speed_rpm";
     internal IntelGclFanIdentity[] Fans = [new(Parent, Guid.Parse("3bb148e3-95f3-458a-b25f-26432699fe64"), 0), new(Parent, Guid.Parse("3bb148e3-95f3-458a-b25f-26432699fe64"), 1)];
     internal int Reads, DirectoryReads, UnselectedReads;
-    internal bool Fail = false, Frozen = false, DirectoryUnavailable = false;
+    internal bool Fail = false, DirectoryUnavailable = false;
     internal uint LastMaximum;
     internal IntelGclFanIdentity[] LastTargets = [];
     internal Action? OnRead;
     internal Func<WindowsGpuAdapterInventoryRead, uint, IntelGclFanDirectoryLease?, IntelFanTopologyRead>? OpenOverride = null;
     internal Func<IReadOnlyList<IntelGclFanIdentity>, WindowsGpuAdapterInventoryRead, uint, CancellationToken, IReadOnlyList<IntelGclFanReading>>? ReadOverride = null;
-    internal NativeMetricSnapshotZoneMode Mode(string source)
-        => Frozen && source == NativeMetricSnapshotSources.IntelGcl ? NativeMetricSnapshotZoneMode.Freeze : NativeMetricSnapshotZoneMode.Normal;
+
     internal WindowsHardwareMetricResources Create() => new()
     {
         Controls = new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null,

@@ -68,42 +68,11 @@ public sealed class NativeSmartCoordinatorActionTransportTests
             HostManagerSmartCoordinator.ValidateNativeAction(action, 0, snapshot));
     }
 
-    [Fact]
-    public void ValidateNativeAction_RejectsExecutableAdapterWithoutExactGradeValidity()
-    {
-        var snapshot = CreateSnapshot();
-        var action = CreateAdapterActionWithoutScore(snapshot);
-        action.ValidMask &= ~NativeSmartCoordinatorActionValidity.CpuGrade;
 
-        Assert.Throws<InvalidDataException>(() =>
-            HostManagerSmartCoordinator.ValidateNativeAction(action, 0, snapshot));
-    }
 
-    [Fact]
-    public void ValidateNativeAction_RejectsExecutableAdapterWithoutCurrentScore()
-    {
-        var snapshot = CreateSnapshot();
-        var action = CreateAdapterActionWithoutScore(snapshot);
 
-        Assert.Throws<InvalidDataException>(() =>
-            HostManagerSmartCoordinator.ValidateNativeAction(action, 0, snapshot));
-    }
 
-    [Fact]
-    public void ValidateNativeAction_AcceptsIndependentAdapterCpuAndGpuScores()
-    {
-        var snapshot = CreateSnapshot();
-        var action = CreateAdapterActionWithoutScore(snapshot);
-        action.ValidMask |= NativeSmartCoordinatorActionValidity.GpuGrade
-            | NativeSmartCoordinatorActionValidity.CpuScore
-            | NativeSmartCoordinatorActionValidity.GpuScore;
-        action.DomainMask |= NativeSmartCoordinatorGradeDomains.Gpu;
-        action.ToGpuGrade = NativeSmartCoordinatorAdapterGrade.Extreme;
-        action.CpuScore = 3.25;
-        action.GpuScore = 9.75;
 
-        HostManagerSmartCoordinator.ValidateNativeAction(action, 0, snapshot);
-    }
 
     [Fact]
     public void ValidateNativeAction_AcceptsNonAtomicExecutableLevel4Singleton()
@@ -233,10 +202,6 @@ public sealed class NativeSmartCoordinatorActionTransportTests
             DomainMask = NativeSmartCoordinatorGradeDomains.Process,
             FromProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
             ToProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            FromCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            FromGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal
         };
 
     private static NativeSmartCoordinatorAction CreateAtomicProcessAction(
@@ -252,30 +217,6 @@ public sealed class NativeSmartCoordinatorActionTransportTests
         action.GroupMemberCount = 2;
         return action;
     }
-
-    private static NativeSmartCoordinatorAction CreateAdapterActionWithoutScore(
-        NativeSmartCoordinatorSnapshot snapshot) => new()
-        {
-            StructSize = checked((uint)NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorAction>()),
-            Flags = NativeSmartCoordinatorActionFlags.RequiresFeedback,
-            ValidMask = NativeSmartCoordinatorActionValidity.SoftwareIdentity
-            | NativeSmartCoordinatorActionValidity.CpuGrade,
-            ActionId = 8,
-            PlanEpoch = snapshot.PlanEpoch,
-            ConfigurationGeneration = snapshot.ConfigurationGeneration,
-            TargetKey = 42,
-            SoftwareKey = 42,
-            Scope = NativeSmartCoordinatorActionScope.AdapterSoftware,
-            Disposition = NativeSmartCoordinatorActionDisposition.Apply,
-            DomainMask = NativeSmartCoordinatorGradeDomains.Cpu,
-            FromProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            ToProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            FromCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToCpuGrade = NativeSmartCoordinatorAdapterGrade.Optimize,
-            FromGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            WakeAfterMilliseconds = snapshot.WakeAfterMilliseconds
-        };
 
     private static NativeSmartCoordinatorFeedback CreateSuccessfulProcessFeedback(
         NativeSmartCoordinatorAction action)

@@ -278,35 +278,6 @@ public sealed class DefaultReadWriteCollectionBorrowTests
     }
 
     [Fact]
-    public async Task FrozenHardwareSourceCanCommitCurrentWithoutClaimingAQueryRan()
-    {
-        var frozen = false;
-        var memoryReads = 0;
-        using var owner = MemoryOwner(() =>
-        {
-            memoryReads++;
-            return new(UsedBytes: 512, TotalBytes: 1024, UsagePercent: 50, IsUsageAvailable: true);
-        }, source => source == NativeMetricSnapshotSources.WindowsMemory && frozen
-            ? NativeMetricSnapshotZoneMode.Freeze
-            : NativeMetricSnapshotZoneMode.Normal);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await owner.CaptureAsync(MetricSampleRequest.ForIds(["memory.usage"]), timeout.Token);
-        PublishRecordedCatalog(owner);
-        var field = owner.CreateBackend().Catalog.Fields.Single(item =>
-            item.Field.FieldName == "memory_all_physical_used_bytes").Field;
-        using var borrow = owner.BorrowSubscriptionCapture();
-        Assert.Equal(FieldCollectionSourceKind.SourceQuery, Assert.Single(borrow.Bind([field])).SourceKind);
-
-        frozen = true;
-        var result = await borrow.CollectAsync([field], new Permit(), timeout.Token);
-
-        Assert.True(result.Committed);
-        Assert.Empty(result.QueriedFields);
-        Assert.Equal(1, memoryReads);
-        Assert.Equal(512d, Assert.Single(result.Readings).Value!.Number!.Value);
-    }
-
-    [Fact]
     public async Task HardwareRejectedOrCanceledOriginalCapturePreservesManagedCurrent()
     {
         CancellationTokenSource? cancelDuringRead = null;
@@ -328,8 +299,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
 
     // Existing friend-level raw boundary recording: the original native workspace/capture/current remain real.
     // No hardware reader, alternate publication or public test API is substituted.
-    private static WindowsHardwareMetricOwner MemoryOwner(Func<MemoryMetrics> read,
-        Func<string, NativeMetricSnapshotZoneMode>? modeProvider = null)
+    private static WindowsHardwareMetricOwner MemoryOwner(Func<MemoryMetrics> read)
     {
         var defaults = WindowsMetricConfiguration.CreateDefault();
         var catalog = new NativeMetricSnapshotCatalogConfiguration(1, new string('A', 64), 8, 64, 32,
@@ -353,7 +323,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
             GpuLuidIndexCapacity = 16, GpuKeyIndexCapacity = 16
         };
         var owner = new WindowsHardwareMetricOwner(new(configuration, catalog, defaults.PdhOptions),
-            UnusedResources(_ => { }, read), new(), modeProvider);
+            UnusedResources(_ => { }, read), new());
         try
         {
             var workspace = new NativeMetricSnapshotWorkspace(configuration, catalog);

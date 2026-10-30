@@ -1,4 +1,4 @@
-﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.ReadWrite.Windows.Frames;
@@ -207,15 +207,6 @@ public sealed partial class PresentFrameEtwSource
             lock (gate) subscriptions = frameSubscriptions.Cast<IDisposable>().Concat(graphicsApiSubscriptions).ToArray();
         }
         foreach (var subscription in subscriptions) subscription.Dispose();
-    }
-
-    private async Task AwaitReleasedAsync(Task dispatch)
-    {
-        await dispatch.ConfigureAwait(false);
-        Task drain;
-        lock (lifecycle) drain = activeRun is { StopNotification.IsCancellationRequested: true } current
-            ? current.Completed.Task : Task.CompletedTask;
-        await drain.ConfigureAwait(false);
     }
 
     private sealed class PresentRun(CancellationToken stopNotification)

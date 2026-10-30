@@ -69,9 +69,8 @@ public sealed partial class NativeMetricSnapshotAbiTests
             };
             Assert.Equal(NativeMetricSnapshotStatus.Ok, session.Plan(in input,
                 [new() { StructSize = (uint)Unsafe.SizeOf<NativeMetricSnapshotPlanMetricInput>(), MetricHandle = 1 }],
-                [new() { StructSize = (uint)Unsafe.SizeOf<NativeMetricSnapshotSourceModeInput>(), SourceHandle = 1,
-                    CapabilityGeneration = 1, ZoneMode = (uint)NativeMetricSnapshotZoneMode.Normal,
-                    Availability = (uint)NativeMetricSnapshotSourceAvailability.Available }],
+                [new() { StructSize = (uint)Unsafe.SizeOf<NativeMetricSnapshotSourceStateInput>(), SourceHandle = 1,
+                    CapabilityGeneration = 1, Availability = (uint)NativeMetricSnapshotSourceAvailability.Available }],
                 out _, new NativeMetricSnapshotSourcePlanOutput[1], new NativeMetricSnapshotMetricPlanOutput[1]));
         }
     }

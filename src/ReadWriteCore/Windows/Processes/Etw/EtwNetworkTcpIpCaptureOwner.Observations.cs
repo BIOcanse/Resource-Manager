@@ -11,9 +11,9 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner
     private readonly Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess =
         WindowsNetworkEndpointProcessLease.Open;
 
-    internal EtwNetworkTcpIpCaptureOwner(IKernelEtwSessionBroker broker, Func<bool> canRead,
+    internal EtwNetworkTcpIpCaptureOwner(IKernelEtwSessionBroker broker,
         KernelEtwDiagnostics diagnostics, Func<long> clock, Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess)
-        : this(broker, canRead, diagnostics, clock)
+        : this(broker, diagnostics, clock)
     {
         this.openProcess = openProcess ?? throw new ArgumentNullException(nameof(openProcess));
     }

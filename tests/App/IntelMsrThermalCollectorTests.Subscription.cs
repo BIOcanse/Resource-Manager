@@ -49,11 +49,9 @@ public sealed partial class IntelMsrThermalCollectorTests
         var zone = new IntelMsrMonitoringZone(new IntelMsrReader(() => hardware, () => access));
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("Intel-only demand cannot read NUMA"),
             () => throw new InvalidOperationException("Intel-only demand cannot read global memory"));
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner,
-            dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelMsrZone: zone);
+            dashboard,  slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelMsrZone: zone);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, target.ExactIdentityKey, ["cpu_intel_aperf_mperf_interval_ratio"]);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await sampler.StartAsync(timeout.Token);
@@ -150,11 +148,9 @@ public sealed partial class IntelMsrThermalCollectorTests
         var zone = new IntelMsrMonitoringZone(new IntelMsrReader(() => { hardware.Opens++; return hardware; }, () => access));
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("Intel-only demand cannot read NUMA"),
             () => throw new InvalidOperationException("Intel-only demand cannot read global memory"));
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner,
-            dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelMsrZone: zone);
+            dashboard,  slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelMsrZone: zone);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, target.ExactIdentityKey,
             [family switch { 1 => "cpu_intel_package_energy_counter_raw", 2 => "cpu_intel_aperf_counter_raw", 3 => "cpu_intel_package_power_information_raw", 4 => "cpu_intel_die_package_energy_counter_raw", 5 or 6 => "cpu_intel_core_thermal_throttling_active", _ => "cpu_intel_core_dts_temperature" }]);
         Assert.Single(request.Ids); sampler.ReadLatest(request); Assert.Empty(hardware.Reads);

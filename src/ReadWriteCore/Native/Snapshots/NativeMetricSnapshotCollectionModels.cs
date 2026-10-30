@@ -4,10 +4,9 @@ using ResourceManager.ReadWrite.Windows.Pdh;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
-public readonly record struct NativeMetricSnapshotSourceRuntimeMode(
+public readonly record struct NativeMetricSnapshotSourceRuntimeState(
     ulong SourceHandle,
     ulong CapabilityGeneration,
-    NativeMetricSnapshotZoneMode ZoneMode,
     NativeMetricSnapshotSourceAvailability Availability);
 
 public sealed record NativeMetricSnapshotCollectionPlan(

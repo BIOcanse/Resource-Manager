@@ -286,8 +286,6 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal(64, smartCoordinator.ConfigurationSha256.Length);
         Assert.Equal(
             (ulong)(NativeSmartCoordinatorFeatures.ProcessPolicy
-                | NativeSmartCoordinatorFeatures.AdapterCpu
-                | NativeSmartCoordinatorFeatures.AdapterGpu
                 | NativeSmartCoordinatorFeatures.CriticalEvents),
             smartCoordinator.HotPublish.FeatureFlags);
         Assert.Equal(30000, smartCoordinator.HotPublish.NormalIntervalMilliseconds);
@@ -313,10 +311,7 @@ public sealed class HostManagerPlanCompilerTests
             OptimizationRuntimeScoringDefaults.BaseScoreForKind(kind) >=
                 smartCoordinator.HotPublish.BaseScoreTiers.MiddleMinimumBaseScore,
             $"Default software kind '{kind}' must not enter the configured low tier."));
-        Assert.Equal(120, smartCoordinator.HotPublish.CpuAdapterPolicy.ExtremeMinimumScore);
-        Assert.Equal(
-            smartCoordinator.HotPublish.ProcessStateMultipliers,
-            smartCoordinator.HotPublish.CpuAdapterPolicy.StateMultipliers);
+        Assert.Equal<double>([1, 1.35, 1.12, 0.75, 0.55, 0.45, 0], smartCoordinator.HotPublish.GpuStateMultipliers);
 
         var memoryCleanup = plan.HotPublish.MemoryCleanup;
         Assert.True(memoryCleanup.IsPublished);
@@ -1067,12 +1062,11 @@ public sealed class HostManagerPlanCompilerTests
         [
             profile => profile["host_recreate"]!["smart_coordinator"]!["maximum_gpu_states"] = 32769,
             profile => profile["hot_publish"]!["smart_coordinator"]!["feature_flags"] =
-                new JsonArray("process_policy", "adapter_cpu", "adapter_gpu"),
+                new JsonArray("process_policy"),
             profile => profile["hot_publish"]!["smart_coordinator"]!["event_interval_ms"] = 1100,
             profile => profile["hot_publish"]!["smart_coordinator"]!["base_score_tiers"]!["high_minimum_base_score"] = 82,
             profile => profile["hot_publish"]!["smart_coordinator"]!["process_policy"]!["default_minimum_cpu_score_scale"] = 101,
-            profile => profile["hot_publish"]!["smart_coordinator"]!["cpu_adapter_policy"]!["extreme_minimum_score"] = 121,
-            profile => profile["hot_publish"]!["smart_coordinator"]!["gpu_adapter_policy"]!["optimize_minimum_score"] = 24
+            profile => profile["hot_publish"]!["smart_coordinator"]!["gpu_state_multipliers"]![0] = 1.01
         ];
 
         foreach (var mutate in mutations)
@@ -1192,10 +1186,10 @@ public sealed class HostManagerPlanCompilerTests
     }
 
     [Fact]
-    public void Compiler_RejectsInvalidSmartCoordinatorCapacityAndAdapterOrdering()
+    public void Compiler_RejectsInvalidSmartCoordinatorCapacityAndRetiredAdapterPolicy()
     {
         var invalidCapacity = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
-        invalidCapacity["host_recreate"]!["smart_coordinator"]!["maximum_actions"] = 4096;
+        invalidCapacity["host_recreate"]!["smart_coordinator"]!["maximum_actions"] = 4095;
         Assert.Throws<InvalidDataException>(() => Compile(
             StrictHostManagerProfileLoader.LoadBytes(
                 Encoding.UTF8.GetBytes(invalidCapacity.ToJsonString()),
@@ -1209,7 +1203,7 @@ public sealed class HostManagerPlanCompilerTests
                 "incomplete-gpu-capacity.json")));
 
         var invalidAdapter = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
-        invalidAdapter["hot_publish"]!["smart_coordinator"]!["cpu_adapter_policy"]!["normal_minimum_score"] = 130;
+        invalidAdapter["hot_publish"]!["smart_coordinator"]!["cpu_adapter_policy"] = new JsonObject { ["normal_minimum_score"] = 130 };
         Assert.Throws<InvalidDataException>(() => Compile(
             StrictHostManagerProfileLoader.LoadBytes(
                 Encoding.UTF8.GetBytes(invalidAdapter.ToJsonString()),
@@ -1267,15 +1261,15 @@ public sealed class HostManagerPlanCompilerTests
                 "overflowing-score.json")));
 
         var overflowingGpuScore = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
-        overflowingGpuScore["hot_publish"]!["smart_coordinator"]!["gpu_adapter_policy"]!["state_multipliers"]![0] = 1e308;
+        overflowingGpuScore["hot_publish"]!["smart_coordinator"]!["gpu_state_multipliers"]![0] = 1e308;
         Assert.Throws<InvalidDataException>(() => Compile(
             StrictHostManagerProfileLoader.LoadBytes(
                 Encoding.UTF8.GetBytes(overflowingGpuScore.ToJsonString()),
                 "overflowing-gpu-score.json")));
 
         var redundantCpuStateMultipliers = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
-        redundantCpuStateMultipliers["hot_publish"]!["smart_coordinator"]!["cpu_adapter_policy"]!["state_multipliers"] =
-            new JsonArray(1, 1.35, 1.12, 0.75, 0.55, 0.45, 0);
+        redundantCpuStateMultipliers["hot_publish"]!["smart_coordinator"]!["cpu_adapter_policy"] =
+            new JsonObject { ["state_multipliers"] = new JsonArray(1, 1.35, 1.12, 0.75, 0.55, 0.45, 0) };
         Assert.Throws<InvalidDataException>(() => StrictHostManagerProfileLoader.LoadBytes(
             Encoding.UTF8.GetBytes(redundantCpuStateMultipliers.ToJsonString()),
             "redundant-cpu-state-multipliers.json"));

@@ -110,50 +110,31 @@ public sealed partial class HostManagerUserDataArrivalTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void OutstandingCleanupIsCarriedAndSettlesUnderExistingRecoveryRules(bool archive)
+    public void CleanupHandoffTravelsAsValidationEvidenceWithoutAttemptJournal(bool archive)
     {
         using var fixture = new Fixture();
         var scope = fixture.Scope(fixture.Source);
-        var startedAt = DateTimeOffset.FromFileTime(100001);
         var identity = new HostManagerComputeProcessIdentity(10, 100001);
         scope.Open(new(Guid.NewGuid(), $"Global\\ResourceManager-NonAdaptedOptimizationLab-{Guid.NewGuid():N}",
             DateTimeOffset.UtcNow.AddMinutes(10), new string('a', 64),
             [new(10, 100001)], AllowAutomaticMemoryCleanup: true));
         Assert.True(scope.TryBeginAdmission(scope.Capture(), HostManagerProcessEffectValidationFamily.AutomaticMemoryCleanup,
             "before-transfer", identity, out var permit));
-        var relative = Path.GetRelativePath(fixture.Source,
-            HostManagerDurableStorePaths.Resolve(fixture.Source).Single(store => store.Kind == "memory-cleanup-attempt-journal").CanonicalPath);
-        var journalPath = Path.Combine(fixture.Source, relative);
-        HostManagerMemoryCleanupAttemptBatch batch;
-        using (var journal = new HostManagerMemoryCleanupAttemptJournal(journalPath, () => 4, TimeProvider.System))
-        {
-            AutomaticMemoryCleanupDecision decision = new(0,
-                new("process:10", "Process 10", 10, startedAt, "background", 1, 1, 1, true),
-                AutomaticMemoryCleanupMode.Normal, new(StateSlot: 10, StateGeneration: 1));
-            batch = journal.Prepare(7, [decision]);
-        }
+        var batch = new HostManagerMemoryCleanupAttemptBatch(
+            Guid.NewGuid(), new HashSet<HostManagerComputeProcessIdentity> { identity }, 7);
         Assert.True(scope.TryDeclareMemoryCleanupAttemptBatch(permit!, batch, 7));
         Assert.True(scope.TryCommitMemoryCleanupAttemptBatch(permit!, batch, 7));
-        var original = File.ReadAllBytes(journalPath);
         var scopeImage = File.ReadAllBytes(HostManagerUserDataArrival.Paths(fixture.Source).StatePath);
         if (archive) _ = fixture.Scope(fixture.Target);
 
         fixture.Arrive(archive);
 
         fixture.AssertUsable();
-        var copied = Path.Combine(fixture.Target, relative);
-        Assert.Equal(original, File.ReadAllBytes(copied));
         var retained = Directory.GetDirectories(Path.Combine(fixture.Target, "UserData", "HostManager", "Validation", "PreviousInstallations"));
         Assert.Single(retained);
         Assert.Equal(scopeImage, File.ReadAllBytes(Path.Combine(retained[0], "process-effect-scope.json")));
-        using var restored = new HostManagerMemoryCleanupAttemptJournal(copied, () => 4, TimeProvider.System);
-        Assert.Equal(batch.BatchId, Assert.Single(restored.CapturePendingBatches()).BatchId);
-        Assert.Contains(identity, restored.ReconcileAndCaptureBlocked(_ =>
-            RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(10, startedAt))));
-        Assert.Empty(restored.ReconcileAndCaptureBlocked(_ =>
-            RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(0, "exited")));
-        Assert.Empty(restored.CapturePendingBatches());
-        Assert.Equal(original, File.ReadAllBytes(journalPath));
+        Assert.DoesNotContain(HostManagerDurableStorePaths.Resolve(fixture.Target),
+            static store => store.Kind == "memory-cleanup-attempt-journal");
     }
 
     [Theory]
@@ -216,10 +197,6 @@ public sealed partial class HostManagerUserDataArrivalTests
         {
             _ = fixture.Scope(fixture.Target);
             _ = SeedRollback(fixture.Target);
-            var cleanupPath = HostManagerDurableStorePaths.Resolve(fixture.Target)
-                .Single(store => store.Kind == "memory-cleanup-attempt-journal").CanonicalPath;
-            using var cleanup = new HostManagerMemoryCleanupAttemptJournal(cleanupPath, () => 4, TimeProvider.System);
-            Assert.Empty(cleanup.ReconcileAndCaptureBlocked(_ => throw new InvalidOperationException()));
         }
 
         fixture.Arrive(archive);

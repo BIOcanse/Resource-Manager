@@ -38,7 +38,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapControlEndpoints(startupCapabilities);
         app.MapDebugAmdSmuEndpoint();
         app.MapDebugGpuControlEndpoint();
-        app.MapFrontendRuntimeStateEndpoints();
         app.MapAdapterEndpoints(startupCapabilities);
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {

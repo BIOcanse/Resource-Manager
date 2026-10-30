@@ -90,7 +90,6 @@ public sealed partial class WindowsHardwareMetricSampler :
         WindowsPlatformSensorReader platformSensorReader,
         HostManagerMetricSnapshotOwner metricSnapshotOwner,
         HardwareMetricCatalogState metricCatalog,
-        IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry,
         HostManagerSamplingSubscriptionOwner samplingSubscriptionOwner,
         RuntimePlanProvider runtimePlanProvider,
         ILogger<WindowsHardwareMetricSampler> logger,
@@ -104,7 +103,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         : this(cpuZone, memoryZone, virtualMemoryZone, gpuAdapterOrderZone, cpuFrequencyZone,
             gpuEngineZone, systemIoZone, nvidiaZone, nvidiaNvapiZone, amdAdlxZone, amdSmuZone,
             integratedGpuSensorRoute, platformSensorReader, metricSnapshotOwner, metricCatalog,
-            monitoringSourceZoneRegistry, samplingSubscriptionOwner, runtimePlanProvider, logger, batteryZone,
+            samplingSubscriptionOwner, runtimePlanProvider, logger, batteryZone,
             intelMsrZone, networkZone, intelGclZone, borrowedControls, npuMemoryZone, npuEngineZone, null, borrowedResources)
     {
     }
@@ -125,7 +124,6 @@ public sealed partial class WindowsHardwareMetricSampler :
         WindowsPlatformSensorReader platformSensorReader,
         HostManagerMetricSnapshotOwner metricSnapshotOwner,
         HardwareMetricCatalogState metricCatalog,
-        IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry,
         HostManagerSamplingSubscriptionOwner samplingSubscriptionOwner,
         RuntimePlanProvider runtimePlanProvider,
         ILogger<WindowsHardwareMetricSampler> logger,
@@ -162,23 +160,8 @@ public sealed partial class WindowsHardwareMetricSampler :
         publishedSnapshot = new("metric_snapshot");
         this.metricCatalog = metricCatalog;
         var resources = borrowedResources ?? CreateBorrowedResources(borrowedControls);
-        controlFields = new WindowsMetricControlFields(resources.Controls!, resources.ReadGpuInventory, sourceId =>
-            monitoringSourceZoneRegistry.GetZone(NativeMetricSnapshotSourceCatalog.ResolveZoneId(sourceId switch
-            {
-                "control.intel.msr" => NativeMetricSnapshotSourceCatalog.IntelMsr,
-                "control.amd.hardware-bridge" or "control.amd.igpu.hardware-bridge" => NativeMetricSnapshotSourceCatalog.AmdSmu,
-                "control.amd.adlx" => NativeMetricSnapshotSourceCatalog.AmdAdlx,
-                "control.intel.igcl" => NativeMetricSnapshotSourceCatalog.IntelGcl,
-                _ => throw new ArgumentException("Unknown control source.", nameof(sourceId))
-            })).CurrentMode == ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
-        capture = new(resources,
-            sourceId => monitoringSourceZoneRegistry.GetMode(NativeMetricSnapshotSourceCatalog.ResolveZoneId(sourceId)) switch
-            {
-                ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Normal => NativeMetricSnapshotZoneMode.Normal,
-                ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.LowPower => NativeMetricSnapshotZoneMode.LowPower,
-                ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze => NativeMetricSnapshotZoneMode.Freeze,
-                _ => throw new InvalidOperationException("The monitoring source zone mode is invalid.")
-            }, TimeSpan.FromSeconds(5), integratedGpuSensorRoute, () => metricSnapshotOwner.RequestTopologyRefresh(),
+        controlFields = new WindowsMetricControlFields(resources.Controls!, resources.ReadGpuInventory);
+        capture = new(resources, TimeSpan.FromSeconds(5), integratedGpuSensorRoute, () => metricSnapshotOwner.RequestTopologyRefresh(),
             (error, sourceId) => logger.LogWarning(error, "Metric source {SourceId} failed.", sourceId),
             message => logger.LogWarning("{HardwareTopologyRefreshTransition}", message));
         sampleGate = capture.SampleGate;
@@ -208,7 +191,6 @@ public sealed partial class WindowsHardwareMetricSampler :
         WindowsPlatformSensorReader platformSensorReader,
         HostManagerMetricSnapshotOwner metricSnapshotOwner,
         HardwareMetricCatalogState metricCatalog,
-        IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry,
         HostManagerSamplingSubscriptionOwner samplingSubscriptionOwner,
         RuntimePlanProvider runtimePlanProvider,
         ILogger<WindowsHardwareMetricSampler> logger,
@@ -223,7 +205,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         : this(cpuZone, memoryZone, virtualMemoryZone, gpuAdapterOrderZone,
             cpuFrequencyZone, gpuEngineZone, systemIoZone, nvidiaZone, nvidiaNvapiZone,
             amdAdlxZone, amdSmuZone, integratedGpuSensorRoute, platformSensorReader,
-            metricSnapshotOwner, metricCatalog, monitoringSourceZoneRegistry,
+            metricSnapshotOwner, metricCatalog,
             samplingSubscriptionOwner, runtimePlanProvider, logger, batteryZone, intelMsrZone,
             networkZone, intelGclZone, borrowedControls, npuMemoryZone, npuEngineZone,
             CreateLedgerOutputFactory(ledgerOwner))

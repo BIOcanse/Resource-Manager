@@ -78,7 +78,6 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
                 "registered",
                 createdAt,
                 now,
-                normalized.SchedulingCapabilities,
                 OwnershipVerified: true);
 
             records.RemoveAll(record => record.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
@@ -181,7 +180,6 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
             ProgramRootPaths = NormalizeRootPaths(request.ProgramRootPaths),
             Processes = NormalizeProcesses(request.Processes),
             Services = NormalizeServices(request.Services),
-            SchedulingCapabilities = request.SchedulingCapabilities?.Normalize(),
             ResourceMarkerEndpoint = request.ResourceMarkerEndpoint is null
                 ? null
                 : new AdapterResourceMarkerEndpoint(
@@ -212,7 +210,6 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
                     DateTimeOffset.MinValue,
                     null,
                     "Missing resource marker probe state."),
-                SchedulingCapabilities = record.SchedulingCapabilities?.Normalize(),
                 State = string.IsNullOrWhiteSpace(record.State) ? "registered" : record.State.Trim()
             })
             .Where(static record => record.ProgramRootPaths.Count > 0)

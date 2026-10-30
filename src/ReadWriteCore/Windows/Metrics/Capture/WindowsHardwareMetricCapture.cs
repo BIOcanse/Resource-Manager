@@ -29,7 +29,7 @@ internal sealed partial class WindowsHardwareMetricCapture
     private ulong activeWorkspaceIdentity;
     private readonly Action<Exception, string>? logFailure;
     public WindowsHardwareMetricCapture(WindowsHardwareMetricResources resources,
-        Func<string, NativeMetricSnapshotZoneMode> modeProvider, TimeSpan transientUnavailableDuration,
+        TimeSpan transientUnavailableDuration,
         AmdIntegratedGpuSensorRoute integratedGpuSensorRoute, Action requestTopologyRefresh,
         Action<Exception, string>? logFailure = null, Action<string>? logTopologyTransition = null)
     {
@@ -37,7 +37,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         this.integratedGpuSensorRoute = integratedGpuSensorRoute ?? throw new ArgumentNullException(nameof(integratedGpuSensorRoute));
         topologyRefreshRequests = new(requestTopologyRefresh ?? throw new ArgumentNullException(nameof(requestTopologyRefresh)), logTopologyTransition);
         this.logFailure = logFailure;
-        sourceRuntimeFacts = new(modeProvider, transientUnavailableDuration);
+        sourceRuntimeFacts = new(transientUnavailableDuration);
     }
     private void ObserveTopology(string source, string reason, bool disagrees)
         => topologyRefreshRequests.Observe(activeWorkspaceIdentity, source, reason, disagrees);
@@ -88,8 +88,7 @@ internal sealed partial class WindowsHardwareMetricCapture
                     catalog,
                     sourceFrame.Value.Sources);
             }
-            var sourceModes = sourceRuntimeFacts.CaptureModesForRequest(
-                catalog, commandAt, requestedMetricHandles, includeGpuInventory);
+            var sourceModes = sourceRuntimeFacts.CaptureStates(catalog, commandAt);
             var plan = workspace.PlanCollection(requestedMetricHandles, sourceModes, includeGpuInventory, commandAt);
             var completedQuerySources = queriedMetricAddresses is null ? null : new HashSet<ulong>();
             foreach (var sourcePlan in plan.Sources)
@@ -99,7 +98,6 @@ internal sealed partial class WindowsHardwareMetricCapture
                 completions.Add((plan, completion));
                 if (completedQuerySources is not null
                     && (sourcePlan.Flags & (uint)NativeMetricSnapshotSourcePlanFlags.Selected) != 0
-                    && sourcePlan.ZoneMode != (uint)NativeMetricSnapshotZoneMode.Freeze
                     && sourcePlan.Availability == (uint)NativeMetricSnapshotSourceAvailability.Available)
                     completedQuerySources.Add(sourcePlan.SourceHandle);
             }
@@ -152,7 +150,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             {
                 // Source results become native committed values at the same admission
                 // boundary as the caller's current. A rejected/canceled collection
-                // cannot reappear through a later frozen or partially selected read.
+                // cannot reappear through a later partially selected read.
                 cancellationToken.ThrowIfCancellationRequested();
                 var committedCompletions = new List<NativeMetricSnapshotSourceCompletion>(completions.Count);
                 foreach (var (plan, completion) in completions)

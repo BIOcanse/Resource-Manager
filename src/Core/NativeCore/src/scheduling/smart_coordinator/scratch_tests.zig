@@ -48,14 +48,14 @@ test "smart staged scratch rejects invalid extents before mutation and unbinds p
 }
 
 test "smart staged scratch refills all rows and preserves reservations feedback and snapshots after reuse" {
-    const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy | protocol.FeatureFlags.adapter_gpu);
+    const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
     const layout = scratch.Layout.initForRows(&config, 4);
     const r = layout.requirements;
     const bytes = try std.heap.page_allocator.alloc(u8, @intCast(r.byte_count));
     defer std.heap.page_allocator.free(bytes);
-    const base = corpus.processFact(0, 101, 1001, 11, 111, 20, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const base = corpus.processFact(0, 101, 1001, 11, 111, 20, .adapted, 0, protocol.ProcessGrade.normal, 0);
     const rows = [_]protocol.InputRow{ base, corpus.metricFact(base, 1, .cpu_usage_percent, 50, 0), corpus.metricFact(base, 2, .gpu_usage_percent, 25, 1), corpus.metricFact(base, 3, .vram_usage_percent, 20, 1) };
     var actions: [corpus.default_action_capacity]protocol.Action = undefined;
     var snapshot: protocol.Snapshot = undefined;
@@ -100,8 +100,9 @@ test "smart row sized staging accepts actual candidate capacity and rejects unde
     try std.testing.expect(requirements.byte_count < scratch.Layout.init(&config).requirements.byte_count);
     const bytes = try std.heap.page_allocator.alloc(u8, @intCast(requirements.byte_count));
     defer std.heap.page_allocator.free(bytes);
-    const base = corpus.processFact(0, 101, 1001, 11, 111, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    const rows = [_]protocol.InputRow{ base, corpus.metricFact(base, 1, .cpu_usage_percent, 50, 0) };
+    const base = corpus.processFact(0, 101, 1001, 11, 111, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
+    const second = corpus.processFact(1, 102, 1002, 12, 112, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
+    const rows = [_]protocol.InputRow{ corpus.metricFact(base, 0, .cpu_usage_percent, 50, 0), corpus.metricFact(second, 1, .cpu_usage_percent, 50, 0) };
     var actions: [2]protocol.Action = undefined;
     var snapshot: protocol.Snapshot = undefined;
     var input = corpus.cycle(&config, 1, 1000, rows.len, true);

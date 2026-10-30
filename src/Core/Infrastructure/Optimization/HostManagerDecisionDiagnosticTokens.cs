@@ -97,9 +97,6 @@ internal static class HostManagerDecisionDiagnosticTokens
             NativeSmartCoordinatorReason.FreezeGroupBlocked => "freeze_group_blocked",
             NativeSmartCoordinatorReason.AwaitingStability => "awaiting_stability",
             NativeSmartCoordinatorReason.AppliedMatchesDesired => "applied_matches_desired",
-            NativeSmartCoordinatorReason.CpuCapabilityMissing => "cpu_capability_missing",
-            NativeSmartCoordinatorReason.GpuCapabilityMissing => "gpu_capability_missing",
-            NativeSmartCoordinatorReason.CapabilityClamped => "capability_clamped",
             NativeSmartCoordinatorReason.CriticalFactChanged => "critical_fact_changed",
             NativeSmartCoordinatorReason.CriticalMembershipChanged => "critical_membership_changed",
             NativeSmartCoordinatorReason.StartupGraceActive => "startup_grace_active",
@@ -138,26 +135,12 @@ internal static class HostManagerDecisionDiagnosticTokens
             _ => ((int)value).ToString(CultureInfo.InvariantCulture)
         };
 
-    internal static string Token(NativeSmartCoordinatorAdapterGrade value)
-        => value switch
-        {
-            NativeSmartCoordinatorAdapterGrade.Freeze => "freeze",
-            NativeSmartCoordinatorAdapterGrade.Optimize => "optimize",
-            NativeSmartCoordinatorAdapterGrade.Normal => "normal",
-            NativeSmartCoordinatorAdapterGrade.Extreme => "extreme",
-            _ => ((int)value).ToString(CultureInfo.InvariantCulture)
-        };
-
     internal static string Token(NativeSmartCoordinatorSnapshotRowFlags value)
         => value switch
         {
             NativeSmartCoordinatorSnapshotRowFlags.None => "none",
             NativeSmartCoordinatorSnapshotRowFlags.ProcessOwned => "process_owned",
-            NativeSmartCoordinatorSnapshotRowFlags.CpuOwned => "cpu_owned",
-            NativeSmartCoordinatorSnapshotRowFlags.GpuOwned => "gpu_owned",
             NativeSmartCoordinatorSnapshotRowFlags.ProcessInflight => "process_inflight",
-            NativeSmartCoordinatorSnapshotRowFlags.CpuInflight => "cpu_inflight",
-            NativeSmartCoordinatorSnapshotRowFlags.GpuInflight => "gpu_inflight",
             NativeSmartCoordinatorSnapshotRowFlags.FreezeReady => "freeze_ready",
             NativeSmartCoordinatorSnapshotRowFlags.CriticalFact => "critical_fact",
             NativeSmartCoordinatorSnapshotRowFlags.Known => "known",
@@ -175,12 +158,8 @@ internal static class HostManagerDecisionDiagnosticTokens
             NativeSmartCoordinatorInputValidity.SurfaceFacts => "surface_facts",
             NativeSmartCoordinatorInputValidity.Eligibility => "eligibility",
             NativeSmartCoordinatorInputValidity.Protection => "protection",
-            NativeSmartCoordinatorInputValidity.CpuCapabilities => "cpu_capabilities",
-            NativeSmartCoordinatorInputValidity.GpuCapabilities => "gpu_capabilities",
             NativeSmartCoordinatorInputValidity.Metric => "metric",
             NativeSmartCoordinatorInputValidity.AppliedProcessGrade => "applied_process_grade",
-            NativeSmartCoordinatorInputValidity.AppliedCpuGrade => "applied_cpu_grade",
-            NativeSmartCoordinatorInputValidity.AppliedGpuGrade => "applied_gpu_grade",
             NativeSmartCoordinatorInputValidity.ProcessScore => "process_score",
             NativeSmartCoordinatorInputValidity.SoftwareScore => "software_score",
             NativeSmartCoordinatorInputValidity.ScoreMemberCount => "score_member_count",

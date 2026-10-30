@@ -19,7 +19,6 @@ public sealed partial class WindowsStorageSensorsMonitoringZone
         IReadOnlyList<WindowsDiskPerformanceTarget> targets, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        if (!CanRead) return Task.FromResult(WindowsDiskPerformanceCaptureResult.Empty(targets));
         return performanceProducer is not null ? performanceProducer(targets, token)
             : performanceReader.ReadAsync(targets, owner.ReadInformationDeclarations(), token);
     }

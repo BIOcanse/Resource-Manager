@@ -4,9 +4,8 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeSmartCoordinatorAbi
 {
-    public const uint Version = 0x000b_0001;
+    public const uint Version = 0x000c_0001;
     public const int RuntimeStateCount = 7;
-    public const int AdapterGradeCount = 4;
 }
 
 internal enum NativeSmartCoordinatorStatus : int
@@ -69,18 +68,9 @@ internal enum NativeSmartCoordinatorProcessGrade : sbyte
     A1 = 1
 }
 
-internal enum NativeSmartCoordinatorAdapterGrade : byte
-{
-    Freeze = 0,
-    Optimize = 1,
-    Normal = 2,
-    Extreme = 3
-}
-
 internal enum NativeSmartCoordinatorActionScope : byte
 {
     ProcessPolicy = 1,
-    AdapterSoftware = 2
 }
 
 internal enum NativeSmartCoordinatorActionDisposition : byte
@@ -114,10 +104,8 @@ internal enum NativeSmartCoordinatorConfigFields : ulong
     Capacities = 1UL << 0,
     Timing = 1UL << 1,
     ProcessScoring = 1UL << 2,
-    CpuAdapterPolicy = 1UL << 3,
-    GpuAdapterPolicy = 1UL << 4,
     Features = 1UL << 5,
-    Required = Capacities | Timing | ProcessScoring | CpuAdapterPolicy | GpuAdapterPolicy | Features
+    Required = Capacities | Timing | ProcessScoring | Features
 }
 
 [Flags]
@@ -125,10 +113,8 @@ internal enum NativeSmartCoordinatorFeatures : ulong
 {
     None = 0,
     ProcessPolicy = 1UL << 0,
-    AdapterCpu = 1UL << 1,
-    AdapterGpu = 1UL << 2,
     CriticalEvents = 1UL << 3,
-    Known = ProcessPolicy | AdapterCpu | AdapterGpu | CriticalEvents
+    Known = ProcessPolicy | CriticalEvents
 }
 
 [Flags]
@@ -163,18 +149,14 @@ internal enum NativeSmartCoordinatorInputValidity : ulong
     SurfaceFacts = 1UL << 4,
     Eligibility = 1UL << 5,
     Protection = 1UL << 6,
-    CpuCapabilities = 1UL << 7,
-    GpuCapabilities = 1UL << 8,
     Metric = 1UL << 9,
     AppliedProcessGrade = 1UL << 10,
-    AppliedCpuGrade = 1UL << 11,
-    AppliedGpuGrade = 1UL << 12,
     ProcessScore = 1UL << 13,
     SoftwareScore = 1UL << 14,
     ScoreMemberCount = 1UL << 15,
     Known = ProcessIdentity | SoftwareIdentity | SoftwareKind | BaseScore | SurfaceFacts |
-        Eligibility | Protection | CpuCapabilities | GpuCapabilities | Metric |
-        AppliedProcessGrade | AppliedCpuGrade | AppliedGpuGrade | ProcessScore |
+        Eligibility | Protection | Metric |
+        AppliedProcessGrade | ProcessScore |
         SoftwareScore | ScoreMemberCount
 }
 
@@ -190,15 +172,12 @@ internal enum NativeSmartCoordinatorInputFlags : ulong
     ProcessCpuMetricsComplete = 1UL << 5,
     ProcessGpuMetricsComplete = 1UL << 6,
     CanApplyProcessPolicy = 1UL << 7,
-    CanApplyAdapterPolicy = 1UL << 8,
     HardwareSchedulingEligible = 1UL << 9,
     OwnsProcessGrade = 1UL << 10,
-    OwnsCpuGrade = 1UL << 11,
-    OwnsGpuGrade = 1UL << 12,
     Known = Running | ForegroundFocused | HasVisibleWindow | HasBackgroundWindow |
         HasHiddenWindow | ProcessCpuMetricsComplete | ProcessGpuMetricsComplete |
-        CanApplyProcessPolicy | CanApplyAdapterPolicy | HardwareSchedulingEligible |
-        OwnsProcessGrade | OwnsCpuGrade | OwnsGpuGrade
+        CanApplyProcessPolicy | HardwareSchedulingEligible |
+        OwnsProcessGrade
 }
 
 [Flags]
@@ -206,9 +185,7 @@ internal enum NativeSmartCoordinatorGradeDomains : byte
 {
     None = 0,
     Process = 1 << 0,
-    Cpu = 1 << 1,
-    Gpu = 1 << 2,
-    Known = Process | Cpu | Gpu
+    Known = Process
 }
 
 [Flags]
@@ -218,13 +195,9 @@ internal enum NativeSmartCoordinatorActionValidity : ulong
     ProcessIdentity = 1UL << 0,
     SoftwareIdentity = 1UL << 1,
     ProcessGrade = 1UL << 2,
-    CpuGrade = 1UL << 3,
-    GpuGrade = 1UL << 4,
     CpuScore = 1UL << 5,
     AtomicGroup = 1UL << 6,
-    GpuScore = 1UL << 7,
-    Known = ProcessIdentity | SoftwareIdentity | ProcessGrade | CpuGrade | GpuGrade |
-        CpuScore | AtomicGroup | GpuScore
+    Known = ProcessIdentity | SoftwareIdentity | ProcessGrade | CpuScore | AtomicGroup
 }
 
 [Flags]
@@ -244,9 +217,7 @@ internal enum NativeSmartCoordinatorFeedbackValidity : ulong
     None = 0,
     CompletedAt = 1UL << 0,
     ActualProcessGrade = 1UL << 1,
-    ActualCpuGrade = 1UL << 2,
-    ActualGpuGrade = 1UL << 3,
-    Known = CompletedAt | ActualProcessGrade | ActualCpuGrade | ActualGpuGrade
+    Known = CompletedAt | ActualProcessGrade
 }
 
 [Flags]
@@ -254,10 +225,8 @@ internal enum NativeSmartCoordinatorFeedbackFlags : uint
 {
     None = 0,
     ProcessOwned = 1U << 0,
-    CpuOwned = 1U << 1,
-    GpuOwned = 1U << 2,
     RollbackPayloadPersisted = 1U << 3,
-    Known = ProcessOwned | CpuOwned | GpuOwned | RollbackPayloadPersisted
+    Known = ProcessOwned | RollbackPayloadPersisted
 }
 
 [Flags]
@@ -277,15 +246,10 @@ internal enum NativeSmartCoordinatorSnapshotRowFlags : uint
 {
     None = 0,
     ProcessOwned = 1U << 0,
-    CpuOwned = 1U << 1,
-    GpuOwned = 1U << 2,
     ProcessInflight = 1U << 3,
-    CpuInflight = 1U << 4,
-    GpuInflight = 1U << 5,
     FreezeReady = 1U << 6,
     CriticalFact = 1U << 7,
-    Known = ProcessOwned | CpuOwned | GpuOwned | ProcessInflight | CpuInflight |
-        GpuInflight | FreezeReady | CriticalFact
+    Known = ProcessOwned | ProcessInflight | FreezeReady | CriticalFact
 }
 
 [Flags]
@@ -312,9 +276,6 @@ internal enum NativeSmartCoordinatorReason : ulong
     FreezeGroupBlocked = 1UL << 17,
     AwaitingStability = 1UL << 18,
     AppliedMatchesDesired = 1UL << 19,
-    CpuCapabilityMissing = 1UL << 20,
-    GpuCapabilityMissing = 1UL << 21,
-    CapabilityClamped = 1UL << 22,
     CriticalFactChanged = 1UL << 23,
     CriticalMembershipChanged = 1UL << 24,
     StartupGraceActive = 1UL << 25,
@@ -329,19 +290,10 @@ internal enum NativeSmartCoordinatorReason : ulong
     DuplicateCycle = 1UL << 34,
     AtomicGroupCompensation = 1UL << 35,
     ReservationTimedOut = 1UL << 37,
-    Known = ((1UL << 38) - 1) & ~((1UL << 5) | (1UL << 15) | (1UL << 16) | (1UL << 36))
+    Known = ((1UL << 38) - 1) & ~((7UL << 20) | (1UL << 5) | (1UL << 15) | (1UL << 16) | (1UL << 36))
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 80)]
-internal unsafe struct NativeSmartCoordinatorAdapterPolicyConfiguration
-{
-    public fixed double StateMultipliers[NativeSmartCoordinatorAbi.RuntimeStateCount];
-    public double ExtremeMinimumScore;
-    public double NormalMinimumScore;
-    public double OptimizeMinimumScore;
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 424)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 264)]
 internal unsafe struct NativeSmartCoordinatorConfiguration
 {
     public uint AbiVersion;
@@ -378,8 +330,6 @@ internal unsafe struct NativeSmartCoordinatorConfiguration
     public double HighTierMinimumBaseScore;
     public double MiddleTierMinimumBaseScore;
 
-    public NativeSmartCoordinatorAdapterPolicyConfiguration CpuAdapter;
-    public NativeSmartCoordinatorAdapterPolicyConfiguration GpuAdapter;
     public fixed ulong Reserved[4];
 }
 
@@ -444,17 +394,13 @@ internal unsafe struct NativeSmartCoordinatorInputRow
     public uint ProcessId;
     public uint DeviceIndex;
     public uint ScoreMemberCount;
-    public byte CpuCapabilityMask;
-    public byte GpuCapabilityMask;
     public NativeSmartCoordinatorProcessGrade AppliedProcessGrade;
-    public NativeSmartCoordinatorAdapterGrade AppliedCpuGrade;
-    public NativeSmartCoordinatorAdapterGrade AppliedGpuGrade;
-    public fixed byte Reserved2[3];
+    public fixed byte Reserved2[7];
     public double ProcessScore;
     public double SoftwareScore;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 136)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 120)]
 internal unsafe struct NativeSmartCoordinatorAction
 {
     public uint StructSize;
@@ -481,12 +427,7 @@ internal unsafe struct NativeSmartCoordinatorAction
     public byte Reserved0;
     public NativeSmartCoordinatorProcessGrade FromProcessGrade;
     public NativeSmartCoordinatorProcessGrade ToProcessGrade;
-    public NativeSmartCoordinatorAdapterGrade FromCpuGrade;
-    public NativeSmartCoordinatorAdapterGrade ToCpuGrade;
-    public NativeSmartCoordinatorAdapterGrade FromGpuGrade;
-    public NativeSmartCoordinatorAdapterGrade ToGpuGrade;
     public fixed byte Reserved1[2];
-    public double GpuScore;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8, Size = 96)]
@@ -507,9 +448,7 @@ internal unsafe struct NativeSmartCoordinatorFeedback
     public NativeSmartCoordinatorFeedbackStatus Status;
     public NativeSmartCoordinatorActionScope Scope;
     public NativeSmartCoordinatorProcessGrade ActualProcessGrade;
-    public NativeSmartCoordinatorAdapterGrade ActualCpuGrade;
-    public NativeSmartCoordinatorAdapterGrade ActualGpuGrade;
-    public fixed byte Reserved0[3];
+    public fixed byte Reserved0[5];
     public ulong Reserved1;
 }
 
@@ -540,7 +479,7 @@ internal unsafe struct NativeSmartCoordinatorSnapshot
     public fixed ulong Reserved[2];
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 192)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 160)]
 internal struct NativeSmartCoordinatorSnapshotRow
 {
     public uint StructSize;
@@ -560,13 +499,9 @@ internal struct NativeSmartCoordinatorSnapshotRow
     public double CpuOccupancyPercent;
     public double ReservedProcessScore0;
     public double ReservedProcessRatio0;
-    public double AdapterCpuScore;
-    public double AdapterGpuScore;
     public uint SourceIndex;
     public uint ProcessId;
     public uint ProcessPendingCount;
-    public uint CpuPendingCount;
-    public uint GpuPendingCount;
     public uint FailureCount;
     public NativeSmartCoordinatorSnapshotRowKind RowKind;
     public NativeSmartCoordinatorSoftwareKind SoftwareKind;
@@ -575,14 +510,6 @@ internal struct NativeSmartCoordinatorSnapshotRow
     public NativeSmartCoordinatorProcessGrade DesiredProcessGrade;
     public NativeSmartCoordinatorProcessGrade AppliedProcessGrade;
     public NativeSmartCoordinatorProcessGrade PendingProcessGrade;
-    public NativeSmartCoordinatorAdapterGrade DesiredCpuGrade;
-    public NativeSmartCoordinatorAdapterGrade AppliedCpuGrade;
-    public NativeSmartCoordinatorAdapterGrade PendingCpuGrade;
-    public NativeSmartCoordinatorAdapterGrade DesiredGpuGrade;
-    public NativeSmartCoordinatorAdapterGrade AppliedGpuGrade;
-    public NativeSmartCoordinatorAdapterGrade PendingGpuGrade;
-    public byte CpuCapabilityMask;
-    public byte GpuCapabilityMask;
     public byte Reserved0;
     public ulong Reserved1;
 }

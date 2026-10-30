@@ -66,7 +66,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.False(lifetime.ApplicationStopping.IsCancellationRequested);
             Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
             Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-            Assert.Equal(0, fixture.AdapterDispatcher.TotalCalls);
             Assert.Equal(0U, fixture.PublicResourceManager.NewEffectAttemptCount);
             Assert.Equal(0, fixture.GraphicsPreferenceStore.TotalCalls);
         }

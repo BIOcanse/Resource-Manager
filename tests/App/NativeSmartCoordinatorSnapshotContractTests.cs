@@ -178,16 +178,7 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
             HostManagerSmartCoordinator.ValidateNativeSnapshotRows([row], snapshot));
     }
 
-    [Fact]
-    public void ValidateNativeSnapshotRows_RejectsAdapterAppliedFactWithoutSoftwareIdentity()
-    {
-        var snapshot = CreateRowSnapshot();
-        var row = CreateProcessRow();
-        row.ValidMask |= NativeSmartCoordinatorInputValidity.AppliedCpuGrade;
 
-        Assert.Throws<InvalidDataException>(() =>
-            HostManagerSmartCoordinator.ValidateNativeSnapshotRows([row], snapshot));
-    }
 
     [Theory]
     [InlineData((ulong)NativeSmartCoordinatorReason.ReservedProcessReason5)]
@@ -236,6 +227,31 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
             HostManagerSmartCoordinator.ValidateNativeSnapshotRows([row], snapshot));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void ValidateNativeSnapshotRows_RejectsProcessTransitionStateOnSoftwareRows(int field)
+    {
+        var snapshot = CreateSoftwareRowSnapshot();
+        var row = CreateSoftwareRow();
+        switch (field)
+        {
+            case 0: row.ProcessPendingCount = 1; break;
+            case 1: row.FailureCount = 1; break;
+            case 2: row.PendingFirstSeenMilliseconds = 1; break;
+            case 3: row.PendingLastSeenMilliseconds = 1; break;
+            case 4: row.LastFeedbackMilliseconds = 1; break;
+            case 5: row.GameStartedAtMilliseconds = 1; break;
+        }
+
+        Assert.Throws<InvalidDataException>(() =>
+            HostManagerSmartCoordinator.ValidateNativeSnapshotRows([row], snapshot));
+    }
+
     private static NativeSmartCoordinatorSnapshot CreateSoftwareRowSnapshot()
         => new()
         {
@@ -270,8 +286,8 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
             InputRowCapacity = 2,
             ActionCapacity = 2,
             FeedbackCapacity = 2,
-            SnapshotRowCapacity = 2,
-            ProcessCapacity = 1,
+            SnapshotRowCapacity = 3,
+            ProcessCapacity = 2,
             SoftwareCapacity = 1,
             GpuStateCapacity = 1,
             AtomicGroupCapacity = 1
@@ -291,9 +307,9 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
             NextWakeAtMilliseconds = 2_000,
             WakeAfterMilliseconds = 1_000,
             ActionCount = 2,
-            ProcessCount = 1,
+            ProcessCount = 2,
             SoftwareCount = 1,
-            SnapshotRowCount = 2
+            SnapshotRowCount = 3
         };
 
     private static NativeSmartCoordinatorSnapshot CreateRowSnapshot()
@@ -319,11 +335,5 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
             DesiredProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
             AppliedProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
             PendingProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            DesiredCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            PendingCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            DesiredGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            PendingGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal
         };
 }

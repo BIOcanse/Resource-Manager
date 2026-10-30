@@ -1,10 +1,6 @@
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
-using ResourceManager.Adapter;
-using ResourceManager.App.Application.Adaptation;
-using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.SystemHealth;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.SystemHealth;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -16,13 +12,12 @@ namespace ResourceManager.App.Infrastructure.SystemHealth.Interrupts;
 public sealed class EtwSystemInterruptSnapshotSource(
     IKernelEtwSessionBroker kernelEtwBroker,
     HostManagerSamplingSubscriptionOwner subscriptionOwner,
-    ILogger<EtwSystemInterruptSnapshotSource> logger) : BackgroundService, ISystemInterruptSnapshotSource, IResourceManagerSelfComputeZone
+    ILogger<EtwSystemInterruptSnapshotSource> logger) : BackgroundService, ISystemInterruptSnapshotSource
 {
     private const KernelTraceEventParser.Keywords EventKeywords = KernelTraceEventParser.Keywords.Interrupt
         | KernelTraceEventParser.Keywords.DeferedProcedureCalls;
 
     private const string InterruptItemId = "system-interrupts";
-    private static readonly ulong ZoneObjectKey = AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwSystemInterrupts}");
 
     private readonly object subscriptionGate = new();
     private readonly object resourceDisposeGate = new();
@@ -40,7 +35,6 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private bool disposed;
     private bool ownedResourcesDisposed;
     private long nextLeaseId;
-    private volatile ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
     private volatile string state = SystemInterruptProviderStates.Idle;
     private volatile string message = "ETW 系统中断监控按报告需求启动。";
     private SystemInterruptSnapshot latestSnapshot =
@@ -79,9 +73,6 @@ public sealed class EtwSystemInterruptSnapshotSource(
         this.readTickMilliseconds = readTickMilliseconds ?? throw new ArgumentNullException(nameof(readTickMilliseconds));
     }
 
-    public ulong ZoneKey => ZoneObjectKey;
-    public string DisplayName => MonitoringSourceZoneIds.EtwSystemInterrupts;
-    public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
 
     public SystemInterruptSnapshot Read()
         => Volatile.Read(ref latestSnapshot);
@@ -103,30 +94,6 @@ public sealed class EtwSystemInterruptSnapshotSource(
         }
         SignalDemand();
         return new InterruptSubscriptionLease(this, sourceKey);
-    }
-
-    public void ApplyMode(ResourceManagerComputeZoneMode mode)
-    {
-        IKernelEtwSubscription? held = null;
-        lock (subscriptionGate)
-        {
-            if (disposed || currentComputeMode == mode) return;
-            lock (eventGate)
-            {
-                if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze
-                    && Volatile.Read(ref currentSession) is { } session)
-                    session.ResetWindow(readTickMilliseconds(), session.Window.EventsLost, preserveModules: true);
-                currentComputeMode = mode;
-                if (mode == ResourceManagerComputeZoneMode.Freeze)
-                {
-                    PublishFrozen();
-                    held = DetachInterruptsCore();
-                }
-            }
-        }
-        held?.Dispose();
-        if (mode != ResourceManagerComputeZoneMode.Freeze) EnsureInterruptsHeld();
-        SignalDemand();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -228,20 +195,15 @@ public sealed class EtwSystemInterruptSnapshotSource(
             {
                 kernelSubscription = kernelEtwBroker.Subscribe(new KernelEtwSubscriptionRequest(
                     "system-interrupts",
-                    // Load/unload callbacks keep routine ownership current even while ISR/DPC is frozen.
+                    // Load/unload callbacks keep routine ownership current throughout this run.
                     KernelTraceEventParser.Keywords.ImageLoad,
                     BindKernelEvents));
             }
             catch (Exception ex)
             {
-                if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
-                    PublishFrozen();
-                else
-                {
-                    state = SystemInterruptProviderStates.Unavailable;
-                    message = $"ETW 系统中断监控启动失败：{ex.Message}";
-                    PublishUnavailable(state, message);
-                }
+                state = SystemInterruptProviderStates.Unavailable;
+                message = $"ETW 系统中断监控启动失败：{ex.Message}";
+                PublishUnavailable(state, message);
                 logger.LogWarning(ex, "Failed to start ETW system interrupt source.");
             }
 
@@ -255,7 +217,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
         long epoch;
         lock (subscriptionGate)
         {
-            if (disposed || kernelSubscription is null || currentComputeMode == ResourceManagerComputeZoneMode.Freeze
+            if (disposed || kernelSubscription is null
                 || interruptSubscription is not null || acquiringInterrupts) return;
             acquiringInterrupts = true;
             epoch = ++interruptEpoch;
@@ -266,8 +228,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
             created = kernelEtwBroker.Subscribe(new("system-interrupts-events", EventKeywords, static (_, _) => { }));
             lock (subscriptionGate)
             {
-                if (interruptEpoch == epoch && !disposed && kernelSubscription is not null
-                    && currentComputeMode != ResourceManagerComputeZoneMode.Freeze)
+                if (interruptEpoch == epoch && !disposed && kernelSubscription is not null)
                 {
                     interruptSubscription = created;
                     created = null;
@@ -309,14 +270,9 @@ public sealed class EtwSystemInterruptSnapshotSource(
         lock (eventGate)
         {
             Volatile.Write(ref currentSession, session);
-            if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
-                PublishFrozen();
-            else
-            {
-                state = SystemInterruptProviderStates.Running;
-                message = "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。";
-                PublishCurrentWindow(readUtcNow(), session);
-            }
+            state = SystemInterruptProviderStates.Running;
+            message = "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。";
+            PublishCurrentWindow(readUtcNow(), session);
         }
         kernel.PerfInfoISR += data => ObserveBoundInterrupt(
             kernel, context, session,
@@ -348,7 +304,6 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
     private void RefreshBrokerState(KernelEtwSessionSnapshot? observedSnapshot = null)
     {
-        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze) return;
         var snapshot = observedSnapshot ?? CaptureBrokerSnapshot();
         var session = Volatile.Read(ref currentSession);
         if (snapshot.IsRunning
@@ -390,7 +345,6 @@ public sealed class EtwSystemInterruptSnapshotSource(
     {
         lock (subscriptionGate)
         {
-            if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze) return false;
             var brokerSnapshot = CaptureBrokerSnapshot();
             RefreshBrokerState(brokerSnapshot);
             var session = Volatile.Read(ref currentSession);
@@ -453,13 +407,6 @@ public sealed class EtwSystemInterruptSnapshotSource(
                 snapshotState,
                 snapshotMessage));
 
-    private void PublishFrozen()
-    {
-        state = SystemInterruptProviderStates.Frozen;
-        message = "ETW 系统中断监控已按功能区冻结暂停采集。";
-        PublishUnavailable(state, message);
-    }
-
     private void ObserveBoundInterrupt(KernelEtwEventSource source, KernelEtwSessionContext context,
         InterruptSessionState session,
         string kind, double durationMilliseconds, ulong routineAddress, long observedTick)
@@ -477,7 +424,6 @@ public sealed class EtwSystemInterruptSnapshotSource(
             return;
         }
 
-        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze) { Reject("frozen"); return; }
         if (!source.IsActive) { Reject("inactive-binding"); return; }
         if (context.Generation != session.Generation
             || !ReferenceEquals(session, Volatile.Read(ref currentSession))) { Reject("generation-mismatch"); return; }

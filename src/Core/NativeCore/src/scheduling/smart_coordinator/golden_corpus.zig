@@ -9,12 +9,6 @@ pub const default_action_capacity: u32 = default_process_capacity + default_soft
 
 pub fn explicitConfig(feature_flags: u64) protocol.Config {
     const state_multipliers = [_]f64{ 1.0, 1.35, 1.12, 0.75, 0.55, 0.45, 0.0 };
-    const adapter_policy = protocol.AdapterPolicyConfig{
-        .state_multipliers = state_multipliers,
-        .extreme_minimum_score = 120.0,
-        .normal_minimum_score = 60.0,
-        .optimize_minimum_score = 25.0,
-    };
     return .{
         .abi_version = protocol.abi_version,
         .struct_size = @sizeOf(protocol.Config),
@@ -46,8 +40,6 @@ pub fn explicitConfig(feature_flags: u64) protocol.Config {
         .reserved_process_policy0 = 0,
         .high_tier_minimum_base_score = 81.0,
         .middle_tier_minimum_base_score = 21.0,
-        .cpu_adapter = adapter_policy,
-        .gpu_adapter = adapter_policy,
         .reserved = [_]u64{0} ** 4,
     };
 }
@@ -106,8 +98,6 @@ pub fn processFact(
     software_kind: protocol.SoftwareKind,
     surface_flags: u64,
     applied_process_grade: i8,
-    applied_cpu_grade: protocol.AdapterGrade,
-    applied_gpu_grade: protocol.AdapterGrade,
     ownership_flags: u64,
 ) protocol.InputRow {
     return .{
@@ -120,13 +110,10 @@ pub fn processFact(
             protocol.InputValidity.software_identity | protocol.InputValidity.software_kind |
             protocol.InputValidity.base_score | protocol.InputValidity.surface_facts |
             protocol.InputValidity.eligibility | protocol.InputValidity.protection |
-            protocol.InputValidity.cpu_capabilities | protocol.InputValidity.gpu_capabilities |
-            protocol.InputValidity.applied_process_grade | protocol.InputValidity.applied_cpu_grade |
-            protocol.InputValidity.applied_gpu_grade,
+            protocol.InputValidity.applied_process_grade,
         .flags = protocol.InputFlags.running | surface_flags |
             protocol.InputFlags.process_cpu_metrics_complete | protocol.InputFlags.process_gpu_metrics_complete |
-            protocol.InputFlags.can_apply_process_policy | protocol.InputFlags.can_apply_adapter_policy |
-            protocol.InputFlags.hardware_scheduling_eligible | ownership_flags,
+            protocol.InputFlags.can_apply_process_policy | protocol.InputFlags.hardware_scheduling_eligible | ownership_flags,
         .target_key = target_key,
         .software_key = software_key,
         .process_start_key = start_key,
@@ -136,49 +123,8 @@ pub fn processFact(
         .process_id = process_id,
         .device_index = 0,
         .score_member_count = 0,
-        .cpu_capability_mask = allAdapterCapabilities(),
-        .gpu_capability_mask = allAdapterCapabilities(),
         .applied_process_grade = applied_process_grade,
-        .applied_cpu_grade = @intFromEnum(applied_cpu_grade),
-        .applied_gpu_grade = @intFromEnum(applied_gpu_grade),
-        .reserved2 = [_]u8{0} ** 3,
-        .process_score = 0,
-        .software_score = 0,
-    };
-}
-
-pub fn softwareFact(
-    source_index: u32,
-    software_key: u64,
-    applied_cpu_grade: protocol.AdapterGrade,
-    applied_gpu_grade: protocol.AdapterGrade,
-    ownership_flags: u64,
-) protocol.InputRow {
-    return .{
-        .struct_size = @sizeOf(protocol.InputRow),
-        .metric_kind = @intFromEnum(protocol.MetricKind.none),
-        .software_kind = @intFromEnum(protocol.SoftwareKind.unknown),
-        .protection_level = 0,
-        .reserved0 = 0,
-        .valid_mask = protocol.InputValidity.software_identity |
-            protocol.InputValidity.applied_cpu_grade |
-            protocol.InputValidity.applied_gpu_grade,
-        .flags = ownership_flags,
-        .target_key = 0,
-        .software_key = software_key,
-        .process_start_key = 0,
-        .base_score = 0,
-        .metric_value = 0,
-        .source_index = source_index,
-        .process_id = 0,
-        .device_index = 0,
-        .score_member_count = 0,
-        .cpu_capability_mask = 0,
-        .gpu_capability_mask = 0,
-        .applied_process_grade = protocol.ProcessGrade.normal,
-        .applied_cpu_grade = @intFromEnum(applied_cpu_grade),
-        .applied_gpu_grade = @intFromEnum(applied_gpu_grade),
-        .reserved2 = [_]u8{0} ** 3,
+        .reserved2 = [_]u8{0} ** 7,
         .process_score = 0,
         .software_score = 0,
     };
@@ -249,36 +195,11 @@ pub fn feedbackFor(action: protocol.Action, status: protocol.FeedbackStatus, com
         action.to_process_grade
     else
         action.from_process_grade;
-    const cpu_grade = if (!reports_grade or
-        (action.domain_mask & protocol.GradeDomains.cpu) == 0)
-        0
-    else if (reports_target)
-        action.to_cpu_grade
-    else
-        action.from_cpu_grade;
-    const gpu_grade = if (!reports_grade or
-        (action.domain_mask & protocol.GradeDomains.gpu) == 0)
-        0
-    else if (reports_target)
-        action.to_gpu_grade
-    else
-        action.from_gpu_grade;
     if (reports_grade and (action.domain_mask & protocol.GradeDomains.process) != 0) {
         valid_mask |= protocol.FeedbackValidity.actual_process_grade;
         if (reports_target and process_grade != protocol.ProcessGrade.normal) flags |= protocol.FeedbackFlags.process_owned;
     }
-    const normal = @intFromEnum(protocol.AdapterGrade.normal);
-    if (reports_grade and (action.domain_mask & protocol.GradeDomains.cpu) != 0) {
-        valid_mask |= protocol.FeedbackValidity.actual_cpu_grade;
-        if (reports_target and cpu_grade != normal) flags |= protocol.FeedbackFlags.cpu_owned;
-    }
-    if (reports_grade and (action.domain_mask & protocol.GradeDomains.gpu) != 0) {
-        valid_mask |= protocol.FeedbackValidity.actual_gpu_grade;
-        if (reports_target and gpu_grade != normal) flags |= protocol.FeedbackFlags.gpu_owned;
-    }
-    if ((flags & (protocol.FeedbackFlags.process_owned | protocol.FeedbackFlags.cpu_owned |
-        protocol.FeedbackFlags.gpu_owned)) != 0)
-    {
+    if ((flags & (protocol.FeedbackFlags.process_owned)) != 0) {
         flags |= protocol.FeedbackFlags.rollback_payload_persisted;
     }
     return .{
@@ -297,15 +218,9 @@ pub fn feedbackFor(action: protocol.Action, status: protocol.FeedbackStatus, com
         .status = @intFromEnum(status),
         .scope = action.scope,
         .actual_process_grade = process_grade,
-        .actual_cpu_grade = cpu_grade,
-        .actual_gpu_grade = gpu_grade,
-        .reserved0 = [_]u8{0} ** 3,
+        .reserved0 = [_]u8{0} ** 5,
         .reserved1 = 0,
     };
-}
-
-pub fn allAdapterCapabilities() u8 {
-    return (@as(u8, 1) << protocol.adapter_grade_count) - 1;
 }
 
 pub fn layoutFingerprint(comptime T: type) u64 {

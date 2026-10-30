@@ -21,14 +21,13 @@ public sealed class HostManagerDurableStorePathsTests
         Assert.Equal(bytes.ToArray(), HostManagerDurableStorePaths.ReadDefaultProfileBytes());
 
         var stores = HostManagerDurableStorePaths.Resolve(Root).ToDictionary(store => store.Kind);
-        Assert.Equal(5, stores.Count);
+        Assert.Equal(4, stores.Count);
         AssertStore(stores["transaction-journal"], "UserData/host-manager/transaction-journal/journal.bin");
         AssertStore(stores["applied-ownership"], "UserData/host-manager/applied-ownership/ledger.bin");
         AssertStore(stores["operation-coordinator"], "UserData/HostManager/operation-coordinator/operation-coordinator-v1.bin");
         AssertStore(stores["rollback-state"], "UserData/HostManager/RollbackState/generation-00000001/rollback-state.json",
             "UserData/HostManager/RollbackState/rollback-state.root.manifest");
-        AssertStore(stores["memory-cleanup-attempt-journal"],
-            "UserData/HostManager/MemoryCleanup/generation-00000001/host-manager-memory-cleanup-attempts.json");
+        Assert.DoesNotContain("memory-cleanup-attempt-journal", stores.Keys);
     }
 
     [Fact]
@@ -58,8 +57,6 @@ public sealed class HostManagerDurableStorePathsTests
         var rollback = JsonHostManagerRollbackStateStore.ResolveProductionPaths(contentRoot, Root);
         Assert.Equal(stores["rollback-state"].CanonicalPath, rollback.CanonicalPath);
         Assert.Equal(stores["rollback-state"].ManifestPath, rollback.RootManifestPath);
-        Assert.Equal(stores["memory-cleanup-attempt-journal"].CanonicalPath,
-            HostManagerMemoryCleanupAttemptJournal.ResolveProductionPaths(contentRoot, Root).CanonicalPath);
     }
 
     [Theory]

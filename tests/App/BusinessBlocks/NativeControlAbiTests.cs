@@ -68,7 +68,7 @@ public sealed class NativeControlAbiTests
     public async Task NativeReadFunctionReadsCurrentValueOutsideControllerLockAndUnbindSuppressesCallback()
     {
         await using var fixture = await NativeFixture.CreateAsync();
-        var key = new StateItemKey(BackendItems.PresentUnfrozen);
+        var key = new StateItemKey(BackendItems.PresentNativeSessionAvailable);
         var current = false;
         var fail = false;
         var calls = 0;
@@ -209,7 +209,7 @@ public sealed class NativeControlAbiTests
     public async Task NativeBooleanReadsAllocateNoManagedMemory()
     {
         await using var fixture = await NativeFixture.CreateAsync();
-        var key = new StateItemKey(BackendItems.PresentUnfrozen);
+        var key = new StateItemKey(BackendItems.PresentNativeSessionAvailable);
         var cell = fixture.Authority.ClaimCell<bool>(key);
         await cell.PublishAsync(true, Reason).WaitAsync(Timeout);
 
@@ -230,7 +230,7 @@ public sealed class NativeControlAbiTests
     public async Task RuntimeReaderCanReadAndChangeSubscriptionsReentrantlyDuringCallback()
     {
         await using var fixture = await NativeFixture.CreateAsync();
-        var key = new StateItemKey(BackendItems.PresentUnfrozen);
+        var key = new StateItemKey(BackendItems.PresentNativeSessionAvailable);
         var cell = fixture.Authority.ClaimCell<bool>(key);
         IDisposable? first = null;
         IDisposable? second = null;
@@ -269,7 +269,7 @@ public sealed class NativeControlAbiTests
     public async Task NamedReadersAreUniqueUnregisterIsIdempotentAndPublishWaitsForReaderTask()
     {
         await using var fixture = await NativeFixture.CreateAsync();
-        var key = new StateItemKey(BackendItems.PresentUnfrozen);
+        var key = new StateItemKey(BackendItems.PresentNativeSessionAvailable);
         var cell = fixture.Authority.ClaimCell<bool>(key);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

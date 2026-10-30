@@ -19,10 +19,9 @@ internal sealed class NvidiaMetricFieldWriter(NvidiaGpuControlResource resource,
             && binding.SourceId == NativeMetricSnapshotSources.NvidiaNvml && binding.Field.Unit == "W"
             && binding.Field.ValueKind == "float64" && binding.AdapterKey is > 0;
 
-    internal void Discover(HardwareMetricSnapshot snapshot, bool frozen)
+    internal void Discover(HardwareMetricSnapshot snapshot)
     {
         var next = ImmutableDictionary.CreateBuilder<string, NvidiaControlWriteAvailability>();
-        if (!frozen)
         {
             var inventory = readInventory();
             foreach (var binding in snapshot.FieldBindings.Values.Where(Matches))

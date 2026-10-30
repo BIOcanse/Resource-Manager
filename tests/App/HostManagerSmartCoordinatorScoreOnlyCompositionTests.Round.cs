@@ -34,9 +34,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(firstCompute.Gpu?.Scores.ToArray(), secondCompute.Gpu?.Scores.ToArray());
         Assert.Equal(first.MemoryModes!.Software.ToArray(), second.MemoryModes!.Software.ToArray());
         Assert.True(fixture.Workspace.Snapshot.CycleSequence > firstCycle);
-        Assert.Equal(firstNative.Select(row => (row.ProcessPendingCount, row.CpuPendingCount, row.GpuPendingCount)),
+        Assert.Equal(firstNative.Select(row => row.ProcessPendingCount),
             fixture.Workspace.CurrentSnapshotRows.ToArray()
-                .Select(row => (row.ProcessPendingCount, row.CpuPendingCount, row.GpuPendingCount)));
+                .Select(row => row.ProcessPendingCount));
     }
 
     [Fact]

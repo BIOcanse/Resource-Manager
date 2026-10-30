@@ -41,7 +41,7 @@ public sealed class NvidiaMetricWriteOwnerLibraryIntegrationTests
         var snapshot = Snapshot(binding);
         using var current = new LastSuccessfulHardwareMetricSnapshot();
         current.Publish(snapshot);
-        writer.Discover(snapshot, false);
+        writer.Discover(snapshot);
         var probes = nvml.Probes;
         Assert.True(writer.Query(binding).Supported);
         Assert.Equal(probes, nvml.Probes);

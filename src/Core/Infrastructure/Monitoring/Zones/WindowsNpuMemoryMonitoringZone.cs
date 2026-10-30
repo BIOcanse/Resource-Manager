@@ -12,9 +12,8 @@ public sealed class WindowsNpuMemoryMonitoringZone : MonitoringSourceZone
     internal WindowsNpuMemoryMonitoringZone(Func<IReadOnlyList<NpuMemoryCatalogIdentity>,
         IReadOnlyDictionary<string, NpuMemoryFields>, uint, CancellationToken, IReadOnlyList<NpuMemoryRead>> read)
         : base(MonitoringSourceZoneIds.WindowsNpuMemory) => this.read = read;
-    internal NpuMemoryTopologyRead ReadIdentities(uint effectiveMaximumInstanceCount) => CanRead ? WindowsNpuMemoryTopology.Read(effectiveMaximumInstanceCount)
-        : new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
+    internal NpuMemoryTopologyRead ReadIdentities(uint effectiveMaximumInstanceCount) => WindowsNpuMemoryTopology.Read(effectiveMaximumInstanceCount);
     internal IReadOnlyList<NpuMemoryRead> Read(IReadOnlyList<NpuMemoryCatalogIdentity> devices,
         IReadOnlyDictionary<string, NpuMemoryFields> requested, uint effectiveMaximumInstanceCount, CancellationToken cancellationToken)
-        => CanRead ? read(devices, requested, effectiveMaximumInstanceCount, cancellationToken) : [];
+        => read(devices, requested, effectiveMaximumInstanceCount, cancellationToken);
 }

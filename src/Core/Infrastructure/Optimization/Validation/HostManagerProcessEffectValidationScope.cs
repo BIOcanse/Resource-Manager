@@ -1062,33 +1062,10 @@ public sealed partial class HostManagerProcessEffectValidationScopeAuthority
             handoffs);
     }
 
-    internal bool ReconcileDeclaredMemoryCleanupHandoff(
-        IReadOnlyList<HostManagerMemoryCleanupAttemptBatch> batches)
-    {
-        ArgumentNullException.ThrowIfNull(batches);
-        var handoffs = new HostManagerProcessEffectValidationDurableHandoffDocument[
-            batches.Count];
-        for (var index = 0; index < batches.Count; index++)
-        {
-            var batch = batches[index];
-            if (!TryNormalizeMemoryCleanupProcesses(batch.Processes, out var processes)
-                || batch.BatchId == Guid.Empty
-                || batch.AttemptGeneration == 0)
-            {
-                handoffs[index] = HostManagerProcessEffectValidationDurableHandoffDocument
-                    .CreateMemoryCleanupBatch(Guid.Empty, 0, []);
-                continue;
-            }
-            handoffs[index] = HostManagerProcessEffectValidationDurableHandoffDocument
-                .CreateMemoryCleanupBatch(
-                    batch.BatchId,
-                    batch.AttemptGeneration,
-                    processes);
-        }
-        return ReconcileDeclaredHandoff(
+    internal bool ReconcileDeclaredMemoryCleanupHandoff()
+        => ReconcileDeclaredHandoff(
             HostManagerProcessEffectValidationDurableHandoffKind.MemoryCleanupAttemptBatch,
-            handoffs);
-    }
+            []);
 
     internal void MarkAdmissionUnsettled(
         HostManagerProcessEffectValidationAdmissionPermit? permit,

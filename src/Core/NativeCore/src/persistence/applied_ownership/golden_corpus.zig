@@ -1,3 +1,5 @@
+// Historical software-grade values are only used to construct upgrade/rejection fixtures.
+const LegacyAdapterGrade = enum(i32) { freeze = 0, optimize = 1, normal = 2, extreme = 3 };
 const std = @import("std");
 const protocol = @import("protocol.zig");
 
@@ -47,7 +49,7 @@ pub fn processPrimary(id: u64) protocol.PrimaryIdentity {
 
 pub fn adapterPrimary(id: u64) protocol.PrimaryIdentity {
     return .{
-        .scope = @intFromEnum(protocol.Scope.adapter),
+        .scope = 2,
         .reserved_u32 = 0,
         .target_id = 0,
         .software_id = 500 + id,
@@ -110,16 +112,16 @@ pub fn adapterBinding(id: u64) protocol.OriginalBinding {
             .process_id = 0,
             .reserved = 0,
         },
-        .scope = @intFromEnum(protocol.JournalScope.software),
+        .scope = 2,
         .disposition = @intFromEnum(protocol.Disposition.apply),
         .domain_mask = protocol.DomainBits.cpu | protocol.DomainBits.gpu,
         .grade_valid_mask = protocol.GradeValid.cpu | protocol.GradeValid.gpu,
         .process_from_grade = 0,
         .process_to_grade = 0,
-        .cpu_from_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .cpu_to_grade = @intFromEnum(protocol.AdapterGrade.optimize),
-        .gpu_from_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .gpu_to_grade = @intFromEnum(protocol.AdapterGrade.freeze),
+        .cpu_from_grade = @intFromEnum(LegacyAdapterGrade.normal),
+        .cpu_to_grade = @intFromEnum(LegacyAdapterGrade.optimize),
+        .gpu_from_grade = @intFromEnum(LegacyAdapterGrade.normal),
+        .gpu_to_grade = @intFromEnum(LegacyAdapterGrade.freeze),
         .stable_system_status = 41,
         .stable_system_error = 0,
         .maximum_recovery_attempts = 5,
@@ -152,24 +154,13 @@ pub fn processGrades(grade: protocol.ProcessGrade) protocol.CurrentGrades {
     };
 }
 
-pub fn adapterGrades(cpu: protocol.AdapterGrade, gpu: protocol.AdapterGrade) protocol.CurrentGrades {
+pub fn adapterGrades(cpu: LegacyAdapterGrade, gpu: LegacyAdapterGrade) protocol.CurrentGrades {
     return .{
         .valid_mask = protocol.GradeValid.cpu | protocol.GradeValid.gpu,
         .reserved_u32 = 0,
         .process_grade = 0,
         .cpu_grade = @intFromEnum(cpu),
         .gpu_grade = @intFromEnum(gpu),
-        .reserved_i32 = 0,
-    };
-}
-
-pub fn adapterCpuGrades(cpu: protocol.AdapterGrade) protocol.CurrentGrades {
-    return .{
-        .valid_mask = protocol.GradeValid.cpu,
-        .reserved_u32 = 0,
-        .process_grade = 0,
-        .cpu_grade = @intFromEnum(cpu),
-        .gpu_grade = 0,
         .reserved_i32 = 0,
     };
 }
@@ -201,25 +192,6 @@ pub fn adapterPromote(id: u64, expected_revision: u64, now_utc_ms: u64) protocol
         .original_binding = adapterBinding(id),
         .payload = payload(100 + id),
         .current_grades = adapterGrades(.optimize, .freeze),
-        .promoted_at_utc_ms = now_utc_ms,
-        .reserved = .{ 0, 0, 0, 0, 0 },
-    };
-}
-
-pub fn adapterCpuPromote(id: u64, expected_revision: u64, now_utc_ms: u64) protocol.PromoteInput {
-    var binding = adapterBinding(id);
-    binding.domain_mask = protocol.DomainBits.cpu;
-    binding.grade_valid_mask = protocol.GradeValid.cpu;
-    binding.gpu_from_grade = 0;
-    binding.gpu_to_grade = 0;
-    return .{
-        .abi_version = protocol.abi_version,
-        .struct_size = @sizeOf(protocol.PromoteInput),
-        .expected_ledger_revision = expected_revision,
-        .primary = adapterPrimary(id),
-        .original_binding = binding,
-        .payload = payload(100 + id),
-        .current_grades = adapterCpuGrades(.optimize),
         .promoted_at_utc_ms = now_utc_ms,
         .reserved = .{ 0, 0, 0, 0, 0 },
     };
@@ -270,46 +242,6 @@ pub fn processTransition(
     };
 }
 
-pub fn adapterApplyTransition(
-    record: *const protocol.Record,
-    expected_ledger_revision: u64,
-    domain_mask: u32,
-    cpu_to_grade: protocol.AdapterGrade,
-    gpu_to_grade: protocol.AdapterGrade,
-    target: protocol.CurrentGrades,
-    now_utc_ms: u64,
-) protocol.TransitionInput {
-    return adapterTransition(
-        record,
-        expected_ledger_revision,
-        .apply,
-        domain_mask,
-        cpu_to_grade,
-        gpu_to_grade,
-        target,
-        now_utc_ms,
-    );
-}
-
-pub fn adapterRestoreTransition(
-    record: *const protocol.Record,
-    expected_ledger_revision: u64,
-    domain_mask: u32,
-    target: protocol.CurrentGrades,
-    now_utc_ms: u64,
-) protocol.TransitionInput {
-    return adapterTransition(
-        record,
-        expected_ledger_revision,
-        .restore,
-        domain_mask,
-        .normal,
-        .normal,
-        target,
-        now_utc_ms,
-    );
-}
-
 pub fn remove(
     record: *const protocol.Record,
     expected_ledger_revision: u64,
@@ -325,56 +257,3 @@ pub fn remove(
     };
 }
 
-fn adapterTransition(
-    record: *const protocol.Record,
-    expected_ledger_revision: u64,
-    disposition: protocol.Disposition,
-    domain_mask: u32,
-    cpu_to_grade: protocol.AdapterGrade,
-    gpu_to_grade: protocol.AdapterGrade,
-    target: protocol.CurrentGrades,
-    now_utc_ms: u64,
-) protocol.TransitionInput {
-    var binding = record.original_binding;
-    binding.journal_instance_low += 1;
-    binding.action_identity.plan_epoch += 1;
-    binding.action_identity.action_id += 1;
-    binding.disposition = @intFromEnum(disposition);
-    binding.domain_mask = domain_mask;
-    binding.grade_valid_mask =
-        (if ((domain_mask & protocol.DomainBits.cpu) != 0) protocol.GradeValid.cpu else 0) |
-        (if ((domain_mask & protocol.DomainBits.gpu) != 0) protocol.GradeValid.gpu else 0);
-    binding.cpu_from_grade = if ((domain_mask & protocol.DomainBits.cpu) != 0)
-        if ((record.current_grades.valid_mask & protocol.GradeValid.cpu) != 0)
-            record.current_grades.cpu_grade
-        else
-            @intFromEnum(protocol.AdapterGrade.normal)
-    else
-        0;
-    binding.cpu_to_grade = if ((domain_mask & protocol.DomainBits.cpu) != 0)
-        @intFromEnum(cpu_to_grade)
-    else
-        0;
-    binding.gpu_from_grade = if ((domain_mask & protocol.DomainBits.gpu) != 0)
-        if ((record.current_grades.valid_mask & protocol.GradeValid.gpu) != 0)
-            record.current_grades.gpu_grade
-        else
-            @intFromEnum(protocol.AdapterGrade.normal)
-    else
-        0;
-    binding.gpu_to_grade = if ((domain_mask & protocol.DomainBits.gpu) != 0)
-        @intFromEnum(gpu_to_grade)
-    else
-        0;
-    return .{
-        .abi_version = protocol.abi_version,
-        .struct_size = @sizeOf(protocol.TransitionInput),
-        .expected_ledger_revision = expected_ledger_revision,
-        .cas = cas(record),
-        .transition_binding = binding,
-        .transition_payload = record.payload,
-        .new_current_grades = target,
-        .updated_at_utc_ms = now_utc_ms,
-        .reserved = .{ 0, 0 },
-    };
-}

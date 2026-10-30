@@ -399,17 +399,11 @@ public sealed class NativeWorkspaceGrowthLoggingTests
             NativeSmartCoordinatorInputValidity.SurfaceFacts |
             NativeSmartCoordinatorInputValidity.Eligibility |
             NativeSmartCoordinatorInputValidity.Protection |
-            NativeSmartCoordinatorInputValidity.CpuCapabilities |
-            NativeSmartCoordinatorInputValidity.GpuCapabilities |
-            NativeSmartCoordinatorInputValidity.AppliedProcessGrade |
-            NativeSmartCoordinatorInputValidity.AppliedCpuGrade |
-            NativeSmartCoordinatorInputValidity.AppliedGpuGrade,
+            NativeSmartCoordinatorInputValidity.AppliedProcessGrade,
         Flags = NativeSmartCoordinatorInputFlags.Running,
         TargetKey = id, SoftwareKey = id + 100UL, ProcessStartKey = id + 1000UL,
         BaseScore = 20, SourceIndex = id - 1, ProcessId = id,
         AppliedProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-        AppliedCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-        AppliedGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal
     };
 
     private static NativeReportRuleInput ReportRule(ulong id) => new()

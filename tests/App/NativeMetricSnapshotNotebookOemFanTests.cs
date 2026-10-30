@@ -72,9 +72,8 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
         var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             compiled, [], [], [], workspace.CreateCatalogHandleMap());
         workspace.ReplaceCatalog(catalog, DateTimeOffset.UtcNow);
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(
-            source.SourceHandle, 1, NativeMetricSnapshotZoneMode.Normal,
-            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(
+            source.SourceHandle, 1, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         double?[] values = [4045, null, 4200];
         for (var round = 0; round < values.Length; round++)
         {

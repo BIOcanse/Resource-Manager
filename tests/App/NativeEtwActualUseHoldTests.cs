@@ -1,6 +1,5 @@
 using System.Diagnostics.Tracing;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -16,7 +15,7 @@ public sealed class NativeEtwActualUseHoldTests
     [.. ApiProviders, PresentFrameEtwSource.GraphicsKernelProvider, PresentFrameEtwSource.Win32kProvider];
 
     [Fact]
-    public async Task PresentHoldsFollowTheCurrentOutputsAcrossLongRunningNormalFreezeAndThaw()
+    public async Task PresentHoldsFollowTheCurrentOutputsAcrossLongRunningUse()
     {
         var clock = new PresentFrameEtwManualTimeProvider();
         await using var harness = PresentFrameEtwTestHarness.Create(timeProvider: clock);
@@ -38,17 +37,10 @@ public sealed class NativeEtwActualUseHoldTests
         await RecordStableAsync(history, Snapshot, clock, 1, ApiProviders);
         Assert.Equal(1, harness.Sessions.Attempts);
 
-        await harness.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze).WaitAsync(Timeout);
-        await RecordStableAsync(history, Snapshot, clock, 0, []);
-        await harness.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal).WaitAsync(Timeout);
-        await harness.WaitRunningAsync();
-        await RecordStableAsync(history, Snapshot, clock, 1, ApiProviders);
-        Assert.Equal(2, harness.Sessions.Attempts);
-
         await harness.ReleaseAsync(api);
         await RecordStableAsync(history, Snapshot, clock, 0, []);
-        Assert.Equal(2, harness.Sessions.Attempts);
-        Assert.Equal(new[] { 0, 1, 1, 1, 0, 1, 0 }, history.Select(hold => hold.Sessions));
+        Assert.Equal(1, harness.Sessions.Attempts);
+        Assert.Equal(new[] { 0, 1, 1, 1, 0 }, history.Select(hold => hold.Sessions));
     }
 
     [Fact]
@@ -185,7 +177,7 @@ public sealed class NativeEtwActualUseHoldTests
     }
 
     [Fact]
-    public async Task VidMmFreezeAndWithdrawalReleaseNativeHoldsWhileTheBackendRemainsRunning()
+    public async Task VidMmWithdrawalReleasesNativeHoldsWhileTheBackendRemainsRunning()
     {
         var clock = new PresentFrameEtwManualTimeProvider();
         await using var harness = VidMmBusinessBlockTestHarness.Create();
@@ -203,18 +195,12 @@ public sealed class NativeEtwActualUseHoldTests
         await harness.Fixture.SetNativeSubscriptionInUseAsync(BackendUids.DxgkrnlVidMmEtwTelemetryZone, true);
         await harness.Fixture.WaitForStateAsync(BackendUids.DxgkrnlVidMmEtwTelemetryZone, BusinessBlockState.Running);
         await RecordStableAsync(history, Snapshot, clock, 1, [PresentFrameEtwSource.GraphicsKernelProvider]);
-        await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze).WaitAsync(Timeout);
-        await RecordStableAsync(history, Snapshot, clock, 0, []);
-        Assert.False(harness.Sessions.Current.ConsumerThread!.IsAlive);
-        await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal).WaitAsync(Timeout);
-        await harness.Fixture.WaitForStateAsync(BackendUids.DxgkrnlVidMmEtwTelemetryZone, BusinessBlockState.Running);
-        await RecordStableAsync(history, Snapshot, clock, 1, [PresentFrameEtwSource.GraphicsKernelProvider]);
         await harness.Fixture.SetNativeSubscriptionInUseAsync(BackendUids.DxgkrnlVidMmEtwTelemetryZone, false);
         await harness.Fixture.WaitForStateAsync(BackendUids.DxgkrnlVidMmEtwTelemetryZone, BusinessBlockState.Stopped);
         await RecordStableAsync(history, Snapshot, clock, 0, []);
-        Assert.Equal(2, harness.Sessions.Attempts);
+        Assert.Equal(1, harness.Sessions.Attempts);
         Assert.All(harness.Sessions.Snapshot(), session => Assert.False(session.ConsumerThread!.IsAlive));
-        Assert.Equal(new[] { 0, 1, 0, 1, 0 }, history.Select(hold => hold.Sessions));
+        Assert.Equal(new[] { 0, 1, 0 }, history.Select(hold => hold.Sessions));
     }
 
     private static async Task RecordStableAsync(List<Hold> history, Func<Hold> snapshot,

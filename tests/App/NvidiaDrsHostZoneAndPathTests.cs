@@ -1,4 +1,3 @@
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Vendors.Nvidia;
 
@@ -9,17 +8,11 @@ public sealed class NvidiaDrsHostZoneAndPathTests
     private static readonly NvidiaDrsReadLimits Limits = new(1, 1, 1, 1, 20_000);
 
     [Fact]
-    public void ZoneRejectsNativeEntryWhileFrozenAndRetainsFailedCleanupForExplicitRetry()
+    public void ZoneRetainsFailedCleanupForExplicitRetry()
     {
         var api = new NvidiaDrsHostRecording();
         var reader = new NvidiaNvapiReader(api);
         var zone = new NvidiaNvapiMonitoringZone(reader);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Null(zone.ReadDrs([new("Game", new uint[] { 7 })], Limits, default));
-        Assert.Null(zone.DiscoverDrs(Limits, default)); Assert.Equal(0, api.Creates);
-        var committed = false;
-        Assert.False(zone.TryPublishDrs(() => committed = true)); Assert.False(committed);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
         Assert.NotNull(zone.ReadDrs([new("Game", new uint[] { 7 })], Limits, default));
         api.FailDestroy = true;
         Assert.Null(zone.ReadDrs([new("Game", new uint[] { 7 })], Limits, default));

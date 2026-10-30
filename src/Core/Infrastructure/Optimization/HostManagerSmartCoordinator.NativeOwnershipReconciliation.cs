@@ -16,11 +16,8 @@ public sealed partial class HostManagerSmartCoordinator
         permit.Require(HostManagerCycleEffectKind.ExitedOwnershipReconciliation);
         runningGpuPlacementActions.ReconcileExitedProcessInstances(
             processFacts, processPolicyWriter.ReadProcessInstanceForRecovery);
-        _ = memoryCleanupAttemptJournal.ReconcileAndCaptureBlocked(
-            processPolicyWriter.ReadProcessInstanceForRecovery);
         if (!processEffectValidationScopeAuthorityOwner
-                .ReconcileDeclaredMemoryCleanupHandoff(
-                    memoryCleanupAttemptJournal.CapturePendingBatches()))
+                .ReconcileDeclaredMemoryCleanupHandoff())
         {
             throw new InvalidDataException(
                 "The validation scope could not reconcile its declared memory-cleanup handoff.");

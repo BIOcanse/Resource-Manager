@@ -136,8 +136,8 @@ public sealed partial class IntelMsrThermalCollectorTests
         var now = DateTimeOffset.UtcNow; workspace.ReplaceCatalog(catalog, now);
         var handles = catalog.MetricBindings.Values.Where(binding => IntelRaplPowerInformation.Find(binding.FieldCode) is not null)
             .Select(static binding => binding.MetricHandle).ToArray(); Assert.Equal(8, handles.Length);
-        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var first = Publish(1);
         AssertPowerInformation(first, device.ExactIdentityKey, "18446744073709551615");
         var watt = MetricDeviceFields.Read(first, device.ExactIdentityKey).Single().Fields.Single(field => field.Name == "cpu_intel_package_maximum_power_setting_declared_watts");

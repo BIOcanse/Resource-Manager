@@ -4,7 +4,7 @@ namespace ResourceManager.ReadWrite.Native;
 
 public static class NativeMetricSnapshotAbi
 {
-    public const uint Version = 0x000D_0000;
+    public const uint Version = 0x000E_0000;
     public const uint CatalogContractVersion = 0x0006_0000;
     public const uint ValueContractVersion = 0x0004_0000;
     public const uint ObservationContractVersion = 0x0009_0000;
@@ -12,8 +12,8 @@ public static class NativeMetricSnapshotAbi
     public const uint PersistenceContractVersion = 0x0005_0000;
     public const uint CpuCounterContractVersion = 0x0001_0000;
     public const int MaximumValueBytes = 512;
-    public const ulong LayoutFingerprint = 0x074957DC9F9DF65B;
-    public const ulong WireContractFingerprint = 0x7ED7859E0141C29D;
+    public const ulong LayoutFingerprint = 0xf686e3d8fabe568f;
+    public const ulong WireContractFingerprint = 0xd416d753e946524;
 }
 
 public enum NativeMetricSnapshotStatus : int
@@ -50,13 +50,6 @@ public enum NativeMetricSnapshotSourceStatus : uint
     Unavailable = 3,
     Unsupported = 4,
     Skipped = 5
-}
-
-public enum NativeMetricSnapshotZoneMode : uint
-{
-    Normal = 1,
-    LowPower = 2,
-    Freeze = 3
 }
 
 public enum NativeMetricSnapshotSourceAvailability : uint
@@ -243,8 +236,7 @@ public enum NativeMetricSnapshotSourcePlanFlags : uint
 {
     None = 0,
     Selected = 1U << 0,
-    LowPower = 1U << 1,
-    Known = Selected | LowPower
+    Known = Selected
 }
 
 [Flags]
@@ -455,13 +447,12 @@ public unsafe struct NativeMetricSnapshotPlanMetricInput
 }
 
 [StructLayout(LayoutKind.Sequential)]
-public unsafe struct NativeMetricSnapshotSourceModeInput
+public unsafe struct NativeMetricSnapshotSourceStateInput
 {
     public uint StructSize;
     public uint Flags;
     public ulong SourceHandle;
     public ulong CapabilityGeneration;
-    public uint ZoneMode;
     public uint Availability;
     public fixed ulong Reserved[2];
 }
@@ -476,7 +467,6 @@ public unsafe struct NativeMetricSnapshotSourcePlanOutput
     public ulong PlanEpoch;
     public ulong PlanTokenFingerprint;
     public uint RequestedRuleCount;
-    public uint ZoneMode;
     public uint Availability;
     public uint SourceRole;
     public fixed ulong Reserved[2];

@@ -108,15 +108,6 @@ public sealed partial class IntelMsrThermalCollectorTests
     }
 
     [Fact]
-    public void FrozenSourceStartsFreshIntervalWhenReenabled()
-    {
-        using var h = new RatioWorkspace(); h.Publish(new(0, 0)); Assert.Equal(1.5, h.Publish(new(150, 100)));
-        var plan = h.Workspace.PlanCollection([h.RatioHandle], h.Modes(1, NativeMetricSnapshotZoneMode.Freeze), false, h.NextTime());
-        Assert.Empty(plan.Sources); Assert.Equal(1.5, h.ReadField().NumericValue);
-        Assert.Null(h.Publish(new(450, 300))); Assert.Equal(1.5, h.Publish(new(600, 400)));
-    }
-
-    [Fact]
     public void RejectedObservationAndDemandDoNotMutateCommittedCounterBaseline()
     {
         using var h = new RatioWorkspace(); h.Publish(new(0, 0)); Assert.Equal(1.5, h.Publish(new(150, 100)));
@@ -174,8 +165,8 @@ public sealed partial class IntelMsrThermalCollectorTests
         private ulong Handle(IntelMsrCatalogIdentity device, MetricFieldCode field) => catalog.MetricBindings.Values.Single(
             binding => binding.DeviceIdentity == device.ExactIdentityKey && binding.FieldCode == field).MetricHandle;
         internal DateTimeOffset NextTime() => start.AddSeconds(++sequence);
-        internal NativeMetricSnapshotSourceRuntimeMode[] Modes(ulong capability = 1, NativeMetricSnapshotZoneMode mode = NativeMetricSnapshotZoneMode.Normal)
-            => catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, capability, mode, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        internal NativeMetricSnapshotSourceRuntimeState[] Modes(ulong capability = 1)
+            => catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, capability, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         internal void Sync(ulong[] active) => Workspace.SynchronizeCounterDemand(active, NextTime());
         internal double? Publish(NativeMetricSnapshotCounterPair? pair, ulong capability = 1, ulong incarnation = 1, bool corrupt = false)
             => Capture(target, MetricFieldCode.IntelPerformanceRatio, pair, capability, incarnation, corrupt);

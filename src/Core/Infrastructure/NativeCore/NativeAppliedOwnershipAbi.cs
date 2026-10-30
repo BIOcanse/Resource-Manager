@@ -51,13 +51,13 @@ internal enum NativeAppliedOwnershipStatus : int
 internal enum NativeAppliedOwnershipScope : uint
 {
     Process = 1,
-    Adapter = 2
+    // Value 2 is retired software-grade scope; never reuse.
 }
 
 internal enum NativeAppliedOwnershipJournalScope : uint
 {
     Process = 1,
-    Software = 2
+    // Value 2 is retired software-grade scope; never reuse.
 }
 
 internal enum NativeAppliedOwnershipDisposition : uint
@@ -98,13 +98,6 @@ internal enum NativeAppliedOwnershipProcessGrade : int
     A1 = 1
 }
 
-internal enum NativeAppliedOwnershipAdapterGrade : int
-{
-    Freeze = 0,
-    Optimize = 1,
-    Normal = 2,
-    Extreme = 3
-}
 
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct NativeAppliedOwnershipCreateConfiguration

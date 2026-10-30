@@ -205,15 +205,9 @@ public sealed partial class HostManagerSmartCoordinator
                     HostManagerTargetCapabilityClassifier.CanWriteProcessPolicy(
                         process.SoftwareId,
                         process.SoftwareKind),
-                    HostManagerTargetCapabilityClassifier.CanDispatchAdapter(
-                        process.SoftwareId,
-                        process.SoftwareKind),
                     HostManagerTargetCapabilityClassifier.CanWritePhysicalPlacement(
                         process.SoftwareId,
-                        process.SoftwareKind),
-                    runtimePlan.AdapterDispatch.ResolveRoute(process.SoftwareId),
-                    runtimePlan.AdapterDispatch.ResolveSupportedCpuGrades(process.SoftwareId),
-                    runtimePlan.AdapterDispatch.ResolveSupportedGpuGrades(process.SoftwareId));
+                        process.SoftwareKind));
                 byTarget.Add(targetId, target);
             }
 

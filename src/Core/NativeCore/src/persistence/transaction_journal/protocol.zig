@@ -127,7 +127,7 @@ pub const PayloadKind = enum(u32) {
 
 pub const Scope = enum(u32) {
     process = 1,
-    software = 2,
+    // Value 2 is retired software-grade dispatch; never reuse.
     resource = 3,
 };
 
@@ -171,12 +171,6 @@ pub const ProcessGrade = enum(i32) {
     a1 = 1,
 };
 
-pub const AdapterGrade = enum(i32) {
-    freeze = 0,
-    optimize = 1,
-    normal = 2,
-    extreme = 3,
-};
 
 pub const CreateConfig = extern struct {
     abi_version: u32,
@@ -460,7 +454,7 @@ pub fn validIdentityForScope(value: *const Identity, scope_raw: u32) bool {
     if (!validIdentity(value)) return false;
     return switch (scope_raw) {
         @intFromEnum(Scope.process) => value.process_start_key != 0 and value.process_id != 0,
-        @intFromEnum(Scope.software), @intFromEnum(Scope.resource) => value.software_id != 0 and value.process_start_key == 0 and value.process_id == 0,
+        @intFromEnum(Scope.resource) => value.software_id != 0 and value.process_start_key == 0 and value.process_id == 0,
         else => false,
     };
 }
@@ -669,7 +663,6 @@ pub fn validDomainForScope(scope_raw: u32, domain_mask: u32) bool {
     return switch (scope_raw) {
         @intFromEnum(Scope.process) => domain_mask == DomainBits.process or
             domain_mask == DomainBits.physical_memory,
-        @intFromEnum(Scope.software) => (domain_mask & ~DomainBits.software_known) == 0,
         @intFromEnum(Scope.resource) => (domain_mask & ~DomainBits.resource_known) == 0,
         else => false,
     };
@@ -700,14 +693,6 @@ pub fn validGradeSet(
                 process_from,
                 process_to,
             ),
-        @intFromEnum(Scope.software) => blk: {
-            const required = (if ((domain_mask & DomainBits.cpu) != 0) GradeValid.cpu else 0) |
-                (if ((domain_mask & DomainBits.gpu) != 0) GradeValid.gpu else 0);
-            break :blk valid_mask == required and
-                process_from == 0 and process_to == 0 and
-                validAdapterGradePair((required & GradeValid.cpu) != 0, cpu_from, cpu_to) and
-                validAdapterGradePair((required & GradeValid.gpu) != 0, gpu_from, gpu_to);
-        },
         @intFromEnum(Scope.resource) => valid_mask == 0 and
             process_from == 0 and process_to == 0 and
             cpu_from == 0 and cpu_to == 0 and
@@ -757,15 +742,6 @@ fn validOwnedMemoryPriority(value: i32) bool {
     return value >= 1 and value <= 5;
 }
 
-fn validAdapterGradePair(present: bool, from: i32, to: i32) bool {
-    if (!present) return from == 0 and to == 0;
-    return from >= @intFromEnum(AdapterGrade.freeze) and
-        from <= @intFromEnum(AdapterGrade.extreme) and
-        to >= @intFromEnum(AdapterGrade.freeze) and
-        to <= @intFromEnum(AdapterGrade.extreme) and
-        from != to;
-}
-
 pub fn validActualGrades(
     scope_raw: u32,
     domain_mask: u32,
@@ -786,14 +762,6 @@ pub fn validActualGrades(
                     validMemoryPriorityState(process_grade),
                 else => false,
             },
-        @intFromEnum(Scope.software) => blk: {
-            const required = (if ((domain_mask & DomainBits.cpu) != 0) GradeValid.cpu else 0) |
-                (if ((domain_mask & DomainBits.gpu) != 0) GradeValid.gpu else 0);
-            break :blk valid_mask == required and
-                process_grade == 0 and
-                validActualAdapterGrade((required & GradeValid.cpu) != 0, cpu_grade) and
-                validActualAdapterGrade((required & GradeValid.gpu) != 0, gpu_grade);
-        },
         @intFromEnum(Scope.resource) => valid_mask == 0 and
             process_grade == 0 and cpu_grade == 0 and gpu_grade == 0,
         else => false,
@@ -841,12 +809,6 @@ pub fn validFeedback(
         .actual_cpu_grade = cpu_grade,
         .actual_gpu_grade = gpu_grade,
     });
-}
-
-fn validActualAdapterGrade(present: bool, value: i32) bool {
-    if (!present) return value == 0;
-    return value >= @intFromEnum(AdapterGrade.freeze) and
-        value <= @intFromEnum(AdapterGrade.extreme);
 }
 
 fn validActualProcessGrade(present: bool, value: i32) bool {

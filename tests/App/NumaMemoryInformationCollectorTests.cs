@@ -1,7 +1,6 @@
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Windows.Metrics.Resources;
 using ResourceManager.ReadWrite.Windows.Pdh;
@@ -43,8 +42,6 @@ public sealed partial class NumaMemoryInformationCollectorTests
         Assert.Equal(0UL, values[nodes[0].ExactIdentityKey]);
         Assert.Equal(ulong.MaxValue, values[nodes[1].ExactIdentityKey]);
         Assert.False(values.ContainsKey(nodes[2].ExactIdentityKey));
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Empty(zone.ReadNumaAvailable(nodes, new HashSet<string> { nodes[1].ExactIdentityKey }));
         Assert.Equal(3, read.Count);
     }
 

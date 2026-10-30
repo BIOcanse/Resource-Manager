@@ -32,11 +32,9 @@ public sealed partial class BatteryInformationCollectorTests
         var opened = new List<string>();
         var battery = new WindowsBatteryMonitoringZone(new WindowsBatteryReader(enumerate: null, open: path =>
             { opened.Add(path); return new DeviceQuery { Relative = path == "path-1" }; }));
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == battery.DisplayName ? battery : new MonitoringSourceZone(id)).ToArray());
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), new WindowsMemoryMonitoringZone(),
             null!, null!, null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner,
-            dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, battery);
+            dashboard,  slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, battery);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, devices[1].ExactIdentityKey,
             ["battery_all_remaining_capacity_actual_relative_units"]);
         Assert.Empty(opened);

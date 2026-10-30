@@ -56,7 +56,7 @@ public sealed class EtwResourceOwnerLibraryIntegrationTests
         using var broker = new KernelEtwSessionOwner(factory);
         long tick = 0;
         var handles = new List<ProcessLease>();
-        using var network = new EtwNetworkTcpIpCaptureOwner(broker, static () => true, new(), () => tick,
+        using var network = new EtwNetworkTcpIpCaptureOwner(broker, new(), () => tick,
             pid => { var lease = new ProcessLease(pid, 100); handles.Add(lease); return lease; });
         network.Start();
         Assert.Null(network.Read(true).ObservedTraffic);
@@ -78,13 +78,12 @@ public sealed class EtwResourceOwnerLibraryIntegrationTests
     }
 
     [Fact]
-    public void RecordedLossAndFreezeDiscardIncompleteWindowsAndStableLossCanRecover()
+    public void RecordedLossDiscardsIncompleteWindowsAndStableLossCanRecover()
     {
         var factory = new Factory();
         using var broker = new KernelEtwSessionOwner(factory);
         long tick = 0;
-        var allowed = true;
-        using var network = new EtwNetworkTcpIpCaptureOwner(broker, () => allowed, new(), () => tick);
+        using var network = new EtwNetworkTcpIpCaptureOwner(broker, new(), () => tick);
         network.Start();
         network.Read(true);
         tick = 2001;
@@ -94,9 +93,6 @@ public sealed class EtwResourceOwnerLibraryIntegrationTests
         Assert.Null(network.Read(true).ObservedTraffic);
         tick = 4101;
         Assert.NotNull(network.Read(true).ObservedTraffic);
-        allowed = false;
-        Assert.Null(network.Read(true).ObservedTraffic);
-        allowed = true;
         tick = 6102;
         Assert.NotNull(network.Read(true).ObservedTraffic);
     }

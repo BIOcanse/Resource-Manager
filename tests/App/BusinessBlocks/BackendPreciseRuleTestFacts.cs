@@ -7,8 +7,7 @@ namespace Resource_Manager_APP.Tests;
 internal sealed class BackendPreciseRuleTestFacts
 {
     private static readonly int[] NativeFacts = [BackendItems.PresentNativeSessionAvailable,
-        BackendItems.GpuAllocationNativeSessionAvailable, BackendItems.VidMmNativeSessionAvailable,
-        BackendItems.PresentUnfrozen, BackendItems.VidMmUnfrozen];
+        BackendItems.GpuAllocationNativeSessionAvailable, BackendItems.VidMmNativeSessionAvailable];
     private readonly Dictionary<StateItemKey, StateCell<bool>> cells = [];
     internal BackendPreciseRuleTestFacts(StateAuthority authority, NativeControl native,
         bool hostPermits = true, bool nativeFacts = false)

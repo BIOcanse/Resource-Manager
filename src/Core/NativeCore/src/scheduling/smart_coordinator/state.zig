@@ -52,49 +52,6 @@ pub const ProcessTransition = struct {
     }
 };
 
-pub const AdapterTransition = struct {
-    desired: u8,
-    applied: u8,
-    pending_to: u8,
-    pending_from: u8,
-    pending_count: u32,
-    pending_first_seen_ms: i64,
-    pending_last_seen_ms: i64,
-    last_round_number: u64,
-    owned: bool,
-    inflight_action_id: u64,
-    retry_not_before_ms: i64,
-    last_feedback_ms: i64,
-    failure_count: u32,
-
-    pub fn normal() AdapterTransition {
-        const normal_grade = @intFromEnum(protocol.AdapterGrade.normal);
-        return .{
-            .desired = normal_grade,
-            .applied = normal_grade,
-            .pending_to = normal_grade,
-            .pending_from = normal_grade,
-            .pending_count = 0,
-            .pending_first_seen_ms = 0,
-            .pending_last_seen_ms = 0,
-            .last_round_number = 0,
-            .owned = false,
-            .inflight_action_id = 0,
-            .retry_not_before_ms = 0,
-            .last_feedback_ms = 0,
-            .failure_count = 0,
-        };
-    }
-
-    pub fn clearPending(self: *AdapterTransition) void {
-        self.pending_to = self.applied;
-        self.pending_from = self.applied;
-        self.pending_count = 0;
-        self.pending_first_seen_ms = 0;
-        self.pending_last_seen_ms = 0;
-    }
-};
-
 pub const ProcessState = struct {
     occupied: bool,
     seen_this_cycle: bool,
@@ -110,8 +67,6 @@ pub const ProcessState = struct {
     software_kind: u8,
     protection_level: u8,
     runtime_state: u8,
-    cpu_capability_mask: u8,
-    gpu_capability_mask: u8,
     base_score: f64,
     cpu_usage_percent: f64,
     cpu_score: f64,
@@ -148,8 +103,6 @@ pub const SoftwareState = struct {
     software_kind: u8,
     protection_level: u8,
     runtime_state: u8,
-    cpu_capability_mask: u8,
-    gpu_capability_mask: u8,
     base_score: f64,
     member_cpu_score: f64,
     member_gpu_score: f64,
@@ -157,15 +110,7 @@ pub const SoftwareState = struct {
     member_gpu_score_valid: bool,
     scored_cpu_member_count: u32,
     scored_gpu_member_count: u32,
-    adapter_cpu_score: f64,
-    adapter_gpu_score: f64,
-    adapter_cpu_score_valid: bool,
-    adapter_gpu_score_valid: bool,
     reason_mask: u64,
-    cpu_candidate_valid: bool,
-    gpu_candidate_valid: bool,
-    cpu_candidate_grade: u8,
-    gpu_candidate_grade: u8,
     member_count: u32,
     member_signature: u64,
     critical_fact: bool,
@@ -176,16 +121,10 @@ pub const SoftwareState = struct {
     planning_freeze_eligible_count: u32,
     planning_compensation_pending_count: u32,
     freeze_compensation_active: bool,
-    cpu_transition: AdapterTransition,
-    gpu_transition: AdapterTransition,
 
     pub fn empty() SoftwareState {
         var value = std.mem.zeroes(SoftwareState);
         value.runtime_state = @intFromEnum(protocol.RuntimeState.unknown);
-        value.cpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-        value.gpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-        value.cpu_transition = AdapterTransition.normal();
-        value.gpu_transition = AdapterTransition.normal();
         return value;
     }
 };
@@ -219,8 +158,6 @@ pub const StagedProcess = struct {
     software_kind: u8,
     protection_level: u8,
     runtime_state: u8,
-    cpu_capability_mask: u8,
-    gpu_capability_mask: u8,
     base_score: f64,
     cpu_usage_percent: f64,
     cpu_metric_valid: bool,
@@ -231,8 +168,6 @@ pub const StagedProcess = struct {
     software_cpu_score_valid: bool,
     software_slot: u32,
     applied_process_grade: i8,
-    applied_cpu_grade: u8,
-    applied_gpu_grade: u8,
 };
 
 pub const StagedSoftware = struct {
@@ -246,8 +181,6 @@ pub const StagedSoftware = struct {
     software_kind: u8,
     protection_level: u8,
     runtime_state: u8,
-    cpu_capability_mask: u8,
-    gpu_capability_mask: u8,
     base_score: f64,
     cpu_score: f64,
     cpu_score_member_count: u32,
@@ -256,8 +189,6 @@ pub const StagedSoftware = struct {
     member_count: u32,
     member_signature: u64,
     critical_fact: bool,
-    applied_cpu_grade: u8,
-    applied_gpu_grade: u8,
     selected_gpu_present: bool,
     selected_gpu_index: u32,
     selected_gpu_usage: f64,
@@ -303,7 +234,6 @@ pub const Reservation = struct {
     occupied: bool,
     action: protocol.Action,
     process_slot: u32,
-    software_slot: u32,
     atomic_group_slot: u32,
     created_at_ms: i64,
     deadline_ms: i64,
@@ -995,9 +925,6 @@ pub const Session = struct {
 
     fn hasOwnedState(self: *const Session) bool {
         for (self.processes) |item| if (item.occupied and item.transition.owned) return true;
-        for (self.softwares) |item| {
-            if (item.occupied and (item.cpu_transition.owned or item.gpu_transition.owned)) return true;
-        }
         return false;
     }
 };

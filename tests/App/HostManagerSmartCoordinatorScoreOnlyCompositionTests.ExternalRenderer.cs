@@ -51,7 +51,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             new ResourceManagerSelfTypedResourceActionTests.RecordingPolicyWriter(), new ResourceManager.App.Infrastructure.DiskUsage.DiskUsageTreeStore(), selfLedgerOwner);
         var topology = CreateAutomaticPlacementTopology();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             processFactsOverride: new RetainedFacts(facts), metricSamplerOverride: new RetainedHardware(hardware),
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology),
@@ -233,7 +233,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             await ledger.ReserveNativeHostSessionIncarnationAsync(default);
             var scoped = new OwnedRendererFacts(processes, identity, root);
             await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-                policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+                automaticMemoryCleanupEnabled: false,
                 optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
                 metricSamplerOverride: hardware, processFactsOverride: scoped,
                 cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology,

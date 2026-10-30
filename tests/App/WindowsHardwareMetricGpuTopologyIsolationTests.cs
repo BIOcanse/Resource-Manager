@@ -29,8 +29,7 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
         var source = recording.Topology();
         using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(source.Capture());
         using var current = new LastSuccessfulHardwareMetricSnapshot();
-        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
-            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), fixture.Owner.RequestTopologyRefresh);
+        var capture = new WindowsHardwareMetricCapture(resources, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), fixture.Owner.RequestTopologyRefresh);
         using (var initial = fixture.Owner.Acquire())
         {
             HardwareMetricSnapshot? previousGood = null;

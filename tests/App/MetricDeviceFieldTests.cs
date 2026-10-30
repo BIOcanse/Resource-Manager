@@ -65,8 +65,8 @@ public sealed class MetricDeviceFieldTests
         };
         var selected = catalog.MetricBindings.Values.Where(binding => numbers.ContainsKey(binding.FieldCode)
             || binding.FieldCode is MetricFieldCode.NvmlClocksEvents or MetricFieldCode.NvmlFbUsed).ToArray();
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,
-            1, NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle,
+            1, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var plan = workspace.PlanCollection(selected.Select(static binding => binding.MetricHandle).ToArray(), modes, false, now);
         const ulong mask = (1UL << 63) | 7;
         const ulong byteCount = (1UL << 53) | 3;
@@ -187,8 +187,8 @@ public sealed class MetricDeviceFieldTests
         var binding = Assert.Single(catalog.MetricBindings.Values, row => row.Field?.Name == "gpu_nvidia_fb_used_v1_including_reserved_bytes");
         var now = DateTimeOffset.UtcNow;
         workspace.ReplaceCatalog(catalog, now);
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,
-            1, NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle,
+            1, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var handles = NativeMetricSnapshotRequestProjection.CreateMetricHandles(MetricSampleRequest.ForIds([binding.MetricId]), catalog);
         var plan = workspace.PlanCollection(handles, modes, false, now);
         foreach (var source in plan.Sources)
@@ -278,8 +278,8 @@ public sealed class MetricDeviceFieldTests
         Assert.Equal([triggerAddress], collectionRequest.Ids);
         workspace.ReplaceCatalog(catalog, now);
         var handles = NativeMetricSnapshotRequestProjection.CreateMetricHandles(collectionRequest, catalog);
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,
-            1, NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle,
+            1, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var plan = workspace.PlanCollection(handles, modes, true, now);
         Assert.Contains(plan.Sources, source => catalog.SourceIds[source.SourceHandle] == NativeMetricSnapshotSources.PdhGpuEngine
             && (source.Flags & (uint)NativeMetricSnapshotSourcePlanFlags.Selected) != 0);

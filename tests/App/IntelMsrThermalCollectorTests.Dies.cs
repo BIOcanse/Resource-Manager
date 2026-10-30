@@ -81,8 +81,8 @@ public sealed partial class IntelMsrThermalCollectorTests
         var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled, [], [], [], workspace.CreateCatalogHandleMap(), intelCpus: [first, second, RaplPackage(0x50650)]);
         var now = DateTimeOffset.UtcNow; workspace.ReplaceCatalog(catalog, now);
         var handles = catalog.MetricBindings.Values.Where(static binding => binding.FieldCode == MetricFieldCode.IntelDiePackageEnergyCounter).Select(static binding => binding.MetricHandle).ToArray();
-        Assert.Equal(2, handles.Length); var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        Assert.Equal(2, handles.Length); var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var snapshot = Publish(1, [new(first.ExactIdentityKey, new Dictionary<MetricFieldCode, double>()) { UnsignedValues = new Dictionary<MetricFieldCode, ulong> { [MetricFieldCode.IntelDiePackageEnergyCounter] = uint.MaxValue } },
             new(second.ExactIdentityKey, new Dictionary<MetricFieldCode, double>()) { UnsignedValues = new Dictionary<MetricFieldCode, ulong> { [MetricFieldCode.IntelDiePackageEnergyCounter] = 123 } }]);
         AssertDieCounter(snapshot, first.ExactIdentityKey, "4294967295"); AssertDieCounter(snapshot, second.ExactIdentityKey, "123");

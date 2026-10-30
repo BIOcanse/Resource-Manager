@@ -1,5 +1,3 @@
-using ResourceManager.App.Domain.Adaptation.Scheduling;
-
 namespace ResourceManager.App.Domain.Adaptation;
 
 public static class AdapterRegistrationSchemaVersions
@@ -19,42 +17,6 @@ public static class AdapterResourceMarkerStates
     public const string Unsupported = "unsupported";
 }
 
-public sealed record AdapterCpuSchedulingCapabilities(
-    IReadOnlyList<AdapterCpuSchedulingGrade> SupportedGrades);
-
-public sealed record AdapterGpuSchedulingCapabilities(
-    IReadOnlyList<AdapterGpuSchedulingGrade> SupportedGrades);
-
-public sealed record AdapterSoftwareSchedulingCapabilities(
-    AdapterCpuSchedulingCapabilities? Cpu = null,
-    AdapterGpuSchedulingCapabilities? Gpu = null)
-{
-    public bool HasAnyDimension => Cpu is not null || Gpu is not null;
-
-    public AdapterSoftwareSchedulingCapabilities Normalize()
-    {
-        return this with
-        {
-            Cpu = Cpu is null
-                ? null
-                : new AdapterCpuSchedulingCapabilities(NormalizeGrades(Cpu.SupportedGrades)),
-            Gpu = Gpu is null
-                ? null
-                : new AdapterGpuSchedulingCapabilities(NormalizeGrades(Gpu.SupportedGrades))
-        };
-    }
-
-    private static IReadOnlyList<TGrade> NormalizeGrades<TGrade>(IEnumerable<TGrade>? grades)
-        where TGrade : struct, Enum
-    {
-        return (grades ?? [])
-            .Where(Enum.IsDefined)
-            .Distinct()
-            .Order()
-            .ToArray();
-    }
-}
-
 public sealed record AdapterSoftwareRegistrationRequest(
     string SchemaVersion,
     string AdapterId,
@@ -64,8 +26,7 @@ public sealed record AdapterSoftwareRegistrationRequest(
     IReadOnlyList<string> ProgramRootPaths,
     IReadOnlyList<AdapterProcessDeclaration> Processes,
     IReadOnlyList<AdapterServiceDeclaration> Services,
-    AdapterResourceMarkerEndpoint? ResourceMarkerEndpoint,
-    AdapterSoftwareSchedulingCapabilities? SchedulingCapabilities = null);
+    AdapterResourceMarkerEndpoint? ResourceMarkerEndpoint);
 
 public sealed record AdapterProcessDeclaration(
     string Name,
@@ -106,5 +67,4 @@ public sealed record AdapterSoftwareRegistration(
     string State,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    AdapterSoftwareSchedulingCapabilities? SchedulingCapabilities = null,
     bool OwnershipVerified = false);

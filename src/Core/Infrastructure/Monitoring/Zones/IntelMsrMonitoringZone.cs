@@ -17,5 +17,5 @@ public sealed class IntelMsrMonitoringZone : MonitoringSourceZone
     internal IntelMsrMonitoringZone(IntelMsrReader reader) : base(MonitoringSourceZoneIds.VendorIntelMsr) => this.reader = reader;
     internal IReadOnlyList<IntelMsrMetricRead> Read(IReadOnlyList<IntelMsrCatalogIdentity> devices,
         IReadOnlyDictionary<string, IReadOnlySet<MetricFieldCode>> requested)
-        => CanRead ? reader.Read(devices, requested) : [];
+        => reader.Read(devices, requested);
 }

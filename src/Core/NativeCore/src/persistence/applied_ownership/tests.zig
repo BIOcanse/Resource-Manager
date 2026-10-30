@@ -24,25 +24,6 @@ test "ABI sizes and canonical offsets are frozen" {
     try std.testing.expectEqual(@as(usize, 64), codec.checksum_offset);
 }
 
-test "process and adapter ownership promote into one exact snapshot" {
-    var config = corpus.createConfig(4, 8);
-    const session = try state.Session.create(&config);
-    defer session.destroy();
-    var process_input = corpus.processPromote(1, 1, 100);
-    var adapter_input = corpus.adapterPromote(2, 2, 110);
-    try std.testing.expectEqual(protocol.Status.ok, session_module.promote(session, &process_input));
-    try std.testing.expectEqual(protocol.Status.ok, session_module.promote(session, &adapter_input));
-
-    var header = std.mem.zeroes(protocol.SnapshotHeader);
-    var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 4;
-    try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(session, &header, &records));
-    try std.testing.expectEqual(@as(u32, 2), header.entry_count);
-    try std.testing.expectEqual(@as(u64, 3), header.ledger_revision);
-    try std.testing.expect(protocol.primaryLessThan(&records[0].primary, &records[1].primary));
-    try std.testing.expectEqual(@intFromEnum(protocol.Scope.process), records[0].primary.scope);
-    try std.testing.expectEqual(@intFromEnum(protocol.Scope.adapter), records[1].primary.scope);
-}
-
 test "CPU and memory process ownership coexist by target and restore independently" {
     var config = corpus.createConfig(4, 8);
     const session = try state.Session.create(&config);
@@ -155,90 +136,6 @@ test "process id reuse during remove never deletes the replacement incarnation" 
     try std.testing.expect(replacement_record.primary.process_start_key != old.primary.process_start_key);
 }
 
-test "adapter CPU then GPU transition merges domains without changing original payload" {
-    var config = corpus.createConfig(2, 4);
-    const session = try state.Session.create(&config);
-    defer session.destroy();
-    var promote_input = corpus.adapterCpuPromote(1, 1, 100);
-    try std.testing.expectEqual(protocol.Status.ok, session_module.promote(session, &promote_input));
-    var record = try getRecord(session, &promote_input.primary);
-    const original_binding = record.original_binding;
-    const original_payload = record.payload;
-    var transition_binding = record.original_binding;
-    transition_binding.journal_instance_low += 1;
-    transition_binding.action_identity.plan_epoch += 1;
-    transition_binding.action_identity.action_id += 1;
-    transition_binding.domain_mask = protocol.DomainBits.gpu;
-    transition_binding.grade_valid_mask = protocol.GradeValid.gpu;
-    transition_binding.cpu_from_grade = 0;
-    transition_binding.cpu_to_grade = 0;
-    transition_binding.gpu_from_grade = @intFromEnum(protocol.AdapterGrade.normal);
-    transition_binding.gpu_to_grade = @intFromEnum(protocol.AdapterGrade.freeze);
-    var transition = std.mem.zeroes(protocol.TransitionInput);
-    try std.testing.expectEqual(
-        protocol.Status.ok,
-        session_module.planTransition(
-            session,
-            &record.primary,
-            &transition_binding,
-            &record.payload,
-            &transition,
-        ),
-    );
-    try std.testing.expectEqual(@as(u64, 2), transition.expected_ledger_revision);
-    try std.testing.expectEqual(
-        protocol.GradeValid.cpu | protocol.GradeValid.gpu,
-        transition.new_current_grades.valid_mask,
-    );
-    transition.updated_at_utc_ms = 120;
-    try std.testing.expectEqual(protocol.Status.ok, session_module.transition(session, &transition));
-    record = try getRecord(session, &promote_input.primary);
-    try std.testing.expectEqual(protocol.GradeValid.cpu | protocol.GradeValid.gpu, record.current_grades.valid_mask);
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.optimize), record.current_grades.cpu_grade);
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.freeze), record.current_grades.gpu_grade);
-    try std.testing.expect(std.meta.eql(original_binding, record.original_binding));
-    try std.testing.expect(std.meta.eql(original_payload, record.payload));
-}
-
-test "adapter composite transition updates one domain and drops one domain exactly" {
-    var config = corpus.createConfig(2, 4);
-    const session = try state.Session.create(&config);
-    defer session.destroy();
-    var promote_input = corpus.adapterPromote(1, 1, 100);
-    try std.testing.expectEqual(protocol.Status.ok, session_module.promote(session, &promote_input));
-    var record = try getRecord(session, &promote_input.primary);
-    var change_cpu = corpus.adapterApplyTransition(
-        &record,
-        2,
-        protocol.DomainBits.cpu,
-        .extreme,
-        .normal,
-        corpus.adapterGrades(.extreme, .freeze),
-        120,
-    );
-    try std.testing.expectEqual(protocol.Status.ok, session_module.transition(session, &change_cpu));
-    record = try getRecord(session, &promote_input.primary);
-    var restore_cpu = corpus.adapterRestoreTransition(
-        &record,
-        3,
-        protocol.DomainBits.cpu,
-        .{
-            .valid_mask = protocol.GradeValid.gpu,
-            .reserved_u32 = 0,
-            .process_grade = 0,
-            .cpu_grade = 0,
-            .gpu_grade = @intFromEnum(protocol.AdapterGrade.freeze),
-            .reserved_i32 = 0,
-        },
-        140,
-    );
-    try std.testing.expectEqual(protocol.Status.ok, session_module.transition(session, &restore_cpu));
-    record = try getRecord(session, &promote_input.primary);
-    try std.testing.expectEqual(protocol.GradeValid.gpu, record.current_grades.valid_mask);
-    try std.testing.expectEqual(@as(i32, 0), record.current_grades.cpu_grade);
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.freeze), record.current_grades.gpu_grade);
-}
-
 test "transition to no owned domains removes record atomically" {
     var config = corpus.createConfig(2, 4);
     const session = try state.Session.create(&config);
@@ -254,44 +151,6 @@ test "transition to no owned domains removes record atomically" {
         session_module.get(session, &promote_input.primary, &absent),
     );
     try std.testing.expectEqual(@as(u64, 3), session.ledger_revision);
-}
-
-test "adapter transition rejects unrelated domain mutation and payload drift" {
-    var config = corpus.createConfig(2, 4);
-    const session = try state.Session.create(&config);
-    defer session.destroy();
-    var promote_input = corpus.adapterCpuPromote(1, 1, 100);
-    try std.testing.expectEqual(protocol.Status.ok, session_module.promote(session, &promote_input));
-    const record = try getRecord(session, &promote_input.primary);
-    var hidden_cpu_change = corpus.adapterApplyTransition(
-        &record,
-        2,
-        protocol.DomainBits.gpu,
-        .normal,
-        .freeze,
-        corpus.adapterGrades(.extreme, .freeze),
-        120,
-    );
-    try std.testing.expectEqual(
-        protocol.Status.grade_mismatch,
-        session_module.transition(session, &hidden_cpu_change),
-    );
-    var payload_drift = corpus.adapterApplyTransition(
-        &record,
-        2,
-        protocol.DomainBits.gpu,
-        .normal,
-        .freeze,
-        corpus.adapterGrades(.optimize, .freeze),
-        120,
-    );
-    payload_drift.transition_payload.digest_high += 1;
-    try std.testing.expectEqual(
-        protocol.Status.payload_mismatch,
-        session_module.transition(session, &payload_drift),
-    );
-    const unchanged = try getRecord(session, &promote_input.primary);
-    try std.testing.expect(std.meta.eql(record, unchanged));
 }
 
 test "duplicate primary and durable payload ownership are rejected without mutation" {
@@ -365,10 +224,10 @@ test "canonical image is insertion-order independent and restarts exactly" {
     defer left.destroy();
     const right = try state.Session.create(&config);
     defer right.destroy();
-    var left_two = corpus.adapterPromote(2, 1, 110);
+    var left_two = corpus.processPromote(2, 1, 110);
     var left_one = corpus.processPromote(1, 2, 100);
     var right_one = corpus.processPromote(1, 1, 100);
-    var right_two = corpus.adapterPromote(2, 2, 110);
+    var right_two = corpus.processPromote(2, 2, 110);
     try std.testing.expectEqual(protocol.Status.ok, session_module.promote(left, &left_two));
     try std.testing.expectEqual(protocol.Status.ok, session_module.promote(left, &left_one));
     try std.testing.expectEqual(protocol.Status.ok, session_module.promote(right, &right_one));
@@ -441,7 +300,7 @@ test "decode rejects identity grade payload and duplicate payload drift" {
     const source = try state.Session.create(&config);
     defer source.destroy();
     var first = corpus.processPromote(1, 1, 100);
-    var second = corpus.adapterPromote(2, 2, 110);
+    var second = corpus.processPromote(2, 2, 110);
     try std.testing.expectEqual(protocol.Status.ok, session_module.promote(source, &first));
     try std.testing.expectEqual(protocol.Status.ok, session_module.promote(source, &second));
     var image: [maximum_test_image]u8 = undefined;
@@ -462,13 +321,13 @@ test "decode rejects identity grade payload and duplicate payload drift" {
     try expectOpenStatus(&open_config, grade_drift[0..written], .grade_mismatch);
 
     var unreachable_original_apply = image;
-    const adapter_cpu_to_offset = second_offset +
+    const process_to_offset = second_offset +
         @offsetOf(protocol.Record, "original_binding") +
-        @offsetOf(protocol.OriginalBinding, "cpu_to_grade");
+        @offsetOf(protocol.OriginalBinding, "process_to_grade");
     codec.writeI32(
         unreachable_original_apply[0..written],
-        adapter_cpu_to_offset,
-        @intFromEnum(protocol.AdapterGrade.normal),
+        process_to_offset,
+        @intFromEnum(protocol.ProcessGrade.normal),
     );
     rewriteChecksum(unreachable_original_apply[0..written]);
     try expectOpenStatus(
@@ -498,7 +357,7 @@ test "corrupt truncated reserved and noncanonical images preserve live bank" {
     const source = try state.Session.create(&config);
     defer source.destroy();
     var one = corpus.processPromote(1, 1, 100);
-    var two = corpus.adapterPromote(2, 2, 110);
+    var two = corpus.processPromote(2, 2, 110);
     try std.testing.expectEqual(protocol.Status.ok, session_module.promote(source, &one));
     try std.testing.expectEqual(protocol.Status.ok, session_module.promote(source, &two));
     var image: [maximum_test_image]u8 = undefined;
@@ -559,7 +418,7 @@ test "hot mutations snapshot encode and staging decode allocate nothing" {
 
     const source = try state.Session.create(&config);
     defer source.destroy();
-    var source_promote = corpus.adapterPromote(2, 1, 140);
+    var source_promote = corpus.processPromote(2, 1, 140);
     try std.testing.expectEqual(protocol.Status.ok, session_module.promote(source, &source_promote));
     written = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(source, &image, &written));
@@ -695,4 +554,47 @@ test "empty snapshot query reports actual rows before exact record and image buf
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(session, &image, &written));
     try std.testing.expectEqual(@as(u64, image.len), written);
+}
+
+test "upgrade drops retired software ownership and preserves surviving process rows" {
+    var config = corpus.createConfig(4, 8);
+    const source = try state.Session.create(&config);
+    defer source.destroy();
+    var process = corpus.processPromote(1, 1, 100);
+    var second = corpus.processPromote(2, 2, 110);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.promote(source, &process));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.promote(source, &second));
+    var image: [maximum_test_image]u8 = undefined;
+    var written: u64 = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(source, &image, &written));
+    const legacy = corpus.adapterPromote(2, 2, 110);
+    var retired = source.active.records[1];
+    retired.primary = legacy.primary;
+    retired.original_binding = legacy.original_binding;
+    retired.current_grades = legacy.current_grades;
+    codec.encodeRecord(&retired, &image, @sizeOf(protocol.ImageHeader) + @sizeOf(protocol.Record));
+    rewriteChecksum(image[0..written]);
+    var open_config = corpus.openConfig(4, 8);
+    var reopened: ?*state.Session = null;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.openExisting(&open_config, image[0..written], &reopened));
+    defer reopened.?.destroy();
+    try std.testing.expectEqual(@as(u32, 1), reopened.?.active.count);
+    try std.testing.expectEqual(@as(u64, 3), reopened.?.ledger_revision);
+    const surviving = try getRecord(reopened.?, &process.primary);
+    try std.testing.expect(std.meta.eql(source.active.records[0], surviving));
+    var canonical: [maximum_test_image]u8 = undefined;
+    var canonical_written: u64 = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(reopened.?, &canonical, &canonical_written));
+    try std.testing.expectEqual(@as(u32, 1), codec.readU32(&canonical, 48));
+    var again: ?*state.Session = null;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.openExisting(&open_config, canonical[0..canonical_written], &again));
+    defer again.?.destroy();
+    try std.testing.expectEqual(@as(u32, 1), again.?.active.count);
+    var rejected = corpus.adapterPromote(3, 3, 120);
+    try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.promote(reopened.?, &rejected));
+    // A scope-2 row carrying process state must never enter the grade-only discard rule.
+    retired.primary.process_id = 123;
+    codec.encodeRecord(&retired, &image, @sizeOf(protocol.ImageHeader) + @sizeOf(protocol.Record));
+    rewriteChecksum(image[0..written]);
+    try expectOpenStatus(&open_config, image[0..written], .invalid_argument);
 }

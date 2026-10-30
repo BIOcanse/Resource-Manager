@@ -5,7 +5,6 @@ namespace ResourceManager.App.Application.ResourceBreakdown;
 public static class PhysicalDiskIoProviderStates
 {
     public const string NotRequested = "not_requested";
-    public const string Frozen = "frozen";
     public const string Idle = "idle";
     public const string Starting = "starting";
     public const string Running = "running";

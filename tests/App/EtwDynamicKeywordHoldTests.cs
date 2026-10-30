@@ -1,7 +1,6 @@
 using System.Collections.Frozen;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.SystemHealth.Interrupts;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.ReadWrite.Windows.Processes;
@@ -37,9 +36,9 @@ public sealed class EtwDynamicKeywordHoldTests
         capture.Collect();
         capture.BeginWindow();
         Assert.Equal(2, broker.Holders.Length); // continuous capture keeps the same second hold
-        capture.SetCaptureEnabled(false);
+        capture.PauseWindow();
         Assert.Equal(Metadata, broker.Keywords);
-        capture.SetCaptureEnabled(true);
+        capture.BeginWindow();
         Assert.Equal(Metadata | Switch, broker.Keywords);
         capture.Stop();
         Assert.Empty(broker.Holders);
@@ -67,7 +66,7 @@ public sealed class EtwDynamicKeywordHoldTests
         try
         {
             Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
-            if (dispose) capture.Dispose(); else capture.SetCaptureEnabled(false);
+            if (dispose) capture.Dispose(); else capture.PauseWindow();
         }
         finally { release.Set(); }
         await window.WaitAsync(TimeSpan.FromSeconds(5));
@@ -97,7 +96,7 @@ public sealed class EtwDynamicKeywordHoldTests
     }
 
     [Fact]
-    public async Task InterruptFreezeReturnsOnlyEventHoldAndStopReturnsBoth()
+    public async Task InterruptRunHoldsMetadataAndEventsAndStopReturnsBoth()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new Broker();
@@ -108,52 +107,10 @@ public sealed class EtwDynamicKeywordHoldTests
         await UntilAsync(() => broker.Keywords == (KernelTraceEventParser.Keywords.ImageLoad | events)
             && HasInterruptLease(source));
         Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad | events, broker.Keywords);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad, broker.Keywords);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-        await UntilAsync(() => broker.Keywords == (KernelTraceEventParser.Keywords.ImageLoad | events));
-        Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad | events, broker.Keywords);
         await source.StopAsync(default);
         Assert.Empty(broker.Holders);
         await source.StartAsync(default);
         await UntilAsync(() => broker.Holders.Length == 2);
-        source.Dispose();
-        Assert.Empty(broker.Holders);
-    }
-
-    [Fact]
-    public async Task InterruptFreezeDuringAcquisitionReturnsTheStaleHoldAfterBrokerBindingCompletes()
-    {
-        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new Broker();
-        using var release = new ManualResetEventSlim();
-        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        broker.BeforeReturn = request =>
-        {
-            if (!request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Interrupt)) return;
-            entered.TrySetResult();
-            Assert.True(release.Wait(TimeSpan.FromSeconds(5)), "Pending interrupt acquisition was not released.");
-        };
-        using var source = new EtwSystemInterruptSnapshotSource(broker, sampling.Owner,
-            NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
-        await source.StartAsync(default);
-        try
-        {
-            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.False(HasInterruptLease(source));
-            source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        }
-        finally { release.Set(); }
-
-        await UntilAsync(() => broker.Keywords == KernelTraceEventParser.Keywords.ImageLoad);
-        Assert.False(HasInterruptLease(source));
-        Assert.Equal("frozen", source.Read().ProviderState.State, ignoreCase: true);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-        await UntilAsync(() => HasInterruptLease(source));
-        Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad | KernelTraceEventParser.Keywords.Interrupt
-            | KernelTraceEventParser.Keywords.DeferedProcedureCalls, broker.Keywords);
-        await source.StopAsync(default);
-        Assert.Empty(broker.Holders);
         source.Dispose();
         Assert.Empty(broker.Holders);
     }

@@ -2,7 +2,6 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.RuntimeSpecialization;
-using ResourceManager.App.Application.Optimization.SmartControl;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
@@ -20,8 +19,7 @@ public sealed partial class HostManagerSmartCoordinator
         // invalidation between rounds, but only while this run can use them.
         var observeRenderers = mode.GpuPlacementEnabled
             && plan.GpuPlacement.GlobalPreciseProviderEnabled
-            && !plan.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled
-            && hostManagerSmartControlZones.CanRun(HostManagerSmartControlZoneIds.HardwarePlacement);
+            && !plan.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled;
         if (observeRenderers) rendererObservation ??= runningGpuPlacementActions.AcquireRendererObservation();
         else Interlocked.Exchange(ref rendererObservation, null)?.Dispose();
         var smart = plan.HostManager.RequirePublished().SmartCoordinator.HotPublish;

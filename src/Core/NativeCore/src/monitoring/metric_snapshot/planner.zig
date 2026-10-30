@@ -19,7 +19,7 @@ pub fn plan(
     session: *state.Session,
     input: *const protocol.PlanInput,
     requested_metrics: []const protocol.PlanMetricInput,
-    source_modes: []const protocol.SourceModeInput,
+    source_modes: []const protocol.SourceStateInput,
     output: *protocol.PlanOutput,
     source_plans: []protocol.SourcePlanOutput,
     metric_plans: []protocol.MetricPlanOutput,
@@ -59,7 +59,7 @@ pub fn plan(
         scratch.Range.init(scratch_bytes.ptr, session.scratch_layout.byte_count) orelse return .invalid_argument,
         scratch.Range.init(input, @sizeOf(protocol.PlanInput)) orelse return .invalid_argument,
         scratch.Range.slice(protocol.PlanMetricInput, requested_metrics) orelse return .invalid_argument,
-        scratch.Range.slice(protocol.SourceModeInput, source_modes) orelse return .invalid_argument,
+        scratch.Range.slice(protocol.SourceStateInput, source_modes) orelse return .invalid_argument,
         scratch.Range.init(output, @sizeOf(protocol.PlanOutput)) orelse return .invalid_argument,
         scratch.Range.slice(protocol.SourcePlanOutput, source_plans) orelse return .invalid_argument,
         scratch.Range.slice(protocol.MetricPlanOutput, metric_plans) orelse return .invalid_argument,
@@ -72,7 +72,7 @@ pub fn plan(
     for (session.active.rules[0..session.active.rule_count]) |*rule| {
         if (!protocol.isCounterMetric(rule.definition.metric_kind)) continue;
         const mode = session.source_modes[session.active.findSource(rule.definition.source_handle).?];
-        if (!mode.present or mode.input.zone_mode == @intFromEnum(protocol.ZoneMode.freeze) or
+        if (!mode.present or
             mode.input.availability != @intFromEnum(protocol.SourceAvailability.available) or
             mode.input.capability_generation != rule.capability_generation) rule.counter_baseline = .{};
     }
@@ -117,7 +117,7 @@ pub fn plan(
 
 fn validateSourceModes(
     session: *const state.Session,
-    source_modes: []const protocol.SourceModeInput,
+    source_modes: []const protocol.SourceStateInput,
 ) ResultCode {
     var previous_source_handle: u64 = 0;
     for (source_modes) |mode| {
@@ -152,7 +152,7 @@ fn validateRequestedMetrics(
 fn stageSourceModes(
     session: *state.Session,
     plan_epoch: u64,
-    source_modes: []const protocol.SourceModeInput,
+    source_modes: []const protocol.SourceStateInput,
 ) void {
     @memset(session.source_modes, .{});
     for (source_modes) |mode| {
@@ -212,7 +212,6 @@ fn selectMetricRule(
         if (!mode.present or
             (source.status == .unsupported and
                 mode.input.capability_generation == source.capability_generation) or
-            mode.input.zone_mode == @intFromEnum(protocol.ZoneMode.freeze) or
             mode.input.availability != @intFromEnum(protocol.SourceAvailability.available) or
             (rule.unsupported_until_capability_generation != 0 and
                 mode.input.capability_generation ==
@@ -256,7 +255,6 @@ fn selectInventorySource(
         if (mode.present and
             !(source.status == .unsupported and
                 mode.input.capability_generation == source.capability_generation) and
-            mode.input.zone_mode != @intFromEnum(protocol.ZoneMode.freeze) and
             mode.input.availability == @intFromEnum(protocol.SourceAvailability.available))
         {
             summary.source_index = @intCast(ordinal);
@@ -296,17 +294,12 @@ fn writeSourcePlans(
         }
         source_plans[output_count] = .{
             .struct_size = @sizeOf(protocol.SourcePlanOutput),
-            .flags = protocol.SourcePlanFlags.selected |
-                if (mode.input.zone_mode == @intFromEnum(protocol.ZoneMode.low_power))
-                    protocol.SourcePlanFlags.low_power
-                else
-                    0,
+            .flags = protocol.SourcePlanFlags.selected,
             .source_handle = source.definition.source_handle,
             .capability_generation = mode.input.capability_generation,
             .plan_epoch = plan_epoch,
             .plan_token_fingerprint = mode.plan_token_fingerprint,
             .requested_rule_count = mode.planned_rule_count,
-            .zone_mode = mode.input.zone_mode,
             .availability = mode.input.availability,
             .source_role = source.definition.source_role,
             .reserved = .{ 0, 0 },
@@ -357,7 +350,7 @@ fn validInput(
     session: *const state.Session,
     input: *const protocol.PlanInput,
     requested_metrics: []const protocol.PlanMetricInput,
-    source_modes: []const protocol.SourceModeInput,
+    source_modes: []const protocol.SourceStateInput,
 ) bool {
     if (input.abi_version != protocol.abi_version or
         input.struct_size != @sizeOf(protocol.PlanInput) or
@@ -382,11 +375,10 @@ fn validInput(
     return true;
 }
 
-fn validSourceMode(input: *const protocol.SourceModeInput) bool {
-    return input.struct_size == @sizeOf(protocol.SourceModeInput) and
+fn validSourceMode(input: *const protocol.SourceStateInput) bool {
+    return input.struct_size == @sizeOf(protocol.SourceStateInput) and
         input.flags == 0 and input.source_handle != 0 and
         input.capability_generation != 0 and
-        protocol.knownEnum(protocol.ZoneMode, input.zone_mode) and
         protocol.knownEnum(protocol.SourceAvailability, input.availability) and
         allZero(input.reserved);
 }
@@ -405,7 +397,7 @@ fn planFingerprint(
 fn extendPlanToken(
     previous: u64,
     plan_epoch: u64,
-    mode: *const protocol.SourceModeInput,
+    mode: *const protocol.SourceStateInput,
     row_identity: u64,
     inventory_selected: bool,
 ) u64 {
@@ -414,7 +406,6 @@ fn extendPlanToken(
         plan_epoch,
         mode.source_handle,
         mode.capability_generation,
-        mode.zone_mode,
         mode.availability,
         row_identity,
         @intFromBool(inventory_selected),

@@ -37,24 +37,12 @@ public sealed record CompiledHostManagerSmartCoordinatorRecreatePlan(
         && MaximumGpuStates > 0
         && MaximumInputRows > 0
         && MaximumGpuStates >= MaximumInputRows
-        && MaximumActions >= MaximumProcesses + MaximumSoftwareGroups
-        && MaximumReservations >= MaximumProcesses + (2 * MaximumSoftwareGroups)
+        && MaximumActions >= MaximumProcesses
+        && MaximumReservations >= MaximumProcesses
         && MaximumAtomicGroups >= MaximumProcesses;
 
     public static CompiledHostManagerSmartCoordinatorRecreatePlan Unpublished { get; } = new(
         0, 0, 0, 0, 0, 0, 0);
-}
-
-public sealed record CompiledHostManagerSmartCoordinatorAdapterPolicyPlan(
-    ImmutableArray<double> StateMultipliers,
-    double ExtremeMinimumScore,
-    double NormalMinimumScore,
-    double OptimizeMinimumScore)
-{
-    public bool IsPublished => StateMultipliers.Length == CompiledHostManagerSmartCoordinatorPlan.RuntimeStateCount;
-
-    public static CompiledHostManagerSmartCoordinatorAdapterPolicyPlan Unpublished { get; } = new(
-        [], 0, 0, 0);
 }
 
 public sealed record CompiledHostManagerBaseScoreTierPlan(
@@ -166,8 +154,7 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
     double Level2MaximumCpuScoreScale,
     double Level3MaximumCpuScoreScale,
     double LowTierLevel4MaximumCpuScoreScale,
-    CompiledHostManagerSmartCoordinatorAdapterPolicyPlan CpuAdapterPolicy,
-    CompiledHostManagerSmartCoordinatorAdapterPolicyPlan GpuAdapterPolicy,
+    ImmutableArray<double> GpuStateMultipliers,
     CompiledHostManagerMemoryModePolicyPlan MemoryModePolicy)
 {
     public bool IsPublished => FeatureFlags > 0
@@ -183,16 +170,14 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
         && WelfareBaseScore is >= 0 and <= 100
         && ProcessStateMultipliers.Length == CompiledHostManagerSmartCoordinatorPlan.RuntimeStateCount
         && BaseScoreTiers.IsPublished
-        && CpuAdapterPolicy.IsPublished
-        && GpuAdapterPolicy.IsPublished
+        && GpuStateMultipliers.Length == CompiledHostManagerSmartCoordinatorPlan.RuntimeStateCount
         && MemoryModePolicy.IsPublished;
 
     public static CompiledHostManagerSmartCoordinatorHotPublishPlan Unpublished { get; } = new(
         0, 0, 0, 0, 0, 0, 0, 0, new("fixed", 0, 0), 0, [],
         CompiledHostManagerBaseScoreTierPlan.Unpublished,
         0, 0, 0, 0, 0, 0,
-        CompiledHostManagerSmartCoordinatorAdapterPolicyPlan.Unpublished,
-        CompiledHostManagerSmartCoordinatorAdapterPolicyPlan.Unpublished,
+        [],
         CompiledHostManagerMemoryModePolicyPlan.Unpublished);
 }
 

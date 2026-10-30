@@ -30,25 +30,21 @@ public sealed class PdhGpuEngineMonitoringZone : MonitoringSourceZone
 
     internal IReadOnlyDictionary<int, double> ReadUsageByAdapterIndex(IReadOnlyList<WindowsGpuAdapter> adapters)
     {
-        return CanRead ? reader.ReadUsageByAdapterIndex(adapters) : new Dictionary<int, double>();
+        return reader.ReadUsageByAdapterIndex(adapters);
     }
 
     internal PdhGpuEngineUsageRead ReadUsageSnapshotByAdapterIndex(
         IReadOnlyList<WindowsGpuAdapter> adapters)
     {
-        return CanRead
-            ? reader.ReadUsageSnapshotByAdapterIndex(adapters)
-            : PdhGpuEngineUsageRead.NotRequested;
+        return reader.ReadUsageSnapshotByAdapterIndex(adapters);
     }
 
     internal ResourceManager.ReadWrite.Windows.Pdh.PdhGpuAdapterSharedMemoryRead
         ReadSharedMemoryByAdapterIndex(IReadOnlyList<WindowsGpuAdapter> adapters)
-        => CanRead
-            ? sharedMemoryReader.ReadByAdapterIndex(adapters)
-            : ResourceManager.ReadWrite.Windows.Pdh.PdhGpuAdapterSharedMemoryRead.NotRequested;
+        => sharedMemoryReader.ReadByAdapterIndex(adapters);
 
     internal IReadOnlyDictionary<int, GpuEngineSpecializedUsage> ReadSpecializedUsageByAdapterIndex(IReadOnlyList<WindowsGpuAdapter> adapters)
     {
-        return CanRead ? reader.ReadSpecializedUsageByAdapterIndex(adapters) : new Dictionary<int, GpuEngineSpecializedUsage>();
+        return reader.ReadSpecializedUsageByAdapterIndex(adapters);
     }
 }

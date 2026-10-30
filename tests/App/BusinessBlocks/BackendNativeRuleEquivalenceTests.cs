@@ -142,8 +142,6 @@ public sealed class BackendNativeRuleEquivalenceTests
             BackendItems.MemoryProtectionReserveBuilt, BackendItems.PresentNativeSessionAvailable,
             BackendItems.GpuAllocationNativeSessionAvailable, BackendItems.VidMmNativeSessionAvailable })
             await facts.PublishAsync(item, true);
-        await facts[BackendItems.PresentUnfrozen].PublishNoValueAsync(NoValueReason.NotPublished, Reason);
-        await facts[BackendItems.VidMmUnfrozen].PublishNoValueAsync(NoValueReason.NotPublished, Reason);
         native.Activate(_ => new HoldingBlock());
         var running = BackendExpectedProductionTree.Wrappers.Concat(new[] {
             BackendUids.RuntimeSpecializationCoordinator, BackendUids.ServiceAutoStartSettings, BackendUids.ServiceRecoverySettings,
@@ -170,12 +168,11 @@ public sealed class BackendNativeRuleEquivalenceTests
     {
         bool T(int item) => authority.Read<bool>(item).GetValueOrDefault(false);
         bool P(int block) => authority.Read<bool>(new(BackendItems.HostStartPermitted, block)).GetValueOrDefault(false);
-        bool M(int item) { var value = authority.Read<bool>(item); return value.HasValue ? value.Value : value.NoValueReason == NoValueReason.NotPublished; }
         bool Present() => P(BackendUids.PresentFrameEtwSource) && T(BackendItems.GraphicsApiObservationInUse)
-            && T(BackendItems.PresentNativeSessionAvailable) && M(BackendItems.PresentUnfrozen);
+            && T(BackendItems.PresentNativeSessionAvailable);
         bool Allocation() => P(BackendUids.GpuAllocationCollector) && T(BackendItems.ProcessDedicatedGpuMemoryInUse) && T(BackendItems.GpuAllocationNativeSessionAvailable);
         bool VidMm() => P(BackendUids.DxgkrnlVidMmEtwTelemetryZone) && T(BackendItems.VramResidualInUse)
-            && T(BackendItems.VidMmNativeSessionAvailable) && M(BackendItems.VidMmUnfrozen);
+            && T(BackendItems.VidMmNativeSessionAvailable);
         if (child == BackendUids.KernelLeakObservation) return T(BackendItems.KernelLeakObservationEnabled);
         if (child == BackendUids.FanCurveTemperatureFeed) return T(BackendItems.SoftwareCurveRunNeeded);
         if (!P(child)) return false;

@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using ResourceManager.App.Application.Metrics;
-using ResourceManager.App.Domain.Adaptation.Scheduling;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -79,28 +78,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             warm: true,
             processFactsSnapshot: facts,
             scoreOnlyEnabled: true,
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: false,
             failFastEffects: true);
-        fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
-        {
-            Version = fixture.RuntimePlan.Version + 1,
-            AdapterDispatch = CompiledAdapterDispatchPlan.Default with
-            {
-                RoutesBySoftwareId = new Dictionary<string, CompiledAdapterDispatchRoute>
-                {
-                    [softwareId] = CompiledAdapterDispatchRoute.SoftwareLevelScheduler
-                },
-                SupportedCpuGradesBySoftwareId = new Dictionary<string, IReadOnlyList<AdapterCpuSchedulingGrade>>
-                {
-                    [softwareId] = AdapterCpuSchedulingGrades.All
-                },
-                SupportedGpuGradesBySoftwareId = new Dictionary<string, IReadOnlyList<AdapterGpuSchedulingGrade>>
-                {
-                    [softwareId] = AdapterGpuSchedulingGrades.All
-                }
-            }
-        });
 
         fixture.MetricSampler.SetSnapshot(CreateWelfareHardwareSnapshot(
             cpuUsagePercent: 50,
@@ -126,7 +105,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var idleSmart = Assert.Single(fixture.Workspace.CurrentSnapshotRows.ToArray(), static row =>
             row.RowKind == NativeSmartCoordinatorSnapshotRowKind.Process);
         Assert.Equal(idleCompute.Score, idleSmart.CpuScore, 10);
-        AssertAdapterScores(fixture, idleCompute.Score, idleGpuCompute.Score);
+        AssertSoftwareCpuScore(fixture, idleCompute.Score);
 
         await PublishCatalog([new(softwareId, 80), new("software:not-running", 0)]);
         await PublishCatalog([new(softwareId, 80), new("software:not-running", 0), new("software:third", 40)]);
@@ -156,7 +135,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var saturatedSmart = Assert.Single(fixture.Workspace.CurrentSnapshotRows.ToArray(), static row =>
             row.RowKind == NativeSmartCoordinatorSnapshotRowKind.Process);
         Assert.Equal(saturatedCompute.Score, saturatedSmart.CpuScore, 10);
-        AssertAdapterScores(fixture, saturatedCompute.Score, saturatedGpuCompute.Score);
+        AssertSoftwareCpuScore(fixture, saturatedCompute.Score);
 
         async Task PublishCatalog(ImmutableArray<SoftwareBaseScore> catalog)
         {
@@ -191,7 +170,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var smart = Assert.Single(fixture.Workspace.CurrentSnapshotRows.ToArray(), static row =>
                 row.RowKind == NativeSmartCoordinatorSnapshotRowKind.Process);
             Assert.Equal(cpu.Score, smart.CpuScore, 10);
-            AssertAdapterScores(fixture, cpu.Score, gpu.Score);
+            AssertSoftwareCpuScore(fixture, cpu.Score);
 
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
             var repeated = fixture.Coordinator.SchedulingAuthority.Compute!;
@@ -220,7 +199,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 cpuUsagePercent: 50,
                 memoryUsagePercent: 0),
             scoreOnlyEnabled: false,
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: false,
             failFastEffects: true);
         fixture.MetricSampler.SetSnapshot(CreateWelfareHardwareSnapshot(
@@ -263,7 +241,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(2U, reread.ProcessPendingCount);
         Assert.Equal(0U, fixture.Workspace.Snapshot.InflightCount);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Equal(0, fixture.AdapterDispatcher.TotalCalls);
         Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
         Assert.Equal(0U, fixture.PublicResourceManager.NewEffectAttemptCount);
 
@@ -295,24 +272,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         using var source = new CurrentHardwareObservationSource();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true, processFactsSnapshot: facts, scoreOnlyEnabled: true,
-            policyExecutionEnabled: true, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             metricSamplerOverride: source, timeProvider: clock, failFastEffects: true);
         Assert.Empty(fixture.RuntimePlan.HostManager.DataHistory.Requirements);
-        fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
-        {
-            Version = fixture.RuntimePlan.Version + 1,
-            AdapterDispatch = CompiledAdapterDispatchPlan.Default with
-            {
-                RoutesBySoftwareId = new Dictionary<string, CompiledAdapterDispatchRoute>
-                {
-                    [softwareId] = CompiledAdapterDispatchRoute.SoftwareLevelScheduler
-                },
-                SupportedCpuGradesBySoftwareId = new Dictionary<string, IReadOnlyList<AdapterCpuSchedulingGrade>>
-                {
-                    [softwareId] = AdapterCpuSchedulingGrades.All
-                }
-            }
-        });
         var nativePlanProbe = new CapturingNativePlanProbe(fixture.Workspace);
         fixture.Coordinator.TransitionProbe = nativePlanProbe;
         source.Publish(CreateHardwareSnapshot(cpuUsagePercent: 50, capturedAt: now.AddSeconds(-5)), "cpu.usage");
@@ -322,7 +284,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         // Missing GPU/VRAM capacity cancels GPU share, while CPU keeps its own direct bonus.
         Assert.Equal(0, fixture.Coordinator.SchedulingAuthority.Compute!.Welfare.Share);
         Assert.Equal(68, baselineProcess.CpuScore, 10);
-        AssertAdapterScore(fixture, 68);
+        AssertSoftwareCpuScore(fixture, 68);
         Assert.Equal(50, fixture.Coordinator.SchedulingAuthority.Compute.Welfare.CpuBonus, 10);
 
         source.Publish(CreateHardwareSnapshot(cpuUsagePercent: 95, capturedAt: now), "cpu.usage");
@@ -334,7 +296,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(50, process.CpuOccupancyPercent);
             // Raw 80 * physical-core W 0.5 * headless 0.45 / B 1, plus 100 * 0.05 welfare.
             Assert.Equal(23, process.CpuScore, 10);
-            AssertAdapterScore(fixture, 23);
+            AssertSoftwareCpuScore(fixture, 23);
             Assert.Equal(23, CaptureScoreOnlyDecision(nativePlanProbe).CpuScore, 10);
             Assert.Empty(source.Latest.History);
             clock.Advance(TimeSpan.FromSeconds(30));
@@ -343,50 +305,38 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         source.Publish(CreateHardwareSnapshot(cpuUsagePercent: 95, capturedAt: now.AddSeconds(1)), "cpu.usage");
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         Assert.Empty(source.Latest.History);
-        AssertAdapterScore(fixture, 23);
+        AssertSoftwareCpuScore(fixture, 23);
         Assert.Equal(23, CaptureScoreOnlyDecision(nativePlanProbe).CpuScore, 10);
 
         source.Publish(CreateHardwareSnapshot(cpuUsagePercent: 10, capturedAt: now.AddSeconds(2)), "memory.usage");
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         Assert.Equal(95, source.Latest.Cpu.UsagePercent);
         Assert.Empty(source.Latest.History);
-        AssertAdapterScore(fixture, 23);
+        AssertSoftwareCpuScore(fixture, 23);
         Assert.Equal(23, CaptureScoreOnlyDecision(nativePlanProbe).CpuScore, 10);
 
         source.PublishEmptyCpu(now.AddSeconds(3));
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         Assert.False(source.Latest.Cpu.IsUsageAvailable);
         Assert.Empty(source.Latest.History);
-        AssertAdapterScore(fixture, 18);
+        AssertSoftwareCpuScore(fixture, 18);
         Assert.Equal(18, CaptureScoreOnlyDecision(nativePlanProbe).CpuScore, 10);
 
         source.Publish(CreateHardwareSnapshot(cpuUsagePercent: 95, capturedAt: now.AddSeconds(4)), "cpu.usage");
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-        AssertAdapterScore(fixture, 23);
+        AssertSoftwareCpuScore(fixture, 23);
         Assert.Equal(23, CaptureScoreOnlyDecision(nativePlanProbe).CpuScore, 10);
         Assert.Equal(0, fixture.ProcessFacts.CaptureCalls);
         Assert.Equal(0, fixture.MetricSampler.CaptureCalls);
         Assert.Empty(source.Subscriptions);
     }
 
-    private static void AssertAdapterScore(ScoreOnlyCoordinatorFixture fixture, double expected)
+    private static void AssertSoftwareCpuScore(ScoreOnlyCoordinatorFixture fixture, double expected)
     {
         var software = Assert.Single(fixture.Workspace.CurrentSnapshotRows.ToArray(),
             row => row.RowKind == NativeSmartCoordinatorSnapshotRowKind.Software);
         Assert.False(software.ReasonMask.HasFlag(NativeSmartCoordinatorReason.Ineligible));
-        Assert.Equal(expected, software.AdapterCpuScore, 9);
-    }
-
-    private static void AssertAdapterScores(
-        ScoreOnlyCoordinatorFixture fixture,
-        double expectedCpu,
-        double expectedGpu)
-    {
-        var software = Assert.Single(fixture.Workspace.CurrentSnapshotRows.ToArray(),
-            row => row.RowKind == NativeSmartCoordinatorSnapshotRowKind.Software);
-        Assert.False(software.ReasonMask.HasFlag(NativeSmartCoordinatorReason.Ineligible));
-        Assert.Equal(expectedCpu, software.AdapterCpuScore, 9);
-        Assert.Equal(expectedGpu, software.AdapterGpuScore, 9);
+        Assert.Equal(expected, software.CpuScore, 9);
     }
 
     private static HardwareMetricSnapshot CreateWelfareHardwareSnapshot(
@@ -458,12 +408,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         NativeSmartCoordinatorActionDisposition Disposition,
         NativeSmartCoordinatorGradeDomains DomainMask,
         NativeSmartCoordinatorProcessGrade ProcessGrade,
-        NativeSmartCoordinatorAdapterGrade AdapterCpuGrade,
-        NativeSmartCoordinatorAdapterGrade AdapterGpuGrade,
         uint ProcessId,
         ulong SoftwareKey,
-        double CpuScore,
-        double GpuScore) CaptureScoreOnlyDecision(
+        double CpuScore) CaptureScoreOnlyDecision(
             CapturingNativePlanProbe probe)
     {
         var action = Assert.Single(probe.Actions);
@@ -472,12 +419,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             action.Disposition,
             action.DomainMask,
             action.ToProcessGrade,
-            action.ToCpuGrade,
-            action.ToGpuGrade,
             action.ProcessId,
             action.SoftwareKey,
-            action.CpuScore,
-            action.GpuScore);
+            action.CpuScore);
     }
 
     private sealed class CurrentHardwareObservationSource : IMetricSnapshotObservationSource, IDisposable

@@ -24,13 +24,6 @@ internal static unsafe class NativeSmartCoordinatorConfigurationWriter
         {
             throw new InvalidDataException("The smart coordinator configuration is incomplete.");
         }
-        if (!hotPublish.CpuAdapterPolicy.StateMultipliers.AsSpan()
-            .SequenceEqual(hotPublish.ProcessStateMultipliers.AsSpan()))
-        {
-            throw new InvalidDataException(
-                "The CPU adapter ABI state multipliers must mirror the process policy multipliers.");
-        }
-
         var configuration = new NativeSmartCoordinatorConfiguration
         {
             AbiVersion = NativeSmartCoordinatorAbi.Version,
@@ -63,8 +56,6 @@ internal static unsafe class NativeSmartCoordinatorConfigurationWriter
             ReservedProcessPolicy0 = 0,
             HighTierMinimumBaseScore = hotPublish.BaseScoreTiers.HighMinimumBaseScore,
             MiddleTierMinimumBaseScore = hotPublish.BaseScoreTiers.MiddleMinimumBaseScore,
-            CpuAdapter = CreateAdapterPolicy(hotPublish.CpuAdapterPolicy),
-            GpuAdapter = CreateAdapterPolicy(hotPublish.GpuAdapterPolicy)
         };
         SetProcessStateMultipliers(ref configuration, hotPublish.ProcessStateMultipliers.AsSpan());
         return configuration;
@@ -105,20 +96,6 @@ internal static unsafe class NativeSmartCoordinatorConfigurationWriter
         }
     }
 
-    public static void SetAdapterStateMultipliers(
-        ref NativeSmartCoordinatorAdapterPolicyConfiguration configuration,
-        ReadOnlySpan<double> values)
-    {
-        RequireCompleteStateVector(values);
-        fixed (NativeSmartCoordinatorAdapterPolicyConfiguration* target = &configuration)
-        {
-            for (var index = 0; index < values.Length; index++)
-            {
-                target->StateMultipliers[index] = values[index];
-            }
-        }
-    }
-
     private static void RequireCompleteStateVector(ReadOnlySpan<double> values)
     {
         if (values.Length != NativeSmartCoordinatorAbi.RuntimeStateCount)
@@ -129,16 +106,4 @@ internal static unsafe class NativeSmartCoordinatorConfigurationWriter
         }
     }
 
-    private static NativeSmartCoordinatorAdapterPolicyConfiguration CreateAdapterPolicy(
-        CompiledHostManagerSmartCoordinatorAdapterPolicyPlan source)
-    {
-        var result = new NativeSmartCoordinatorAdapterPolicyConfiguration
-        {
-            ExtremeMinimumScore = source.ExtremeMinimumScore,
-            NormalMinimumScore = source.NormalMinimumScore,
-            OptimizeMinimumScore = source.OptimizeMinimumScore
-        };
-        SetAdapterStateMultipliers(ref result, source.StateMultipliers.AsSpan());
-        return result;
-    }
 }

@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.Text;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Infrastructure.DeviceTopology;
 using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
@@ -56,7 +55,7 @@ public sealed class BatteryDeclarationContractTests
     }
 
     [Fact]
-    public void ZoneFreezeIsUnavailableAndChangedBatteryTagRejectsOnlyItsOwnDeclarations()
+    public void ChangedBatteryTagRejectsOnlyItsOwnDeclarations()
     {
         var changed = new FakeBatteryQuery { ChangeTag = true };
         var zone = new WindowsBatteryMonitoringZone(new(() => ["battery-path"], _ => changed));
@@ -68,10 +67,6 @@ public sealed class BatteryDeclarationContractTests
         Assert.Equal("電池厂商", healthy.Manufacturer);
         var calls = 0;
         zone = new(new WindowsBatteryReader(() => { calls++; return []; }, _ => null));
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Null(WindowsDeviceTopologyReader.ReadBatteryDeclarations(zone));
-        Assert.Equal(0, calls);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
         Assert.Empty(WindowsDeviceTopologyReader.ReadBatteryDeclarations(zone)!);
         Assert.Equal(1, calls);
     }

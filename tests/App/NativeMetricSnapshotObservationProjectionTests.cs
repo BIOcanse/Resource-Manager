@@ -86,8 +86,8 @@ public sealed class NativeMetricSnapshotObservationProjectionTests
         var binding = catalog.MetricBindings.Values.Single(item => item.FieldCode == ResourceManager.App.Domain.Metrics.MetricFieldCode.NvmlClocksEvents);
         var now = DateTimeOffset.UtcNow;
         workspace.ReplaceCatalog(catalog, now);
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,
-            1, NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle,
+            1, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var plan = workspace.PlanCollection([binding.MetricHandle], modes, false, now);
         var source = Assert.Single(plan.Sources);
         var metric = plan.Metrics.Single(item => item.MetricHandle == binding.MetricHandle);

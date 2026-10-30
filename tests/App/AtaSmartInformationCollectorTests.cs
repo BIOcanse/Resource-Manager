@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
 using ResourceManager.App.Application.Monitoring;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -161,7 +160,7 @@ public sealed class AtaSmartInformationCollectorTests
     }
 
     [Fact]
-    public void ZoneReadsOnlySelectedExactDeviceAndPageAndDoesNoIoWithoutDemandOrWhenFrozen()
+    public void ZoneReadsOnlySelectedExactDeviceAndPageAndDoesNoIoWithoutDemand()
     {
         var calls = new List<(int, string, AtaSmartPages)>();
         var queries = 0;
@@ -183,10 +182,6 @@ public sealed class AtaSmartInformationCollectorTests
         Assert.Equal(2, snapshot.Identities!.Count);
         Assert.Empty(zone.ReadAtaSensors(new(new Dictionary<int, AtaSmartDeviceReadRequest>())).Disks);
         Assert.Equal(2, queries);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Empty(zone.ReadAtaSensors(request).Disks);
-        Assert.Equal(2, queries);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
         Assert.Empty(zone.ReadAtaSensors(new(new Dictionary<int, AtaSmartDeviceReadRequest> { [7] = new("stale", AtaSmartPages.Data) })).Disks);
         Assert.Single(calls);
     }
@@ -395,8 +390,8 @@ public sealed class AtaSmartInformationCollectorTests
         internal NativeMetricSnapshotCatalogProjection CreateCatalog(NativeMetricSnapshotWorkspace workspace)
             => NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(Compiled, [], [new(7, Device, 1) { SupportsAtaSmart = true }], [], workspace.CreateCatalogHandleMap());
         internal NativeMetricSnapshotCollectionPlan Plan(ulong sequence, ulong[] selected)
-            => Workspace.PlanCollection(selected, Catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,
-                1, NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray(), false, Now.AddMilliseconds((long)sequence * 100));
+            => Workspace.PlanCollection(selected, Catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle,
+                1, NativeMetricSnapshotSourceAvailability.Available)).ToArray(), false, Now.AddMilliseconds((long)sequence * 100));
         internal HardwareMetricSnapshot Commit(ulong sequence, bool partialFailure)
         {
             var plan = Plan(sequence, [DataHandle, ThresholdHandle]);

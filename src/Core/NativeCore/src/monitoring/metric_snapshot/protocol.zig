@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x000D_0000;
+pub const abi_version: u32 = 0x000E_0000;
 
 pub const CurrentKey = extern struct {
     dataset_handle: u64,
@@ -38,7 +38,7 @@ pub const observation_contract_version: u32 = 0x0009_0000;
 pub const inventory_contract_version: u32 = 0x0002_0000;
 pub const persistence_contract_version: u32 = 0x0005_0000;
 pub const cpu_counter_contract_version: u32 = 0x0001_0000;
-pub const wire_contract_fingerprint: u64 = 0x7ed7859e0141c29d;
+pub const wire_contract_fingerprint: u64 = 0xd416d753e946524;
 
 pub const Phase = enum(u32) {
     empty = 1,
@@ -58,12 +58,6 @@ pub const SourceStatus = enum(u32) {
     unavailable = 3,
     unsupported = 4,
     skipped = 5,
-};
-
-pub const ZoneMode = enum(u32) {
-    normal = 1,
-    low_power = 2,
-    freeze = 3,
 };
 
 pub const SourceAvailability = enum(u32) {
@@ -207,8 +201,7 @@ pub const MetricPlanFlags = struct {
 
 pub const SourcePlanFlags = struct {
     pub const selected: u32 = 1 << 0;
-    pub const low_power: u32 = 1 << 1;
-    pub const known: u32 = selected | low_power;
+    pub const known: u32 = selected;
 };
 
 pub const InventoryValid = struct {
@@ -397,12 +390,11 @@ pub const PlanMetricInput = extern struct {
     reserved: [2]u64,
 };
 
-pub const SourceModeInput = extern struct {
+pub const SourceStateInput = extern struct {
     struct_size: u32,
     flags: u32,
     source_handle: u64,
     capability_generation: u64,
-    zone_mode: u32,
     availability: u32,
     reserved: [2]u64,
 };
@@ -415,7 +407,6 @@ pub const SourcePlanOutput = extern struct {
     plan_epoch: u64,
     plan_token_fingerprint: u64,
     requested_rule_count: u32,
-    zone_mode: u32,
     availability: u32,
     source_role: u32,
     reserved: [2]u64,

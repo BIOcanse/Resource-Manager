@@ -194,17 +194,15 @@ public sealed class NativeAppliedOwnershipAbiTests
     {
         Assert.Equal(19, (int)NativeAppliedOwnershipStatus.InvalidTime);
         Assert.Equal(1U, (uint)NativeAppliedOwnershipScope.Process);
-        Assert.Equal(2U, (uint)NativeAppliedOwnershipScope.Adapter);
+        Assert.DoesNotContain((NativeAppliedOwnershipScope)2, Enum.GetValues<NativeAppliedOwnershipScope>());
         Assert.Equal(1U, (uint)NativeAppliedOwnershipJournalScope.Process);
-        Assert.Equal(2U, (uint)NativeAppliedOwnershipJournalScope.Software);
+        Assert.DoesNotContain((NativeAppliedOwnershipJournalScope)2, Enum.GetValues<NativeAppliedOwnershipJournalScope>());
         Assert.Equal(1U, (uint)NativeAppliedOwnershipDisposition.Apply);
         Assert.Equal(2U, (uint)NativeAppliedOwnershipDisposition.Restore);
         Assert.Equal(0xFU, (uint)NativeAppliedOwnershipDomain.Known);
         Assert.Equal(0xFU, (uint)NativeAppliedOwnershipGradeValidity.Known);
         Assert.Equal(-4, (int)NativeAppliedOwnershipProcessGrade.Level4);
         Assert.Equal(1, (int)NativeAppliedOwnershipProcessGrade.A1);
-        Assert.Equal(0, (int)NativeAppliedOwnershipAdapterGrade.Freeze);
-        Assert.Equal(3, (int)NativeAppliedOwnershipAdapterGrade.Extreme);
     }
 
     private static void AssertLayout<T>(

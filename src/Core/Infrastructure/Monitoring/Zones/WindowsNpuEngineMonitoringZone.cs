@@ -20,8 +20,8 @@ public sealed class WindowsNpuEngineMonitoringZone : MonitoringSourceZone
         Func<IReadOnlyList<NpuEngineCatalogIdentity>, IReadOnlySet<string>, uint, CancellationToken, IReadOnlyList<NpuEngineRead>> read)
         : base(MonitoringSourceZoneIds.WindowsNpuEngine) { this.open = open; this.read = read; }
     internal NpuEngineTopologyRead OpenDirectory(uint maximum, IWindowsNpuEngineDirectory? prior)
-        => CanRead ? open(maximum, prior) : new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
+        => open(maximum, prior);
     internal IReadOnlyList<NpuEngineRead> Read(IReadOnlyList<NpuEngineCatalogIdentity> devices,
         IReadOnlySet<string> requested, uint maximum, CancellationToken token)
-        => CanRead ? read(devices, requested, maximum, token) : [];
+        => read(devices, requested, maximum, token);
 }

@@ -31,12 +31,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddHttpClient<IAdapterResourceMarkerProbe, HttpAdapterResourceMarkerProbe>()
             .ConfigurePrimaryHttpMessageHandler(HttpAdapterRegistrationConnection.CreateHandler)
             .AddHttpMessageHandler<HttpAdapterCallbackSafetyHandler>();
-        services.AddSingleton<ResourceManagerSelfSchedulingControl>();
-        services.AddSingleton<IResourceManagerSelfSchedulingControl>(static provider =>
-            provider.GetRequiredService<ResourceManagerSelfSchedulingControl>());
-        services.AddHttpClient<IAdapterPolicyDispatcher, HttpAdapterPolicyDispatcher>()
-            .ConfigurePrimaryHttpMessageHandler(static () => new SocketsHttpHandler { AllowAutoRedirect = false, UseProxy = false })
-            .AddHttpMessageHandler<HttpAdapterCallbackSafetyHandler>();
         services.AddSingleton<IControlledSoftwareRegistry, InMemoryControlledSoftwareRegistry>();
         return services;
     }

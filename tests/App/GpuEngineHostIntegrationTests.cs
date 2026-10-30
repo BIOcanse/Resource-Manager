@@ -53,7 +53,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         var pdh = new RecordedGpuEngineSource(luid);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!, inventory, null!,
             new PdhGpuEngineMonitoringZone(pdh), null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!,
-            fixture.Owner, fixture.Catalog, new MonitoringSourceZoneRegistry([]), fixture.Slots.Owner, fixture.Slots.Provider,
+            fixture.Owner, fixture.Catalog,  fixture.Slots.Owner, fixture.Slots.Provider,
             NullLogger<WindowsHardwareMetricSampler>.Instance,
             borrowedControls: new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null,
                 ControlReadCpuTopology = static () => new CpuOsTopologyInformation(null, null) });

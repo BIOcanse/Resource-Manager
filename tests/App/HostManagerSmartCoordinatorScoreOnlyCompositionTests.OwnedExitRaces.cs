@@ -23,8 +23,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         { InventoryProcesses = [raw.Processes[0] with { ProcessStartKey = newKey }] };
         // The PID has already been reused after the first inventory capture.
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
-            scoreOnlyEnabled: false, processFactsSnapshot: capturedOld, policyExecutionEnabled: true,
-            automaticMemoryCleanupEnabled: false,
+            scoreOnlyEnabled: false, processFactsSnapshot: capturedOld, automaticMemoryCleanupEnabled: false,
             processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new(pid, DateTimeOffset.FromFileTime((long)newKey))));
         var seeded = await fixture.SeedProcessOwnershipAsync(pid, oldKey, "software:round-race", false, 72_006,
@@ -70,8 +69,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             SkippedCount = inInventory ? 1U : 0U
         };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
-            scoreOnlyEnabled: false, processFactsSnapshot: facts, policyExecutionEnabled: true,
-            automaticMemoryCleanupEnabled: false,
+            scoreOnlyEnabled: false, processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false,
             processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(pid, birth)));
         var seeded = await fixture.SeedProcessOwnershipAsync(pid, key, "software:unreadable-owner", false, 72_005,
             RaceCpuPayload(pid, key));
@@ -103,8 +101,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var current = CreateCompleteProcessFacts(pid, newKey, "software:owned-race", 20, 10, 5);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
             scoreOnlyEnabled: false, processFactsSnapshot: CreateCompleteProcessFacts(),
-            automaticMemoryCleanupEnabled: false, policyExecutionEnabled: false,
-            processRecoveryRead: id => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
+            automaticMemoryCleanupEnabled: false, processRecoveryRead: id => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new(id, DateTimeOffset.FromFileTime((long)newKey))));
         await fixture.Coordinator.RunOnceAsync(default);
         var old = await fixture.SeedProcessOwnershipAsync(pid, oldKey, "software:owned-race", memoryPolicy, 72_001,
@@ -148,8 +145,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(pid, birth));
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
             scoreOnlyEnabled: false, processFactsSnapshot: CreateCompleteProcessFacts(),
-            automaticMemoryCleanupEnabled: false, policyExecutionEnabled: false,
-            processRecoveryRead: _ => recovery);
+            automaticMemoryCleanupEnabled: false, processRecoveryRead: _ => recovery);
         await fixture.Coordinator.RunOnceAsync(default);
         var seeded = await fixture.SeedProcessOwnershipAsync(pid, key, "software:reobserved", memoryPolicy, 72_003,
             memoryPolicy ? null : RaceCpuPayload(pid, key));
@@ -194,8 +190,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var absent = liveAtCapture with { Processes = [], EnumeratedCount = 0, EmittedCount = 0 };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
             scoreOnlyEnabled: false, processFactsSnapshot: CreateCompleteProcessFacts(),
-            automaticMemoryCleanupEnabled: false, policyExecutionEnabled: false,
-            processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(87, "exited"));
+            automaticMemoryCleanupEnabled: false, processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(87, "exited"));
         await fixture.Coordinator.RunOnceAsync(default);
         var seeded = await fixture.SeedProcessOwnershipAsync(pid, key, "software:mid-round", memoryPolicy, 72_004,
             memoryPolicy ? null : RaceCpuPayload(pid, key));

@@ -11,11 +11,10 @@ namespace Resource_Manager_APP.Tests;
 public sealed class KernelEtwAdditionalConsumerDropTests
 {
     [Fact]
-    public void NetworkCountsInvalidIncompleteFrozenAndStaleCallbacksWithoutCountingAcceptedTrafficAsDropped()
+    public void NetworkCountsInvalidIncompleteAndStaleCallbacksWithoutCountingAcceptedTrafficAsDropped()
     {
         var broker = new Broker();
-        var readable = true;
-        using var owner = new EtwNetworkTcpIpCaptureOwner(broker, () => readable, new(), () => 1000);
+        using var owner = new EtwNetworkTcpIpCaptureOwner(broker, new(), () => 1000);
         owner.Start();
         var source = broker.Source;
         void Deliver(int pid, int bytes, long tick, long generation = 1)
@@ -24,11 +23,9 @@ public sealed class KernelEtwAdditionalConsumerDropTests
         Deliver(41, 4096, 1001);
         Deliver(0, 4096, 1001);
         Deliver(41, 4096, 1000);
-        readable = false;
-        Deliver(41, 4096, 1002);
         Deliver(41, 4096, 1003, 2);
-        AssertCounts(broker, "network-transfer", 5, 4);
-        foreach (var reason in new[] { "invalid-payload", "incomplete-window", "frozen", "stale-binding" })
+        AssertCounts(broker, "network-transfer", 4, 3);
+        foreach (var reason in new[] { "invalid-payload", "incomplete-window", "stale-binding" })
             AssertCounts(broker, "network-transfer/rejected:" + reason, 1, 1);
         owner.Stop();
         Assert.Equal(1, broker.Releases);

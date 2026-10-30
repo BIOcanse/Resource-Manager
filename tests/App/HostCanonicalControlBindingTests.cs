@@ -54,12 +54,11 @@ public sealed partial class MetricCatalogueSubscriptionTests
                 { Packages = [new("package:recorded", [0, 1])], ThreadCpuid = [new(0, threadCpuid), new(1, threadCpuid)] },
             ControlResolveObjectId = (_, _, _, _, _) => "cpu:product-recorded"
         };
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id => new MonitoringSourceZone(id)));
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!,
             new WindowsGpuAdapterOrderMonitoringZone(() => new WindowsGpuAdapterInventoryRead(
                 SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 0, 0, 0, 1, [])),
             null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!,
-            fixture.Owner, fixture.Catalog, registry, fixture.Slots.Owner, fixture.Slots.Provider,
+            fixture.Owner, fixture.Catalog,  fixture.Slots.Owner, fixture.Slots.Provider,
             NullLogger<WindowsHardwareMetricSampler>.Instance, borrowedControls: controlResources);
         var backend = new HostReadWriteBackend(sampler, sampler, fixture.Catalog, controls,
             new ControlWriteLayer(controls, [writer], access));

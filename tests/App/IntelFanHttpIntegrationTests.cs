@@ -69,10 +69,9 @@ public sealed partial class NvidiaFanHttpIntegrationTests
                 if (currentPhase == 2) recoveredQuery.TrySetResult(true);
                 return [new IntelGclFanReading(target, checked((int)rpm))];
             });
-        var registry = new MonitoringSourceZoneRegistry([new WindowsMemoryMonitoringZone(), zone]);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!,
             new WindowsGpuAdapterOrderMonitoringZone(RecordedIntelFanResources.Inventory), null!, null!, null!, null!,
-            null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, registry,
+            null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, 
             slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance,
             intelGclZone: zone, borrowedControls: resources.Controls);
         using var dependencyHttp = new HttpClient();

@@ -25,15 +25,15 @@ public sealed partial class HostManagerPlanCompiler
         ValidateCapacity(source.MaximumReservations, limits.SmartCoordinatorReservationCapacity, "host_recreate.smart_coordinator.maximum_reservations");
         ValidateCapacity(source.MaximumAtomicGroups, limits.SmartCoordinatorAtomicGroupCapacity, "host_recreate.smart_coordinator.maximum_atomic_groups");
 
-        var minimumActions = checked(source.MaximumProcesses + source.MaximumSoftwareGroups);
-        var minimumReservations = checked(source.MaximumProcesses + (2 * source.MaximumSoftwareGroups));
+        var minimumActions = source.MaximumProcesses;
+        var minimumReservations = source.MaximumProcesses;
         if (source.MaximumActions < minimumActions)
         {
-            throw new InvalidDataException("smart_coordinator maximum_actions must cover all process and software targets.");
+            throw new InvalidDataException("smart_coordinator maximum_actions must cover all process targets.");
         }
         if (source.MaximumReservations < minimumReservations)
         {
-            throw new InvalidDataException("smart_coordinator maximum_reservations must cover process and independent CPU/GPU software reservations.");
+            throw new InvalidDataException("smart_coordinator maximum_reservations must cover all process reservations.");
         }
         if (source.MaximumAtomicGroups < source.MaximumProcesses)
         {
@@ -102,23 +102,10 @@ public sealed partial class HostManagerPlanCompiler
         ValidateProcessPolicy(process);
         var baseScoreTiers = CompileBaseScoreTiers(
             freedom.Consume<HostManagerBaseScoreTierProfile>(BackendFreedomPointPaths.BaseScoreTiers, consumer));
-        var cpuAdapterPolicy = CompileAdapterPolicy(
-            source.CpuAdapterPolicy
-                ?? throw Missing("hot_publish.smart_coordinator.cpu_adapter_policy"),
-            "hot_publish.smart_coordinator.cpu_adapter_policy",
-            stateMultipliers);
-        var gpuAdapterProfile = source.GpuAdapterPolicy
-            ?? throw Missing("hot_publish.smart_coordinator.gpu_adapter_policy");
-        var gpuAdapterPolicy = CompileAdapterPolicy(
-            gpuAdapterProfile,
-            "hot_publish.smart_coordinator.gpu_adapter_policy",
-            ValidateStateMultipliers(
-                gpuAdapterProfile.StateMultipliers,
-                "hot_publish.smart_coordinator.gpu_adapter_policy.state_multipliers"));
-        ValidateSmartCoordinatorScoreRange(
-            stateMultipliers,
-            recreate.MaximumProcesses,
-            gpuAdapterPolicy);
+        var gpuStateMultipliers = ValidateStateMultipliers(
+            source.GpuStateMultipliers,
+            "hot_publish.smart_coordinator.gpu_state_multipliers");
+        ValidateSmartCoordinatorScoreRange(stateMultipliers, recreate.MaximumProcesses, gpuStateMultipliers);
 
         return new CompiledHostManagerSmartCoordinatorHotPublishPlan(
             CompileSmartCoordinatorFeatureFlags(source.FeatureFlags),
@@ -139,8 +126,7 @@ public sealed partial class HostManagerPlanCompiler
             process.Level2MaximumCpuScoreScale,
             process.Level3MaximumCpuScoreScale,
             process.LowTierLevel4MaximumCpuScoreScale,
-            cpuAdapterPolicy,
-            gpuAdapterPolicy,
+            gpuStateMultipliers,
             CompileMemoryModePolicy(
                 source.MemoryModePolicy
                 ?? throw Missing(
@@ -309,27 +295,6 @@ public sealed partial class HostManagerPlanCompiler
         };
     }
 
-    private static CompiledHostManagerSmartCoordinatorAdapterPolicyPlan CompileAdapterPolicy(
-        HostManagerSmartCoordinatorAdapterPolicyProfile source,
-        string path,
-        ImmutableArray<double> stateMultipliers)
-    {
-        ValidateNonNegativeFinite(source.ExtremeMinimumScore, $"{path}.extreme_minimum_score");
-        ValidateNonNegativeFinite(source.NormalMinimumScore, $"{path}.normal_minimum_score");
-        ValidateNonNegativeFinite(source.OptimizeMinimumScore, $"{path}.optimize_minimum_score");
-        if (source.OptimizeMinimumScore > source.NormalMinimumScore
-            || source.NormalMinimumScore > source.ExtremeMinimumScore)
-        {
-            throw new InvalidDataException($"{path} threshold ordering is invalid.");
-        }
-
-        return new CompiledHostManagerSmartCoordinatorAdapterPolicyPlan(
-            stateMultipliers,
-            source.ExtremeMinimumScore,
-            source.NormalMinimumScore,
-            source.OptimizeMinimumScore);
-    }
-
     private static CompiledHostManagerBaseScoreTierPlan CompileBaseScoreTiers(
         HostManagerBaseScoreTierProfile source)
     {
@@ -374,11 +339,11 @@ public sealed partial class HostManagerPlanCompiler
     private static void ValidateSmartCoordinatorScoreRange(
         ImmutableArray<double> processStateMultipliers,
         int maximumProcesses,
-        CompiledHostManagerSmartCoordinatorAdapterPolicyPlan gpuAdapterPolicy)
+        ImmutableArray<double> gpuStateMultipliers)
     {
         var maximumCpuProcessScore = 100d * processStateMultipliers.Max()
             + Optimization.HostManagerComputeScoringConfigurationFactory.MaximumBaseImportance;
-        var maximumGpuProcessScore = 100d * gpuAdapterPolicy.StateMultipliers.Max()
+        var maximumGpuProcessScore = 100d * gpuStateMultipliers.Max()
             + Optimization.HostManagerComputeScoringConfigurationFactory.MaximumBaseImportance;
         var maximumCpuSoftwareScore = maximumCpuProcessScore * maximumProcesses;
         var maximumGpuSoftwareScore = maximumGpuProcessScore * maximumProcesses;
@@ -426,8 +391,6 @@ public sealed partial class HostManagerPlanCompiler
             var flag = name switch
             {
                 "process_policy" => (ulong)NativeSmartCoordinatorFeatures.ProcessPolicy,
-                "adapter_cpu" => (ulong)NativeSmartCoordinatorFeatures.AdapterCpu,
-                "adapter_gpu" => (ulong)NativeSmartCoordinatorFeatures.AdapterGpu,
                 "critical_events" => (ulong)NativeSmartCoordinatorFeatures.CriticalEvents,
                 _ => throw new InvalidDataException($"Unknown smart coordinator feature flag '{name}'.")
             };

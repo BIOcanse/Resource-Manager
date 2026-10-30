@@ -174,7 +174,7 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
     public unsafe NativeMetricSnapshotStatus Plan(
         in NativeMetricSnapshotPlanInput input,
         ReadOnlySpan<NativeMetricSnapshotPlanMetricInput> requestedMetrics,
-        ReadOnlySpan<NativeMetricSnapshotSourceModeInput> sourceModes,
+        ReadOnlySpan<NativeMetricSnapshotSourceStateInput> sourceModes,
         out NativeMetricSnapshotPlanOutput output,
         Span<NativeMetricSnapshotSourcePlanOutput> sourcePlans,
         Span<NativeMetricSnapshotMetricPlanOutput> metricPlans)
@@ -191,7 +191,7 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
             try
             {
                 fixed (NativeMetricSnapshotPlanMetricInput* requestedPointer = requestedMetrics)
-                fixed (NativeMetricSnapshotSourceModeInput* modePointer = sourceModes)
+                fixed (NativeMetricSnapshotSourceStateInput* modePointer = sourceModes)
                 fixed (NativeMetricSnapshotSourcePlanOutput* sourcePlanPointer = sourcePlans)
                 fixed (NativeMetricSnapshotMetricPlanOutput* metricPlanPointer = metricPlans)
                 {
@@ -637,7 +637,7 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
             in NativeMetricSnapshotPlanInput input,
             NativeMetricSnapshotPlanMetricInput* requestedMetrics,
             uint requestedMetricCount,
-            NativeMetricSnapshotSourceModeInput* sourceModes,
+            NativeMetricSnapshotSourceStateInput* sourceModes,
             uint sourceModeCount,
             out NativeMetricSnapshotPlanOutput output,
             NativeMetricSnapshotSourcePlanOutput* sourcePlans,

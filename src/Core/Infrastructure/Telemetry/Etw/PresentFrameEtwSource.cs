@@ -1,10 +1,6 @@
-﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using Microsoft.Diagnostics.Tracing;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
-using ResourceManager.Adapter;
-using ResourceManager.App.Application.Adaptation;
-using ResourceManager.App.Application.Monitoring;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.ReadWrite.Windows.Frames;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -13,7 +9,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 /// <summary>
 /// 按进程采集 Present 帧时间。独立 ETW 会话，不并入内核会话：内核会话在订阅变化或丢事件时会整体重启，
-/// 高频的 Present 事件不能连累其他采集。订阅活动和冻结状态由上级决策节点判断；运行入口独占会话的取得和释放。
+/// 高频的 Present 事件不能连累其他采集。订阅活动由上级决策节点判断；运行入口独占会话的取得和释放。
 /// 事件口径见 docs/performance_overlay_and_targeted_report_2026-10-02.md 的“第 1 片合同”。
 /// </summary>
 public sealed partial class PresentFrameEtwSource(
@@ -22,7 +18,7 @@ public sealed partial class PresentFrameEtwSource(
     BusinessBlockDiagnosticsRegistry diagnostics,
     NativeEtwSessionAvailability availability,
     IEtwConsumerThreadObserver? consumerThreadObserver = null)
-    : IFrameTimingObservationSource, IResourceManagerSelfComputeZone, IBusinessBlock, IDisposable
+    : IFrameTimingObservationSource, IBusinessBlock, IDisposable
 {
     internal static readonly Guid DxgiProvider = new("CA11C036-0102-4A2D-A6AD-F03CFED5D3C9");
     internal static readonly Guid Direct3D9Provider = new("783ACA0A-790E-4D7F-8451-AA850511C6B9");
@@ -52,8 +48,6 @@ public sealed partial class PresentFrameEtwSource(
     private const int ProcessStop = 2;
     // 帧事件量小，实时缓冲很久才会写满；定时冲刷把投递延迟限制在这个间隔内（叠加层按 250–500 ms 刷新）。
     internal static readonly TimeSpan FlushInterval = TimeSpan.FromMilliseconds(250);
-    private static readonly ulong ZoneObjectKey =
-        AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwPresentFrames}");
 
     private readonly object lifecycle = new();
     private readonly Func<string, IPresentFrameEtwSession> createSession = name =>
@@ -65,8 +59,6 @@ public sealed partial class PresentFrameEtwSource(
     private readonly TimeProvider timeProvider = TimeProvider.System;
     private readonly object gate = new();
     private PresentFrameLedger ledger = new(ReadProcessStartKey);
-    private readonly ResourceManager.Shared.BusinessBlocks.State.StateCell<bool> unfrozen =
-        ComputeZoneModeCell.ClaimUnfrozen(controller.Authority, ResourceManager.App.StateItems.StateItemUids.PresentUnfrozen);
     private readonly HashSet<FrameSubscription> frameSubscriptions = [];
     private int frameLeases;
     private long nextHolderId;
@@ -76,11 +68,6 @@ public sealed partial class PresentFrameEtwSource(
     private long frameStoppedAt;
     private int observedEventsLost;
     private long lastLossUtcTicks;
-    private ResourceManagerComputeZoneMode mode = ResourceManagerComputeZoneMode.Normal;
-
-    public ulong ZoneKey => ZoneObjectKey;
-    public string DisplayName => MonitoringSourceZoneIds.EtwPresentFrames;
-    public ResourceManagerComputeZoneMode CurrentMode => mode;
 
     internal PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger,
         BusinessBlockScheduler controller,
@@ -154,20 +141,6 @@ public sealed partial class PresentFrameEtwSource(
                 throughTicks == through.UtcTicks && (lastLossUtcTicks == 0 || lastLossUtcTicks < after.UtcTicks)
                     && ledger.IsComplete(after.UtcTicks),
                 ledger.ReadIntervals(after.UtcTicks, throughTicks));
-        }
-    }
-
-    public void ApplyMode(ResourceManagerComputeZoneMode next)
-        => _ = ApplyModeAsync(next);
-
-    internal Task ApplyModeAsync(ResourceManagerComputeZoneMode next)
-    {
-        lock (lifecycle)
-        {
-            mode = next;
-            var dispatch = unfrozen.PublishAsync(next != ResourceManagerComputeZoneMode.Freeze,
-                new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwPresentFrames, controller.CurrentPlanVersion));
-            return next == ResourceManagerComputeZoneMode.Freeze ? AwaitReleasedAsync(dispatch) : dispatch;
         }
     }
 

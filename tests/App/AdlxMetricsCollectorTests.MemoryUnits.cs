@@ -59,8 +59,8 @@ public sealed partial class AdlxMetricsCollectorTests
         var request = WindowsHardwareMetricSampler.CreateAdlxReadRequest(bindings);
         Assert.Equal(64, request.NativeFlagsByDisplayIndex![9]); Assert.Equal(64, request.NativeFlagsByDisplayIndex[3]);
         var now = DateTimeOffset.UtcNow; workspace.ReplaceCatalog(catalog, now);
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         for (var phase = 0; phase < 5; phase++)
         {
             var at = now.AddSeconds(phase + 1); var plan = workspace.PlanCollection(bindings.Select(binding => binding.MetricHandle).ToArray(), modes, false, at);
@@ -98,10 +98,9 @@ public sealed partial class AdlxMetricsCollectorTests
         var row = Row(10, PnpA, 64); row.VramUsedMb = 321;
         var native = new Bridge { Metadata = [Row(10, PnpA), Row(20, PnpB)], Values = [row] };
         var zone = new AmdAdlxMonitoringZone(new AmdAdlxBridgeReader(native));
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id => id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("No system memory demand"), () => throw new InvalidOperationException("No system memory demand"));
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory, null!, inventoryZone,
-            null!, null!, null!, null!, null!, zone, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, registry,
+            null!, null!, null!, null!, null!, zone, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, 
             slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, device, [RawMemoryName]);
         var streamCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

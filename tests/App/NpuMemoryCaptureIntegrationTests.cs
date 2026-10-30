@@ -175,7 +175,7 @@ public sealed class NpuMemoryCaptureIntegrationTests
             Workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
                 Path.Combine(AppContext.BaseDirectory, "npu-memory-native", Guid.NewGuid().ToString("N"), "current.bin"));
             Topology = recording.Topology();
-            capture = new(resources, _ => NativeMetricSnapshotZoneMode.Normal, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => Refreshes++);
+            capture = new(resources, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => Refreshes++);
             RefreshCatalog();
         }
         internal void RefreshCatalog()

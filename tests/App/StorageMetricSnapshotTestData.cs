@@ -35,9 +35,9 @@ internal static class StorageMetricSnapshotTestData
         => new((_, query) => new(query.Contains("MSFT_PhysicalDisk") ? [Physical()]
             : query.Contains("MSFT_Disk") ? [OsDisk()] : counters, null),
             (_, _, _, _) => WindowsNvmeHealthReader.ParseHealthResponse(Response()));
-    internal static NativeMetricSnapshotSourceRuntimeMode[] Modes(NativeMetricSnapshotCatalogProjection catalog)
-        => catalog.Sources.Select(s => new NativeMetricSnapshotSourceRuntimeMode(s.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+    internal static NativeMetricSnapshotSourceRuntimeState[] Modes(NativeMetricSnapshotCatalogProjection catalog)
+        => catalog.Sources.Select(s => new NativeMetricSnapshotSourceRuntimeState(s.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
     internal static Dictionary<string, object?> Physical(int id = 7, string uid = "DISK-A", string serial = "SN-A") => new()
     { ["DeviceId"] = id.ToString(), ["UniqueId"] = uid, ["UniqueIdFormat"] = 8, ["SerialNumber"] = serial, ["BusType"] = 17, ["Size"] = 1234UL, ["HealthStatus"] = 2UL };
     internal static Dictionary<string, object?> OsDisk(int number = 23, string uid = "DISK-A", string serial = "SN-A") => new()

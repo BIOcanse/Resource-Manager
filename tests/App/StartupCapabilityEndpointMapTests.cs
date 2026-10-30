@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using System.Text.Json;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using ResourceManager.App.Endpoints;
@@ -38,7 +40,8 @@ public sealed class StartupCapabilityEndpointMapTests
         Assert.Contains("GET /api/dependencies", routes);
         Assert.Contains("GET /api/public/v1/capability", routes);
         Assert.Contains("GET /api/software/metadata/{softwareIdentityId}", routes);
-        Assert.Contains("POST /api/adapters/resource-manager/scheduling", routes);
+        Assert.DoesNotContain("GET /api/adapters/resource-manager/scheduling", routes);
+        Assert.DoesNotContain("POST /api/adapters/resource-manager/scheduling", routes);
 
         Assert.DoesNotContain(routes, static route =>
             route.Contains(" /api/optimization/", StringComparison.Ordinal));
@@ -72,11 +75,7 @@ public sealed class StartupCapabilityEndpointMapTests
                 route.StartsWith("POST /api/adapters/resource-manager/", StringComparison.Ordinal))
             .OrderBy(static route => route, StringComparer.Ordinal)
             .ToArray();
-        Assert.Equal(
-        [
-            "POST /api/adapters/resource-manager/scheduling"
-        ],
-            processLocalFrontendInputs);
+        Assert.Empty(processLocalFrontendInputs);
     }
 
     [Fact]
@@ -120,6 +119,48 @@ public sealed class StartupCapabilityEndpointMapTests
         Assert.Contains("DELETE /api/adapters/{id}", routes);
         Assert.Contains("POST /api/controlled/register", routes);
         Assert.Contains("DELETE /api/controlled/{id:guid}", routes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RetiredSelfSchedulingRoutesUseTheUnknownApiResponse(bool fullProfile)
+    {
+        var capabilities = fullProfile ? StartupCapabilitySet.Full : StartupCapabilitySet.NormalReadOnly;
+        var builder = WebApplication.CreateBuilder();
+        LoopbackApiPipelineConfigurator.CompileForCurrentProcess().ConfigureServices(builder.Services);
+        builder.Services.AddResourceManagerApp(["--no-native-ui"], capabilities);
+        await using var app = builder.Build();
+        app.MapResourceManagerEndpoints(LoopbackApiPipelineMode.Administrator, capabilities);
+
+        // Run production routing in memory; no hosted services, listeners or hardware owners start.
+        var pipelineBuilder = new ApplicationBuilder(app.Services);
+        pipelineBuilder.UseRouting();
+        pipelineBuilder.UseEndpoints(routes =>
+        {
+            foreach (var source in ((IEndpointRouteBuilder)app).DataSources)
+                routes.DataSources.Add(source);
+        });
+        var pipeline = pipelineBuilder.Build();
+        foreach (var (method, path) in new[]
+        {
+            ("GET", "/api/adapters/resource-manager/scheduling"),
+            ("POST", "/api/adapters/resource-manager/scheduling"),
+            ("GET", "/api/adapters/resource-manager/scheduling/subscribe"),
+            ("GET", "/api/unknown-route-for-absence-check")
+        })
+        {
+            var context = new DefaultHttpContext { RequestServices = app.Services };
+            context.Request.Method = method;
+            context.Request.Path = path;
+            await using var body = new MemoryStream();
+            context.Response.Body = body;
+            await pipeline(context);
+            Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+            body.Position = 0;
+            using var result = await JsonDocument.ParseAsync(body);
+            Assert.Equal("api-endpoint-not-found", result.RootElement.GetProperty("error").GetString());
+        }
     }
 
     private static async Task<HashSet<string>> CaptureRoutesAsync(

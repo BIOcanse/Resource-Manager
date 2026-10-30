@@ -181,24 +181,23 @@ public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
                 pagedFrozenMemoryPriority: 1));
     }
 
-    [Fact]
-    public void Create_RejectsConflictingAutomaticAndAdaptedCapabilities()
+    [Theory]
+    [InlineData((byte)NativeMemoryMode.Normal)]
+    [InlineData((byte)NativeMemoryMode.Optimize)]
+    [InlineData((byte)NativeMemoryMode.PagedFrozen)]
+    public void Create_AdaptedProcessesStillReceiveNoAutomaticMemoryPolicy(byte mode)
     {
-        var fixture = CreateFixture(NativeMemoryMode.Normal);
-        var capabilities = fixture.Capabilities
-            .Select(capability => capability.ProcessId == 101
-                ? capability with { CanApplyAdaptedPolicy = true }
-                : capability)
-            .ToArray();
-
-        Assert.Throws<InvalidDataException>(() =>
-            HostManagerNonAdaptedMemoryModeProjection.Create(
-                fixture.Compute,
-                fixture.MemoryModes,
-                fixture.ProcessFacts,
-                capabilities,
-                optimizeMemoryPriority: 3,
-                pagedFrozenMemoryPriority: 1));
+        var fixture = CreateFixture((NativeMemoryMode)mode);
+        var canApply = ResourceManager.App.Domain.Optimization.HostManagerTargetCapabilityClassifier
+            .CanWriteProcessPolicy("software-b", ResourceManager.App.Domain.Software.SoftwareKinds.Adapted);
+        Assert.False(canApply);
+        var capabilities = fixture.Capabilities.Select(capability => capability.ProcessId == 202
+            ? capability with { CanApplyAutomaticPolicy = canApply }
+            : capability).ToArray();
+        var result = HostManagerNonAdaptedMemoryModeProjection.Create(
+            fixture.Compute, fixture.MemoryModes, fixture.ProcessFacts, capabilities, 3, 1);
+        Assert.Equal(101, Assert.Single(result.Processes).ProcessId);
+        Assert.DoesNotContain(result.Processes, directive => directive.ProcessId == 202);
     }
 
     [Theory]
@@ -298,14 +297,12 @@ public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
                 101,
                 1001,
                 "software-a",
-                true,
-                false),
+                true),
             new HostManagerNonAdaptedMemoryProcessCapability(
                 202,
                 2002,
                 "software-b",
-                secondEligible,
-                !secondEligible)
+                secondEligible)
         };
         return new ProjectionFixture(compute, memoryModes, processFacts, capabilities);
     }

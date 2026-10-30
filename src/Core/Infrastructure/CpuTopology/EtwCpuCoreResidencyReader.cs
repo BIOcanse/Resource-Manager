@@ -6,13 +6,9 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
-using ResourceManager.Adapter;
-using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.CpuTopology;
-using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Application.RuntimeSpecialization;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -37,9 +33,8 @@ public sealed partial class EtwCpuCoreResidencyReader(
     IKernelEtwSessionBroker kernelEtwBroker,
     IRuntimePlanProvider runtimePlanProvider,
     HostManagerSamplingSubscriptionOwner subscriptionOwner,
-    ILogger<EtwCpuCoreResidencyReader> logger) : BackgroundService, ICpuCoreResidencyReader, IResourceTableProviderStateSource, IResourceManagerSelfComputeZone
+    ILogger<EtwCpuCoreResidencyReader> logger) : BackgroundService, ICpuCoreResidencyReader, IResourceTableProviderStateSource
 {
-    private static readonly ulong ZoneObjectKey = AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwCpuCoreResidency}");
     private const string ResidencyItemId = "cpu-residency";
     private readonly object subscriptionGate = new();
     private readonly object resourceDisposeGate = new();
@@ -53,7 +48,6 @@ public sealed partial class EtwCpuCoreResidencyReader(
     private long nextLeaseId;
     private bool stopped;
     private bool ownedResourcesDisposed;
-    private volatile ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
     private EtwCpuResidencyCaptureOwner Capture { get { lock (subscriptionGate) return captureOwner ??= CreateCapture(); } }
     private string state => Capture.State;
     private string message => Capture.Message;
@@ -105,9 +99,6 @@ public sealed partial class EtwCpuCoreResidencyReader(
             ?? throw new ArgumentNullException(nameof(seedProcessInventory));
     }
 
-    public ulong ZoneKey => ZoneObjectKey;
-    public string DisplayName => MonitoringSourceZoneIds.EtwCpuCoreResidency;
-    public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
 
     public CpuCoreResidencySnapshot? Read() => Capture.Read();
     public CpuCoreResidencyObservation ReadObservation() => Capture.ReadObservation();
@@ -225,8 +216,8 @@ public sealed partial class EtwCpuCoreResidencyReader(
         {
             await Task.Yield();
             stoppingToken.ThrowIfCancellationRequested();
-            // Continuous history is used across collections until this run stops,
-            // freezes, or changes to finite windows. Pause returns it immediately.
+            // Continuous history is used across collections until this run stops
+            // or changes to finite windows. Pause returns it immediately.
             await runBucketStorage(async allocate =>
             {
                 using var runStorage = new CaptureBucketStorage(allocate);
@@ -237,8 +228,6 @@ public sealed partial class EtwCpuCoreResidencyReader(
                     await worker.RunAsync(async (plan, token) =>
                     {
                         if (!subscriptions.HasPersistentDemand(static request => !request.CancellationToken.IsCancellationRequested))
-                            return SubscriptionSampleCompletion.Skipped;
-                        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
                             return SubscriptionSampleCompletion.Skipped;
                         var windowed = WindowedCapture;
                         if (!windowed)
@@ -354,16 +343,6 @@ public sealed partial class EtwCpuCoreResidencyReader(
         SignalDemand();
     }
 
-    public void ApplyMode(ResourceManagerComputeZoneMode mode)
-    {
-        lock (subscriptionGate)
-        {
-            if (stopped) return; currentComputeMode = mode;
-            Capture.SetCaptureEnabled(mode != ResourceManagerComputeZoneMode.Freeze, "ETW CPU 执行时长归因已按功能区冻结停止。",
-                beginWindow: !WindowedCapture);
-        }
-        if (mode != ResourceManagerComputeZoneMode.Freeze) SignalDemand();
-    }
     private void StopSession(string idleMessage)
     {
         Capture.Stop(idleMessage);

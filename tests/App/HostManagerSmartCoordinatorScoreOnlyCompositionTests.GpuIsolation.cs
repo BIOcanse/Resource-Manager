@@ -18,7 +18,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var actions = new RecordingRunningGpuActions { HasUnreleasedExternalControl = true };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
             scoreOnlyEnabled: false, runningGpuActions: actions,
-            policyExecutionEnabled: true,
             processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new(pid, DateTimeOffset.FromFileTime(133_900_000_000_000_002))),
             optimizationCapabilities: OptimizationModeCapabilities.AutomaticMemoryCleanup,

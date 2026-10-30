@@ -15,8 +15,7 @@ internal readonly record struct HostManagerNonAdaptedMemoryProcessCapability(
     int ProcessId,
     ulong ProcessStartKey,
     string SoftwareId,
-    bool CanApplyAutomaticPolicy,
-    bool CanApplyAdaptedPolicy);
+    bool CanApplyAutomaticPolicy);
 
 internal sealed record HostManagerNonAdaptedMemoryProcessDirective(
     ulong RoundNumber,
@@ -119,7 +118,6 @@ internal static class HostManagerNonAdaptedMemoryModeProjection
             var identity = new ProcessIdentity(capability.ProcessId, capability.ProcessStartKey);
             if (!factsByIdentity.TryGetValue(identity, out var fact)
                 || !fact.SoftwareId.Equals(capability.SoftwareId, StringComparison.OrdinalIgnoreCase)
-                || capability.CanApplyAutomaticPolicy && capability.CanApplyAdaptedPolicy
                 || !capabilitiesByIdentity.TryAdd(identity, capability))
             {
                 throw new InvalidDataException(
@@ -191,7 +189,7 @@ internal static class HostManagerNonAdaptedMemoryModeProjection
             observedMembers[softwareKey] = observedMembers.TryGetValue(softwareKey, out var count)
                 ? checked(count + 1)
                 : 1;
-            if (!capability.CanApplyAutomaticPolicy || capability.CanApplyAdaptedPolicy)
+            if (!capability.CanApplyAutomaticPolicy)
             {
                 continue;
             }

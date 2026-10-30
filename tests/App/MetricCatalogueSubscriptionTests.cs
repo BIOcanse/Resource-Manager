@@ -289,7 +289,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
         HardwareMetricCatalogState catalog, HostManagerMetricSnapshotOwner owner)
         => new(new WindowsCpuMonitoringZone(), new WindowsMemoryMonitoringZone(), null!, null!, null!, null!,
             null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, catalog,
-            new MonitoringSourceZoneRegistry([]), slots.Owner, slots.Provider,
+            slots.Owner, slots.Provider,
             NullLogger<WindowsHardwareMetricSampler>.Instance);
 
     private static (NativeSamplingSubscriptionSnapshotHeader Header, NativeSamplingSubscriptionItemState Item)

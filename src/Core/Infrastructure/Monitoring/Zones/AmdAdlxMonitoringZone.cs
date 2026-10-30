@@ -24,11 +24,9 @@ public sealed class AmdAdlxMonitoringZone : MonitoringSourceZone
         WindowsGpuAdapterInventoryRead windowsInventory,
         CancellationToken cancellationToken)
     {
-        return CanRead
-            ? reader.ReadAsync(request, windowsInventory, cancellationToken)
-            : Task.FromResult<IReadOnlyList<GpuMetrics>>([]);
+        return reader.ReadAsync(request, windowsInventory, cancellationToken);
     }
 
     internal IReadOnlyList<DeviceTopologyAmdGpuInformation>? ReadDeclarations(WindowsGpuAdapterInventoryRead inventory)
-        => reader.ReadDeclarations(inventory, CanRead);
+        => reader.ReadDeclarations(inventory, true);
 }

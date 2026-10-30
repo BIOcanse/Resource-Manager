@@ -124,7 +124,7 @@ pub export fn rm_metric_snapshot_plan(
     input: ?*const protocol.PlanInput,
     requested_metrics: ?[*]const protocol.PlanMetricInput,
     requested_metric_count: u32,
-    source_modes: ?[*]const protocol.SourceModeInput,
+    source_modes: ?[*]const protocol.SourceStateInput,
     source_mode_count: u32,
     output: ?*protocol.PlanOutput,
     source_plans: ?[*]protocol.SourcePlanOutput,
@@ -139,7 +139,7 @@ pub export fn rm_metric_snapshot_plan(
         input orelse return code(.invalid_argument),
         constSlice(protocol.PlanMetricInput, requested_metrics, requested_metric_count) orelse
             return code(.invalid_argument),
-        constSlice(protocol.SourceModeInput, source_modes, source_mode_count) orelse
+        constSlice(protocol.SourceStateInput, source_modes, source_mode_count) orelse
             return code(.invalid_argument),
         output orelse return code(.invalid_argument),
         mutableSlice(protocol.SourcePlanOutput, source_plans, source_plan_capacity) orelse

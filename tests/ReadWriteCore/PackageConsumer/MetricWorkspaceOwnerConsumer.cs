@@ -27,8 +27,8 @@ internal static class MetricWorkspaceOwnerConsumer
         owner.ReplaceCatalog(catalog, at);
         var handles = NativeMetricSnapshotRequestProjection.CreateMetricHandles(MetricSampleRequest.ForIds(["memory.usage"]), catalog);
         Require(handles.Length == 2, "used-field request includes total support field");
-        var modes = catalog.Sources.Select(row => new NativeMetricSnapshotSourceRuntimeMode(row.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(row => new NativeMetricSnapshotSourceRuntimeState(row.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var plan = owner.PlanCollection(handles, modes, false, at);
         var observations = plan.MetricsForSource(1).Select(metric => NativeMetricSnapshotObservationProjection.CreateUnsignedObservation(
             metric, catalog.RuleBindings[metric.RuleHandle], new(1, 1, 1), at,
@@ -130,8 +130,8 @@ internal static class MetricWorkspaceOwnerConsumer
         var at = DateTimeOffset.FromUnixTimeMilliseconds(1_000);
         owner.ReplaceCatalog(catalog, at);
         var handles = NativeMetricSnapshotRequestProjection.CreateMetricHandles(MetricSampleRequest.ForIds(["memory.usage"]), catalog);
-        var modes = catalog.Sources.Select(row => new NativeMetricSnapshotSourceRuntimeMode(row.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(row => new NativeMetricSnapshotSourceRuntimeState(row.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var plan = owner.PlanCollection(handles, modes, false, at);
         var observations = plan.MetricsForSource(1).Select(metric => NativeMetricSnapshotObservationProjection.CreateObservation(
             metric, catalog.RuleBindings[metric.RuleHandle], new(1, 1, 1), at,

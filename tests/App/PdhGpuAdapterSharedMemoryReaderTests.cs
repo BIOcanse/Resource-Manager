@@ -202,8 +202,7 @@ public sealed class PdhGpuAdapterSharedMemoryReaderTests
                 return reader.ReadByAdapterIndex(adapters);
             });
         var failures = new List<(Exception Error, string Source)>();
-        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
-            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { },
+        var capture = new WindowsHardwareMetricCapture(resources, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { },
             (error, source) => failures.Add((error, source)));
         try
         {
@@ -258,8 +257,7 @@ public sealed class PdhGpuAdapterSharedMemoryReaderTests
             selectedAdapterCount = adapters.Count;
             return reader.ReadByAdapterIndex(adapters);
         });
-        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
-            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { });
+        var capture = new WindowsHardwareMetricCapture(resources, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { });
         try
         {
             var request = MetricSampleRequest.ForIds([sharedBinding.MetricId]);

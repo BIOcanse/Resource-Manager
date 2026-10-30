@@ -31,11 +31,9 @@ public sealed partial class NumaMemoryInformationCollectorTests
                 capacityReads.AddRange(selected);
                 return selected.ToDictionary(static node => node, static _ => 123UL);
             });
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == memory.DisplayName ? memory : new MonitoringSourceZone(id)).ToArray());
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner,
-            dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
+            dashboard,  slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, "windows-numa-node|9", [FieldName, CapacityFieldName]);
         Assert.Equal(2, request.Ids.Count);
         // Explicit cache inspection: GetSnapshotAsync acquires a single-fetch demand and waits for sampling.

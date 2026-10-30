@@ -72,18 +72,6 @@ internal sealed class NotebookOemFanSensorReader : IDisposable
     private NotebookOemFanSensorSnapshot ReadMechrevoUwAcpi()
         => ResourceManager.ReadWrite.Windows.Metrics.Resources.WindowsNotebookFanProjection.Create(mechrevoUwAcpiSensorReader.Read());
 
-    public static NotebookOemFanSensorSnapshot Frozen()
-    {
-        return new NotebookOemFanSensorSnapshot(
-            new HardwareSensorProviderState(
-                ComponentName,
-                HardwareSensorProviderStates.Frozen,
-                "Notebook OEM Fan 监控源当前处于功能区冻结。"),
-            null,
-            null,
-            []);
-    }
-
     public static HardwareSensorDependencyRuntimeStatus ProbeRuntime(CompiledFirmwareProviderPlan? firmwareProviderPlan = null)
     {
         var effectivePlan = firmwareProviderPlan ?? CompiledFirmwareProviderPlan.Default;

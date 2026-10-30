@@ -1,5 +1,4 @@
 using ResourceManager.App.Application.Monitoring;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.ReadWrite.Windows.Metrics.Resources;
 namespace ResourceManager.App.Infrastructure.Monitoring;
 public sealed class PdhCpuFrequencyMonitoringZone : MonitoringSourceZone, IDisposable
@@ -16,16 +15,9 @@ public sealed class PdhCpuFrequencyMonitoringZone : MonitoringSourceZone, IDispo
         => (this.read, this.release) = (read, release);
     internal CpuFrequency ReadFrequency()
     {
-        lock (gate) return CanRead ? read() : new(0, 0, 0, CpuFrequencySourceStates.Frozen);
+        lock (gate) return read();
     }
-    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
-    {
-        lock (gate)
-        {
-            base.ApplyMode(mode);
-            if (mode == ResourceManagerComputeZoneMode.Freeze) release();
-        }
-    }
+
     public void Dispose()
     {
         lock (gate) release();

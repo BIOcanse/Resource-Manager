@@ -43,9 +43,7 @@ public sealed partial class HostManagerSmartCoordinator
                 Action: (NativeSmartCoordinatorAction?)null))
             .Concat(CreateOwnedNormalRestoreActions(ownership).Select(action =>
                 (Kind: NormalRestoreWorkKind.Native,
-                 Record: action.Scope == NativeSmartCoordinatorActionScope.AdapterSoftware
-                    ? ownership.AdapterRecords[action.SoftwareKey]
-                    : ownership.ProcessRecords[new(action.TargetKey, action.SoftwareKey,
+                 Record: ownership.ProcessRecords[new(action.TargetKey, action.SoftwareKey,
                         action.ProcessId, action.ProcessStartKey)],
                  Action: (NativeSmartCoordinatorAction?)action)))
             .Append((Kind: NormalRestoreWorkKind.Placement, Record: default,
@@ -221,16 +219,6 @@ public sealed partial class HostManagerSmartCoordinator
                 actionId,
                 wakeAfterMilliseconds);
         }
-        foreach (var pair in ownership.AdapterRecords.OrderBy(static pair => pair.Key))
-        {
-            var actionId = NextOwnedRestoreActionId(DirectNativeRestoreActionIdNamespace);
-            yield return CreateOwnedAdapterNormalRestoreAction(
-                pair.Key,
-                pair.Value,
-                configurationGeneration,
-                actionId,
-                wakeAfterMilliseconds);
-        }
     }
 
     internal static NativeSmartCoordinatorAction CreateOwnedProcessNormalRestoreAction(
@@ -265,58 +253,6 @@ public sealed partial class HostManagerSmartCoordinator
             DomainMask = NativeSmartCoordinatorGradeDomains.Process,
             FromProcessGrade = ToNativeProcessGrade(record.CurrentGrades.ProcessGrade),
             ToProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            FromCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            FromGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal
-        };
-    }
-
-    internal static NativeSmartCoordinatorAction CreateOwnedAdapterNormalRestoreAction(
-        ulong softwareKey,
-        NativeAppliedOwnershipRecord record,
-        ulong configurationGeneration,
-        ulong actionId,
-        uint wakeAfterMilliseconds)
-    {
-        var grades = record.CurrentGrades;
-        var domains = NativeSmartCoordinatorGradeDomains.None;
-        var validMask = NativeSmartCoordinatorActionValidity.SoftwareIdentity;
-        if ((grades.ValidMask & (uint)NativeAppliedOwnershipGradeValidity.Cpu) != 0)
-        {
-            domains |= NativeSmartCoordinatorGradeDomains.Cpu;
-            validMask |= NativeSmartCoordinatorActionValidity.CpuGrade;
-        }
-        if ((grades.ValidMask & (uint)NativeAppliedOwnershipGradeValidity.Gpu) != 0)
-        {
-            domains |= NativeSmartCoordinatorGradeDomains.Gpu;
-            validMask |= NativeSmartCoordinatorActionValidity.GpuGrade;
-        }
-        return new NativeSmartCoordinatorAction
-        {
-            StructSize = checked((uint)NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorAction>()),
-            Flags = NativeSmartCoordinatorActionFlags.RequiresFeedback,
-            ValidMask = validMask,
-            ReasonMask = NativeSmartCoordinatorReason.FeatureDisabled,
-            ActionId = actionId,
-            PlanEpoch = actionId,
-            ConfigurationGeneration = configurationGeneration,
-            TargetKey = softwareKey,
-            SoftwareKey = softwareKey,
-            WakeAfterMilliseconds = wakeAfterMilliseconds,
-            Scope = NativeSmartCoordinatorActionScope.AdapterSoftware,
-            Disposition = NativeSmartCoordinatorActionDisposition.Restore,
-            DomainMask = domains,
-            FromProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            ToProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            FromCpuGrade = domains.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                ? ToNativeAdapterGrade(grades.CpuGrade)
-                : NativeSmartCoordinatorAdapterGrade.Normal,
-            ToCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            FromGpuGrade = domains.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                ? ToNativeAdapterGrade(grades.GpuGrade)
-                : NativeSmartCoordinatorAdapterGrade.Normal,
-            ToGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal
         };
     }
 

@@ -35,13 +35,13 @@ public sealed class HostManagerDataHistoryPlanTests
         var processOnly = HostManagerTestPlanFactory.CreatePlan(root =>
             root["hot_publish"]!["smart_coordinator"]!["feature_flags"] =
                 new System.Text.Json.Nodes.JsonArray("process_policy"));
-        var adaptersOnly = HostManagerTestPlanFactory.CreatePlan(root =>
+        var criticalOnly = HostManagerTestPlanFactory.CreatePlan(root =>
             root["hot_publish"]!["smart_coordinator"]!["feature_flags"] =
-                new System.Text.Json.Nodes.JsonArray("adapter_cpu", "adapter_gpu"));
+                new System.Text.Json.Nodes.JsonArray("critical_events"));
 
         Assert.Empty(allFeatures.DataHistory.Requirements);
         Assert.Empty(processOnly.DataHistory.Requirements);
-        Assert.Empty(adaptersOnly.DataHistory.Requirements);
+        Assert.Empty(criticalOnly.DataHistory.Requirements);
     }
 
     [Fact]
@@ -77,15 +77,25 @@ public sealed class HostManagerDataHistoryPlanTests
     }
 
     [Theory]
-    [InlineData("cpu_adapter_policy", "free_multiplier_minimum")]
-    [InlineData("cpu_adapter_policy", "free_multiplier_maximum")]
-    [InlineData("gpu_adapter_policy", "free_multiplier_minimum")]
-    [InlineData("gpu_adapter_policy", "free_multiplier_maximum")]
-    public void RetiredAdapterPressureMultipliersAreRejected(string policy, string field)
+    [InlineData("cpu_adapter_policy")]
+    [InlineData("gpu_adapter_policy")]
+    public void RetiredAdapterPoliciesAreRejected(string policy)
     {
         var error = Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
-            root["hot_publish"]!["smart_coordinator"]![policy]![field] = 1));
-        Assert.Contains(field, error.Message, StringComparison.Ordinal);
+            root["hot_publish"]!["smart_coordinator"]![policy] =
+                new System.Text.Json.Nodes.JsonObject { ["free_multiplier_minimum"] = 1 }));
+        Assert.Contains(policy, error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("adapter_cpu")]
+    [InlineData("adapter_gpu")]
+    public void RetiredAdapterGradeFeaturesAreRejected(string feature)
+    {
+        var error = Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
+            root["hot_publish"]!["smart_coordinator"]!["feature_flags"] =
+                new System.Text.Json.Nodes.JsonArray("process_policy", feature)));
+        Assert.Contains(feature, error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -95,8 +105,6 @@ public sealed class HostManagerDataHistoryPlanTests
             root["hot_publish"]!["smart_coordinator"]!["feature_flags"] =
                 new System.Text.Json.Nodes.JsonArray(
                     "process_policy",
-                    "adapter_cpu",
-                    "adapter_gpu",
                     "critical_events",
                     "adapter_gpu_global_fallback")));
         Assert.Contains("adapter_gpu_global_fallback", error.Message, StringComparison.Ordinal);

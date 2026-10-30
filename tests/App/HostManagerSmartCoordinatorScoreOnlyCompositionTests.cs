@@ -9,7 +9,6 @@ using ResourceManager.App.Application.Diagnostics;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Optimization.MemoryCleanup;
-using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.RuntimeSpecialization;
@@ -216,10 +215,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(
             deploymentBefore with { CapturedAtUtc = default },
             fixture.DeploymentState.Snapshot with { CapturedAtUtc = default });
-        Assert.False(File.Exists(fixture.MemoryCleanupJournalPath));
         Assert.True(fixture.RuntimePlan.OptimizationMode.AutomaticMemoryCleanupEnabled);
-        Assert.True(fixture.ControlZones.CanRun(
-            HostManagerSmartControlZoneIds.PolicyExecution));
         Assert.True(fixture.Workspace.Snapshot.Flags.HasFlag(
             NativeSmartCoordinatorSnapshotFlags.ScoreOnly));
         Assert.Equal(1UL, fixture.Workspace.Snapshot.CycleSequence);
@@ -274,8 +270,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
-            processFactsSnapshot: processFacts,
-            policyExecutionEnabled: false);
+            processFactsSnapshot: processFacts);
 
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
 
@@ -321,7 +316,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             processFactsSnapshot: processFacts,
-            policyExecutionEnabled: true,
             memoryModePolicyEnabled: true,
             automaticMemoryCleanupEnabled: false);
 
@@ -390,7 +384,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
                 warm: true,
                 processFactsSnapshot: processFacts,
-                policyExecutionEnabled: true,
                 memoryModePolicyEnabled: true,
                 automaticMemoryCleanupEnabled: false,
                 cpuUsagePercent: 99);
@@ -586,8 +579,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         processId,
                         DateTimeOffset.FromFileTime(
                             checked((long)replacementProcessStartKey))));
-            },
-            policyExecutionEnabled: false);
+            });
         var oldProcess = await fixture.SeedProcessOwnershipAsync(
             processId,
             oldProcessStartKey,
@@ -653,7 +645,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         processId, DateTimeOffset.FromFileTime(132_537_599_900_000_000)));
             },
             scoreOnlyEnabled: false,
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true);
 
         await fixture.PrimeMemoryCleanupAdmissionAsync();
@@ -680,7 +671,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             scoreOnlyEnabled: false,
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: false);
         fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(memoryUsagePercent: 20));
 
@@ -721,7 +711,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                     new ProcessInstanceRecoverySnapshot(processId, processStartedAt));
             },
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly,
             timeProvider: time,
@@ -819,7 +808,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             scoreOnlyEnabled: false,
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             memoryUsageAvailable: false);
         fixture.MemoryCleanupPlanner.PlanHandler = request =>
@@ -845,7 +833,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 24_102, 132_537_599_900_000_000, "software:retained-memory-capacity",
                 baseScore: 30, cpuUsagePercent: 0, memoryUsagePercent: 25),
             scoreOnlyEnabled: false,
-            policyExecutionEnabled: true,
             memoryModePolicyEnabled: true,
             automaticMemoryCleanupEnabled: true);
         fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
@@ -930,7 +917,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processFactsSnapshot: processFacts,
             processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
@@ -976,7 +962,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processRecoveryRead: _ =>
                 RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                     new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler = static _ =>
@@ -1035,7 +1020,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processRecoveryRead: _ =>
                 RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                     new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
@@ -1114,7 +1098,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 _ => throw new InvalidOperationException(
                     "Unexpected process recovery read.")
             },
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler = static _ =>
@@ -1187,7 +1170,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processRecoveryRead: _ =>
                 RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                     new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.PublicResourceManager.TickHandler = () =>
@@ -1255,7 +1237,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processRecoveryRead: _ =>
                 RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                     new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly,
             processEffectValidationScopeAuthority: validation.Authority);
@@ -1288,7 +1269,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processRecoveryRead: _ =>
                 RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                     new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.PublicResourceManager.TickHandler = () =>
@@ -1332,7 +1312,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 memoryUsagePercent: 25),
             processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
@@ -1393,7 +1372,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processFactsSnapshot: processFacts,
             processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
@@ -1421,37 +1399,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.NotNull(fixture.Coordinator.SchedulingAuthority.Compute?.Cpu);
     }
 
-    [Fact]
-    public async Task AutomaticMemoryCleanupFinalAdmission_RechecksCurrentPolicyZone()
-    {
-        const int processId = 24_226;
-        var startedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
-        var startKey = checked((ulong)startedAt.ToFileTime());
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            scoreOnlyEnabled: false,
-            processFactsSnapshot: CreateCompleteProcessFacts(
-                processId,
-                startKey,
-                "software:final-policy-zone",
-                baseScore: 20,
-                cpuUsagePercent: 1,
-                memoryUsagePercent: 25),
-            processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
-                new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
-            automaticMemoryCleanupEnabled: true,
-            optimizationMode: AppOptimizationModes.MemoryOnly);
-        fixture.MemoryCleanupPlanner.PlanHandler =
-            CreateFinalAdmissionAwareMemoryCleanupPlan;
-        fixture.PublicResourceManager.TickHandler = () =>
-            fixture.ControlZones.PolicyExecutionEnabled = false;
 
-        await fixture.PrimeMemoryCleanupAdmissionAsync();
-        _ = await fixture.RunRealtimeCycleAsync();
-
-        AssertFinalAdmissionDeferredWithoutEffects(fixture, expectedPlanCalls: 0);
-    }
 
     [Theory]
     [InlineData("high-base-score")]
@@ -1476,7 +1424,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processFactsSnapshot: processFacts,
             processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
@@ -1552,7 +1499,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 new ProcessInstanceRecoverySnapshot(
                     processId,
                     ++recoveryReadCount == 1 ? startedAt : startedAt.AddSeconds(1))),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
@@ -1588,7 +1534,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 : RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(
                     nativeErrorCode: 5,
                     "identity unavailable"),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
@@ -1638,7 +1583,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     "identity unavailable")
                 : RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                     new ProcessInstanceRecoverySnapshot(liveProcessId, liveStartedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
@@ -1690,7 +1634,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 memoryUsagePercent: 25),
             processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
@@ -1726,7 +1669,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             scoreOnlyEnabled: false,
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: false);
         fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(memoryUsagePercent: 20));
 
@@ -1780,7 +1722,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         processId,
                         DateTimeOffset.FromFileTime(checked((long)processStartKey))));
             },
-            policyExecutionEnabled: false,
             cpuCoreReader: withCpuScore ? new RecordingCpuCoreResidencyReader(() => residency) : null,
             cpuTopology: withCpuScore ? topology : null,
             cpuScoring: withCpuScore ? HostManagerTestPlanFactory.CreateCpuScoring(topology) : null);
@@ -1859,8 +1800,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processFactsSnapshot: CreateProcessFacts(
                 processId,
                 processStartKey,
-                softwareId),
-            policyExecutionEnabled: false);
+                softwareId));
 
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
 
@@ -2234,61 +2174,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             await fixture.Coordinator.StopAsync(CancellationToken.None);
         }
-    }
-
-    [Theory]
-    [InlineData(AppOptimizationModes.MemoryOnly, false, false)]
-    [InlineData(AppOptimizationModes.CpuOnly, true, false)]
-    [InlineData(AppOptimizationModes.GpuOnly, false, true)]
-    [InlineData(AppOptimizationModes.CpuGpu, true, true)]
-    [InlineData(AppOptimizationModes.Smart, true, true)]
-    public async Task NativeFactsDisableUnselectedAdapterGrades(
-        string mode,
-        bool cpu,
-        bool gpu)
-    {
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            optimizationMode: mode,
-            processFactsSnapshot: CreateCompleteProcessFacts(
-                4_241,
-                132_537_599_900_000_000,
-                "software:domain-test",
-                60,
-                10,
-                20));
-        fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
-        {
-            Version = 2,
-            AdapterDispatch = new CompiledAdapterDispatchPlan(
-                new Dictionary<string, CompiledAdapterDispatchRoute>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["software:domain-test"] = CompiledAdapterDispatchRoute.SoftwareLevelScheduler
-                },
-                new Dictionary<string, IReadOnlyList<AdapterCpuSchedulingGrade>>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["software:domain-test"] = [AdapterCpuSchedulingGrade.Normal, AdapterCpuSchedulingGrade.Optimize]
-                },
-                new Dictionary<string, IReadOnlyList<AdapterGpuSchedulingGrade>>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["software:domain-test"] = [AdapterGpuSchedulingGrade.Normal, AdapterGpuSchedulingGrade.Optimize]
-                })
-        });
-
-        var nativeInputCapture1 = new NativeSmartInputCaptureProbe();
-        fixture.Coordinator.TransitionProbe = nativeInputCapture1;
-        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-
-        var identities = nativeInputCapture1.Rows
-            .Where(static row => row.MetricKind == NativeSmartCoordinatorMetricKind.None
-                && row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessIdentity))
-            .ToArray();
-        Assert.NotEmpty(identities);
-        Assert.All(identities, row =>
-        {
-            Assert.Equal(cpu, row.CpuCapabilityMask != 0);
-            Assert.Equal(gpu, row.GpuCapabilityMask != 0);
-        });
     }
 
     [Fact]
@@ -2681,7 +2566,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(evidence.Sealed);
         Assert.Null(evidence.Failure);
         Assert.Empty(evidence.Batches);
-        fixture.AssertNoMemoryCleanupAttemptEntries();
     }
 
     [Fact]
@@ -2732,7 +2616,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.False(feedback.Succeeded);
         Assert.Empty(evidence.Batches);
         Assert.True(evidence.Sealed);
-        fixture.AssertNoMemoryCleanupAttemptEntries();
     }
 
     [Theory]
@@ -2791,7 +2674,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(validationCommitCount, validation.Committer.CommitCallCount);
         Assert.Empty(evidence.Batches);
         Assert.True(evidence.Sealed);
-        fixture.AssertNoMemoryCleanupAttemptEntries();
     }
 
     [Fact]
@@ -3061,7 +2943,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task AutomaticMemoryCleanupScopedWriterFailurePublishesUnknownAfterDurableBlock()
+    public async Task AutomaticMemoryCleanupScopedWriterFailurePublishesUnknownWithoutUnresolvedEffects()
     {
         var request = CreateAutomaticMemoryCleanupRequest(candidateCount: 1);
         var candidate = Assert.Single(request.Candidates);
@@ -3116,22 +2998,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.False(action.Succeeded);
         Assert.Null(action.Win32Error);
 
-        fixture.CloseMemoryCleanupJournalForRestart();
-        using var restartedJournal = new HostManagerMemoryCleanupAttemptJournal(
-            fixture.MemoryCleanupJournalPath,
-            () => fixture.RuntimePlan.HostManager.HostRecreate.MemoryCleanup.StateCapacity,
-            TimeProvider.System);
-        var blocked = restartedJournal.ReconcileAndCaptureBlocked(
-            fixture.ProcessPolicyWriter.ReadProcessInstanceForRecovery);
-        Assert.Contains(
-            new HostManagerComputeProcessIdentity(
-                candidate.ProcessId,
-                checked((ulong)candidate.ProcessStartedAt.ToFileTime())),
-            blocked);
+        Assert.False(result.HasUnresolvedCurrentEffects);
     }
 
     [Fact]
-    public async Task CloseValidationScopeRetiresCommittedPreparedBeforeWriterBatch()
+    public async Task CloseValidationScopeRetiresCommittedMemoryCleanupHandoff()
     {
         var request = CreateAutomaticMemoryCleanupRequest(candidateCount: 1);
         var decision = Assert.Single(CreateAutomaticMemoryCleanupPlan(request).Decisions);
@@ -3144,7 +3015,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             warm: true,
             scoreOnlyEnabled: false,
             processRecoveryRead: static _ => throw new InvalidOperationException(
-                "Prepared-before-writer retirement must not inspect the process."),
+                "Completed cleanup must not inspect the process."),
             automaticMemoryCleanupEnabled: false,
             optimizationMode: AppOptimizationModes.Normal,
             processEffectValidationScopeAuthority: validation.Authority);
@@ -3164,28 +3035,21 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             permit,
             batch,
             attemptGeneration));
-        _ = fixture.MemoryCleanupJournal.PrepareBeforeWriter(
-            batch.BatchId,
-            attemptGeneration,
-            [decision]);
         Assert.True(validation.Authority.TryCommitMemoryCleanupAttemptBatch(
             permit,
             batch,
             attemptGeneration));
-        Assert.Single(fixture.MemoryCleanupJournal.CapturePendingBatches());
 
         var closed = await fixture.Coordinator.CloseProcessEffectValidationScopeAsync(
             validation.CreateCloseRequest(),
             CancellationToken.None);
 
         Assert.Equal("closed", closed.State);
-        Assert.Empty(fixture.MemoryCleanupJournal.CapturePendingBatches());
         Assert.True(validation.Authority.Capture().IsProductionUnscoped);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
     }
 
     [Theory]
-    [InlineData((int)NativeTransactionJournalScope.Software, false)]
     [InlineData((int)NativeTransactionJournalScope.Resource, true)]
     public async Task CloseValidationScopeRejectsAnyPendingJournalRecord(
         int scopeValue,
@@ -3239,35 +3103,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 CancellationToken.None));
 
         Assert.Contains("empty transaction journal", exception.Message);
-        Assert.False(validation.Authority.Capture().IsProductionUnscoped);
-        Assert.Equal(0, fixture.ProcessPolicyWriter.TotalCalls);
-    }
-
-    [Fact]
-    public async Task CloseValidationScopeRejectsAdapterOwnership()
-    {
-        using var validation = CoordinatorValidationScopeFixture.Create(new(
-            ProcessId: 25_003,
-            ProcessStartKey: 132_537_600_300_000_000));
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            scoreOnlyEnabled: false,
-            automaticMemoryCleanupEnabled: false,
-            optimizationMode: AppOptimizationModes.Normal,
-            processEffectValidationScopeAuthority: validation.Authority);
-        await fixture.SeedAdapterOwnershipAsync("software:validation-unrelated", 501);
-
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => fixture.Coordinator.CloseProcessEffectValidationScopeAsync(
-                validation.CreateCloseRequest(),
-                CancellationToken.None));
-
-        Assert.Contains("no applied ownership", exception.Message);
-        var ownership = await fixture.NativeTransactions.AppliedOwnership.ReadSnapshotAsync(
-            CancellationToken.None);
-        Assert.Equal(
-            (uint)NativeAppliedOwnershipScope.Adapter,
-            Assert.Single(ownership.Records).Primary.Scope);
         Assert.False(validation.Authority.Capture().IsProductionUnscoped);
         Assert.Equal(0, fixture.ProcessPolicyWriter.TotalCalls);
     }
@@ -3333,7 +3168,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task AutomaticMemoryCleanupPrepareFailureReturnsPrePonrBudget()
+    public async Task AutomaticMemoryCleanupBatchIsNotLimitedByFormerJournalCapacity()
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: false,
@@ -3341,6 +3176,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             memoryCleanupStateCapacity: 1);
         var request = CreateAutomaticMemoryCleanupRequest(candidateCount: 2);
         fixture.MemoryCleanupPlanner.PlanResult = CreateAutomaticMemoryCleanupPlan(request);
+        fixture.ProcessPolicyWriter.BatchHandler = static requests => requests
+            .Select(static item => new ProcessResourcePolicyBatchWriteResult(
+                item.ProcessId,
+                [new ProcessResourcePolicyBatchFieldResult(
+                    ProcessResourcePolicyBatchFields.TrimWorkingSet,
+                    Succeeded: true,
+                    "trimmed")]))
+            .ToArray();
         var admission = HostManagerCycleEffectAdmission.Create(scoreOnly: false);
         admission.InitializeBudgets(2, 1);
         Assert.True(admission.TryAcquire(
@@ -3354,22 +3197,22 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             CancellationToken.None);
 
         Assert.Equal(
-            HostManagerMemoryCleanupRoundDisposition.JournalPrepareFailed,
+            HostManagerMemoryCleanupRoundDisposition.CompleteKnownFull,
             result.Disposition);
         Assert.Equal(2, result.PlannedCount);
-        Assert.Equal(0, result.RequestedCount);
-        Assert.Equal(0, result.TerminalCount);
-        Assert.Equal(0, result.SucceededCount);
-        Assert.False(result.CompletedNormalReleaseRound);
-        Assert.Equal(2U, admission.NewPointOfNoReturnRemaining);
-        Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal(2, result.RequestedCount);
+        Assert.Equal(2, result.TerminalCount);
+        Assert.Equal(2, result.SucceededCount);
+        Assert.True(result.CompletedNormalReleaseRound);
+        Assert.Equal(0U, admission.NewPointOfNoReturnRemaining);
+        Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(2, fixture.MemoryCleanupPlanner.LastFeedback.Count);
         Assert.All(
             fixture.MemoryCleanupPlanner.LastFeedback,
             static feedback =>
             {
-                Assert.False(feedback.Attempted);
-                Assert.False(feedback.Succeeded);
+                Assert.True(feedback.Attempted);
+                Assert.True(feedback.Succeeded);
             });
     }
 
@@ -3446,22 +3289,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(feedback.Attempted);
         Assert.False(feedback.Succeeded);
 
-        fixture.CloseMemoryCleanupJournalForRestart();
-        using var restartedJournal = new HostManagerMemoryCleanupAttemptJournal(
-            fixture.MemoryCleanupJournalPath,
-            () => fixture.RuntimePlan.HostManager.HostRecreate.MemoryCleanup.StateCapacity,
-            TimeProvider.System);
-        var blocked = restartedJournal.ReconcileAndCaptureBlocked(
-            fixture.ProcessPolicyWriter.ReadProcessInstanceForRecovery);
-        Assert.Contains(
-            new HostManagerComputeProcessIdentity(
-                candidate.ProcessId,
-                checked((ulong)candidate.ProcessStartedAt.ToFileTime())),
-            blocked);
+        Assert.False(result.HasUnresolvedCurrentEffects);
     }
 
     [Fact]
-    public async Task AutomaticMemoryCleanupPriorUnknownCannotBecomeACompletedEmptyRound()
+    public async Task AutomaticMemoryCleanupPriorUnknownDoesNotBlockACompletedEmptyRound()
     {
         var request = CreateAutomaticMemoryCleanupRequest(candidateCount: 1);
         var candidate = Assert.Single(request.Candidates);
@@ -3507,22 +3339,21 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             CancellationToken.None);
 
         Assert.Equal(
-            HostManagerMemoryCleanupRoundDisposition.BlockedByPriorUnknownOutcome,
+            HostManagerMemoryCleanupRoundDisposition.CompleteNoDecision,
             second.Disposition);
         Assert.Equal(1, second.CandidateCount);
-        Assert.Equal(1, second.BlockedCandidateCount);
-        Assert.False(second.CompletedNormalReleaseRound);
-        Assert.Empty(Assert.IsType<AutomaticMemoryCleanupPlanRequest>(
-            fixture.MemoryCleanupPlanner.LastRequest).Candidates);
+        Assert.True(second.CompletedNormalReleaseRound);
+        Assert.Equal(candidate, Assert.Single(Assert.IsType<AutomaticMemoryCleanupPlanRequest>(
+            fixture.MemoryCleanupPlanner.LastRequest).Candidates));
         Assert.Equal(1U, secondAdmission.NewPointOfNoReturnRemaining);
         Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
     }
 
     [Fact]
-    public async Task AutomaticMemoryCleanupPriorUnknownDoesNotBlockOtherCandidates()
+    public async Task AutomaticMemoryCleanupPriorUnknownSelectsSameProcessAndPeerInNextRound()
     {
         var request = CreateAutomaticMemoryCleanupRequest(candidateCount: 2);
-        var blockedCandidate = request.Candidates[0];
+        var unknownCandidate = request.Candidates[0];
         var executableCandidate = request.Candidates[1];
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: false,
@@ -3537,7 +3368,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         candidate.ProcessStartedAt));
             });
         fixture.MemoryCleanupPlanner.PlanResult = CreateAutomaticMemoryCleanupPlan(
-            request with { Candidates = [blockedCandidate] });
+            request with { Candidates = [unknownCandidate] });
         fixture.ProcessPolicyWriter.BatchHandler = static _ =>
             throw new IOException("injected unknown trim outcome");
         var firstAdmission = HostManagerCycleEffectAdmission.Create(scoreOnly: false);
@@ -3565,7 +3396,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     "trimmed")]))
             .ToArray();
         var secondAdmission = HostManagerCycleEffectAdmission.Create(scoreOnly: false);
-        secondAdmission.InitializeBudgets(1, 1);
+        secondAdmission.InitializeBudgets(2, 1);
         Assert.True(secondAdmission.TryAcquire(
             HostManagerCycleEffectKind.AutomaticMemoryCleanup,
             out var secondPermit));
@@ -3577,18 +3408,17 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             CancellationToken.None);
 
         Assert.Equal(
-            HostManagerMemoryCleanupRoundDisposition.BlockedByPriorUnknownOutcome,
+            HostManagerMemoryCleanupRoundDisposition.CompleteKnownFull,
             second.Disposition);
         Assert.Equal(2, second.CandidateCount);
-        Assert.Equal(1, second.BlockedCandidateCount);
-        Assert.Equal(1, second.PlannedCount);
-        Assert.Equal(1, second.RequestedCount);
-        Assert.Equal(1, second.TerminalCount);
-        Assert.Equal(1, second.SucceededCount);
-        Assert.False(second.CompletedNormalReleaseRound);
+        Assert.Equal(2, second.PlannedCount);
+        Assert.Equal(2, second.RequestedCount);
+        Assert.Equal(2, second.TerminalCount);
+        Assert.Equal(2, second.SucceededCount);
+        Assert.True(second.CompletedNormalReleaseRound);
         Assert.Equal(
-            executableCandidate.ProcessId,
-            Assert.Single(fixture.ProcessPolicyWriter.BatchRequests).ProcessId);
+            new[] { unknownCandidate.ProcessId, executableCandidate.ProcessId },
+            fixture.ProcessPolicyWriter.BatchRequests.Select(static item => item.ProcessId));
         Assert.Equal(0U, secondAdmission.NewPointOfNoReturnRemaining);
         Assert.Equal(2, fixture.ProcessPolicyWriter.BatchCalls);
     }
@@ -3699,13 +3529,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 nativePlanProbe.Actions.Select(static action =>
                     $"scope={action.Scope}; disposition={action.Disposition}; " +
                     $"process={action.FromProcessGrade}->{action.ToProcessGrade}; " +
-                    $"cpu={action.FromCpuGrade}->{action.ToCpuGrade}; " +
-                    $"gpu={action.FromGpuGrade}->{action.ToGpuGrade}; " +
                     $"flags={action.Flags}")));
     }
 
     [Fact]
-    public async Task UnknownCleanupStopsCurrentCycleWithoutStarvingOtherWork()
+    public async Task UnknownCleanupCompletesCurrentCycleAndAllowsOtherWork()
     {
         const int processId = 24_220;
         var startedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
@@ -3748,12 +3576,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
                 fixture.ProcessFacts.Snapshot, fixture.MetricSampler.Snapshot));
             _ = await fixture.RunRealtimeCycleAsync();
-            Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
-            Assert.Equal(publicTicks + attempt, fixture.PublicResourceManager.TickCalls);
-            Assert.Equal(attempt == 0 ? nativeSequence : nativeSequence + 2,
+            Assert.Equal(attempt + 1, fixture.ProcessPolicyWriter.BatchCalls);
+            Assert.Equal(publicTicks + attempt + 1, fixture.PublicResourceManager.TickCalls);
+            Assert.Equal(nativeSequence + checked((ulong)(attempt + 1)),
                 fixture.Workspace.Snapshot.CycleSequence);
-            Assert.Equal((uint)attempt, fixture.PublicResourceManager.NewEffectAttemptCount);
-            Assert.Equal(attempt == 0 ? cleanupIndex : (cleanupIndex + 1) % stages.Length,
+            Assert.Equal(1U, fixture.PublicResourceManager.NewEffectAttemptCount);
+            Assert.Equal((cleanupIndex + attempt + 1) % stages.Length,
                 cursor.GetValue(fixture.Coordinator));
         }
     }
@@ -4062,7 +3890,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 baseScore: 20,
                 cpuUsagePercent: 1,
                 memoryUsagePercent: 25),
-            policyExecutionEnabled: true,
             memoryModePolicyEnabled: true,
             automaticMemoryCleanupEnabled: false,
             optimizationMode: AppOptimizationModes.MemoryOnly,
@@ -4132,7 +3959,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             warm: true,
             scoreOnlyEnabled: false,
             processFactsSnapshot: processFacts,
-            policyExecutionEnabled: true,
             memoryModePolicyEnabled: false,
             automaticMemoryCleanupEnabled: false,
             cpuUsagePercent: 99,
@@ -5412,7 +5238,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(0, fixture.MemoryCleanupPlanner.CompleteCalls);
         Assert.Empty(fixture.MemoryCleanupPlanner.CompletionHistory);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        fixture.AssertNoMemoryCleanupAttemptEntries();
         Assert.False(fixture.PublicResourceManager.LastRequest!.Value
             .Shortage.MemoryAfterNormalReleaseRounds);
     }
@@ -5614,7 +5439,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
     private sealed class ScoreOnlyCoordinatorFixture : IAsyncDisposable
     {
-        private readonly HostManagerMemoryCleanupAttemptJournal memoryCleanupJournal;
         private readonly IDisposable? ownedProcessFactsOverride;
         private readonly ResourceManagerSelfLocalResourceManager? ownedSelfManager;
         internal ResourceManagerLedgerOwner? OwnedComputeLedger { get; }
@@ -5627,15 +5451,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             RecordingRollbackStateStore stateStore,
             RecordingMetricSampler metricSampler,
             RecordingProcessFactSource processFacts,
-            AllowingControlZones controlZones,
             RecordingProcessPolicyWriter processPolicyWriter,
-            RecordingAdapterPolicyDispatcher adapterDispatcher,
             RecordingAutomaticMemoryCleanupPlanner memoryCleanupPlanner,
             RecordingPublicResourceManager publicResourceManager,
             RecordingProtectionService protectionService,
             RecordingGraphicsPreferenceStore graphicsPreferenceStore,
             RecordingDebugLogWriter debugLogWriter,
-            HostManagerMemoryCleanupAttemptJournal memoryCleanupJournal,
             HostManagerNativeActionTransactionRuntime nativeTransactions,
             HostManagerSmartCoordinator coordinator,
             NativeSmartCoordinatorWorkspace workspace,
@@ -5651,15 +5472,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             StateStore = stateStore;
             MetricSampler = metricSampler;
             ProcessFacts = processFacts;
-            ControlZones = controlZones;
             ProcessPolicyWriter = processPolicyWriter;
-            AdapterDispatcher = adapterDispatcher;
             MemoryCleanupPlanner = memoryCleanupPlanner;
             PublicResourceManager = publicResourceManager;
             ProtectionService = protectionService;
             GraphicsPreferenceStore = graphicsPreferenceStore;
             DebugLogWriter = debugLogWriter;
-            this.memoryCleanupJournal = memoryCleanupJournal;
             NativeTransactions = nativeTransactions;
             Coordinator = coordinator;
             CpuLeases = cpuLeases;
@@ -5667,22 +5485,17 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             this.ownedProcessFactsOverride = ownedProcessFactsOverride;
             this.ownedSelfManager = ownedSelfManager;
             OwnedComputeLedger = ownedComputeLedger;
-            MemoryCleanupJournalPath = Path.Combine(root, "memory-cleanup-attempts.json");
         }
 
         internal string Root { get; }
-        internal string MemoryCleanupJournalPath { get; }
-        internal HostManagerMemoryCleanupAttemptJournal MemoryCleanupJournal
-            => memoryCleanupJournal;
+        internal bool PreserveRootOnDispose { get; set; }
         internal CompiledRuntimePlan RuntimePlan { get; }
         internal RuntimePlanProvider RuntimePlanProvider { get; }
         internal HostManagerDeploymentState DeploymentState { get; }
         internal RecordingRollbackStateStore StateStore { get; }
         internal RecordingMetricSampler MetricSampler { get; }
         internal RecordingProcessFactSource ProcessFacts { get; }
-        internal AllowingControlZones ControlZones { get; }
         internal RecordingProcessPolicyWriter ProcessPolicyWriter { get; }
-        internal RecordingAdapterPolicyDispatcher AdapterDispatcher { get; }
         internal RecordingAutomaticMemoryCleanupPlanner MemoryCleanupPlanner { get; }
         internal RecordingPublicResourceManager PublicResourceManager { get; }
         internal RecordingProtectionService ProtectionService { get; }
@@ -5698,7 +5511,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             bool scoreOnlyEnabled = true,
             SchedulingProcessFactSnapshot? processFactsSnapshot = null,
             Func<int, RecoveryReadResult<ProcessInstanceRecoverySnapshot>>? processRecoveryRead = null,
-            bool policyExecutionEnabled = true,
             bool memoryModePolicyEnabled = false,
             bool automaticMemoryCleanupEnabled = true,
             bool performanceLogEnabled = false,
@@ -5737,9 +5549,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
              ResourceManager.App.Infrastructure.GpuPlacement.Preparation.WindowsGpuCallbackPreparationRuntime? gpuCallbackRuntime = null,
              Microsoft.Extensions.Logging.ILogger<HostManagerSmartCoordinator>? coordinatorLogger = null,
              ResourceManagerSelfLocalResourceManager? selfLocalResourceManager = null,
-             IReadOnlyList<string>? singleCcdSoftwareIds = null)
+             IReadOnlyList<string>? singleCcdSoftwareIds = null,
+            string? rootOverride = null)
         {
-            var root = Path.Combine(
+            var root = rootOverride ?? Path.Combine(
                 Path.GetTempPath(),
                 "resource-manager-score-only",
                 Guid.NewGuid().ToString("N"));
@@ -5861,9 +5674,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     metricSampler.Snapshot);
             }
             var processFacts = new RecordingProcessFactSource(initialProcessFacts);
-            var controlZones = new AllowingControlZones(policyExecutionEnabled);
             var processPolicyWriter = new RecordingProcessPolicyWriter(processRecoveryRead);
-            var adapterDispatcher = new RecordingAdapterPolicyDispatcher();
             var memoryCleanupPlanner = new RecordingAutomaticMemoryCleanupPlanner
                 (hostPlan.HotPublish.MemoryCleanup.ConfigurationGeneration)
             {
@@ -5887,11 +5698,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 ?? processFacts;
             timeProvider ??= TimeProvider.System;
             var cpuLeaseStore = new RuntimeCpuLeaseStore(runtimePlanProvider, timeProvider);
-            var memoryCleanupJournalPath = Path.Combine(root, "memory-cleanup-attempts.json");
-            var memoryCleanupJournal = new HostManagerMemoryCleanupAttemptJournal(
-                memoryCleanupJournalPath,
-                () => hostPlan.HostRecreate.MemoryCleanup.StateCapacity,
-                timeProvider);
             var retirements = new HostManagerAuthorityRetirementManager(
                 root,
                 WindowsHostManagerAuthorityRetirementStorage.Instance);
@@ -5946,7 +5752,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 metricSamplerOverride ?? metricSampler,
                 selectedProcessFacts,
                 cpuCoreReader ?? new RecordingCpuCoreResidencyReader(() => CpuCoreResidencyTestValues.OneCore(processFacts.Snapshot)),
-                controlZones,
                 rollbackStateStoreOverride ?? stateStore,
                 protectionService,
                 runtimePlanProvider,
@@ -5954,10 +5759,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 smartRuntime,
                 new HostManagerPlacementCoordinatorRuntime(runtimePlanProvider, deployment),
                 memoryCleanupPlanner,
-                memoryCleanupJournal,
                 processPolicyWriter,
                 new HostManagerProcessPolicyTransaction(processPolicyWriter),
-                new HostManagerAdapterSchedulingTransaction(adapterDispatcher, timeProvider),
                 nativeTransactions,
                 timeProvider,
                 graphicsPreferenceOverride ?? graphicsPreferenceStore,
@@ -6014,15 +5817,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 stateStore,
                 metricSampler,
                 processFacts,
-                controlZones,
                 processPolicyWriter,
-                adapterDispatcher,
                 memoryCleanupPlanner,
                 publicResourceManager,
                 protectionService,
                 graphicsPreferenceStore,
                 debugLogWriter,
-                memoryCleanupJournal,
                 nativeTransactions,
                 coordinator,
                 workspace,
@@ -6192,123 +5992,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
         }
 
-        internal async Task SeedAdapterOwnershipAsync(
-            string softwareId,
-            ulong actionId)
-        {
-            Assert.True(NativeTransactions.TryAcquireExecutionAdmission(out var admission));
-            Assert.NotNull(admission);
-            await using (admission)
-            {
-                if (admission!.PayloadReconciliationRequired)
-                {
-                    _ = await admission.ReconcilePayloadsAsync(
-                        ReadOnlyMemory<NativeTransactionJournalPayloadLiveReference>.Empty,
-                        CancellationToken.None);
-                }
-
-                var journal = await admission.ReadSnapshotAsync(CancellationToken.None);
-                var softwareKey = NativeStableIdentity.CreateCaseInsensitiveKey(softwareId);
-                var actionIdentity = new NativeTransactionJournalIdentity
-                {
-                    ConfigurationGeneration = NativeTransactions.CurrentJournalPlan
-                        .HotPublish.ConfigurationGeneration,
-                    PlanEpoch = 1,
-                    ActionId = actionId,
-                    HostSessionIncarnation = 1,
-                    TargetId = softwareKey,
-                    SoftwareId = softwareKey
-                };
-                var now = checked((ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-                var binding = new NativeTransactionJournalPayloadBinding(
-                    journal.Header.JournalInstanceLow,
-                    journal.Header.JournalInstanceHigh,
-                    actionIdentity,
-                    NativeTransactionJournalScope.Software,
-                    NativeTransactionJournalDisposition.Apply,
-                    NativeTransactionJournalDomain.Cpu |
-                        NativeTransactionJournalDomain.Gpu,
-                    NativeTransactionJournalGradeValidity.Cpu |
-                        NativeTransactionJournalGradeValidity.Gpu,
-                    ProcessFromGrade: 0,
-                    ProcessToGrade: 0,
-                    CpuFromGrade: (int)NativeTransactionJournalAdapterGrade.Normal,
-                    CpuToGrade: (int)NativeTransactionJournalAdapterGrade.Optimize,
-                    GpuFromGrade: (int)NativeTransactionJournalAdapterGrade.Normal,
-                    GpuToGrade: (int)NativeTransactionJournalAdapterGrade.Extreme,
-                    StableSystemStatus: 0,
-                    StableSystemError: 0,
-                    MaximumRecoveryAttempts: 3,
-                    RecoveryDeadlineUtcMilliseconds: now + 60_000,
-                    AtomicGroupId: 0,
-                    GroupMemberIndex: 0,
-                    GroupMemberCount: 0);
-                Assert.True(binding.IsValid);
-                var payloadReference = await admission.PersistPayloadAsync(
-                    binding,
-                    BitConverter.GetBytes(actionId),
-                    CancellationToken.None);
-                var ownership = await NativeTransactions.AppliedOwnership.ReadSnapshotAsync(
-                    CancellationToken.None);
-                var promote = new NativeAppliedOwnershipPromoteInput
-                {
-                    AbiVersion = NativeAppliedOwnershipAbi.Version,
-                    StructSize = NativeAppliedOwnershipAbi.PromoteInputSize,
-                    ExpectedLedgerRevision = ownership.Header.LedgerRevision,
-                    Primary = new NativeAppliedOwnershipPrimaryIdentity
-                    {
-                        Scope = (uint)NativeAppliedOwnershipScope.Adapter,
-                        SoftwareId = softwareKey
-                    },
-                    OriginalBinding = new NativeAppliedOwnershipOriginalBinding
-                    {
-                        JournalInstanceLow = binding.JournalInstanceLow,
-                        JournalInstanceHigh = binding.JournalInstanceHigh,
-                        ActionIdentity = new NativeAppliedOwnershipActionIdentity
-                        {
-                            ConfigurationGeneration = actionIdentity.ConfigurationGeneration,
-                            PlanEpoch = actionIdentity.PlanEpoch,
-                            ActionId = actionIdentity.ActionId,
-                            HostSessionIncarnation = actionIdentity.HostSessionIncarnation,
-                            TargetId = actionIdentity.TargetId,
-                            SoftwareId = actionIdentity.SoftwareId
-                        },
-                        Scope = (uint)binding.Scope,
-                        Disposition = (uint)binding.Disposition,
-                        DomainMask = (uint)binding.Domain,
-                        GradeValidMask = (uint)binding.GradeValidMask,
-                        CpuFromGrade = binding.CpuFromGrade,
-                        CpuToGrade = binding.CpuToGrade,
-                        GpuFromGrade = binding.GpuFromGrade,
-                        GpuToGrade = binding.GpuToGrade,
-                        MaximumRecoveryAttempts = binding.MaximumRecoveryAttempts,
-                        RecoveryDeadlineUtcMilliseconds =
-                            binding.RecoveryDeadlineUtcMilliseconds
-                    },
-                    Payload = new NativeAppliedOwnershipDurablePayloadReference
-                    {
-                        Slot = payloadReference.Slot,
-                        Generation = payloadReference.Generation,
-                        Length = payloadReference.Length,
-                        DigestLow = payloadReference.DigestLow,
-                        DigestHigh = payloadReference.DigestHigh
-                    },
-                    CurrentGrades = new NativeAppliedOwnershipCurrentGrades
-                    {
-                        ValidMask = (uint)binding.GradeValidMask,
-                        CpuGrade = binding.CpuToGrade,
-                        GpuGrade = binding.GpuToGrade
-                    },
-                    PromotedAtUtcMilliseconds = now
-                };
-                Assert.Equal(
-                    NativeAppliedOwnershipStatus.Ok,
-                    await NativeTransactions.AppliedOwnership.PromoteAsync(
-                        promote,
-                        CancellationToken.None));
-            }
-        }
-
         internal void PublishSmartCoordinatorRecreatePlan()
         {
             var performance = AppSettingsDefaults.Create().Performance with
@@ -6373,9 +6056,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     {
                         NativeTransactionJournalScope.Process =>
                             NativeTransactionJournalDomain.Process,
-                        NativeTransactionJournalScope.Software =>
-                            NativeTransactionJournalDomain.Cpu |
-                                NativeTransactionJournalDomain.Gpu,
                         NativeTransactionJournalScope.Resource =>
                             NativeTransactionJournalDomain.PhysicalMemory |
                                 NativeTransactionJournalDomain.SharedResource,
@@ -6385,9 +6065,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     {
                         NativeTransactionJournalScope.Process =>
                             NativeTransactionJournalGradeValidity.Process,
-                        NativeTransactionJournalScope.Software =>
-                            NativeTransactionJournalGradeValidity.Cpu |
-                                NativeTransactionJournalGradeValidity.Gpu,
                         NativeTransactionJournalScope.Resource =>
                             NativeTransactionJournalGradeValidity.None,
                         _ => throw new ArgumentOutOfRangeException(nameof(scope))
@@ -6398,18 +6075,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     ProcessToGrade = scope == NativeTransactionJournalScope.Process
                         ? (int)NativeTransactionJournalProcessGrade.Level1
                         : 0,
-                    CpuFromGrade = scope == NativeTransactionJournalScope.Software
-                        ? (int)NativeTransactionJournalAdapterGrade.Normal
-                        : 0,
-                    CpuToGrade = scope == NativeTransactionJournalScope.Software
-                        ? (int)NativeTransactionJournalAdapterGrade.Optimize
-                        : 0,
-                    GpuFromGrade = scope == NativeTransactionJournalScope.Software
-                        ? (int)NativeTransactionJournalAdapterGrade.Normal
-                        : 0,
-                    GpuToGrade = scope == NativeTransactionJournalScope.Software
-                        ? (int)NativeTransactionJournalAdapterGrade.Extreme
-                        : 0,
+                    CpuFromGrade = 0,
+                    CpuToGrade = 0,
+                    GpuFromGrade = 0,
+                    GpuToGrade = 0,
                     PayloadKind = (uint)NativeTransactionJournalPayloadKind.Durable,
                     PayloadSlot = 1,
                     PayloadGeneration = 1,
@@ -6487,7 +6156,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 var snapshot = Workspace.Snapshot;
                 var actions = ReadPrivateReference(Coordinator, "transitionProbe") is CapturingNativePlanProbe captured
                     ? string.Join("; ", captured.Actions.Select(action =>
-                        $"id={action.ActionId},scope={action.Scope},disposition={action.Disposition},flags={action.Flags},valid={action.ValidMask},domains={action.DomainMask},cpuScore={action.CpuScore},gpuScore={action.GpuScore}"))
+                        $"id={action.ActionId},scope={action.Scope},disposition={action.Disposition},flags={action.Flags},valid={action.ValidMask},domains={action.DomainMask},cpuScore={action.CpuScore}"))
                     : "not independently captured before endUse";
                 throw new InvalidDataException(
                     $"{exception.Message} Snapshot: flags={snapshot.Flags}; reason={snapshot.ReasonMask}; config={snapshot.ConfigurationGeneration}; cycle={snapshot.CycleSequence}; plan={snapshot.PlanEpoch}; revision={snapshot.StateRevision}; observed={snapshot.ObservedAtMilliseconds}; wake={snapshot.WakeAfterMilliseconds}; next={snapshot.NextWakeAtMilliseconds}; actions={snapshot.ActionCount}; process={snapshot.ProcessCount}; software={snapshot.SoftwareCount}; inflight={snapshot.InflightCount}; rows={snapshot.SnapshotRowCount}; pending={snapshot.PendingCount}; invalid={snapshot.InvalidFactCount}; actionRows=[{actions}].",
@@ -6555,13 +6224,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 && currentMemory.ObservedAtUtcTicks >
                     baselineMemory.ObservedAtUtcTicks;
 
-        internal void CloseMemoryCleanupJournalForRestart()
-            => memoryCleanupJournal.Dispose();
-
-        internal void AssertNoMemoryCleanupAttemptEntries()
-            => Assert.Empty(memoryCleanupJournal.ReconcileAndCaptureBlocked(
-                ProcessPolicyWriter.ReadProcessInstanceForRecovery));
-
         internal void AssertNoEffectCollaboratorCalls()
         {
             CaptureHostedScoreOnlyEffectCounters().AssertAllZero();
@@ -6577,7 +6239,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 ProcessPolicyWriter.RecoveryReadCalls,
                 ProcessPolicyWriter.BatchCalls,
                 ProcessPolicyWriter.BatchRequests.Count,
-                AdapterDispatcher.TotalCalls,
                 MemoryCleanupPlanner.PlanAttemptCalls,
                 MemoryCleanupPlanner.PlanCalls,
                 MemoryCleanupPlanner.CompleteAttemptCalls,
@@ -6594,10 +6255,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             await NativeTransactions.DisposeAsync();
             ownedSelfManager?.Dispose();
             ownedProcessFactsOverride?.Dispose();
-            memoryCleanupJournal.Dispose();
             MemoryCleanupPlanner.Dispose();
             MetricSampler.Dispose();
-            Directory.Delete(Root, recursive: true);
+            if (!PreserveRootOnDispose) Directory.Delete(Root, recursive: true);
         }
     }
 
@@ -6987,27 +6647,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         }
     }
 
-    private sealed class AllowingControlZones : IHostManagerSmartControlZoneRegistry
-    {
-        internal AllowingControlZones(bool policyExecutionEnabled = true)
-        {
-            PolicyExecutionEnabled = policyExecutionEnabled;
-        }
 
-        internal bool PolicyExecutionEnabled { get; set; }
-        internal bool HardwarePlacementEnabled { get; set; } = true;
-
-        public bool CanRun(string zoneId)
-            => zoneId.Equals(HostManagerSmartControlZoneIds.HardwarePlacement, StringComparison.Ordinal)
-                ? HardwarePlacementEnabled
-                : PolicyExecutionEnabled || !zoneId.Equals(
-                    HostManagerSmartControlZoneIds.PolicyExecution, StringComparison.Ordinal);
-        public bool IsLowPower(string zoneId) => false;
-        public bool HasAnyLowPowerZone() => false;
-        public ResourceManagerComputeZoneMode GetMode(string zoneId)
-            => ResourceManagerComputeZoneMode.Normal;
-        public IReadOnlyList<IResourceManagerSelfComputeZone> GetZones() => [];
-    }
 
     private sealed class RecordingAutomaticMemoryCleanupPlanner(
         ulong configurationGeneration)
@@ -7128,36 +6768,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 ReleasedBytes: attemptCount,
                 RestoredBytes: 0,
                 SampleGeneration: checked((ulong)TickCalls));
-        }
-    }
-
-    private sealed class RecordingAdapterPolicyDispatcher : IAdapterPolicyDispatcher
-    {
-        internal int TotalCalls { get; private set; }
-
-        public Task<AdapterSoftwareSchedulingResult> ApplySoftwareSchedulingAsync(
-            string softwareId,
-            AdapterSoftwareSchedulingEnvelope envelope,
-            CancellationToken cancellationToken)
-            => throw Unexpected();
-
-        public Task<AdapterSchedulingStateExportResult> ExportSoftwareSchedulingStateAsync(
-            string softwareId,
-            int maximumPayloadBytes,
-            DateTimeOffset deadline,
-            CancellationToken cancellationToken)
-            => throw Unexpected();
-
-        public Task<AdapterSchedulingStateRestoreResult> RestoreSoftwareSchedulingStateAsync(
-            string softwareId,
-            AdapterSchedulingStateRestoreCommand command,
-            CancellationToken cancellationToken)
-            => throw Unexpected();
-
-        private InvalidOperationException Unexpected()
-        {
-            TotalCalls++;
-            return new InvalidOperationException("Score-only called an adapter effect boundary.");
         }
     }
 

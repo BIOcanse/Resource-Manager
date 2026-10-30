@@ -1,5 +1,4 @@
 using ResourceManager.App.Application.GpuPlacement;
-using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
@@ -148,7 +147,6 @@ public sealed partial class HostManagerSmartCoordinator
             && !runtimePlanProvider.Current.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled
             && HostManagerProcessEffectValidationCyclePolicy.AllowsCycleEffect(
                 processEffectValidationScopeAuthorityOwner.Capture(), HostManagerCycleEffectKind.NativeActionTransaction)
-            && hostManagerSmartControlZones.CanRun(HostManagerSmartControlZoneIds.HardwarePlacement)
             && WantsGpuShim(process)
             && GpuPlacementRuntimeSwitchMethods.Normalize(process.Policy.PreferredRuntimeSwitchMethod)
                 == GpuPlacementRuntimeSwitchMethods.Normalize(planned.Process.Policy.PreferredRuntimeSwitchMethod);

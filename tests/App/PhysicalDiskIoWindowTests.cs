@@ -73,8 +73,6 @@ public sealed class PhysicalDiskIoWindowTests
         reader.Dispose();
         Assert.Equal(1, released);
         Assert.Throws<ObjectDisposedException>(() => reader.Read());
-        reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Normal);
-        Assert.Throws<ObjectDisposedException>(() => reader.Read());
         reader.Dispose();
         Assert.Equal(1, released);
     }
@@ -108,33 +106,6 @@ public sealed class PhysicalDiskIoWindowTests
 
         Assert.Empty(snapshot.Processes);
         Assert.Equal(PhysicalDiskIoProviderStates.Unavailable, snapshot.ProviderState.State);
-    }
-
-    [Fact]
-    public async Task FrozenHostedCaptureReleasesEventsAndResumesWithANewWindow()
-    {
-        var broker = new Broker();
-        var capture = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => Environment.TickCount64, pid => new ProcessLease(pid));
-        using var reader = new EtwPhysicalDiskIoAttributionReader(capture);
-        await reader.StartAsync(CancellationToken.None);
-        Assert.True(SpinWait.SpinUntil(() => broker.Request is not null, TimeSpan.FromSeconds(5)));
-        var request = broker.Request;
-        var released = 0;
-        broker.OnRelease = () => released++;
-        reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
-        var frozen = reader.Read();
-        Assert.Equal(PhysicalDiskIoProviderStates.Frozen, frozen.ProviderState.State);
-        Assert.Empty(frozen.Processes);
-        Assert.Same(request, broker.Request);
-        Assert.Equal(1, released);
-        broker.OnRelease = () => released++;
-        reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Normal);
-        reader.Read();
-        Assert.NotSame(request, broker.Request);
-        Assert.Equal(1, released);
-        await reader.StopAsync(CancellationToken.None);
-        reader.Dispose();
-        Assert.Equal(2, released);
     }
 
     [Fact]

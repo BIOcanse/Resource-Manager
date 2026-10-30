@@ -17,8 +17,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     public async Task NormalCoordinatorRestoresShimPolicyThroughExistingNativeOwner(bool applied, bool blockWrite)
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true, scoreOnlyEnabled: false, policyExecutionEnabled: false,
-            automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.Normal);
+            warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.Normal);
         Assert.True(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RESOURCE_MANAGER_PACKAGE_ROOT")));
         var runtime = new D3d11ProxyShimRuntime(new GpuPolicyEnvironment(fixture.Root));
         Assert.True(runtime.TryWritePolicy("gpu-policy", null, [1, 0, 255]));
@@ -67,8 +66,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                    ledgerPath, TimeProvider.System, TimeSpan.FromMinutes(1)))
         {
             await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-                warm: true, scoreOnlyEnabled: false, policyExecutionEnabled: false,
-                automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.Normal,
+                warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.Normal,
                 rollbackStateStoreOverride: reopenedOwner,
             realtimeActionBudget: 1);
             var runtime = new D3d11ProxyShimRuntime(new GpuPolicyEnvironment(fixture.Root));

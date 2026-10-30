@@ -162,8 +162,8 @@ public sealed class NvmePayloadContractTests
             => NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(Compiled, [], [new(7, Device, 1) { SupportsNvmeHealth = true }], [], workspace.CreateCatalogHandleMap());
         internal DateTimeOffset Time(ulong sequence) => Now.AddMilliseconds((long)sequence * 100);
         internal NativeMetricSnapshotCollectionPlan Plan(ulong sequence)
-            => Workspace.PlanCollection([CounterHandle, RawHandle], Catalog.Sources.Select(s => new NativeMetricSnapshotSourceRuntimeMode(
-                s.SourceHandle, 1, NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray(), false, Time(sequence));
+            => Workspace.PlanCollection([CounterHandle, RawHandle], Catalog.Sources.Select(s => new NativeMetricSnapshotSourceRuntimeState(
+                s.SourceHandle, 1, NativeMetricSnapshotSourceAvailability.Available)).ToArray(), false, Time(sequence));
         internal NativeMetricSnapshotSourceCompletion Completion(NativeMetricSnapshotCollectionPlan plan, UInt128? value, byte[]? raw, ulong sequence)
         {
             var disk = new DiskTemperatureSensor(7, "fixture", null, "fixture")

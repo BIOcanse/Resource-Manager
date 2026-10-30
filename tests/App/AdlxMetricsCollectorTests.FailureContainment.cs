@@ -26,10 +26,9 @@ public sealed partial class AdlxMetricsCollectorTests
         var row=Row(10,PnpA,AllFlags); row.VoltageMillivolts=1250; row.SampleTimestampMilliseconds=9007199254740993; row.NpuActivityLevelPercent=0; row.NpuFrequencyMhz=1800;
         var native=new Bridge { Metadata=[Row(10,PnpA),Row(20,PnpB)],Values=[row] };
         var zone=new AmdAdlxMonitoringZone(new AmdAdlxBridgeReader(native, TimeSpan.FromMilliseconds(200)));
-        var registry=new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id=>id==zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         var memory=new WindowsMemoryMonitoringZone(_=>throw new InvalidOperationException("No memory demand"),()=>throw new InvalidOperationException("No memory demand"));
         using var sampler=new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(),memory,null!,inventoryZone,
-            null!,null!,null!,null!,null!,zone,null!,new AmdIntegratedGpuSensorRoute(),null!,owner,dashboard,registry,
+            null!,null!,null!,null!,null!,zone,null!,new AmdIntegratedGpuSensorRoute(),null!,owner,dashboard,
             slots.Owner,slots.Provider,NullLogger<WindowsHardwareMetricSampler>.Instance);
 
         using var entered = new ManualResetEventSlim();

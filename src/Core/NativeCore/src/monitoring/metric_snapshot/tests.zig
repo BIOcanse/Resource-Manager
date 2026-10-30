@@ -3680,7 +3680,7 @@ fn planMetric(handle: u64) protocol.PlanMetricInput {
     };
 }
 
-fn testModes() [source_count]protocol.SourceModeInput {
+fn testModes() [source_count]protocol.SourceStateInput {
     return .{
         sourceMode(10),
         sourceMode(20),
@@ -3688,13 +3688,12 @@ fn testModes() [source_count]protocol.SourceModeInput {
     };
 }
 
-fn sourceMode(handle: u64) protocol.SourceModeInput {
+fn sourceMode(handle: u64) protocol.SourceStateInput {
     return .{
-        .struct_size = @sizeOf(protocol.SourceModeInput),
+        .struct_size = @sizeOf(protocol.SourceStateInput),
         .flags = 0,
         .source_handle = handle,
         .capability_generation = 1,
-        .zone_mode = @intFromEnum(protocol.ZoneMode.normal),
         .availability = @intFromEnum(protocol.SourceAvailability.available),
         .reserved = .{ 0, 0 },
     };
@@ -3708,7 +3707,7 @@ fn runPlan(
     command_at: u64,
     flags: u64,
     requested: []const protocol.PlanMetricInput,
-    modes: []const protocol.SourceModeInput,
+    modes: []const protocol.SourceStateInput,
     output: *protocol.PlanOutput,
     source_plans: []protocol.SourcePlanOutput,
     metric_plans: []protocol.MetricPlanOutput,
@@ -4210,7 +4209,7 @@ test "Plan rejects real aliases before clearing any actual capacity or committin
         var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
         var input_pointer: *const protocol.PlanInput = &input;
         var requested_slice: []const protocol.PlanMetricInput = &requested;
-        var modes_slice: []const protocol.SourceModeInput = &modes;
+        var modes_slice: []const protocol.SourceStateInput = &modes;
         var output_pointer: *protocol.PlanOutput = &output;
         var source_slice: []protocol.SourcePlanOutput = &source_plans;
         var metric_slice: []protocol.MetricPlanOutput = &metric_plans;
@@ -4227,7 +4226,7 @@ test "Plan rejects real aliases before clearing any actual capacity or committin
                 requested_slice = @as([*]const protocol.PlanMetricInput, @ptrCast(value))[0..1];
             },
             .modes => {
-                const value: [*]protocol.SourceModeInput = @ptrCast(@alignCast(inside));
+                const value: [*]protocol.SourceStateInput = @ptrCast(@alignCast(inside));
                 @memcpy(value[0..source_count], &modes);
                 modes_slice = value[0..source_count];
             },

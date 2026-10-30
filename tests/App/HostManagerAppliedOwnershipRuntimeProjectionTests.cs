@@ -156,46 +156,7 @@ public sealed class HostManagerAppliedOwnershipRuntimeProjectionTests
             Disposition = disposition,
             DomainMask = NativeSmartCoordinatorGradeDomains.Process,
             FromProcessGrade = from,
-            ToProcessGrade = to,
-            FromCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            FromGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal
-        };
-
-    private static NativeSmartCoordinatorAction CreateAdapterAction(
-        ulong actionId,
-        NativeSmartCoordinatorAdapterGrade fromCpu,
-        NativeSmartCoordinatorAdapterGrade toCpu,
-        NativeSmartCoordinatorAdapterGrade fromGpu,
-        NativeSmartCoordinatorAdapterGrade toGpu)
-        => new()
-        {
-            StructSize = NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorAction>(),
-            Flags = NativeSmartCoordinatorActionFlags.RequiresFeedback,
-            ValidMask = NativeSmartCoordinatorActionValidity.SoftwareIdentity |
-                NativeSmartCoordinatorActionValidity.CpuGrade |
-                NativeSmartCoordinatorActionValidity.GpuGrade |
-                NativeSmartCoordinatorActionValidity.CpuScore |
-                NativeSmartCoordinatorActionValidity.GpuScore,
-            ReasonMask = NativeSmartCoordinatorReason.AwaitingStability,
-            ActionId = actionId,
-            PlanEpoch = 0x202,
-            ConfigurationGeneration = 0x303,
-            TargetKey = 0x707,
-            SoftwareKey = 0x707,
-            CpuScore = 8.25,
-            GpuScore = 6.5,
-            Scope = NativeSmartCoordinatorActionScope.AdapterSoftware,
-            Disposition = NativeSmartCoordinatorActionDisposition.Apply,
-            DomainMask = NativeSmartCoordinatorGradeDomains.Cpu |
-                NativeSmartCoordinatorGradeDomains.Gpu,
-            FromProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            ToProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            FromCpuGrade = fromCpu,
-            ToCpuGrade = toCpu,
-            FromGpuGrade = fromGpu,
-            ToGpuGrade = toGpu
+            ToProcessGrade = to
         };
 
     private static NativeTransactionJournalPayloadReference CreatePayload()

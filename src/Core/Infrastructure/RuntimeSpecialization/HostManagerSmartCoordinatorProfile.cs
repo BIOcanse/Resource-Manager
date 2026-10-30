@@ -63,11 +63,8 @@ internal sealed class HostManagerSmartCoordinatorHotPublishProfile
     [JsonPropertyName("process_policy")]
     public required HostManagerSmartCoordinatorProcessPolicyProfile ProcessPolicy { get; init; }
 
-    [JsonPropertyName("cpu_adapter_policy")]
-    public required HostManagerSmartCoordinatorCpuAdapterPolicyProfile CpuAdapterPolicy { get; init; }
-
-    [JsonPropertyName("gpu_adapter_policy")]
-    public required HostManagerSmartCoordinatorGpuAdapterPolicyProfile GpuAdapterPolicy { get; init; }
+    [JsonPropertyName("gpu_state_multipliers")]
+    public required double[] GpuStateMultipliers { get; init; }
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -142,28 +139,3 @@ internal sealed class HostManagerSmartCoordinatorProcessPolicyProfile
     public required double LowTierLevel4MaximumCpuScoreScale { get; init; }
 }
 
-internal abstract class HostManagerSmartCoordinatorAdapterPolicyProfile
-{
-    [JsonPropertyName("extreme_minimum_score")]
-    public required double ExtremeMinimumScore { get; init; }
-
-    [JsonPropertyName("normal_minimum_score")]
-    public required double NormalMinimumScore { get; init; }
-
-    [JsonPropertyName("optimize_minimum_score")]
-    public required double OptimizeMinimumScore { get; init; }
-}
-
-[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-internal sealed class HostManagerSmartCoordinatorCpuAdapterPolicyProfile
-    : HostManagerSmartCoordinatorAdapterPolicyProfile
-{
-}
-
-[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-internal sealed class HostManagerSmartCoordinatorGpuAdapterPolicyProfile
-    : HostManagerSmartCoordinatorAdapterPolicyProfile
-{
-    [JsonPropertyName("state_multipliers")]
-    public required double[] StateMultipliers { get; init; }
-}

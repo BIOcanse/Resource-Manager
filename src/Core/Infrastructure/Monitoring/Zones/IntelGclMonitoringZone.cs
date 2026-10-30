@@ -22,13 +22,12 @@ public sealed class IntelGclMonitoringZone : MonitoringSourceZone
         => (this.read, this.openFans, this.readFans) = (read, openFans, readFans);
     internal IReadOnlyList<IntelGclMetricRead> Read(WindowsGpuAdapterInventoryRead inventory,
         IReadOnlyDictionary<int, IReadOnlySet<MetricFieldCode>> requested, CancellationToken cancellationToken)
-        => CanRead ? read(inventory, requested, cancellationToken) : [];
+        => read(inventory, requested, cancellationToken);
     internal IntelGclFanDirectoryLease? OpenFanDirectory(WindowsGpuAdapterInventoryRead inventory, uint maximum)
-        => CanRead ? openFans(inventory, maximum) : null;
+        => openFans(inventory, maximum);
     internal IntelFanTopologyRead OpenFanTopology(WindowsGpuAdapterInventoryRead inventory, uint maximum, IntelGclFanDirectoryLease? prior)
-        => CanRead ? WindowsIntelFanTopology.OpenDirectory(openFans, inventory, maximum, prior)
-            : new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
+        => WindowsIntelFanTopology.OpenDirectory(openFans, inventory, maximum, prior);
     internal IReadOnlyList<IntelGclFanReading> ReadFans(IReadOnlyList<IntelGclFanIdentity> targets,
         WindowsGpuAdapterInventoryRead inventory, uint maximum, CancellationToken cancellationToken)
-        => CanRead ? readFans(targets, inventory, maximum, cancellationToken) : [];
+        => readFans(targets, inventory, maximum, cancellationToken);
 }

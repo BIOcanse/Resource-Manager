@@ -153,8 +153,7 @@ public sealed partial class NativeMetricSnapshotAbiTests
             var sources = new NativeMetricSnapshotSourcePlanOutput[Session.Capacity.SourcePlanCapacity];
             Assert.Equal(NativeMetricSnapshotStatus.Ok, Session.Plan(in plan,
                 [new() { StructSize = Size<NativeMetricSnapshotPlanMetricInput>(), MetricHandle = 1 }],
-                [new() { StructSize = Size<NativeMetricSnapshotSourceModeInput>(), SourceHandle = 1, CapabilityGeneration = 1,
-                    ZoneMode = (uint)NativeMetricSnapshotZoneMode.Normal, Availability = (uint)NativeMetricSnapshotSourceAvailability.Available }],
+                [new() { StructSize = Size<NativeMetricSnapshotSourceStateInput>(), SourceHandle = 1, CapabilityGeneration = 1, Availability = (uint)NativeMetricSnapshotSourceAvailability.Available }],
                 out _, sources, new NativeMetricSnapshotMetricPlanOutput[Session.Capacity.MetricPlanCapacity]));
             var header = new NativeMetricSnapshotCompletionHeader
             {

@@ -64,8 +64,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var callback = new WindowsGpuCallbackPreparationRuntime(worker);
             var topology = CreateAutomaticPlacementTopology();
             await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-                warm: true, scoreOnlyEnabled: false, processFactsSnapshot: facts, policyExecutionEnabled: false,
-                automaticMemoryCleanupEnabled: false, optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
+                warm: true, scoreOnlyEnabled: false, processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false, optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
                 cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology),
                 automaticPlacementTopology: topology, rollbackStateStoreOverride: ledger, gpuCallbackRuntime: callback,
                 processRecoveryRead: pid =>

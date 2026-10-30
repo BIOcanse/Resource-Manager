@@ -312,13 +312,6 @@ fn isTrue(input: *control.Input, item: d.ItemUid) anyerror!bool {
 fn hostPermitted(input: *control.Input, child: ?d.BlockUid) anyerror!bool {
     return (try readBool(input, ItemUids.HostStartPermitted, child)).valueOr(false);
 }
-fn unfrozenOrNotPublished(read: control.Read) bool {
-    return switch (read) {
-        .value => |value| value,
-        .not_published => true,
-        .owner_stopped, .read_failed => false,
-    };
-}
 fn anyFact(input: *control.Input, child: d.BlockUid, comptime facts: []const d.ItemUid) anyerror!bool {
     if (!try hostPermitted(input, child)) return false;
     for (facts) |item| {
@@ -329,18 +322,18 @@ fn anyFact(input: *control.Input, child: d.BlockUid, comptime facts: []const d.I
 fn alwaysWanted(input: *control.Input) anyerror!bool {
     return hostPermitted(input, input.block);
 }
-fn nativeChild(input: *control.Input, child: d.BlockUid, field: d.ItemUid, available: d.ItemUid, mode: ?d.ItemUid) anyerror!bool {
+fn nativeChild(input: *control.Input, child: d.BlockUid, field: d.ItemUid, available: d.ItemUid) anyerror!bool {
     if (!try hostPermitted(input, child) or !try isTrue(input, field) or !try isTrue(input, available)) return false;
-    return if (mode) |item| unfrozenOrNotPublished(try readBool(input, item, null)) else true;
+    return true;
 }
 fn presentEtwChildShouldRun(input: *control.Input) anyerror!bool {
-    return nativeChild(input, BlockUids.PresentFrameEtwSource, ItemUids.GraphicsApiObservationInUse, ItemUids.PresentNativeSessionAvailable, ItemUids.PresentUnfrozen);
+    return nativeChild(input, BlockUids.PresentFrameEtwSource, ItemUids.GraphicsApiObservationInUse, ItemUids.PresentNativeSessionAvailable);
 }
 fn gpuAllocationEtwChildShouldRun(input: *control.Input) anyerror!bool {
-    return nativeChild(input, BlockUids.GpuAllocationCollector, ItemUids.ProcessDedicatedGpuMemoryInUse, ItemUids.GpuAllocationNativeSessionAvailable, null);
+    return nativeChild(input, BlockUids.GpuAllocationCollector, ItemUids.ProcessDedicatedGpuMemoryInUse, ItemUids.GpuAllocationNativeSessionAvailable);
 }
 fn vidMmEtwChildShouldRun(input: *control.Input) anyerror!bool {
-    return nativeChild(input, BlockUids.DxgkrnlVidMmEtwTelemetryZone, ItemUids.VramResidualInUse, ItemUids.VidMmNativeSessionAvailable, ItemUids.VidMmUnfrozen);
+    return nativeChild(input, BlockUids.DxgkrnlVidMmEtwTelemetryZone, ItemUids.VramResidualInUse, ItemUids.VidMmNativeSessionAvailable);
 }
 fn nativeEtwGroupShouldRun(input: *control.Input) anyerror!bool {
     return try hostPermitted(input, BlockUids.NativeEtwLifetimeService) and
@@ -567,23 +560,16 @@ const RuleTestFacts = struct {
     fn permit(self: *const @This(), child: d.BlockUid) bool {
         return self.get(ItemUids.HostStartPermitted, child).valueOr(false);
     }
-    fn mode(self: *const @This(), item: d.ItemUid) bool {
-        return switch (self.get(item, null)) {
-            .not_published => true,
-            .value => |v| v,
-            else => false,
-        };
-    }
     fn present(self: *const @This()) bool {
         return self.permit(BlockUids.PresentFrameEtwSource) and self.truth(ItemUids.GraphicsApiObservationInUse) and
-            self.truth(ItemUids.PresentNativeSessionAvailable) and self.mode(ItemUids.PresentUnfrozen);
+            self.truth(ItemUids.PresentNativeSessionAvailable);
     }
     fn allocation(self: *const @This()) bool {
         return self.permit(BlockUids.GpuAllocationCollector) and self.truth(ItemUids.ProcessDedicatedGpuMemoryInUse) and self.truth(ItemUids.GpuAllocationNativeSessionAvailable);
     }
     fn vidmm(self: *const @This()) bool {
         return self.permit(BlockUids.DxgkrnlVidMmEtwTelemetryZone) and self.truth(ItemUids.VramResidualInUse) and
-            self.truth(ItemUids.VidMmNativeSessionAvailable) and self.mode(ItemUids.VidMmUnfrozen);
+            self.truth(ItemUids.VidMmNativeSessionAvailable);
     }
     fn read(context: *anyopaque, key: control.types.ItemKey) anyerror!control.Read {
         const self: *@This() = @ptrCast(@alignCast(context));

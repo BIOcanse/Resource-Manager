@@ -7,7 +7,6 @@ namespace ResourceManager.App.Infrastructure.Monitoring;
 
 public static class CpuFrequencySourceStates
 {
-    public const string Frozen = "frozen";
     public const string Unavailable = "unavailable";
 }
 

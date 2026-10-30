@@ -1,4 +1,3 @@
-using ResourceManager.App.Domain.Adaptation.Scheduling;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
 
@@ -812,67 +811,28 @@ public sealed partial class HostManagerSmartCoordinator
         return read.Record;
     }
 
-    private async Task<TransactionPayloadCapture> CaptureTransactionPayloadAsync(
+    private Task<TransactionPayloadCapture> CaptureTransactionPayloadAsync(
         NativeSmartCoordinatorAction action,
         HostManagerSample sample,
         long payloadByteBudget,
         DateTimeOffset deadline,
         CancellationToken cancellationToken)
     {
-        if (action.Scope == NativeSmartCoordinatorActionScope.ProcessPolicy)
+        var capture = processPolicyTransaction.Capture(
+            checked((int)action.ProcessId),
+            HostManagerProcessPolicyTransactionFields.CpuPolicy);
+        var status = ResolveProcessCaptureEffectStatus(capture.Status);
+        if (status != TransactionEffectStatus.Succeeded)
         {
-            var capture = processPolicyTransaction.Capture(
-                checked((int)action.ProcessId),
-                HostManagerProcessPolicyTransactionFields.CpuPolicy);
-            var status = ResolveProcessCaptureEffectStatus(capture.Status);
-            if (status != TransactionEffectStatus.Succeeded)
-            {
-                return new TransactionPayloadCapture(
-                    status,
-                    [],
-                    0);
-            }
-            if (checked((ulong)capture.ProcessStartKey) != action.ProcessStartKey)
-            {
-                return new TransactionPayloadCapture(
-                    TransactionEffectStatus.OwnershipLost,
-                    [],
-                    0);
-            }
-            return new TransactionPayloadCapture(
-                TransactionEffectStatus.Succeeded,
-                capture.Payload,
-                0);
+            return Task.FromResult(new TransactionPayloadCapture(status, [], 0));
         }
-
-        var target = ResolveAdapterTarget(sample, action.SoftwareKey);
-        if (target is null)
+        if (checked((ulong)capture.ProcessStartKey) != action.ProcessStartKey)
         {
-            return new TransactionPayloadCapture(
-                TransactionEffectStatus.OwnershipLost,
-                [],
-                0);
+            return Task.FromResult(new TransactionPayloadCapture(
+                TransactionEffectStatus.OwnershipLost, [], 0));
         }
-        var maximumEnvelopeBytes = ToExplicitPayloadLimit(payloadByteBudget);
-        var captureResult = await adapterSchedulingTransaction.CaptureAsync(
-            target.SoftwareId,
-            maximumEnvelopeBytes,
-            maximumEnvelopeBytes,
-            deadline,
-            cancellationToken);
-        var captureStatus = ResolveAdapterCaptureEffectStatus(captureResult.Status);
-        if (captureStatus != TransactionEffectStatus.Succeeded)
-        {
-            return new TransactionPayloadCapture(captureStatus, [], 0);
-        }
-        if (captureResult.CapturedState is null)
-        {
-            return new TransactionPayloadCapture(TransactionEffectStatus.Rejected, [], 0);
-        }
-        return new TransactionPayloadCapture(
-            TransactionEffectStatus.Succeeded,
-            captureResult.CapturedState.Envelope,
-            0);
+        return Task.FromResult(new TransactionPayloadCapture(
+            TransactionEffectStatus.Succeeded, capture.Payload, 0));
     }
 
     internal static TransactionEffectStatus ResolveProcessCaptureEffectStatus(
@@ -888,81 +848,17 @@ public sealed partial class HostManagerSmartCoordinator
             _ => throw new ArgumentOutOfRangeException(nameof(status))
         };
 
-    internal static TransactionEffectStatus ResolveAdapterCaptureEffectStatus(
-        HostManagerAdapterSchedulingCaptureStatus status) =>
-        status switch
-        {
-            HostManagerAdapterSchedulingCaptureStatus.Captured =>
-                TransactionEffectStatus.Succeeded,
-            HostManagerAdapterSchedulingCaptureStatus.Unsupported or
-                HostManagerAdapterSchedulingCaptureStatus.InvalidPayload =>
-                TransactionEffectStatus.Rejected,
-            HostManagerAdapterSchedulingCaptureStatus.Unavailable =>
-                TransactionEffectStatus.Skipped,
-            HostManagerAdapterSchedulingCaptureStatus.Conflict =>
-                TransactionEffectStatus.OwnershipLost,
-            _ => throw new ArgumentOutOfRangeException(nameof(status))
-        };
-
-    private async Task<TransactionEffectResult> ApplyTransactionPayloadAsync(
+    private Task<TransactionEffectResult> ApplyTransactionPayloadAsync(
         NativeSmartCoordinatorAction action,
         HostManagerSample sample,
         byte[] payload,
         long payloadByteBudget,
         DateTimeOffset deadline,
         CancellationToken cancellationToken)
-    {
-        if (action.Scope == NativeSmartCoordinatorActionScope.ProcessPolicy)
-        {
-            var processApplied = processPolicyTransaction.Apply(
-                payload,
-                (int)action.ToProcessGrade);
-            return MapProcessApplyResult(processApplied);
-        }
+        => Task.FromResult(MapProcessApplyResult(
+            processPolicyTransaction.Apply(payload, (int)action.ToProcessGrade)));
 
-        var target = ResolveAdapterTarget(sample, action.SoftwareKey);
-        if (target is null)
-        {
-            return TransactionEffectResult.OwnershipLost();
-        }
-        var maximumEnvelopeBytes = ToExplicitPayloadLimit(payloadByteBudget);
-        var applied = await adapterSchedulingTransaction.ApplyAsync(
-            new HostManagerAdapterSchedulingApplyCommand(
-                payload,
-                maximumEnvelopeBytes,
-                maximumEnvelopeBytes,
-                AdapterSchedulingPolicyIds.HostManager,
-                durableTimeSource.NextUtc(),
-                target.TargetId,
-                target.DisplayName,
-                action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                    ? MapCpuGrade(action.ToCpuGrade)
-                    : null,
-                action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                    ? MapGpuGrade(action.ToGpuGrade)
-                    : null,
-                action.CpuScore,
-                action.GpuScore,
-                $"native-reason:0x{(ulong)action.ReasonMask:X}",
-                deadline),
-            cancellationToken);
-        return applied.Status switch
-        {
-            HostManagerAdapterSchedulingApplyStatus.Applied or
-                HostManagerAdapterSchedulingApplyStatus.AlreadyApplied =>
-                TransactionEffectResult.Succeeded(),
-            HostManagerAdapterSchedulingApplyStatus.Rejected =>
-                TransactionEffectResult.Rejected(),
-            HostManagerAdapterSchedulingApplyStatus.OwnershipLost =>
-                TransactionEffectResult.OwnershipLost(),
-            HostManagerAdapterSchedulingApplyStatus.Unavailable or
-                HostManagerAdapterSchedulingApplyStatus.StateUncertain =>
-                TransactionEffectResult.StateUncertain(),
-            _ => TransactionEffectResult.StateUncertain()
-        };
-    }
-
-    private async Task<TransactionEffectResult> ApplyPlannedTransitionPayloadAsync(
+    private Task<TransactionEffectResult> ApplyPlannedTransitionPayloadAsync(
         NativeSmartCoordinatorAction action,
         HostManagerSample? sample,
         byte[] payload,
@@ -973,111 +869,25 @@ public sealed partial class HostManagerSmartCoordinator
     {
         if (targetGrades.ValidMask == 0)
         {
-            return TransactionEffectResult.Succeeded();
+            return Task.FromResult(TransactionEffectResult.Succeeded());
         }
-
-        if (action.Scope == NativeSmartCoordinatorActionScope.ProcessPolicy)
-        {
-            if (targetGrades.ValidMask != (uint)NativeAppliedOwnershipGradeValidity.Process)
-            {
-                throw new InvalidDataException(
-                    "The native ownership transition produced a non-canonical process target.");
-            }
-            return MapProcessApplyResult(
-                processPolicyTransaction.Apply(payload, targetGrades.ProcessGrade));
-        }
-
-        var target = sample is null
-            ? null
-            : ResolveAdapterTarget(sample, action.SoftwareKey);
-        if (target is null)
-        {
-            return TransactionEffectResult.OwnershipLost();
-        }
-
-        var validity = (NativeAppliedOwnershipGradeValidity)targetGrades.ValidMask;
-        if ((validity & ~(NativeAppliedOwnershipGradeValidity.Cpu |
-                NativeAppliedOwnershipGradeValidity.Gpu)) != 0 ||
-            validity == NativeAppliedOwnershipGradeValidity.None)
+        if (targetGrades.ValidMask != (uint)NativeAppliedOwnershipGradeValidity.Process)
         {
             throw new InvalidDataException(
-                "The native ownership transition produced a non-canonical adapter target.");
+                "The native ownership transition produced a non-canonical process target.");
         }
-
-        var maximumEnvelopeBytes = ToExplicitPayloadLimit(payloadByteBudget);
-        var applied = await adapterSchedulingTransaction.ApplyAsync(
-            new HostManagerAdapterSchedulingApplyCommand(
-                payload,
-                maximumEnvelopeBytes,
-                maximumEnvelopeBytes,
-                AdapterSchedulingPolicyIds.HostManager,
-                durableTimeSource.NextUtc(),
-                target.TargetId,
-                target.DisplayName,
-                validity.HasFlag(NativeAppliedOwnershipGradeValidity.Cpu)
-                    ? MapCpuGrade((NativeSmartCoordinatorAdapterGrade)targetGrades.CpuGrade)
-                    : null,
-                validity.HasFlag(NativeAppliedOwnershipGradeValidity.Gpu)
-                    ? MapGpuGrade((NativeSmartCoordinatorAdapterGrade)targetGrades.GpuGrade)
-                    : null,
-                action.CpuScore,
-                action.GpuScore,
-                $"native-composite-reason:0x{(ulong)action.ReasonMask:X}",
-                deadline),
-            cancellationToken);
-        return applied.Status switch
-        {
-            HostManagerAdapterSchedulingApplyStatus.Applied or
-                HostManagerAdapterSchedulingApplyStatus.AlreadyApplied =>
-                TransactionEffectResult.Succeeded(),
-            HostManagerAdapterSchedulingApplyStatus.Rejected =>
-                TransactionEffectResult.Rejected(),
-            HostManagerAdapterSchedulingApplyStatus.OwnershipLost =>
-                TransactionEffectResult.OwnershipLost(),
-            HostManagerAdapterSchedulingApplyStatus.Unavailable or
-                HostManagerAdapterSchedulingApplyStatus.StateUncertain =>
-                TransactionEffectResult.StateUncertain(),
-            _ => TransactionEffectResult.StateUncertain()
-        };
+        return Task.FromResult(MapProcessApplyResult(
+            processPolicyTransaction.Apply(payload, targetGrades.ProcessGrade)));
     }
 
-    private async Task<TransactionEffectResult> RestoreTransactionPayloadAsync(
+    private Task<TransactionEffectResult> RestoreTransactionPayloadAsync(
         NativeSmartCoordinatorAction action,
         byte[] payload,
         long payloadByteBudget,
         DateTimeOffset deadline,
         CancellationToken cancellationToken)
-    {
-        if (action.Scope == NativeSmartCoordinatorActionScope.ProcessPolicy)
-        {
-            var restored = processPolicyTransaction.Restore(payload, (int)action.FromProcessGrade);
-            return MapProcessRestoreResult(restored);
-        }
-
-        var maximumEnvelopeBytes = ToExplicitPayloadLimit(payloadByteBudget);
-        var restoredAdapter = await adapterSchedulingTransaction.RestoreAsync(
-            new HostManagerAdapterSchedulingRestoreCommand(
-                payload,
-                maximumEnvelopeBytes,
-                maximumEnvelopeBytes,
-                deadline),
-            cancellationToken);
-        return restoredAdapter.Status switch
-        {
-            HostManagerAdapterSchedulingRestoreStatus.Restored or
-                HostManagerAdapterSchedulingRestoreStatus.AlreadyRestored =>
-                TransactionEffectResult.Succeeded(),
-            HostManagerAdapterSchedulingRestoreStatus.OwnershipLost or
-                HostManagerAdapterSchedulingRestoreStatus.Conflict =>
-                TransactionEffectResult.OwnershipLost(),
-            HostManagerAdapterSchedulingRestoreStatus.InvalidPayload =>
-                TransactionEffectResult.Rejected(),
-            HostManagerAdapterSchedulingRestoreStatus.Unavailable or
-                HostManagerAdapterSchedulingRestoreStatus.StateUncertain =>
-                TransactionEffectResult.StateUncertain(),
-            _ => TransactionEffectResult.StateUncertain()
-        };
-    }
+        => Task.FromResult(MapProcessRestoreResult(
+            processPolicyTransaction.Restore(payload, (int)action.FromProcessGrade)));
 
     internal static TransactionEffectResult MapProcessApplyResult(
         HostManagerProcessPolicyApplyResult result)
@@ -1137,19 +947,7 @@ public sealed partial class HostManagerSmartCoordinator
         {
             flags |= NativeSmartCoordinatorFeedbackFlags.ProcessOwned;
         }
-        if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu) &&
-            action.ToCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal)
-        {
-            flags |= NativeSmartCoordinatorFeedbackFlags.CpuOwned;
-        }
-        if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu) &&
-            action.ToGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal)
-        {
-            flags |= NativeSmartCoordinatorFeedbackFlags.GpuOwned;
-        }
-        if ((flags & (NativeSmartCoordinatorFeedbackFlags.ProcessOwned |
-                NativeSmartCoordinatorFeedbackFlags.CpuOwned |
-                NativeSmartCoordinatorFeedbackFlags.GpuOwned)) != 0)
+        if (flags.HasFlag(NativeSmartCoordinatorFeedbackFlags.ProcessOwned))
         {
             flags |= NativeSmartCoordinatorFeedbackFlags.RollbackPayloadPersisted;
         }
@@ -1160,12 +958,6 @@ public sealed partial class HostManagerSmartCoordinator
             flags,
             actualProcessGrade: action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Process)
                 ? action.ToProcessGrade
-                : null,
-            actualCpuGrade: action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                ? action.ToCpuGrade
-                : null,
-            actualGpuGrade: action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                ? action.ToGpuGrade
                 : null);
     }
 
@@ -1199,14 +991,6 @@ public sealed partial class HostManagerSmartCoordinator
             actualProcessGrade: includeActual &&
                 action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Process)
                     ? action.FromProcessGrade
-                    : null,
-            actualCpuGrade: includeActual &&
-                action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                    ? action.FromCpuGrade
-                    : null,
-            actualGpuGrade: includeActual &&
-                action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                    ? action.FromGpuGrade
                     : null);
     }
 
@@ -1246,11 +1030,6 @@ public sealed partial class HostManagerSmartCoordinator
                 ProcessStartKey = action.ProcessStartKey,
                 ProcessId = action.ProcessId
             },
-            NativeSmartCoordinatorActionScope.AdapterSoftware => new NativeAppliedOwnershipPrimaryIdentity
-            {
-                Scope = (uint)NativeAppliedOwnershipScope.Adapter,
-                SoftwareId = action.SoftwareKey
-            },
             _ => throw new ArgumentOutOfRangeException(nameof(action))
         };
 
@@ -1259,66 +1038,8 @@ public sealed partial class HostManagerSmartCoordinator
         {
             NativeSmartCoordinatorActionScope.ProcessPolicy =>
                 action.FromProcessGrade != NativeSmartCoordinatorProcessGrade.Normal,
-            NativeSmartCoordinatorActionScope.AdapterSoftware =>
-                (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu) &&
-                    action.FromCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal) ||
-                (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu) &&
-                    action.FromGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal),
             _ => false
         };
-
-    private static HostManagerTargetInfo? ResolveAdapterTarget(
-        HostManagerSample sample,
-        ulong softwareKey)
-    {
-        HostManagerTargetInfo? result = null;
-        foreach (var target in sample.Targets)
-        {
-            if (NativeStableIdentity.CreateCaseInsensitiveKey(target.SoftwareId) != softwareKey)
-            {
-                continue;
-            }
-            if (result is not null &&
-                !string.Equals(result.SoftwareId, target.SoftwareId, StringComparison.Ordinal))
-            {
-                return null;
-            }
-            result = target;
-        }
-        return result;
-    }
-
-    private static AdapterCpuSchedulingGrade MapCpuGrade(
-        NativeSmartCoordinatorAdapterGrade grade)
-        => grade switch
-        {
-            NativeSmartCoordinatorAdapterGrade.Freeze => AdapterCpuSchedulingGrade.Freeze,
-            NativeSmartCoordinatorAdapterGrade.Optimize => AdapterCpuSchedulingGrade.Optimize,
-            NativeSmartCoordinatorAdapterGrade.Normal => AdapterCpuSchedulingGrade.Normal,
-            NativeSmartCoordinatorAdapterGrade.Extreme => AdapterCpuSchedulingGrade.Extreme,
-            _ => throw new ArgumentOutOfRangeException(nameof(grade))
-        };
-
-    private static AdapterGpuSchedulingGrade MapGpuGrade(
-        NativeSmartCoordinatorAdapterGrade grade)
-        => grade switch
-        {
-            NativeSmartCoordinatorAdapterGrade.Freeze => AdapterGpuSchedulingGrade.Freeze,
-            NativeSmartCoordinatorAdapterGrade.Optimize => AdapterGpuSchedulingGrade.Optimize,
-            NativeSmartCoordinatorAdapterGrade.Normal => AdapterGpuSchedulingGrade.Normal,
-            NativeSmartCoordinatorAdapterGrade.Extreme => AdapterGpuSchedulingGrade.Extreme,
-            _ => throw new ArgumentOutOfRangeException(nameof(grade))
-        };
-
-    private static int ToExplicitPayloadLimit(long payloadByteBudget)
-    {
-        if (payloadByteBudget <= 0 || payloadByteBudget > int.MaxValue)
-        {
-            throw new InvalidDataException(
-                "The compiled transaction payload budget cannot be represented by the adapter boundary.");
-        }
-        return checked((int)payloadByteBudget);
-    }
 
     private ulong CurrentUtcMilliseconds(ulong minimumUtcMilliseconds = 0)
         => durableTimeSource.NextUtcMilliseconds(minimumUtcMilliseconds);

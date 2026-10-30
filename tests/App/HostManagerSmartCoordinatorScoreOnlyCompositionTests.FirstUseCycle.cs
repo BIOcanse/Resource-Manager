@@ -40,7 +40,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             TimeProvider.System, TimeSpan.FromMinutes(1), committer, WindowsHostManagerDurableRootManifestCommitter.Instance);
         if (store is not null) await store.ReserveNativeHostSessionIncarnationAsync(default);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            processFactsSnapshot: facts, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology),
             automaticPlacementTopology: topology, runningGpuActions: actions,

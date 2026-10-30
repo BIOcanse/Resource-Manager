@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
 using System.Text.Json;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -173,7 +172,7 @@ public sealed class StorageIdentifyInformationCollectorTests
     }
 
     [Fact]
-    public void ZoneUsesExactIdentityAndFreezeDoesNotQuery()
+    public void ZoneUsesExactIdentityAndRejectsUnavailableOrAmbiguousInputs()
     {
         var physical = new[] { Disk(9, 11, "SERIAL-A", "a"), Disk(21, 17, "SERIAL-N", "n"), Disk(22, 7, "usb", "usb") };
         var os = new[] { OsDisk(4, physical[0]), OsDisk(6, physical[1]), OsDisk(8, physical[2]) };
@@ -192,9 +191,6 @@ public sealed class StorageIdentifyInformationCollectorTests
         Assert.Equal(new[] { 4, 6 }, reads); Assert.Equal(2, current.Count);
         Assert.Equal("windows-storage|unique|A", current[0].DeviceIdentity);
         Assert.Equal(StorageIdentifyProtocol.Ata, current[0].Protocol);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Null(zone.ReadInformationDeclarations()); Assert.Equal(2, queryCount);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.LowPower);
         failOs = true;
         Assert.All(zone.ReadInformationDeclarations()!, disk => { Assert.Null(disk.Ata); Assert.Null(disk.Nvme); });
         Assert.Equal(2, reads.Count);

@@ -21,8 +21,8 @@ public sealed partial class IntelMsrThermalCollectorTests
         Assert.Equal(16, bindings.Length);
         Assert.All(bindings, binding => { Assert.Equal(device.ExactIdentityKey, binding.DeviceIdentity); Assert.Empty(binding.LegacyMetricId); });
         var handles = bindings.Select(static binding => binding.MetricHandle).ToArray();
-        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var first = Publish(1, new(device.ExactIdentityKey, new Dictionary<MetricFieldCode, double>
         { [MetricFieldCode.IntelPackageEnergyJoules] = 255.99999994039536 })
         { UnsignedValues = new Dictionary<MetricFieldCode, ulong> { [MetricFieldCode.IntelPackageEnergyCounter] = uint.MaxValue } });

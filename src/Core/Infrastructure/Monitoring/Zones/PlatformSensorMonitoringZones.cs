@@ -1,7 +1,6 @@
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
-using ResourceManager.App.Domain.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -28,14 +27,7 @@ public sealed partial class HardwareMonitorWmiMonitoringZone : MonitoringSourceZ
     {
         this.coreReader = coreReader ?? throw new ArgumentNullException(nameof(coreReader));
     }
-    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
-    {
-        lock (gate)
-        {
-            base.ApplyMode(mode);
-            if (mode == ResourceManagerComputeZoneMode.Freeze) coreReader.ReleaseSession();
-        }
-    }
+
 }
 
 public sealed class NotebookOemFanMonitoringZone : MonitoringSourceZone, IDisposable
@@ -71,25 +63,16 @@ public sealed class NotebookOemFanMonitoringZone : MonitoringSourceZone, IDispos
     internal NotebookOemFanSensorSnapshot ReadSensors()
     {
         lock (gate)
-            return CanRead ? reader.Read(getFirmwareProviderPlan()) : NotebookOemFanSensorReader.Frozen();
+            return reader.Read(getFirmwareProviderPlan());
     }
 
     internal void SynchronizeDemand(bool hasDemand)
     {
         lock (gate)
         {
-            if (!hasDemand || !CanRead
+            if (!hasDemand
                 || getFirmwareProviderPlan().NotebookOemFanProvider != NotebookOemFanProviderKind.MechrevoUwAcpi)
                 reader.ReleaseSession();
-        }
-    }
-
-    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
-    {
-        lock (gate)
-        {
-            base.ApplyMode(mode);
-            if (mode == ResourceManagerComputeZoneMode.Freeze) reader.ReleaseSession();
         }
     }
 
@@ -109,16 +92,10 @@ public sealed partial class IpHelperNetworkMonitoringZone : MonitoringSourceZone
 
 public sealed class EtwNetworkTcpIpMonitoringZone : MonitoringSourceZone
 {
-    internal event Action? ModeChanged;
 
     public EtwNetworkTcpIpMonitoringZone()
         : base(MonitoringSourceZoneIds.EtwNetworkTcpIp)
     {
     }
 
-    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
-    {
-        base.ApplyMode(mode);
-        ModeChanged?.Invoke();
-    }
 }

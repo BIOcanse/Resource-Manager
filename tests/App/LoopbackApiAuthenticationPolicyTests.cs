@@ -76,8 +76,8 @@ public sealed class LoopbackApiAuthenticationPolicyTests
     [InlineData("POST", "/api/components/{id}/verify", "Protected", "read")]
     [InlineData("POST", "/api/public/v1/sqlite/databases/{databaseId}/query", "Protected", "read")]
     [InlineData("GET", "/api/cpu/residency", "Protected", "processes.read")]
-    [InlineData("GET", "/api/adapters/resource-manager/scheduling", "Protected", "adapters.register.self")]
-    [InlineData("POST", "/api/adapters/resource-manager/scheduling", "Protected", "adapters.register.self")]
+    [InlineData("GET", "/api/adapters/resource-manager/scheduling", "MissingPolicy", "")]
+    [InlineData("POST", "/api/adapters/resource-manager/scheduling", "MissingPolicy", "")]
     [InlineData("POST", "/api/operations/{id}/cancel", "Protected", "session")]
     [InlineData("POST", "/api/optimization/reports/refresh", "Protected", "processes.read")]
     [InlineData("POST", "/api/optimization/reports/history/clear", "Protected", "session")]
@@ -116,6 +116,16 @@ public sealed class LoopbackApiAuthenticationPolicyTests
             else
                 Assert.Equal(new[] { scope }, requirement.RequiredScopes);
         }
+    }
+
+    [Fact]
+    public void RetiredSelfSchedulingSelectorHasNoTrustedAccessScope()
+    {
+        Assert.False(TrustedAccessHttpPolicy.TryGetRequiredScopesForSubscription(
+            "/api/adapters/resource-manager/scheduling/subscribe", out var scopes));
+        Assert.Empty(scopes);
+        Assert.False(TrustedAccessHttpPolicy.AllowsKeylessSubscription(
+            "/api/adapters/resource-manager/scheduling/subscribe"));
     }
 
     [Fact]

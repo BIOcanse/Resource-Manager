@@ -1,5 +1,4 @@
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.ReadWrite.Windows.Frames;
@@ -220,28 +219,6 @@ public sealed class PresentFrameEtwLifecycleTests
         await harness.WaitRunningAsync();
         Assert.Equal(2, harness.Sessions.Attempts);
         Assert.Empty(harness.Source.Read(TimeSpan.FromSeconds(1))!.Processes);
-        await harness.ReleaseAsync(frame);
-    }
-
-    [Fact]
-    public async Task FreezeUsesTheSourceModePathAndRetainsItsTypedFrameTimestamp()
-    {
-        var clock = new PresentFrameEtwManualTimeProvider();
-        await using var harness = PresentFrameEtwTestHarness.Create(timeProvider: clock);
-        var frame = harness.Source.AcquireSubscription();
-        await harness.WaitRunningAsync();
-        var session = Assert.Single(harness.Sessions.Snapshot());
-        var before = harness.Source.Read(TimeSpan.FromSeconds(1));
-        Assert.NotNull(before);
-
-        await harness.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Equal(1, session.Stops);
-        var stopped = harness.Source.Read(TimeSpan.FromSeconds(1));
-        Assert.NotNull(stopped);
-        Assert.Equal(before.ObservedAt, stopped.ObservedAt);
-        clock.Advance(TimeSpan.FromSeconds(10));
-        Assert.Equal(stopped.ObservedAt, harness.Source.Read(TimeSpan.FromSeconds(1))!.ObservedAt);
-
         await harness.ReleaseAsync(frame);
     }
 

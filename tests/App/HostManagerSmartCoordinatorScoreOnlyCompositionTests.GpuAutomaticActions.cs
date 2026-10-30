@@ -386,7 +386,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         RecordingRunningGpuActions actions, IHostManagerRollbackStateStore? store = null, GpuPreferenceValues? preferences = null)
     {
         var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.Normal,
+            automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.Normal,
             runningGpuActions: actions, rollbackStateStoreOverride: store, graphicsPreferenceOverride: preferences,
             processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(
                 pid, DateTimeOffset.FromFileTime(133900000000000001))));

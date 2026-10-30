@@ -1,8 +1,5 @@
-using ResourceManager.App.Application.Adaptation;
-using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.NetworkTelemetry;
 using ResourceManager.App.Application.ResourceBreakdown;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using Row = ResourceManager.App.Infrastructure.ResourceBreakdown.IpHelperNetworkAttributionReader.MibTcpRow;
@@ -16,7 +13,7 @@ public sealed class TcpEStatsLifecycleTests
     [Fact]
     public void QuietExactTcpBaselineDoesNotHideEstimatedUdpResidual()
     {
-        using var reader = Create(new Stats { Enabled = true }, new Zones(),
+        using var reader = Create(new Stats { Enabled = true },
             () => [Connection, Endpoint.Udp("udp", 456, false, true, 5000)]);
         var snapshot = reader.Read(Request);
         Assert.Contains(snapshot.Processes.Values, row => row.IsEstimated && row.TotalBytesPerSecond > 0);
@@ -32,8 +29,8 @@ public sealed class TcpEStatsLifecycleTests
     public void ExistingCollectionIsReadWithoutTakingOwnershipAndOwnCollectionIsEnabledOnlyOnce(bool alreadyEnabled)
     {
         var source = new Stats { Enabled = alreadyEnabled };
-        var zones = new Zones();
-        var reader = Create(source, zones, () => [Connection]);
+
+        var reader = Create(source, () => [Connection]);
         reader.Read(Request);
         source.Incoming = 2048;
         reader.Read(Request);
@@ -50,7 +47,7 @@ public sealed class TcpEStatsLifecycleTests
     public void DisabledOrUnconfirmedCollectionDoesNotTurnUndefinedCountersIntoExactBytes()
     {
         var source = new Stats { RejectEnable = true, Incoming = ulong.MaxValue };
-        using var reader = Create(source, new Zones(), () => [Connection]);
+        using var reader = Create(source, () => [Connection]);
         var result = reader.Read(Request);
         Assert.True(result.Processes[123].IsEstimated);
         Assert.True(double.IsFinite(result.Processes[123].ReceiveBytesPerSecond));
@@ -58,30 +55,14 @@ public sealed class TcpEStatsLifecycleTests
         Assert.Equal(new[] { true }, source.Writes);
     }
 
-    [Fact]
-    public void FreezeReleasesOwnedStatisticsAndAResumedReadStartsANewCounterWindow()
-    {
-        var source = new Stats();
-        var zones = new Zones();
-        using var reader = Create(source, zones, () => [Connection]);
-        reader.Read(Request);
-        zones.Enabled = false;
-        Assert.Equal(NetworkAttributionProviderStates.Frozen, reader.Read(Request).ProviderState.State);
-        Assert.Equal(new[] { true, false }, source.Writes);
-        zones.Enabled = true;
-        source.Incoming = 5000;
-        var first = reader.Read(Request with { SendBytesPerSecond = 0 });
-        // The fresh connection window has no measured delta. Existing residual estimation remains explicit.
-        Assert.True(first.Processes[123].IsEstimated);
-        Assert.Equal(new[] { true, false, true }, source.Writes);
-    }
+
 
     [Fact]
     public void DisappearedConnectionIsForgottenWithoutWritingAnOldTuple()
     {
         var source = new Stats();
         IReadOnlyList<Endpoint> connections = [Connection];
-        var reader = Create(source, new Zones(), () => connections);
+        var reader = Create(source, () => connections);
         reader.Read(Request);
         connections = [];
         reader.Read(Request);
@@ -94,7 +75,7 @@ public sealed class TcpEStatsLifecycleTests
     {
         var source = new Stats();
         var snapshot = new IpHelperNetworkAttributionReader.NetworkEndpointSnapshot([Connection], true);
-        var reader = new IpHelperNetworkAttributionReader(new Proxy(), new Zones(), null!, source, () => snapshot);
+        var reader = new IpHelperNetworkAttributionReader(new Proxy(), new EtwReader { Snapshot = NetworkAttributionSnapshot.NotRequested }, source, () => snapshot);
         reader.Read(Request);
         snapshot = new([], false);
         reader.Read(Request);
@@ -107,7 +88,7 @@ public sealed class TcpEStatsLifecycleTests
     public void FailedReadsDoNotAttemptToEnableUnknownState()
     {
         var source = new Stats { ReadSucceeds = false };
-        using var reader = Create(source, new Zones(), () => [Connection]);
+        using var reader = Create(source, () => [Connection]);
         reader.Read(Request);
         Assert.Empty(source.Writes);
     }
@@ -123,8 +104,8 @@ public sealed class TcpEStatsLifecycleTests
                 new Dictionary<int, NetworkProcessAttribution> { [123] = new(123, 1.5, 3.5, 0, 0, false) },
                 new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture")) { ObservedTraffic = window }
         };
-        var zones = new Zones { EtwEnabled = true };
-        using var reader = new IpHelperNetworkAttributionReader(new Proxy(), zones, etw,
+
+        using var reader = new IpHelperNetworkAttributionReader(new Proxy(), etw,
             new Stats { RejectEnable = true }, () => new([Connection], true));
 
         Assert.Null(reader.Read(Request).ObservedTraffic);
@@ -139,8 +120,6 @@ public sealed class TcpEStatsLifecycleTests
         Assert.Equal("7", merged.ObservedTraffic.Processes[0].SendBytes);
         etw.Snapshot = new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
             new("etw-network-tcpip", NetworkAttributionProviderStates.Warming, "fixture"));
-        Assert.Null(reader.Read(selectedRequest).ObservedTraffic);
-        zones.EtwEnabled = false;
         Assert.Null(reader.Read(selectedRequest).ObservedTraffic);
         Assert.Equal(new[] { false, true, true }, etw.Requests);
     }
@@ -161,28 +140,23 @@ public sealed class TcpEStatsLifecycleTests
     {
         var etw = new EtwReader { Snapshot = new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
             new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture")) { ObservedTraffic = new(DateTimeOffset.UtcNow, 2000, []) } };
-        var zones = new Zones { EtwEnabled = true, IpHelperEnabled = false };
+
         var stats = new Stats();
-        using var reader = new IpHelperNetworkAttributionReader(new Proxy(), zones, etw, stats,
+        using var reader = new IpHelperNetworkAttributionReader(new Proxy(), etw, stats,
             () => throw new InvalidOperationException("No IP Helper endpoint query is allowed."));
         var observed = reader.Read(Request with { Mode = NetworkAttributionReadMode.ObservedTraffic });
         Assert.Same(etw.Snapshot, observed);
         Assert.Equal(new[] { true }, etw.Requests);
         Assert.Empty(stats.Writes);
-        zones.EtwEnabled = false;
-        Assert.Null(reader.Read(Request with { Mode = NetworkAttributionReadMode.ObservedTraffic }).ObservedTraffic);
-        Assert.Equal(new[] { true }, etw.Requests);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void MixedModeKeepsEtwFieldsWhenIpHelperIsFrozenOrFails(bool failure)
+    [Fact]
+    public void MixedModeKeepsEtwFieldsWhenIpHelperFails()
     {
         var etw = new EtwReader { Snapshot = new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
             new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture")) { ObservedTraffic = new(DateTimeOffset.UtcNow, 2000, []) } };
         using var reader = new IpHelperNetworkAttributionReader(new Proxy(),
-            new Zones { EtwEnabled = true, IpHelperEnabled = failure }, etw, new Stats(),
+            etw, new Stats(),
             () => throw new InvalidOperationException("private endpoint failure"));
 
         var result = reader.Read(Request with { Mode = NetworkAttributionReadMode.LegacyAndObservedTraffic });
@@ -190,12 +164,12 @@ public sealed class TcpEStatsLifecycleTests
         Assert.Same(etw.Snapshot.ObservedTraffic, result.ObservedTraffic);
         Assert.Equal(new[] { true }, etw.Requests);
         Assert.Empty(result.RawProcessValues);
-        Assert.Equal(failure ? NetworkAttributionProviderStates.Unavailable : NetworkAttributionProviderStates.Frozen, result.ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Unavailable, result.ProviderState.State);
         Assert.DoesNotContain("private endpoint failure", result.ProviderState.Message);
     }
 
-    private static IpHelperNetworkAttributionReader Create(Stats stats, Zones zones, Func<IReadOnlyList<Endpoint>> endpoints)
-        => new(new Proxy(), zones, null!, stats, () => new(endpoints(), true));
+    private static IpHelperNetworkAttributionReader Create(Stats stats, Func<IReadOnlyList<Endpoint>> endpoints)
+        => new(new Proxy(), new EtwReader { Snapshot = NetworkAttributionSnapshot.NotRequested }, stats, () => new(endpoints(), true));
 
     private sealed class Stats : IpHelperNetworkAttributionReader.ITcpDataStats
     {
@@ -214,21 +188,5 @@ public sealed class TcpEStatsLifecycleTests
         public bool IsKnownProxyProcessName(string? name) => false;
         public bool IsLikelyProxyPort(int port) => false;
     }
-    private sealed class Zones : IMonitoringSourceZoneRegistry
-    {
-        public bool Enabled = true;
-        public bool EtwEnabled;
-        public bool IpHelperEnabled = true;
-        public event Action? Changed { add { } remove { } }
-        public long Version => 0;
-        public bool CanRead(string id) => Enabled && (IpHelperEnabled && id == MonitoringSourceZoneIds.IpHelperNetwork
-            || EtwEnabled && id == MonitoringSourceZoneIds.EtwNetworkTcpIp);
-        public bool IsLowPower(string id) => false;
-        public ResourceManagerComputeZoneMode GetMode(string id) => throw new NotSupportedException();
-        public IResourceManagerSelfComputeZone GetZone(string id) => throw new NotSupportedException();
-        public IReadOnlyList<IResourceManagerSelfComputeZone> GetZones() => [];
-        public IReadOnlyList<string> GetSourceIds() => [];
-        public bool Register(IResourceManagerSelfComputeZone zone) => throw new NotSupportedException();
-        public bool Unregister(string id) => throw new NotSupportedException();
-    }
+
 }

@@ -111,21 +111,6 @@ public sealed partial class IntelFanOwnerHostIntegrationTests
     }
 
     [Fact]
-    public async Task FrozenDirectoryProbeDoesNotTouchTheHeldSdkSession()
-    {
-        var fixture = new NativeRecording();
-        using var owner = fixture.Owner();
-        using var http = new HttpClient();
-        var core = new ReadWriteCore(owner.CreateBackend(), new DependencyActions(http, []));
-        var fields = IntelFanConsumer.Fields(await core.DiscoverAsync());
-        var calls = fixture.Sessions[0].Operations;
-        fixture.Record.Frozen = true;
-        Assert.Equal<FieldReference>(fields, IntelFanConsumer.Fields(await core.DiscoverAsync()));
-        Assert.Equal(calls, fixture.Sessions[0].Operations);
-        Assert.Equal(1, fixture.Opens);
-    }
-
-    [Fact]
     public void RealHostHolderPreservesDirectoryAcrossProbeAndClosesOnlyAfterOldLeaseEnds()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
@@ -172,10 +157,9 @@ public sealed partial class IntelFanOwnerHostIntegrationTests
         }
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, fan.ExactIdentityKey, [RecordedIntelFanResources.Name]);
         var zone = new IntelGclMonitoringZone(fixture.Reader);
-        var registry = new MonitoringSourceZoneRegistry([new WindowsMemoryMonitoringZone(), zone]);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!, new WindowsGpuAdapterOrderMonitoringZone(RecordedIntelFanResources.Inventory),
             null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard,
-            registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance,
+ slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance,
             intelGclZone: zone, borrowedControls: fixture.Resources.Controls);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         Assert.Empty(fixture.Sessions[0].Reads);
@@ -232,7 +216,7 @@ public sealed partial class IntelFanOwnerHostIntegrationTests
             Record.ReadOverride = Reader.ReadFans;
             Resources = Record.Create();
         }
-        internal WindowsHardwareMetricOwner Owner() => new(WindowsMetricConfiguration.Default, Resources, new(), Record.Mode, TimeSpan.Zero);
+        internal WindowsHardwareMetricOwner Owner() => new(WindowsMetricConfiguration.Default, Resources, new(), TimeSpan.Zero);
         internal HostManagerMetricSnapshotOwner Host(HostManagerSamplingSubscriptionTestFixture slots)
         {
             var topology = new WindowsHardwareMetricTopologySource(new(Resources.ReadGpuInventory, Resources.ReadStorageIdentities,

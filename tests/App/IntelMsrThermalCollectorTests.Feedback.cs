@@ -1,5 +1,4 @@
 using System.Text.Json;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
@@ -82,7 +81,7 @@ public sealed partial class IntelMsrThermalCollectorTests
     }
 
     [Fact]
-    public void FeedbackFrozenNoDemandOrWrongObjectKindNeverCreatesHardwareAccess()
+    public void FeedbackNoDemandOrWrongObjectKindNeverCreatesHardwareAccess()
     {
         var reader = new IntelMsrReader(() => throw new InvalidOperationException(), () => throw new InvalidOperationException());
         var target = FeedbackThread(); var requested = Request(target, MetricFieldCode.IntelAperfCounter);
@@ -90,8 +89,6 @@ public sealed partial class IntelMsrThermalCollectorTests
         Assert.Empty(reader.Read([target with { SupportsPerformanceFeedback = false }], requested));
         Assert.Empty(reader.Read([Core() with { SupportsPerformanceFeedback = true }], Request(Core(), MetricFieldCode.IntelAperfCounter)));
         Assert.Empty(reader.Read([Package() with { SupportsPerformanceFeedback = true }], Request(Package(), MetricFieldCode.IntelAperfCounter)));
-        var zone = new IntelMsrMonitoringZone(reader); zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Empty(zone.Read([target], requested));
     }
 
     [Fact]
@@ -200,8 +197,8 @@ public sealed partial class IntelMsrThermalCollectorTests
         var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled, [], [], [], workspace.CreateCatalogHandleMap(), intelCpus: [target]);
         var now = DateTimeOffset.UtcNow; workspace.ReplaceCatalog(catalog, now);
         var handles = catalog.MetricBindings.Values.Where(static binding => binding.SourceId == "intel.msr").Select(static binding => binding.MetricHandle).ToArray();
-        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var initial = Publish(1, new() { [MetricFieldCode.IntelAperfCounter] = ulong.MaxValue, [MetricFieldCode.IntelMperfCounter] = 9007199254740993UL });
         AssertFeedbackCounter(initial, target.ExactIdentityKey, "18446744073709551615");
         var wire = JsonSerializer.Serialize(MetricDeviceFields.Read(initial, target.ExactIdentityKey), new JsonSerializerOptions(JsonSerializerDefaults.Web));

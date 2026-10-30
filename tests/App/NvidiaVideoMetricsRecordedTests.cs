@@ -242,8 +242,6 @@ public sealed class NvidiaVideoMetricsRecordedTests
                 return 0;
             }
         });
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         var memory = new WindowsMemoryMonitoringZone(
             _ => throw new InvalidOperationException("NVML video fields do not read NUMA memory."),
             () => throw new InvalidOperationException("NVML video fields do not read memory."));
@@ -263,7 +261,7 @@ public sealed class NvidiaVideoMetricsRecordedTests
             null!,
             owner,
             dashboard,
-            registry,
+
             slots.Owner,
             slots.Provider,
             NullLogger<WindowsHardwareMetricSampler>.Instance);

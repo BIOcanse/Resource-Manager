@@ -200,14 +200,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         fixture.Coordinator.TransitionProbe = probe;
         var ownership = new NativeAppliedOwnershipFactIndex(0, new Dictionary<NativeAppliedOwnershipProcessIdentity, NativeAppliedOwnershipRecord>(),
             new Dictionary<NativeAppliedOwnershipProcessIdentity, NativeAppliedOwnershipRecord>(),
-            new Dictionary<ulong, NativeAppliedOwnershipRecord>(),
             new Dictionary<NativeAppliedOwnershipProcessIncarnation, NativeAppliedOwnershipProcessAnchor>());
         object projection;
         using (BeginNativeFactProjection(fixture, sample, ownership))
         {
             projection = typeof(HostManagerSmartCoordinator).GetMethod("ProjectNativeFacts", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
-                    fixture.RuntimePlan.OptimizationMode, false, false, fixture.Coordinator.SchedulingAuthority.Compute])!;
+                    fixture.RuntimePlan.OptimizationMode, false, fixture.Coordinator.SchedulingAuthority.Compute])!;
         }
         Assert.Equal(NativeSmartCoordinatorInputValidity.ProcessIdentity,
             Assert.Single(probe.Rows, row => row.ProcessId == malformedPid).ValidMask);
@@ -289,7 +288,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             projection = typeof(HostManagerSmartCoordinator).GetMethod("ProjectNativeFacts", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
-                    fixture.RuntimePlan.OptimizationMode, false, false, compute])!;
+                    fixture.RuntimePlan.OptimizationMode, false, compute])!;
         }
         Assert.True((bool)projection.GetType().GetProperty("FullProcessSnapshot")!.GetValue(projection)!);
         Assert.True(Assert.Single(probe.Rows, row => row.ProcessId == healthyPid
@@ -360,13 +359,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         fixture.Coordinator.TransitionProbe = probe;
         var ownership = new NativeAppliedOwnershipFactIndex(0, new Dictionary<NativeAppliedOwnershipProcessIdentity, NativeAppliedOwnershipRecord>(),
             new Dictionary<NativeAppliedOwnershipProcessIdentity, NativeAppliedOwnershipRecord>(),
-            new Dictionary<ulong, NativeAppliedOwnershipRecord>(),
             new Dictionary<NativeAppliedOwnershipProcessIncarnation, NativeAppliedOwnershipProcessAnchor>());
         using (BeginNativeFactProjection(fixture, sample, ownership))
         {
             typeof(HostManagerSmartCoordinator).GetMethod("ProjectNativeFacts", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
-                    fixture.RuntimePlan.OptimizationMode, false, false, compute]);
+                    fixture.RuntimePlan.OptimizationMode, false, compute]);
         }
 
         var excludedKind = gpuDomain ? NativeSmartCoordinatorMetricKind.GpuUsagePercent : NativeSmartCoordinatorMetricKind.CpuUsagePercent;

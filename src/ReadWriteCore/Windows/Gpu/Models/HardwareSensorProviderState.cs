@@ -10,7 +10,6 @@ public static class HardwareSensorProviderStates
     public const string RuntimeAvailable = "runtime_available";
     public const string InstalledUnverified = "installed_unverified";
     public const string UnsupportedFirmware = "unsupported_firmware";
-    public const string Frozen = "frozen";
     public const string Current = "current";
 }
 

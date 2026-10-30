@@ -1,4 +1,3 @@
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Vendors.Amd.Smu;
@@ -12,7 +11,7 @@ public sealed class AmdSmuMonitoringZoneLifetimeTests
         false, false, false, false, false, false, false, false, false, false, false);
 
     [Fact]
-    public void FreezeReleasesBothOwnedSessionsAndResumePreservesDiscoveredCcdIdentities()
+    public void RepeatedReadsRetainOwnedSessionsAndPreserveDiscoveredCcdIdentities()
     {
         var pmSessions = new List<PmSession>();
         var smnSessions = new List<SmnSession>();
@@ -32,22 +31,15 @@ public sealed class AmdSmuMonitoringZoneLifetimeTests
             Assert.Equal(75, zone.Read(Selected).TemperatureCelsius);
             Assert.Equal(51, zone.ReadCcd(identities, requested)[identity.ExactIdentityKey]);
             Assert.Equal(75, zone.Read(Selected).TemperatureCelsius);
-            Assert.Equal(cycle + 1, pmSessions.Count);
-            Assert.Equal(cycle + 1, smnSessions.Count);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            Assert.All(pmSessions, session => Assert.Equal(1, session.Disposals));
-            Assert.All(smnSessions, session => Assert.Equal(1, session.Disposals));
-            Assert.Equal(HardwareSensorProviderStates.Frozen, zone.Read(Selected).ProviderState.State);
-            Assert.Empty(zone.ReadCcd(identities, requested));
-            Assert.Empty(zone.ReadCcdIdentities(Topology(), 16).Identities);
-            Assert.Equal(cycle + 1, pmSessions.Count);
-            Assert.Equal(cycle + 1, smnSessions.Count);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-            Assert.Equal(cycle + 1, pmSessions.Count);
-            Assert.Equal(cycle + 1, smnSessions.Count);
+            Assert.Single(pmSessions);
+            Assert.Single(smnSessions);
+            Assert.All(pmSessions, session => Assert.Equal(0, session.Disposals));
+            Assert.All(smnSessions, session => Assert.Equal(0, session.Disposals));
         }
         Assert.Equal(1, resolves);
+        zone.Dispose();
+        Assert.All(pmSessions, session => Assert.Equal(1, session.Disposals));
+        Assert.All(smnSessions, session => Assert.Equal(1, session.Disposals));
     }
 
     [Fact]

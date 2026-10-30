@@ -48,7 +48,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 { ValidMetricMask = process.ValidMetricMask & ~SchedulingProcessMetricMask.CpuUsage }).ToArray()
         };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            processFactsSnapshot: facts, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = fixture.Root });

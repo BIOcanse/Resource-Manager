@@ -76,13 +76,13 @@ public sealed class EtwCpuResidencyWindowDemandTests(ITestOutputHelper testOutpu
     }
 
     [Fact]
-    public async Task FreezePausesWindowAndRetainsTheRunLeaseWithoutErasingCurrent()
+    public async Task CompletedWindowRetainsTheRunLeaseWithoutErasingCurrent()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new Broker();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
             NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
-        using var demand = reader.AcquireSubscription("test.freeze", TimeSpan.FromSeconds(30));
+        using var demand = reader.AcquireSubscription("test.completed-window", TimeSpan.FromSeconds(30));
         await reader.StartAsync(CancellationToken.None);
         try
         {
@@ -90,7 +90,6 @@ public sealed class EtwCpuResidencyWindowDemandTests(ITestOutputHelper testOutpu
             FeedWindow(reader, sampling);
             await UntilAsync(() => reader.Read() is not null);
             var current = reader.Read();
-            reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
             await UntilAsync(() => !IsWindowActive(reader) && broker.Keywords == MetadataKeywords);
             await Task.Delay(150);
             Assert.Equal(MetadataKeywords, broker.Keywords);

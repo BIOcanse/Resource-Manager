@@ -142,7 +142,7 @@ public sealed class SubscriptionActivityRenewalTests
     private static async Task InitializeControllerFactsAsync(NativeBackendBlockFixture fixture)
     {
         int[] nativeFacts = [BackendItems.PresentNativeSessionAvailable, BackendItems.GpuAllocationNativeSessionAvailable,
-            BackendItems.VidMmNativeSessionAvailable, BackendItems.PresentUnfrozen, BackendItems.VidMmUnfrozen];
+            BackendItems.VidMmNativeSessionAvailable];
         foreach (var declaration in StateRegistry.Items.Where(item => item.ValueType == typeof(bool)
             && item.Storage == StateItemStorage.Reference && !item.PerBlock
             && item.Uid != StateItemUids.ActualControlValuesInUse && !nativeFacts.Contains(item.Uid)))

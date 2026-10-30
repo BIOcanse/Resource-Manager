@@ -34,7 +34,6 @@ public sealed class SubscriptionChannelContractTests
     [InlineData("/api/resource-facts/subscribe")]
     [InlineData("/api/performance-overlay/subscribe")]
     [InlineData("/api/control/actual/subscribe")]
-    [InlineData("/api/adapters/resource-manager/scheduling/subscribe")]
     [InlineData("/api/local-system/status/subscribe")]
     [InlineData("/api/device-topology/state/subscribe")]
     [InlineData("/api/device-topology/fields/subscribe")]
@@ -92,6 +91,8 @@ public sealed class SubscriptionChannelContractTests
     [InlineData("/api/metrics/subscribe#fragment")]
     [InlineData("/api/metrics/subscribe?ids=cpu.usage\n")]
     [InlineData("/api/operations/cancel")]
+    [InlineData("/api/adapters/resource-manager/scheduling/subscribe")]
+    [InlineData("/api/adapters/resource-manager/scheduling/subscribe?intervalMs=1000")]
     [InlineData("/api/optimization/smart/diagnostics/decision-snapshot/subscribe")]
     public void AliasedOrNonSubscriptionSelectorsAreRejected(string? path)
     {

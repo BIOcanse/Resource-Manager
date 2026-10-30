@@ -9,6 +9,39 @@ namespace Resource_Manager_APP.Tests;
 public sealed class JsonAdapterSoftwareRegistryTests
 {
     [Fact]
+    public async Task LegacySchedulingCapabilitiesAreIgnoredWithoutLosingRegistration()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rm-adapter-retired-capabilities-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(root, "Config", "adapted-software.json");
+        try
+        {
+            var registry = new JsonAdapterSoftwareRegistry(new TestHostEnvironment(root));
+            var registered = await registry.RegisterAsync(CreateRequest("legacy"), CreateProbe(), default);
+            var document = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+            document["registrations"]![0]!["schedulingCapabilities"] = System.Text.Json.Nodes.JsonNode.Parse(
+                """{"cpu":{"supportedGrades":["freeze","normal"]},"gpu":{"supportedGrades":["extreme"]}}""");
+            var legacy = document.ToJsonString();
+            await File.WriteAllTextAsync(path, legacy);
+            registry = new JsonAdapterSoftwareRegistry(new TestHostEnvironment(root));
+            var loaded = Assert.Single(await registry.GetAllAsync(default));
+            Assert.Equal(registered.Registration.Id, loaded.Id);
+            Assert.Equal(registered.Registration.CreatedAt, loaded.CreatedAt);
+            Assert.True(loaded.OwnershipVerified);
+            Assert.Equal(legacy, await File.ReadAllTextAsync(path));
+            await registry.RegisterAsync(CreateRequest("legacy"), CreateProbe(), default);
+            Assert.DoesNotContain("schedulingCapabilities", await File.ReadAllTextAsync(path));
+            Assert.Single(await new JsonAdapterSoftwareRegistry(new TestHostEnvironment(root)).GetAllAsync(default));
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+            var config = Path.GetDirectoryName(path)!;
+            if (Directory.Exists(config)) Directory.Delete(config);
+            if (Directory.Exists(root)) Directory.Delete(root);
+        }
+    }
+
+    [Fact]
     public async Task CorruptRegistryIsPreservedAndReadFailureIsNotCachedAsEmpty()
     {
         var root = Path.Combine(Path.GetTempPath(), "rm-registry-corrupt-" + Guid.NewGuid().ToString("N"));

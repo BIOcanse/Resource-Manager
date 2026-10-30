@@ -183,8 +183,8 @@ public sealed partial class IntelMsrThermalCollectorTests
         internal DeviceMetricFieldValue Publish(bool? value, string? corruption = null)
         {
             var binding = Assert.Single(catalog.MetricBindings.Values, static binding => binding.FieldCode == MetricFieldCode.IntelCoreThermalActive);
-            var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-                NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+            var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+                NativeMetricSnapshotSourceAvailability.Available)).ToArray();
             var at = NextTime(); var plan = Workspace.PlanCollection([binding.MetricHandle], modes, false, at); var source = Assert.Single(plan.Sources);
             var completion = WindowsHardwareMetricSampler.CreateIntelMsrCompletion(plan, source, new(source.SourceHandle, 1, sequence), at,
                 [new(target.ExactIdentityKey, new Dictionary<MetricFieldCode, double>()) { BooleanValues = value.HasValue

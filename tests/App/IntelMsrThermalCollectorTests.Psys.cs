@@ -1,4 +1,3 @@
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Vendors.Intel.Msr;
@@ -241,16 +240,13 @@ public sealed partial class IntelMsrThermalCollectorTests
     }
 
     [Fact]
-    public void PsysFrozenEmptyAndWrongTargetDemandNeverCreatesAccess()
+    public void PsysEmptyAndWrongTargetDemandNeverCreatesAccess()
     {
         var target = PlatformTarget(); var creates = 0;
         var reader = new IntelMsrReader(() => throw new IOException(), () => { creates++; throw new IOException(); });
         Assert.Empty(reader.Read([target], new Dictionary<string, IReadOnlySet<MetricFieldCode>>()));
         Assert.Empty(reader.Read([Package()], Request(Package(), PsysCodes())));
         Assert.Empty(reader.Read([target], Request(target, MetricFieldCode.IntelPackageEnergyCounter)));
-        var zone = new IntelMsrMonitoringZone(reader);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Empty(zone.Read([target], Request(target, PsysCodes())));
         Assert.Equal(0, creates);
     }
 

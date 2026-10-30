@@ -41,7 +41,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     public long Revision => Interlocked.Read(ref revision);
     private CpuCoreResidencyObservation currentObservation = new CpuCoreResidencyUnavailable(CpuCoreResidencyUnavailableReasons.NotRequested);
     private CpuCoreResidencySnapshot? cachedSnapshot => currentObservation as CpuCoreResidencySnapshot;
-    private bool stopped, paused;
+    private bool stopped;
     private volatile string state = "Idle", message = "ETW CPU execution-time attribution starts on explicit demand.";
     public string State => state;
     public string Message => message;
@@ -113,30 +113,9 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         }
     }
 
-    /// <summary>Pauses execution-window intake without releasing the run's kernel resource or published value.</summary>
-    public void SetCaptureEnabled(bool enabled, string idleMessage = "CPU residency capture is paused by its composition.", bool beginWindow = true)
-    {
-        IKernelEtwSubscription? held = null;
-        lock (subscriptionGate)
-        {
-            if (stopped) return;
-            if (paused == !enabled) return;
-            paused = !enabled;
-            if (paused)
-            {
-                PauseWindowCore(idleMessage);
-                held = DetachContextSwitchCore();
-            }
-            else if (beginWindow) BeginWindowCore();
-            else PauseWindowCore("CPU residency is waiting for its next finite observation window.");
-        }
-        held?.Dispose();
-        if (enabled && beginWindow) EnsureContextSwitchHeld();
-    }
-
     public bool IsWindowActive
     {
-        get { lock (subscriptionGate) return !paused && activeSession is { WindowActive: true }; }
+        get { lock (subscriptionGate) return activeSession is { WindowActive: true }; }
     }
 
     /// <summary>Starts fresh boundary coverage and holds context switches while the window needs them.</summary>
@@ -173,7 +152,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         long epoch;
         lock (subscriptionGate)
         {
-            if (stopped || paused || kernelSubscription is null
+            if (stopped || kernelSubscription is null
                 || activeSession is not { WindowActive: true }
                 || contextSwitchSubscription is not null || acquiringContextSwitch) return;
             acquiringContextSwitch = true;
@@ -187,7 +166,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
             lock (subscriptionGate)
             {
-                if (contextSwitchEpoch == epoch && !stopped && !paused
+                if (contextSwitchEpoch == epoch && !stopped
                     && activeSession is { WindowActive: true })
                 {
                     contextSwitchSubscription = created;
@@ -220,14 +199,14 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     {
         var switches = Volatile.Read(ref contextSwitchSubscription)?.GetSnapshot();
         var metadata = Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot();
-        if (!metadata.IsRunning || Volatile.Read(ref activeSession) is not { WindowActive: true } || Volatile.Read(ref paused)) return metadata;
+        if (!metadata.IsRunning || Volatile.Read(ref activeSession) is not { WindowActive: true }) return metadata;
         return switches
             ?? metadata with { State = "Unavailable", Message = "CPU residency context-switch keywords are unavailable." };
     }
 
     private void BeginWindowCore()
     {
-        if (stopped || paused || activeSession is not { } session || session.WindowActive) return;
+        if (stopped || activeSession is not { } session || session.WindowActive) return;
         session.Window.Invalidate();
         session.Buffer.ResetContinuity();
         session.Window = session.CreateWindow();
@@ -282,7 +261,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             if (stopped)
             {
                 state = "Idle";
-                message = "ETW CPU 执行时长归因当前处于功能区冻结。";
+                message = "ETW CPU execution-time attribution owner has been disposed.";
                 return;
             }
 
@@ -377,9 +356,9 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             Volatile.Write(ref activeSession, null);
             ClearRetiredBuffersCore();
             if (bucketStorage is { } storage) session.Buffer.SetBucketStorage(storage);
-            session.WindowActive = !paused && (previous?.WindowActive ?? true);
+            session.WindowActive = previous?.WindowActive ?? true;
             Volatile.Write(ref activeSession, session);
-            state = paused ? "Idle" : "Warming";
+            state = "Warming";
             message = $"ETW CPU 执行时长归因正在形成最近 {plan.ObservationWindow.TotalSeconds:0.###} 秒完整窗口。";
         }
 
@@ -392,7 +371,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         lock (subscriptionGate)
         {
             string? rejection = !IsCurrentSessionCore(session) ? "generation-mismatch"
-                : paused ? "frozen" : !session.WindowActive ? "outside-window"
+                : !session.WindowActive ? "outside-window"
                 : qpc < session.WindowStartQpc ? "before-window" : null;
             if (rejection is not null)
             {
@@ -656,7 +635,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         long observedBindingEpoch;
         lock (subscriptionGate)
         {
-            if (stopped || paused || activeSession is { WindowActive: false })
+            if (stopped || activeSession is { WindowActive: false })
             {
                 return false;
             }
@@ -751,7 +730,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             {
                 lock (subscriptionGate)
                 {
-                    if (stopped || paused || activeSession is { WindowActive: false }
+                    if (stopped || activeSession is { WindowActive: false }
                         || !ReferenceEquals(activeSession?.Window, observedWindow)
                         || bindingEpoch != observedBindingEpoch
                         || !ReferenceEquals(Volatile.Read(ref activeSession), observedSession))
@@ -775,7 +754,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     {
         lock (subscriptionGate)
         {
-            if (stopped || paused || activeSession is { WindowActive: false }
+            if (stopped || activeSession is { WindowActive: false }
                 || !ReferenceEquals(activeSession, session) || !ReferenceEquals(activeSession?.Window, window)) return false;
             session?.Buffer.ResetContinuity();
             return true;
@@ -801,7 +780,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         {
             lock (subscriptionGate)
             {
-                if (stopped || paused || activeSession is { WindowActive: false }
+                if (stopped || activeSession is { WindowActive: false }
                     || !ReferenceEquals(activeSession?.Window, expectedWindow)
                     || bindingEpoch != expectedBindingEpoch
                     || !ReferenceEquals(Volatile.Read(ref activeSession), expectedSession))
@@ -1434,7 +1413,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         lock (subscriptionGate)
         {
             session = activeSession;
-            if (session is null || paused || !session.WindowActive) return false;
+            if (session is null || !session.WindowActive) return false;
             window = session.Window;
         }
         if (!IsRunning) return false;
@@ -1443,7 +1422,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             if (!await window.Boundaries.WaitAsync(boundaryBudget, cancellationToken)) return false;
             if (!await window.Complete.WaitAsync(session.Plan.ObservationWindow + deliveryGrace, cancellationToken)) return false;
             lock (subscriptionGate)
-                return !stopped && !paused && IsCurrentSessionCore(session)
+                return !stopped && IsCurrentSessionCore(session)
                     && session.WindowActive && ReferenceEquals(session.Window, window);
         }
         catch (TimeoutException)

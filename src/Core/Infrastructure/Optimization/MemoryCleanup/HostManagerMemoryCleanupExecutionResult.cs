@@ -6,15 +6,11 @@ internal enum HostManagerMemoryCleanupRoundDisposition : byte
     InvalidCapacitySample = 1,
     IncompleteCandidateProjection = 2,
     MissingAttemptGeneration = 3,
-    JournalReconcileFailed = 4,
     PlannerFailed = 5,
     CompleteNoDecision = 6,
     DeferredByCycleBudget = 7,
-    JournalPrepareFailed = 8,
     BatchOutcomeUnknown = 9,
-    JournalSettlementFailed = 10,
     CompleteKnownFull = 11,
-    BlockedByPriorUnknownOutcome = 12,
     FinalAdmissionCapacityUnavailable = 13,
     FinalAdmissionCandidateProjectionIncomplete = 14,
     FinalAdmissionCaptureFailed = 15,
@@ -24,7 +20,6 @@ internal enum HostManagerMemoryCleanupRoundDisposition : byte
     DeferredByCurrentPolicy = 19,
     FinalAdmissionCandidatesUnknown = 20,
     BlockedByValidationScope = 21,
-    JournalWriterArmFailed = 22,
     ValidationEvidenceCapacityUnavailable = 23,
     ValidationEvidenceSettlementFailed = 24,
     PlannerConfigurationMismatch = 25,
@@ -34,7 +29,6 @@ internal enum HostManagerMemoryCleanupRoundDisposition : byte
 internal readonly record struct HostManagerMemoryCleanupExecutionResult(
     HostManagerMemoryCleanupRoundDisposition Disposition,
     int CandidateCount,
-    int BlockedCandidateCount,
     ulong PlannerStateRevision,
     int PlannedCount,
     int RequestedCount,
@@ -42,17 +36,11 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
     int SucceededCount,
     long CompletedAtUtcTicks)
 {
-    // Previously isolated candidates stay blocked individually, not for the whole cycle.
     internal bool HasUnresolvedCurrentEffects =>
-        Disposition is HostManagerMemoryCleanupRoundDisposition.BatchOutcomeUnknown
-            or HostManagerMemoryCleanupRoundDisposition.JournalReconcileFailed
-            or HostManagerMemoryCleanupRoundDisposition.JournalSettlementFailed
-            or HostManagerMemoryCleanupRoundDisposition.JournalWriterArmFailed
-            or HostManagerMemoryCleanupRoundDisposition.ValidationEvidenceSettlementFailed;
+        Disposition is HostManagerMemoryCleanupRoundDisposition.ValidationEvidenceSettlementFailed;
 
     internal bool CompletedNormalReleaseRound =>
         CandidateCount >= 0
-        && BlockedCandidateCount == 0
         && (Disposition switch
         {
             HostManagerMemoryCleanupRoundDisposition.CompleteNoDecision =>
@@ -76,7 +64,6 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
         => new(
             disposition,
             CandidateCount: 0,
-            BlockedCandidateCount: 0,
             PlannerStateRevision: 0,
             PlannedCount: 0,
             RequestedCount: 0,
@@ -90,7 +77,6 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
         => new(
             HostManagerMemoryCleanupRoundDisposition.CompleteNoDecision,
             candidateCount,
-            BlockedCandidateCount: 0,
             plannerStateRevision,
             PlannedCount: 0,
             RequestedCount: 0,
@@ -106,7 +92,6 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
         => new(
             HostManagerMemoryCleanupRoundDisposition.CompleteKnownFull,
             candidateCount,
-            BlockedCandidateCount: 0,
             plannerStateRevision,
             count,
             count,
@@ -118,7 +103,6 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
         HostManagerMemoryCleanupRoundDisposition disposition =
             HostManagerMemoryCleanupRoundDisposition.Incomplete,
         int candidateCount = 0,
-        int blockedCandidateCount = 0,
         ulong plannerStateRevision = 0,
         int plannedCount = 0,
         int requestedCount = 0,
@@ -127,7 +111,6 @@ internal readonly record struct HostManagerMemoryCleanupExecutionResult(
         => new(
             disposition,
             candidateCount,
-            blockedCandidateCount,
             plannerStateRevision,
             plannedCount,
             requestedCount,

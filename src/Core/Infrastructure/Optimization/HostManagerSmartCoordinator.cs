@@ -6,7 +6,6 @@ using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Optimization.Scheduling;
-using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Application.Optimization.MemoryCleanup;
 using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -33,7 +32,6 @@ public sealed partial class HostManagerSmartCoordinator(
     IMetricSnapshotObservationSource metricSnapshotSource,
     ISchedulingProcessFactObservationSource schedulingProcessFactSource,
     ICpuCoreResidencyReader cpuCoreResidencyReader,
-    IHostManagerSmartControlZoneRegistry hostManagerSmartControlZones,
     IHostManagerRollbackStateStore stateStore,
     IOptimizationProtectionService protectionService,
     IRuntimePlanProvider runtimePlanProvider,
@@ -41,10 +39,8 @@ public sealed partial class HostManagerSmartCoordinator(
     HostManagerSmartCoordinatorRuntime smartCoordinatorRuntime,
     HostManagerPlacementCoordinatorRuntime placementCoordinatorRuntime,
     IAutomaticMemoryCleanupPlanner automaticMemoryCleanupPlanner,
-    HostManagerMemoryCleanupAttemptJournal memoryCleanupAttemptJournal,
     IProcessResourcePolicyWriter processPolicyWriter,
     HostManagerProcessPolicyTransaction processPolicyTransaction,
-    HostManagerAdapterSchedulingTransaction adapterSchedulingTransaction,
     HostManagerNativeActionTransactionRuntime nativeActionTransactions,
     TimeProvider timeProvider,
     IWindowsGraphicsPreferenceStore graphicsPreferenceStore,

@@ -142,18 +142,10 @@ public sealed partial class HostManagerSmartCoordinator
             throw new InvalidOperationException(
                 "The validation effect scope requires no applied hardware placement ownership or unconfirmed window actions.");
         }
-        _ = memoryCleanupAttemptJournal.ReconcileAndCaptureBlocked(
-            processPolicyWriter.ReadProcessInstanceForRecovery);
-        var cleanupBatches = memoryCleanupAttemptJournal.CapturePendingBatches();
-        if (cleanupBatches.Count != 0)
-        {
-            throw new InvalidOperationException(
-                "The validation effect scope requires an empty memory-cleanup attempt journal.");
-        }
         if (!processEffectValidationScopeAuthorityOwner.ReconcileDeclaredNativeHandoff(
                 CreateAuthoritativeProcessEffectHandoffs(journal, ownership))
             || !processEffectValidationScopeAuthorityOwner
-                .ReconcileDeclaredMemoryCleanupHandoff(cleanupBatches))
+                .ReconcileDeclaredMemoryCleanupHandoff())
         {
             throw new InvalidOperationException(
                 "The validation effect scope could not settle its durable handoff ledger.");

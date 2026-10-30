@@ -10,7 +10,7 @@ public sealed partial class WindowsMemoryMonitoringZone
     internal static NumaMemoryTopologyRead ReadNumaIdentities() => WindowsMemoryMetricResource.ReadNumaIdentities();
     internal static NumaMemoryTopologyRead ProjectNumaIdentities(IReadOnlyList<CpuOsNumaNode>? nodes) => WindowsMemoryMetricResource.ProjectNumaIdentities(nodes);
     internal IReadOnlyDictionary<string, ulong> ReadNumaAvailable(IReadOnlyList<NumaMemoryCatalogIdentity> nodes, IReadOnlySet<string> requestedDevices)
-        => CanRead ? resource.ReadNumaAvailable(nodes, requestedDevices) : new Dictionary<string, ulong>(StringComparer.Ordinal);
+        => resource.ReadNumaAvailable(nodes, requestedDevices);
     internal IReadOnlyDictionary<string, ulong> ReadNumaCapacityMiB(IReadOnlyList<NumaMemoryCatalogIdentity> nodes, IReadOnlySet<string> requestedDevices)
-        => CanRead ? resource.ReadNumaCapacityMiB(nodes, requestedDevices) : new Dictionary<string, ulong>(StringComparer.Ordinal);
+        => resource.ReadNumaCapacityMiB(nodes, requestedDevices);
 }

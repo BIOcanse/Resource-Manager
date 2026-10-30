@@ -58,9 +58,8 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var zone = new WindowsNpuMemoryMonitoringZone(recording.Read);
-        var registry = new MonitoringSourceZoneRegistry([new WindowsMemoryMonitoringZone(), zone]);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!, null!, null!, null!, null!, null!,
-            null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, registry,
+            null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, 
             slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, npuMemoryZone: zone);
         using var dependencyHttp = new HttpClient();
         var controls = new UnusedControls();

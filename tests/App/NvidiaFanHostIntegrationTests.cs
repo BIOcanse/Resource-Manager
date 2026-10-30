@@ -3,7 +3,6 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.Monitoring;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -15,7 +14,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NvidiaFanHostIntegrationTests
 {
     [Fact]
-    public void ProductionHostTopologyConstructorBorrowsTheSameZoneFanDirectoryAndFreezeGate()
+    public void ProductionHostTopologyConstructorBorrowsTheSameZoneFanDirectory()
     {
         var fixture = new NvidiaFanFixture(); var reads = 0;
         var zone = new NvidiaNvmlMonitoringZone((_, _, _) => throw new InvalidOperationException(),
@@ -27,9 +26,6 @@ public sealed class NvidiaFanHostIntegrationTests
         var resources = (WindowsMetricTopologyResources)source.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
             .Single(static field => field.FieldType == typeof(WindowsMetricTopologyResources)).GetValue(source)!;
         Assert.Same(fixture.Fans, resources.ReadNvmlFanIdentities(fixture.Inventory)); Assert.Equal(1, reads);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Null(resources.ReadNvmlFanIdentities(fixture.Inventory)); Assert.Equal(1, reads);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
         Assert.Same(fixture.Fans, resources.ReadNvmlFanIdentities(fixture.Inventory)); Assert.Equal(2, reads);
     }
 
@@ -50,10 +46,9 @@ public sealed class NvidiaFanHostIntegrationTests
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, fan.ExactIdentityKey, [NvidiaFanFixture.Percent]);
         var zone = new NvidiaNvmlMonitoringZone((_, _, _) => throw new InvalidOperationException("No GPU telemetry was selected."),
             readFanIdentities: _ => fixture.Fans, readFans: fixture.Read);
-        var registry = new MonitoringSourceZoneRegistry([new WindowsMemoryMonitoringZone(), zone]);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!, new WindowsGpuAdapterOrderMonitoringZone(() => fixture.Inventory),
             null!, null!, null!, zone, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard,
-            registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
+ slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         Assert.Empty(fixture.Targets);
         _ = sampler.ReadLatest(request); Assert.Empty(fixture.Targets);

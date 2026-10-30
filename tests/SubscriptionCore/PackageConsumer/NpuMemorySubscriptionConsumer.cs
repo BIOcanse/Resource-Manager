@@ -26,7 +26,7 @@ internal static class NpuMemoryConsumer
         if (!OperatingSystem.IsWindows()) return;
         var fixture = new RecordedNpuMemoryResources();
         using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.CreateDefault(), fixture.Create(),
-            new(), modeProvider: fixture.Mode, unavailableCooldown: TimeSpan.Zero);
+            new(), unavailableCooldown: TimeSpan.Zero);
         using var http = new HttpClient();
         var core = new ReadWriteCore(owner.CreateBackend(), new DependencyActions(http, []));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -94,7 +94,7 @@ internal static class NpuMemoryConsumer
             Require(!rejected.Committed && fixture.Reads == reads + 1 && MetricSnapshotFactAssertions.SameCurrent(committed, owner.ReadCachedSnapshot()),
                 "retired publication rejects a real different value without replacing current");
         }
-        await RequireFrozenAsync();
+
         current = owner.ReadCachedSnapshot(); reads = fixture.Reads;
         using (var canceled = new CancellationTokenSource())
         {
@@ -111,7 +111,7 @@ internal static class NpuMemoryConsumer
             finally { fixture.AfterRead = null; }
         }
         Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()), "cancellation after producer read rejects publication");
-        await RequireFrozenAsync();
+
         fixture.Value = ulong.MaxValue;
         RecordedNpuMemoryResources.RequireValues(await core.CollectAsync(fields, timeout.Token), ulong.MaxValue);
         fixture.DirectoryUnavailable = true;
@@ -125,18 +125,6 @@ internal static class NpuMemoryConsumer
         Require(fixture.UnselectedReads == 0 && fixture.EngineReads == 0, "empty GPU inventory and NPU requests never sample another producer");
         Console.WriteLine("[NPU-MEMORY-PACKAGE-RECORDED] exact-PnP; four-unsigned64-bytes; 0/ulong-max; direct/borrow/current; failure-clears; unknown/cancel/retire; no-live-NPU.");
 
-        async Task RequireFrozenAsync()
-        {
-            var before = core.ReadCached(selected); var beforeReads = fixture.Reads;
-            fixture.Frozen = true;
-            try
-            {
-                var frozen = (await core.CollectAsync([selected], timeout.Token)).Single();
-                Require(frozen == before && fixture.Reads == beforeReads,
-                    "Freeze reprojects native current without leaking uncommitted value or ObservedAt");
-            }
-            finally { fixture.Frozen = false; }
-        }
     }
     internal static void Empty(FieldReading reading)
         => Require(reading is { Status: FieldObservationStatus.Unavailable, Value: null, ObservedAt: null,
@@ -160,11 +148,10 @@ internal sealed class RecordedNpuMemoryResources
     internal NpuMemoryCatalogIdentity[] Devices { get; } = [new(@"ACPI\RECORDED_NPU\A"), new(@"ACPI\RECORDED_NPU\B")];
     internal int Reads, DirectoryReads, UnselectedReads, EngineReads;
     internal ulong Value;
-    internal bool Fail, FailDedicated, DirectoryUnavailable, EmptyDirectory, Frozen;
+    internal bool Fail, FailDedicated, DirectoryUnavailable, EmptyDirectory;
     internal Action? AfterRead;
     internal IReadOnlyDictionary<string, NpuMemoryFields> LastRequests = new Dictionary<string, NpuMemoryFields>();
-    internal NativeMetricSnapshotZoneMode Mode(string source)
-        => Frozen && source == NativeMetricSnapshotSources.WindowsNpuMemory ? NativeMetricSnapshotZoneMode.Freeze : NativeMetricSnapshotZoneMode.Normal;
+
     internal WindowsHardwareMetricResources Create() => new()
     {
         Controls = new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null,

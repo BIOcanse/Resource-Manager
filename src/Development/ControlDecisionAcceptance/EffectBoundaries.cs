@@ -35,7 +35,6 @@ internal static class EffectBoundaries
         "WindowsHardwareMetricSampler: same real DI read delegates; PawnIO/SMN/MSR/HWM/OEM unavailable; no borrowed control resources; native scratch instead of Ledger for this metric sampler",
         "IHostMemoryProtectionExecutor: every target excluded",
         "IGpuLaunchInterceptionRegistry: managed no-op, no registry read/write",
-        "IAdapterPolicyDispatcher: all effects rejected",
         "IRunningGpuPlacementActionService: no preparation/application; optional renderer observation unavailable",
         "IWindowsGraphicsPreferenceStore: no registry read/write",
         "FanControlCoreClient: existing session factory with empty managed session",
@@ -65,7 +64,6 @@ internal static class EffectBoundaries
         services.Replace(ServiceDescriptor.Singleton<IHostMemoryProtectionExecutor, ExcludedMemoryExecutor>());
         services.Replace(ServiceDescriptor.Singleton<IInteractiveUserSessionBroker, NoUserSessionLaunch>());
         services.Replace(ServiceDescriptor.Singleton<IGpuLaunchInterceptionRegistry, NoInterceptionRegistry>());
-        services.Replace(ServiceDescriptor.Singleton<IAdapterPolicyDispatcher, DeniedAdapterDispatcher>());
         services.Replace(ServiceDescriptor.Singleton<IRunningGpuPlacementActionService, DeniedGpuActions>());
         services.Replace(ServiceDescriptor.Singleton<IWindowsGraphicsPreferenceStore, NoGraphicsPreferences>());
         services.Replace(ServiceDescriptor.Singleton<FanControlCoreClient>(provider => new FanControlCoreClient(
@@ -140,16 +138,6 @@ internal static class EffectBoundaries
         public IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(GpuPlacementPolicyDocument document,
             IReadOnlyCollection<string> moduleExecutablePaths) => [];
         public GpuLaunchInterceptionCleanupResult RemoveAllOwnedRules() => new(true, 0, Reason);
-    }
-
-    private sealed class DeniedAdapterDispatcher : IAdapterPolicyDispatcher
-    {
-        public Task<AdapterSoftwareSchedulingResult> ApplySoftwareSchedulingAsync(string softwareId,
-            AdapterSoftwareSchedulingEnvelope envelope, CancellationToken token) => throw new InvalidOperationException(Reason);
-        public Task<AdapterSchedulingStateExportResult> ExportSoftwareSchedulingStateAsync(string softwareId,
-            int maximumPayloadBytes, DateTimeOffset deadline, CancellationToken token) => throw new InvalidOperationException(Reason);
-        public Task<AdapterSchedulingStateRestoreResult> RestoreSoftwareSchedulingStateAsync(string softwareId,
-            AdapterSchedulingStateRestoreCommand command, CancellationToken token) => throw new InvalidOperationException(Reason);
     }
 
     private sealed class NoGraphicsPreferences : IWindowsGraphicsPreferenceStore

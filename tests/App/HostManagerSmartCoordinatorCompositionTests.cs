@@ -134,9 +134,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         Assert.True(HostManagerProcessEffectValidationCyclePolicy.AllowsNativeAction(
             scope,
             NativeSmartCoordinatorActionScope.ProcessPolicy));
-        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsNativeAction(
-            scope,
-            NativeSmartCoordinatorActionScope.AdapterSoftware));
     }
 
     [Fact]
@@ -529,20 +526,16 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task ScoreOnlyExternalCompositionCallsNoEffectSink(
-        bool automaticMemoryCleanupEnabled,
-        bool policyExecutionEnabled)
+        bool automaticMemoryCleanupEnabled)
     {
         var sink = new CountingExternalEffectSink();
 
         await RunExternalBranchesAsync(
             HostManagerCycleEffectAdmission.Create(scoreOnly: true),
             automaticMemoryCleanupEnabled,
-            policyExecutionEnabled,
             sink);
 
         Assert.Equal(0, sink.MemoryJournalReconcileCalls);
@@ -568,7 +561,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         await RunExternalBranchesAsync(
             HostManagerCycleEffectAdmission.Create(scoreOnly: true),
             modePlan.AutomaticMemoryCleanupEnabled,
-            policyExecutionEnabled: true,
             sink);
 
         Assert.True(modePlan.AutomaticMemoryCleanupEnabled);
@@ -582,13 +574,10 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
     }
 
     [Theory]
-    [InlineData(false, false, 0)]
-    [InlineData(false, true, 0)]
-    [InlineData(true, false, 0)]
-    [InlineData(true, true, 1)]
+    [InlineData(false, 0)]
+    [InlineData(true, 1)]
     public async Task ExecuteExternalCompositionPreservesExistingAdmission(
         bool automaticMemoryCleanupEnabled,
-        bool policyExecutionEnabled,
         int expectedMemoryCalls)
     {
         var sink = new CountingExternalEffectSink();
@@ -596,7 +585,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         await RunExternalBranchesAsync(
             HostManagerCycleEffectAdmission.Create(scoreOnly: false),
             automaticMemoryCleanupEnabled,
-            policyExecutionEnabled,
             sink);
 
         Assert.Equal(expectedMemoryCalls, sink.MemoryJournalReconcileCalls);
@@ -621,7 +609,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         await RunExternalBranchesAsync(
             admission,
             automaticMemoryCleanupEnabled: true,
-            policyExecutionEnabled: true,
             sink,
             cleanupFirst);
 
@@ -724,7 +711,6 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
     private static async Task RunExternalBranchesAsync<TSink>(
         HostManagerCycleEffectAdmission admission,
         bool automaticMemoryCleanupEnabled,
-        bool policyExecutionEnabled,
         TSink sink,
         bool cleanupFirst = false)
         where TSink : class, IHostManagerNativeExternalEffectSink
@@ -741,7 +727,7 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         foreach (var kind in kinds)
         {
             await HostManagerNativeExternalEffectDispatcher.RunAsync(
-                admission, automaticMemoryCleanupEnabled, policyExecutionEnabled, kind, sink);
+                admission, automaticMemoryCleanupEnabled, kind, sink);
         }
     }
 

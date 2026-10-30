@@ -345,7 +345,7 @@ public sealed class SubscriptionHolderFanCompositionTests
                 nvidiaZone: null!, nvidiaNvapiZone: null!, amdAdlxZone: null!, amdSmuZone: null!,
                 integratedGpuSensorRoute: new AmdIntegratedGpuSensorRoute(), platformSensorReader: null!,
                 metricSnapshotOwner: Owner.Owner, metricCatalog: Owner.Catalog,
-                monitoringSourceZoneRegistry: new MonitoringSourceZoneRegistry([]),
+
                 samplingSubscriptionOwner: Owner.Slots.Owner, runtimePlanProvider: Owner.Slots.Provider,
                 logger: NullLogger<WindowsHardwareMetricSampler>.Instance, borrowedResources: Resources());
         }

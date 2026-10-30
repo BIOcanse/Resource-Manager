@@ -5,15 +5,6 @@ namespace ResourceManager.App.Domain.Optimization;
 
 public static class HostManagerTargetCapabilityClassifier
 {
-    public static bool CanDispatchAdapter(string softwareId, string softwareKind)
-    {
-        if (IsNonTargetIdentity(softwareId))
-        {
-            return false;
-        }
-        return softwareKind == SoftwareKinds.Adapted;
-    }
-
     public static bool CanWriteProcessPolicy(string softwareId, string softwareKind)
     {
         if (string.IsNullOrWhiteSpace(softwareId)

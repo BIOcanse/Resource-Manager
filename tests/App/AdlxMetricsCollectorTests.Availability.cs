@@ -39,8 +39,8 @@ public sealed partial class AdlxMetricsCollectorTests
         Assert.Equal(codes.Length, bindings.Length);
         var now = DateTimeOffset.UtcNow;
         workspace.ReplaceCatalog(catalog, now);
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var plan = workspace.PlanCollection(bindings.Select(binding => binding.MetricHandle).ToArray(), modes, false, now);
         var source = Assert.Single(plan.Sources);
         var row = AvailabilityRow(10, apuPnp) with { AvailableFlags = 2 | 4 | 8 | 16 | 32 | 128 | 512 | 1024,
@@ -132,8 +132,8 @@ public sealed partial class AdlxMetricsCollectorTests
         Assert.Equal(12, bindings.Length);
         Assert.Equal(2, bindings.Count(binding => binding.FieldCode == MetricFieldCode.GpuMemoryUsed));
         var now = DateTimeOffset.UtcNow; workspace.ReplaceCatalog(catalog, now);
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         for (var phase = 0; phase < 7; phase++)
         {
             var at = now.AddSeconds(phase + 1);

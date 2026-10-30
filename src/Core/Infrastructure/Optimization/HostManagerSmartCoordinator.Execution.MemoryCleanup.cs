@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using ResourceManager.App.Application.Optimization;
-using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Optimization;
@@ -613,48 +612,11 @@ public sealed partial class HostManagerSmartCoordinator
                     .ToArray()
             };
         }
-        var blockedCandidateCount = 0;
-        IReadOnlySet<HostManagerComputeProcessIdentity> blocked;
-        try
-        {
-            blocked = memoryCleanupAttemptJournal.ReconcileAndCaptureBlocked(
-                processPolicyWriter.ReadProcessInstanceForRecovery);
-            if (!processEffectValidationScopeAuthorityOwner
-                    .ReconcileDeclaredMemoryCleanupHandoff(
-                        memoryCleanupAttemptJournal.CapturePendingBatches()))
-            {
-                throw new InvalidDataException(
-                    "The validation scope could not reconcile its declared memory-cleanup handoff.");
-            }
-            if (blocked.Count > 0)
-            {
-                blockedCandidateCount = request.Candidates.Count(candidate =>
-                    blocked.Contains(CreateProcessIdentity(candidate)));
-                request = request with
-                {
-                    Candidates = request.Candidates
-                        .Where(candidate => !blocked.Contains(CreateProcessIdentity(candidate)))
-                        .ToArray()
-                };
-            }
-        }
-        catch (Exception exception) when (IsExpectedMemoryCleanupAttemptJournalFailure(exception))
-        {
-            logger.LogError(
-                exception,
-                "Automatic memory cleanup attempt-journal reconciliation failed closed. Reason: {Reason}",
-                reason);
-            return HostManagerMemoryCleanupExecutionResult.Incomplete(
-                HostManagerMemoryCleanupRoundDisposition.JournalReconcileFailed,
-                originalCandidateCount);
-        }
-
         if (attemptGeneration == 0)
         {
             return HostManagerMemoryCleanupExecutionResult.Incomplete(
                 HostManagerMemoryCleanupRoundDisposition.MissingAttemptGeneration,
-                originalCandidateCount,
-                blockedCandidateCount);
+                originalCandidateCount);
         }
 
         var finalAdmissionApplied = false;
@@ -682,15 +644,13 @@ public sealed partial class HostManagerSmartCoordinator
                     reason);
                 return HostManagerMemoryCleanupExecutionResult.Incomplete(
                     HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCaptureFailed,
-                    originalCandidateCount,
-                    blockedCandidateCount);
+                    originalCandidateCount);
             }
             if (!admission.IsComplete)
             {
                 return HostManagerMemoryCleanupExecutionResult.Incomplete(
                     admission.Disposition,
-                    originalCandidateCount,
-                    blockedCandidateCount);
+                    originalCandidateCount);
             }
 
             request = admission.Request;
@@ -698,14 +658,6 @@ public sealed partial class HostManagerSmartCoordinator
             finalAdmissionApplied = true;
             knownFilteredCandidateCount = admission.KnownFilteredCandidateCount;
             unknownCandidateCount = admission.UnknownCandidateCount;
-            if (!hostManagerSmartControlZones.CanRun(
-                    HostManagerSmartControlZoneIds.PolicyExecution))
-            {
-                return HostManagerMemoryCleanupExecutionResult.Incomplete(
-                    HostManagerMemoryCleanupRoundDisposition.DeferredByCurrentPolicy,
-                    originalCandidateCount,
-                    blockedCandidateCount);
-            }
         }
 
         var maximumDecisionCount = Math.Min(
@@ -715,8 +667,7 @@ public sealed partial class HostManagerSmartCoordinator
         {
             return HostManagerMemoryCleanupExecutionResult.Incomplete(
                 HostManagerMemoryCleanupRoundDisposition.DeferredByCycleBudget,
-                originalCandidateCount,
-                blockedCandidateCount);
+                originalCandidateCount);
         }
         request = request with { MaximumDecisionCount = maximumDecisionCount };
 
@@ -735,8 +686,7 @@ public sealed partial class HostManagerSmartCoordinator
             logger.LogError(exception, "Native automatic memory cleanup plan failed closed. Reason: {Reason}", reason);
             return HostManagerMemoryCleanupExecutionResult.Incomplete(
                 HostManagerMemoryCleanupRoundDisposition.PlannerFailed,
-                originalCandidateCount,
-                blockedCandidateCount);
+                originalCandidateCount);
         }
 
         if (plan.ConfigurationGeneration == 0
@@ -753,7 +703,6 @@ public sealed partial class HostManagerSmartCoordinator
                 return HostManagerMemoryCleanupExecutionResult.Incomplete(
                     HostManagerMemoryCleanupRoundDisposition.PlannerConfigurationMismatch,
                     originalCandidateCount,
-                    blockedCandidateCount,
                     plan.StateRevision);
             }
 
@@ -763,7 +712,6 @@ public sealed partial class HostManagerSmartCoordinator
                 return HostManagerMemoryCleanupExecutionResult.Incomplete(
                     HostManagerMemoryCleanupRoundDisposition.PlannerConfigurationMismatch,
                     originalCandidateCount,
-                    blockedCandidateCount,
                     plan.StateRevision,
                     plan.Decisions.Count);
             }
@@ -775,14 +723,6 @@ public sealed partial class HostManagerSmartCoordinator
 
         if (plan.Decisions.Count == 0)
         {
-            if (blockedCandidateCount != 0)
-            {
-                return HostManagerMemoryCleanupExecutionResult.Incomplete(
-                    HostManagerMemoryCleanupRoundDisposition.BlockedByPriorUnknownOutcome,
-                    originalCandidateCount,
-                    blockedCandidateCount,
-                    plan.StateRevision);
-            }
             if (unknownCandidateCount != 0)
             {
                 return HostManagerMemoryCleanupExecutionResult.Incomplete(
@@ -807,8 +747,6 @@ public sealed partial class HostManagerSmartCoordinator
         var succeededCount = 0;
         var admittedDecisionCount = 0;
         var terminalCount = 0;
-        var settlementCompleted = false;
-        HostManagerMemoryCleanupAttemptBatch batch = default;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -820,7 +758,6 @@ public sealed partial class HostManagerSmartCoordinator
                 return HostManagerMemoryCleanupExecutionResult.Incomplete(
                     HostManagerMemoryCleanupRoundDisposition.DeferredByCycleBudget,
                     originalCandidateCount,
-                    blockedCandidateCount,
                     plan.StateRevision,
                     plan.Decisions.Count);
             }
@@ -838,7 +775,7 @@ public sealed partial class HostManagerSmartCoordinator
                     candidate.ProcessId,
                     checked((ulong)candidate.ProcessStartedAt.ToFileTime()));
             }
-            batch = new HostManagerMemoryCleanupAttemptBatch(
+            var batch = new HostManagerMemoryCleanupAttemptBatch(
                 Guid.NewGuid(),
                 validationIdentities.ToHashSet(),
                 attemptGeneration);
@@ -858,7 +795,6 @@ public sealed partial class HostManagerSmartCoordinator
                     disposition: HostManagerMemoryCleanupRoundDisposition
                         .ValidationEvidenceCapacityUnavailable,
                     candidateCount: originalCandidateCount,
-                    blockedCandidateCount: blockedCandidateCount,
                     plannerStateRevision: plan.StateRevision,
                     plannedCount: plan.Decisions.Count,
                     requestedCount: admittedDecisionCount);
@@ -875,7 +811,6 @@ public sealed partial class HostManagerSmartCoordinator
                 return HostManagerMemoryCleanupExecutionResult.Incomplete(
                     HostManagerMemoryCleanupRoundDisposition.BlockedByValidationScope,
                     originalCandidateCount,
-                    blockedCandidateCount,
                     plan.StateRevision,
                     plan.Decisions.Count);
             }
@@ -890,7 +825,6 @@ public sealed partial class HostManagerSmartCoordinator
                     disposition: HostManagerMemoryCleanupRoundDisposition
                         .BlockedByValidationScope,
                     candidateCount: originalCandidateCount,
-                    blockedCandidateCount: blockedCandidateCount,
                     plannerStateRevision: plan.StateRevision,
                     plannedCount: plan.Decisions.Count,
                     requestedCount: admittedDecisionCount);
@@ -905,36 +839,6 @@ public sealed partial class HostManagerSmartCoordinator
                     TrimWorkingSet: true);
             }
 
-            try
-            {
-                var preparedBatch = memoryCleanupAttemptJournal.PrepareBeforeWriter(
-                    batch.BatchId,
-                    attemptGeneration,
-                    admittedDecisions);
-                if (preparedBatch.BatchId != batch.BatchId
-                    || preparedBatch.AttemptGeneration != attemptGeneration
-                    || !preparedBatch.Processes.SetEquals(batch.Processes))
-                {
-                    throw new InvalidDataException(
-                        "The memory-cleanup attempt journal returned a different declared batch.");
-                }
-            }
-            catch (Exception exception) when (IsExpectedMemoryCleanupAttemptJournalFailure(exception))
-            {
-                MarkProcessEffectAdmissionUnsettled(
-                    validationPermit,
-                    "memory-cleanup-attempt-prepare-failed");
-                logger.LogError(
-                    exception,
-                    "Automatic memory cleanup attempt-journal prepare failed closed. Reason: {Reason}",
-                    reason);
-                return HostManagerMemoryCleanupExecutionResult.Incomplete(
-                    disposition: HostManagerMemoryCleanupRoundDisposition.JournalPrepareFailed,
-                    candidateCount: originalCandidateCount,
-                    blockedCandidateCount: blockedCandidateCount,
-                    plannerStateRevision: plan.StateRevision,
-                    plannedCount: plan.Decisions.Count);
-            }
             if (!TryCommitProcessEffectAdmission(
                     validationPermit
                         ?? throw new InvalidOperationException(
@@ -946,27 +850,6 @@ public sealed partial class HostManagerSmartCoordinator
                     disposition: HostManagerMemoryCleanupRoundDisposition
                         .BlockedByValidationScope,
                     candidateCount: originalCandidateCount,
-                    blockedCandidateCount: blockedCandidateCount,
-                    plannerStateRevision: plan.StateRevision,
-                    plannedCount: plan.Decisions.Count,
-                    requestedCount: admittedDecisionCount);
-            }
-
-            try
-            {
-                memoryCleanupAttemptJournal.ArmForWriter(batch);
-            }
-            catch (Exception exception) when (
-                IsExpectedMemoryCleanupAttemptJournalFailure(exception))
-            {
-                logger.LogError(
-                    exception,
-                    "Automatic memory cleanup writer arm failed closed. Reason: {Reason}",
-                    reason);
-                return HostManagerMemoryCleanupExecutionResult.Incomplete(
-                    disposition: HostManagerMemoryCleanupRoundDisposition.JournalWriterArmFailed,
-                    candidateCount: originalCandidateCount,
-                    blockedCandidateCount: blockedCandidateCount,
                     plannerStateRevision: plan.StateRevision,
                     plannedCount: plan.Decisions.Count,
                     requestedCount: admittedDecisionCount);
@@ -998,7 +881,6 @@ public sealed partial class HostManagerSmartCoordinator
                     writerCompletedAtQpcTicks = Stopwatch.GetTimestamp();
                     writerCompletedAt = timeProvider.GetUtcNow();
                 }
-                TryMarkMemoryCleanupBatchUnknown(batch, reason, exception);
                 if (!evidenceReservation.IsProductionUnscoped)
                 {
                     try
@@ -1029,13 +911,11 @@ public sealed partial class HostManagerSmartCoordinator
                 return HostManagerMemoryCleanupExecutionResult.Incomplete(
                     disposition: HostManagerMemoryCleanupRoundDisposition.BatchOutcomeUnknown,
                     candidateCount: originalCandidateCount,
-                    blockedCandidateCount: blockedCandidateCount,
                     plannerStateRevision: plan.StateRevision,
                     plannedCount: plan.Decisions.Count,
                     requestedCount: admittedDecisionCount);
             }
 
-            var terminalProcesses = new HashSet<HostManagerComputeProcessIdentity>();
             var resultCountIsExact = results.Count == admittedDecisionCount;
             var resultShapeIsExact = resultCountIsExact;
             var evidenceOutcomes = evidenceReservation.IsProductionUnscoped
@@ -1046,7 +926,6 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 feedback[index] = feedback[index] with { Attempted = true };
                 var decision = admittedDecisions[index];
-                var identity = CreateProcessIdentity(decision.Candidate);
                 var batchResult = resultCountIsExact
                     ? results[index]
                     : null;
@@ -1072,7 +951,6 @@ public sealed partial class HostManagerSmartCoordinator
                 }
                 if (result is not null)
                 {
-                    terminalProcesses.Add(identity);
                     terminalCount++;
                 }
                 var succeeded = result?.Succeeded == true;
@@ -1093,18 +971,6 @@ public sealed partial class HostManagerSmartCoordinator
                     result?.Message ?? "No batch result.");
             }
 
-            try
-            {
-                memoryCleanupAttemptJournal.Settle(batch, terminalProcesses);
-                settlementCompleted = true;
-            }
-            catch (Exception exception) when (IsExpectedMemoryCleanupAttemptJournalFailure(exception))
-            {
-                logger.LogError(
-                    exception,
-                    "Automatic memory cleanup settlement could not be persisted; the durable attempt remains blocked. Reason: {Reason}",
-                    reason);
-            }
             if (evidenceOutcomes is not null)
             {
                 try
@@ -1112,7 +978,7 @@ public sealed partial class HostManagerSmartCoordinator
                     evidenceReservation.Complete(
                         evidenceOutcomes,
                         resultShapeIsExact,
-                        settlementCompleted,
+                        true,
                         writerCompletedAt,
                         writerCompletedAtQpcTicks);
                 }
@@ -1124,19 +990,15 @@ public sealed partial class HostManagerSmartCoordinator
                         exception,
                         "Automatic memory cleanup validation evidence could not be settled. Reason: {Reason}",
                         reason);
-                    if (settlementCompleted)
-                    {
-                        return HostManagerMemoryCleanupExecutionResult.Incomplete(
-                            disposition: HostManagerMemoryCleanupRoundDisposition
-                                .ValidationEvidenceSettlementFailed,
-                            candidateCount: originalCandidateCount,
-                            blockedCandidateCount: blockedCandidateCount,
-                            plannerStateRevision: plan.StateRevision,
-                            plannedCount: plan.Decisions.Count,
-                            requestedCount: admittedDecisionCount,
-                            terminalCount: terminalCount,
-                            succeededCount: succeededCount);
-                    }
+                    return HostManagerMemoryCleanupExecutionResult.Incomplete(
+                        disposition: HostManagerMemoryCleanupRoundDisposition
+                            .ValidationEvidenceSettlementFailed,
+                        candidateCount: originalCandidateCount,
+                        plannerStateRevision: plan.StateRevision,
+                        plannedCount: plan.Decisions.Count,
+                        requestedCount: admittedDecisionCount,
+                        terminalCount: terminalCount,
+                        succeededCount: succeededCount);
                 }
             }
         }
@@ -1145,36 +1007,11 @@ public sealed partial class HostManagerSmartCoordinator
             automaticMemoryCleanupPlanner.Complete(feedback);
         }
 
-        if (!settlementCompleted)
-        {
-            return HostManagerMemoryCleanupExecutionResult.Incomplete(
-                disposition: HostManagerMemoryCleanupRoundDisposition.JournalSettlementFailed,
-                candidateCount: originalCandidateCount,
-                blockedCandidateCount: blockedCandidateCount,
-                plannerStateRevision: plan.StateRevision,
-                plannedCount: plan.Decisions.Count,
-                requestedCount: admittedDecisionCount,
-                terminalCount: terminalCount,
-                succeededCount: succeededCount);
-        }
         if (terminalCount != admittedDecisionCount)
         {
             return HostManagerMemoryCleanupExecutionResult.Incomplete(
                 disposition: HostManagerMemoryCleanupRoundDisposition.BatchOutcomeUnknown,
                 candidateCount: originalCandidateCount,
-                blockedCandidateCount: blockedCandidateCount,
-                plannerStateRevision: plan.StateRevision,
-                plannedCount: plan.Decisions.Count,
-                requestedCount: admittedDecisionCount,
-                terminalCount: terminalCount,
-                succeededCount: succeededCount);
-        }
-        if (blockedCandidateCount != 0)
-        {
-            return HostManagerMemoryCleanupExecutionResult.Incomplete(
-                disposition: HostManagerMemoryCleanupRoundDisposition.BlockedByPriorUnknownOutcome,
-                candidateCount: originalCandidateCount,
-                blockedCandidateCount: blockedCandidateCount,
                 plannerStateRevision: plan.StateRevision,
                 plannedCount: plan.Decisions.Count,
                 requestedCount: admittedDecisionCount,
@@ -1201,7 +1038,6 @@ public sealed partial class HostManagerSmartCoordinator
             : HostManagerMemoryCleanupExecutionResult.Incomplete(
                 disposition: HostManagerMemoryCleanupRoundDisposition.DeferredByCycleBudget,
                 candidateCount: originalCandidateCount,
-                blockedCandidateCount: blockedCandidateCount,
                 plannerStateRevision: plan.StateRevision,
                 plannedCount: plan.Decisions.Count,
                 requestedCount: admittedDecisionCount,
@@ -1209,38 +1045,11 @@ public sealed partial class HostManagerSmartCoordinator
                 succeededCount: succeededCount);
     }
 
-    private void TryMarkMemoryCleanupBatchUnknown(
-        HostManagerMemoryCleanupAttemptBatch batch,
-        string reason,
-        Exception batchException)
-    {
-        try
-        {
-            memoryCleanupAttemptJournal.MarkUnknown(batch);
-        }
-        catch (Exception journalException) when (
-            IsExpectedMemoryCleanupAttemptJournalFailure(journalException))
-        {
-            logger.LogCritical(
-                journalException,
-                "Automatic memory cleanup could not persist an explicit unknown outcome after {BatchFailureType}. The pre-call Applying record remains authoritative. Reason: {Reason}",
-                batchException.GetType().Name,
-                reason);
-        }
-    }
-
     private static HostManagerComputeProcessIdentity CreateProcessIdentity(
         AutomaticMemoryCleanupCandidate candidate)
         => new(
             candidate.ProcessId,
             checked((ulong)candidate.ProcessStartedAt.ToFileTime()));
-
-    private static bool IsExpectedMemoryCleanupAttemptJournalFailure(Exception exception)
-        => exception is InvalidDataException
-            or InvalidOperationException
-            or IOException
-            or UnauthorizedAccessException
-            or System.Text.Json.JsonException;
 
     private static bool IsExpectedMemoryCleanupFinalAdmissionFailure(Exception exception)
         => exception is InvalidDataException

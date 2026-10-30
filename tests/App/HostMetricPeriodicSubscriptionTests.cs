@@ -1,6 +1,5 @@
 using static Resource_Manager_APP.Tests.MetricSnapshotOwnerTestFixture;
 using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Infrastructure.Control;
@@ -201,12 +200,12 @@ public sealed partial class MetricCatalogueSubscriptionTests
     }
 
     [Fact]
-    public async Task FrozenFreshQueryIsUnavailableAndDirectCaptureStillWorksAfterWorkerStop()
+    public async Task DirectCaptureStillWorksAfterWorkerStop()
     {
         using var harness = new RecordedHostMetricFieldHarness(() => Memory(2468));
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var fresh = new FieldSubscriptionOptions(FieldSubscriptionSamplingMode.FreshOnTrigger);
-        await using var stream = harness.Subscriptions.SubscribeAsync("freeze-fresh", [harness.Field],
+        await using var stream = harness.Subscriptions.SubscribeAsync("direct-after-stop", [harness.Field],
             TimeSpan.FromSeconds(1), fresh, cancellation.Token).GetAsyncEnumerator(cancellation.Token);
         var firstPending = stream.MoveNextAsync().AsTask();
         await harness.Sampler.StartAsync(cancellation.Token);
@@ -216,21 +215,12 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.Equal(FieldObservationStatus.Current, Assert.Single(stream.Current).Status);
             Assert.Equal(1, harness.MemoryReads);
 
-            harness.MemoryZone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
-            var frozen = Assert.Single(stream.Current);
-            Assert.Equal(FieldObservationStatus.Unavailable, frozen.Status);
-            Assert.Null(frozen.Value);
-            Assert.Null(frozen.ObservedAt);
-            Assert.Equal(1, harness.MemoryReads);
-
             var canceledMove = stream.MoveNextAsync().AsTask();
             await Task.Delay(50, CancellationToken.None);
             cancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await canceledMove);
             await harness.Sampler.StopAsync(CancellationToken.None);
 
-            harness.MemoryZone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
             var captured = await harness.Sampler.CaptureSnapshotAsync(
                 MetricSampleRequest.ForIds([harness.RequestAddress]), CancellationToken.None);
             Assert.Equal(2468d, captured.Items[harness.RequestAddress].NumericValue);
@@ -373,11 +363,9 @@ public sealed partial class MetricCatalogueSubscriptionTests
                 Interlocked.Increment(ref memoryReads);
                 return readMemory();
             });
-            var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-                id == MemoryZone.DisplayName ? MemoryZone : new MonitoringSourceZone(id)));
             Sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), MemoryZone, null!, null!, null!, null!,
                 null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, fixture.Owner, fixture.Catalog,
-                registry, fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
+ fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
             using (var lease = fixture.Owner.Acquire())
                 fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
             var controls = new NoControls();

@@ -40,10 +40,9 @@ public sealed partial class IntelGpuInformationCollectorTests
             return telemetry;
         } };
         var zone = new IntelGclMonitoringZone(new IntelGclReader(sdk.Open));
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id => id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("No memory demand"), () => throw new InvalidOperationException("No memory demand"));
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory, null!, new WindowsGpuAdapterOrderMonitoringZone(Inventory),
-            null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, registry,
+            null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, 
             slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelGclZone: zone);
         var names = IntervalNames.Append("gpu_intel_gpu_energy_joule").ToArray(); var request = MetricDeviceFields.CreateRequest(dashboard.Current!, device, names);
         Dictionary<string, DeviceMetricFieldValue> Fields(HardwareMetricSnapshot snapshot)

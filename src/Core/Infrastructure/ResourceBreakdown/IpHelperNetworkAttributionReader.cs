@@ -8,7 +8,6 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class IpHelperNetworkAttributionReader(
     IKnownNetworkProxyCatalog proxyCatalog,
-    IMonitoringSourceZoneRegistry sourceZones,
     IEtwNetworkAttributionReader etwNetworkAttributionReader) : INetworkAttributionReader, IResourceTableProviderStateSource, IDisposable
 {
     private readonly object gate = new();
@@ -16,10 +15,10 @@ public sealed partial class IpHelperNetworkAttributionReader(
     private readonly Func<NetworkEndpointSnapshot> endpointReader = ReadEndpoints;
     private readonly Dictionary<string, MibTcpRow> enabledTcpStats = new(StringComparer.OrdinalIgnoreCase);
     private bool disposed;
-    internal IpHelperNetworkAttributionReader(IKnownNetworkProxyCatalog proxyCatalog, IMonitoringSourceZoneRegistry sourceZones,
+    internal IpHelperNetworkAttributionReader(IKnownNetworkProxyCatalog proxyCatalog,
         IEtwNetworkAttributionReader etwNetworkAttributionReader, ITcpDataStats tcpDataStats,
         Func<NetworkEndpointSnapshot> endpointReader)
-        : this(proxyCatalog, sourceZones, etwNetworkAttributionReader)
+        : this(proxyCatalog, etwNetworkAttributionReader)
     { this.tcpDataStats = tcpDataStats; this.endpointReader = endpointReader; }
     private Dictionary<string, TcpByteCounter> previousTcpBytes = new(StringComparer.OrdinalIgnoreCase);
     private NetworkAttributionProviderState lastProviderState = new(
@@ -48,26 +47,11 @@ public sealed partial class IpHelperNetworkAttributionReader(
     }
 
     private NetworkAttributionSnapshot ReadEtwObservedTraffic()
-        => sourceZones.CanRead(MonitoringSourceZoneIds.EtwNetworkTcpIp)
-            ? etwNetworkAttributionReader.Read(includeObservedTraffic: true)
-            : new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
-                new("etw-network-tcpip", NetworkAttributionProviderStates.Frozen, "ETW 网络事件归因当前处于功能区冻结。"));
+        => etwNetworkAttributionReader.Read(includeObservedTraffic: true);
 
     private NetworkAttributionSnapshot ReadLegacy(NetworkAttributionReadRequest request, NetworkAttributionSnapshot? observedEtw)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        if (!sourceZones.CanRead(MonitoringSourceZoneIds.IpHelperNetwork))
-        {
-            lock (gate) { ObjectDisposedException.ThrowIf(disposed, this); ReleaseTcpStats(); previousTcpBytes.Clear(); }
-            lastProviderState = new NetworkAttributionProviderState(
-                "ip-helper-network",
-                NetworkAttributionProviderStates.Frozen,
-                "IP Helper 网络归因监控源当前处于功能区冻结。");
-            return new NetworkAttributionSnapshot(
-                DateTimeOffset.UtcNow,
-                new Dictionary<int, NetworkProcessAttribution>(),
-                lastProviderState);
-        }
 
         lock (gate)
         {
@@ -130,9 +114,7 @@ public sealed partial class IpHelperNetworkAttributionReader(
             }
 
             previousTcpBytes = currentTcpBytes;
-            var etwAttribution = observedEtw ?? (sourceZones.CanRead(MonitoringSourceZoneIds.EtwNetworkTcpIp)
-                ? etwNetworkAttributionReader.Read(request.Mode == NetworkAttributionReadMode.LegacyAndObservedTraffic)
-                : NetworkAttributionSnapshot.NotRequested);
+            var etwAttribution = observedEtw ?? etwNetworkAttributionReader.Read(request.Mode == NetworkAttributionReadMode.LegacyAndObservedTraffic);
             var rawEtwAdded = MergeEtwAttribution(
                 rawProcessValues,
                 etwAttribution.RawProcessValues,

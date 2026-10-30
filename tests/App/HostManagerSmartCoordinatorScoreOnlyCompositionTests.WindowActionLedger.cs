@@ -174,7 +174,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         using (var store = new JsonHostManagerRollbackStateStore(path, TimeProvider.System, TimeSpan.FromMinutes(1)))
         {
             await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
-                scoreOnlyEnabled: false, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+                scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false,
                 optimizationMode: AppOptimizationModes.Normal, rollbackStateStoreOverride: store,
                 processRecoveryRead: ReadRetainedTarget,
             realtimeActionBudget: 1);
@@ -200,7 +200,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         }
         using var reopened = new JsonHostManagerRollbackStateStore(path, TimeProvider.System, TimeSpan.FromMinutes(1));
         await using var restarted = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationMode: AppOptimizationModes.Normal, rollbackStateStoreOverride: reopened,
             processRecoveryRead: ReadRetainedTarget);
         _ = await restarted.RunRealtimeCycleAsync();

@@ -1,6 +1,5 @@
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Domain.Adaptation;
-using ResourceManager.App.Domain.Adaptation.Scheduling;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -68,35 +67,16 @@ public sealed class AdapterRegistrationValidatorTests
     }
 
     [Fact]
-    public void Validate_AcceptsIndependentCpuSchedulingCapabilities()
+    public void Validate_IgnoresRetiredSchedulingCapabilitiesInLegacyRequest()
     {
-        var request = CreateRequest(new AdapterSoftwareSchedulingCapabilities(
-            new AdapterCpuSchedulingCapabilities(
-                [AdapterCpuSchedulingGrade.Normal, AdapterCpuSchedulingGrade.Optimize]),
-            null));
-
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var document = System.Text.Json.JsonSerializer.SerializeToNode(CreateRequest(), options)!;
+        document["schedulingCapabilities"] = System.Text.Json.Nodes.JsonNode.Parse(
+            """{"cpu":{"supportedGrades":["freeze","normal"]},"gpu":{"supportedGrades":["extreme"]}}""");
+        var request = System.Text.Json.JsonSerializer.Deserialize<AdapterSoftwareRegistrationRequest>(document.ToJsonString(), options)!;
         Assert.Null(AdapterRegistrationValidator.Validate(request));
-    }
-
-    [Fact]
-    public void Validate_RejectsCapabilityObjectWithoutDimension()
-    {
-        var validation = AdapterRegistrationValidator.Validate(
-            CreateRequest(new AdapterSoftwareSchedulingCapabilities()));
-
-        Assert.Equal("schedulingCapabilities must declare cpu or gpu capabilities.", validation);
-    }
-
-    [Fact]
-    public void Validate_RejectsGpuCapabilitiesWithoutNormalRecoveryGrade()
-    {
-        var request = CreateRequest(new AdapterSoftwareSchedulingCapabilities(
-            null,
-            new AdapterGpuSchedulingCapabilities([AdapterGpuSchedulingGrade.Optimize])));
-
-        var validation = AdapterRegistrationValidator.Validate(request);
-
-        Assert.Equal("GPU scheduling capabilities must include normal.", validation);
+        Assert.Equal("word-memory.adapter", request.AdapterId);
+        Assert.DoesNotContain("schedulingCapabilities", System.Text.Json.JsonSerializer.Serialize(request, options));
     }
 
     [Theory]
@@ -104,7 +84,7 @@ public sealed class AdapterRegistrationValidatorTests
     [InlineData(@"D:\")]
     [InlineData(@"D:Apps")]
     public void ValidateRejectsUnboundedOrNonabsoluteProgramRoots(string path)
-        => Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest(null) with { ProgramRootPaths = [path] }));
+        => Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest() with { ProgramRootPaths = [path] }));
 
     [Theory]
     [InlineData(@"D:\Apps\Other\worker.exe")]
@@ -112,11 +92,11 @@ public sealed class AdapterRegistrationValidatorTests
     [InlineData(@"D:\Apps\WordMemory\..\Other\worker.exe")]
     [InlineData("worker.exe")]
     public void ExecutableDeclarationCannotExpandTheRegisteredRoot(string path)
-        => Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest(null) with { Processes = [new("worker", null, path)] }));
+        => Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest() with { Processes = [new("worker", null, path)] }));
 
     [Fact]
     public void ExecutableInsideRootAndNameHintsRemainValid()
-        => Assert.Null(AdapterRegistrationValidator.Validate(CreateRequest(null) with
+        => Assert.Null(AdapterRegistrationValidator.Validate(CreateRequest() with
             { Processes = [new("worker", null, @"D:\Apps\WordMemory\bin\worker.exe"), new("other", null, null)] }));
 
     [Fact]
@@ -124,12 +104,11 @@ public sealed class AdapterRegistrationValidatorTests
     {
         var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         Assert.False(string.IsNullOrWhiteSpace(windows));
-        Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest(null) with { ProgramRootPaths = [Path.Combine(windows, "System32")] }));
-        Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest(null) with { ProgramRootPaths = [windows] }));
+        Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest() with { ProgramRootPaths = [Path.Combine(windows, "System32")] }));
+        Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest() with { ProgramRootPaths = [windows] }));
     }
 
-    private static AdapterSoftwareRegistrationRequest CreateRequest(
-        AdapterSoftwareSchedulingCapabilities? schedulingCapabilities)
+    private static AdapterSoftwareRegistrationRequest CreateRequest()
     {
         return new AdapterSoftwareRegistrationRequest(
             AdapterRegistrationSchemaVersions.Current,
@@ -142,7 +121,6 @@ public sealed class AdapterRegistrationValidatorTests
             [],
             new AdapterResourceMarkerEndpoint(
                 AdapterResourceMarkerTransports.LoopbackHttp,
-                "http://127.0.0.1:9322/resource-ledger"),
-            schedulingCapabilities);
+                "http://127.0.0.1:9322/resource-ledger"));
     }
 }

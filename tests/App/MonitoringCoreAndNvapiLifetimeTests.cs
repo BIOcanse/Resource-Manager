@@ -1,5 +1,4 @@
 using LibreHardwareMonitor.Hardware;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Vendors.Nvidia;
@@ -13,31 +12,23 @@ public sealed class MonitoringCoreAndNvapiLifetimeTests
     private static readonly NvidiaDrsProfileRequest[] Selected = [new("Game", new uint[] { 7 })];
 
     [Fact]
-    public async Task NvapiFreezeReturnsOwnedApiAndOnlyRealReadsAcquireTheNextInjectedApi()
+    public void NvapiRealReadsAcquireOneApiAndRetainItUntilDispose()
     {
         var apis = new List<NvidiaDrsHostRecording>();
         using var zone = new NvidiaNvapiMonitoringZone(new NvidiaNvapiReader(() =>
         {
             var api = new NvidiaDrsHostRecording(); apis.Add(api); return api;
         }));
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
         Assert.Empty(apis);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
         for (var cycle = 0; cycle < 3; cycle++)
         {
             Assert.NotNull(zone.ReadDrs(Selected, Limits, default));
             Assert.NotNull(zone.DiscoverDrs(Limits, default));
-            Assert.Equal(cycle + 1, apis.Count);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            Assert.All(apis, api => { Assert.Equal(1, api.Unloads); Assert.Equal(1, api.Frees); Assert.False(api.Live); });
-            Assert.Null(zone.ReadDrs(Selected, Limits, default));
-            Assert.Null(zone.DiscoverDrs(Limits, default));
-            Assert.Empty(await zone.ReadAsync(NvidiaNvapiReadRequest.All, null!, default));
-            Assert.Equal(cycle + 1, apis.Count);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-            Assert.Equal(cycle + 1, apis.Count);
+            Assert.Single(apis);
+            Assert.All(apis, api => { Assert.Equal(0, api.Unloads); Assert.Equal(0, api.Frees); Assert.False(api.Live); });
         }
+        zone.Dispose();
+        Assert.All(apis, api => { Assert.Equal(1, api.Unloads); Assert.Equal(1, api.Frees); });
     }
 
     [Fact]
@@ -61,36 +52,10 @@ public sealed class MonitoringCoreAndNvapiLifetimeTests
         Assert.Equal(2, creations);
     }
 
-    [Fact]
-    public async Task NvapiFreezeDrainsAdmittedNativeReadBeforeReturningItsApi()
-    {
-        using var entered = new ManualResetEventSlim();
-        using var release = new ManualResetEventSlim();
-        using var freezeStarted = new ManualResetEventSlim();
-        var api = new NvidiaDrsHostRecording { OnSetting = () =>
-        {
-            entered.Set(); Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
-        } };
-        using var zone = new NvidiaNvapiMonitoringZone(new NvidiaNvapiReader(api));
-        var read = Task.Run(() => zone.ReadDrs(Selected, Limits, default));
-        Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
-        Task freeze;
-        try
-        {
-            freeze = Task.Run(() => { freezeStarted.Set(); zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze); });
-            Assert.True(freezeStarted.Wait(TimeSpan.FromSeconds(5)));
-            Assert.False(freeze.Wait(TimeSpan.FromMilliseconds(30)));
-            Assert.Equal(0, api.Unloads);
-        }
-        finally { release.Set(); }
-        await read; await freeze;
-        Assert.Equal(1, api.Unloads); Assert.Equal(1, api.Frees);
-        Assert.Null(zone.ReadDrs(Selected, Limits, default));
-        Assert.Equal(1, api.Creates);
-    }
+
 
     [Fact]
-    public void CoreFreezeReturnsComputerAndRealReadsReopenWithoutDiscardingFailureCache()
+    public void CoreRepeatedReadsRetainComputerAndPreserveFailureCache()
     {
         var sessions = new List<Session>();
         using var zone = new HardwareMonitorWmiMonitoringZone(new HardwareMonitorCoreReader(() =>
@@ -101,16 +66,11 @@ public sealed class MonitoringCoreAndNvapiLifetimeTests
         {
             Assert.True(zone.ReadSensors().CatalogComplete);
             _ = zone.ReadFanCatalog(1);
-            Assert.Equal(cycle + 1, sessions.Count);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            Assert.All(sessions, session => Assert.Equal(1, session.Closes));
-            Assert.Equal(HardwareSensorProviderStates.Frozen, zone.ReadSensors().ProviderState.State);
-            _ = zone.ReadFanCatalog(1);
-            Assert.Equal(cycle + 1, sessions.Count);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-            Assert.Equal(cycle + 1, sessions.Count);
+            Assert.Single(sessions);
+            Assert.All(sessions, session => Assert.Equal(0, session.Closes));
         }
+        zone.Dispose();
+        Assert.All(sessions, session => Assert.Equal(1, session.Closes));
         var failedOpens = 0;
         using var failed = new HardwareMonitorCoreReader(() =>
         {

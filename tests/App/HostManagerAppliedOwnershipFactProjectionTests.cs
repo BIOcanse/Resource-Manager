@@ -15,9 +15,8 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
     public void IndexUsesExactProcessIdentityAndSnapshotLedgerRevision()
     {
         var process = CreateProcessRecord();
-        var adapter = CreateAdapterRecord();
         var index = HostManagerSmartCoordinator.CreateAppliedOwnershipFactIndex(
-            CreateSnapshot(process, adapter));
+            CreateSnapshot(process));
 
         Assert.Equal(LedgerRevision, index.LedgerRevision);
         Assert.True(index.ProcessRecords.ContainsKey(
@@ -50,11 +49,6 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
                 SoftwareKey,
                 ProcessId,
                 ProcessStartKey + 1)));
-        var indexedAdapter = Assert.Single(index.AdapterRecords);
-        Assert.Equal(SoftwareKey, indexedAdapter.Key);
-        Assert.Equal(adapter.CurrentGrades.ValidMask, indexedAdapter.Value.CurrentGrades.ValidMask);
-        Assert.Equal(adapter.CurrentGrades.CpuGrade, indexedAdapter.Value.CurrentGrades.CpuGrade);
-        Assert.Equal(adapter.CurrentGrades.GpuGrade, indexedAdapter.Value.CurrentGrades.GpuGrade);
     }
 
     [Fact]
@@ -94,35 +88,6 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
     }
 
     [Fact]
-    public void StandaloneAdapterUsesCurrentOwnership()
-    {
-        var adapter = CreateAdapterRecord();
-
-        var row = HostManagerSmartCoordinator.CreateNativeStandaloneAdapterFact(
-            SoftwareKey,
-            in adapter,
-            sourceIndex: 7);
-
-        Assert.Equal(
-            NativeSmartCoordinatorInputValidity.SoftwareIdentity
-                | NativeSmartCoordinatorInputValidity.SurfaceFacts
-                | NativeSmartCoordinatorInputValidity.AppliedCpuGrade
-                | NativeSmartCoordinatorInputValidity.AppliedGpuGrade,
-            row.ValidMask);
-        Assert.Equal(
-            NativeSmartCoordinatorInputFlags.OwnsCpuGrade
-                | NativeSmartCoordinatorInputFlags.OwnsGpuGrade,
-            row.Flags);
-        Assert.Equal(SoftwareKey, row.SoftwareKey);
-        Assert.Equal<ulong>(0, row.TargetKey);
-        Assert.Equal<uint>(0, row.ProcessId);
-        Assert.Equal<ulong>(0, row.ProcessStartKey);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Optimize, row.AppliedCpuGrade);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Extreme, row.AppliedGpuGrade);
-        Assert.Equal<uint>(7, row.SourceIndex);
-    }
-
-    [Fact]
     public void StandaloneOwnedProcessDoesNotInventNotRunningEvidence()
     {
         var process = CreateProcessRecord();
@@ -140,9 +105,7 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         Assert.Equal(
             NativeSmartCoordinatorInputValidity.ProcessIdentity
                 | NativeSmartCoordinatorInputValidity.SoftwareIdentity
-                | NativeSmartCoordinatorInputValidity.AppliedProcessGrade
-                | NativeSmartCoordinatorInputValidity.AppliedCpuGrade
-                | NativeSmartCoordinatorInputValidity.AppliedGpuGrade,
+                | NativeSmartCoordinatorInputValidity.AppliedProcessGrade,
             row.ValidMask);
         Assert.Equal(NativeSmartCoordinatorInputFlags.OwnsProcessGrade, row.Flags);
         Assert.Equal(TargetKey, row.TargetKey);
@@ -150,33 +113,7 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         Assert.Equal(ProcessId, row.ProcessId);
         Assert.Equal(ProcessStartKey, row.ProcessStartKey);
         Assert.Equal(NativeSmartCoordinatorProcessGrade.Level2, row.AppliedProcessGrade);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Normal, row.AppliedCpuGrade);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Normal, row.AppliedGpuGrade);
         Assert.Equal<uint>(8, row.SourceIndex);
-    }
-
-    [Fact]
-    public void StandaloneAdapterDoesNotInventOwnershipForAnAbsentDomain()
-    {
-        var adapter = CreateAdapterRecord();
-        adapter.OriginalBinding.DomainMask = (uint)NativeAppliedOwnershipDomain.Cpu;
-        adapter.OriginalBinding.GradeValidMask = (uint)NativeAppliedOwnershipGradeValidity.Cpu;
-        adapter.OriginalBinding.GpuFromGrade = 0;
-        adapter.OriginalBinding.GpuToGrade = 0;
-        adapter.CurrentGrades.ValidMask = (uint)NativeAppliedOwnershipGradeValidity.Cpu;
-        adapter.CurrentGrades.GpuGrade = 0;
-        var index = HostManagerSmartCoordinator.CreateAppliedOwnershipFactIndex(
-            CreateSnapshot(adapter));
-        var indexed = Assert.Single(index.AdapterRecords).Value;
-
-        var row = HostManagerSmartCoordinator.CreateNativeStandaloneAdapterFact(
-            SoftwareKey,
-            in indexed,
-            sourceIndex: 3);
-
-        Assert.Equal(NativeSmartCoordinatorInputFlags.OwnsCpuGrade, row.Flags);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Optimize, row.AppliedCpuGrade);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Normal, row.AppliedGpuGrade);
     }
 
     [Fact]
@@ -198,58 +135,12 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
     }
 
     [Fact]
-    public void AdapterCurrentOwnershipMayUnionBeyondOriginalBinding()
-    {
-        var adapter = CreateAdapterRecord();
-        adapter.OriginalBinding.DomainMask = (uint)NativeAppliedOwnershipDomain.Cpu;
-        adapter.OriginalBinding.GradeValidMask = (uint)NativeAppliedOwnershipGradeValidity.Cpu;
-        adapter.OriginalBinding.GpuFromGrade = 0;
-        adapter.OriginalBinding.GpuToGrade = 0;
-
-        var index = HostManagerSmartCoordinator.CreateAppliedOwnershipFactIndex(
-            CreateSnapshot(adapter));
-        var indexed = Assert.Single(index.AdapterRecords).Value;
-        var row = HostManagerSmartCoordinator.CreateNativeStandaloneAdapterFact(
-            SoftwareKey,
-            in indexed,
-            sourceIndex: 9);
-
-        Assert.Equal(
-            NativeSmartCoordinatorInputFlags.OwnsCpuGrade |
-                NativeSmartCoordinatorInputFlags.OwnsGpuGrade,
-            row.Flags);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Optimize, row.AppliedCpuGrade);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Extreme, row.AppliedGpuGrade);
-    }
-
-    [Fact]
-    public void AdapterCurrentOwnershipMayDropOneOriginalDomain()
-    {
-        var adapter = CreateAdapterRecord();
-        adapter.CurrentGrades.ValidMask = (uint)NativeAppliedOwnershipGradeValidity.Gpu;
-        adapter.CurrentGrades.CpuGrade = 0;
-
-        var index = HostManagerSmartCoordinator.CreateAppliedOwnershipFactIndex(
-            CreateSnapshot(adapter));
-        var indexed = Assert.Single(index.AdapterRecords).Value;
-        var row = HostManagerSmartCoordinator.CreateNativeStandaloneAdapterFact(
-            SoftwareKey,
-            in indexed,
-            sourceIndex: 10);
-
-        Assert.Equal(NativeSmartCoordinatorInputFlags.OwnsGpuGrade, row.Flags);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Normal, row.AppliedCpuGrade);
-        Assert.Equal(NativeSmartCoordinatorAdapterGrade.Extreme, row.AppliedGpuGrade);
-    }
-
-    [Fact]
     public void IndexRejectsZeroLedgerRevisionUnknownScopeDomainGradeAndReservedData()
     {
         var process = CreateProcessRecord();
-        var adapter = CreateAdapterRecord();
-        var zeroRevision = CreateSnapshot(process, adapter) with
+        var zeroRevision = CreateSnapshot(process) with
         {
-            Header = CreateHeader(entryCount: 2, ledgerRevision: 0)
+            Header = CreateHeader(entryCount: 1, ledgerRevision: 0)
         };
         Assert.Throws<InvalidDataException>(() =>
             HostManagerSmartCoordinator.CreateAppliedOwnershipFactIndex(zeroRevision));
@@ -258,12 +149,12 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         unknownScope.Primary.Scope = 99;
         AssertInvalid(unknownScope);
 
-        var invalidDomain = adapter;
-        invalidDomain.OriginalBinding.DomainMask = (uint)NativeAppliedOwnershipDomain.Process;
+        var invalidDomain = process;
+        invalidDomain.OriginalBinding.DomainMask = (uint)NativeAppliedOwnershipDomain.PhysicalMemory;
         AssertInvalid(invalidDomain);
 
-        var invalidGrade = adapter;
-        invalidGrade.CurrentGrades.CpuGrade = 99;
+        var invalidGrade = process;
+        invalidGrade.CurrentGrades.ProcessGrade = 99;
         AssertInvalid(invalidGrade);
 
         var reserved = process;
@@ -410,54 +301,6 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         record.Payload.DigestHigh++;
         return record;
     }
-
-    private static NativeAppliedOwnershipRecord CreateAdapterRecord()
-        => new()
-        {
-            Primary = new NativeAppliedOwnershipPrimaryIdentity
-            {
-                Scope = (uint)NativeAppliedOwnershipScope.Adapter,
-                SoftwareId = SoftwareKey
-            },
-            OriginalBinding = new NativeAppliedOwnershipOriginalBinding
-            {
-                JournalInstanceLow = 31,
-                JournalInstanceHigh = 32,
-                Scope = (uint)NativeAppliedOwnershipJournalScope.Software,
-                Disposition = (uint)NativeAppliedOwnershipDisposition.Apply,
-                DomainMask = (uint)(NativeAppliedOwnershipDomain.Cpu | NativeAppliedOwnershipDomain.Gpu),
-                GradeValidMask = (uint)(
-                    NativeAppliedOwnershipGradeValidity.Cpu |
-                    NativeAppliedOwnershipGradeValidity.Gpu),
-                CpuFromGrade = (int)NativeAppliedOwnershipAdapterGrade.Normal,
-                CpuToGrade = (int)NativeAppliedOwnershipAdapterGrade.Optimize,
-                GpuFromGrade = (int)NativeAppliedOwnershipAdapterGrade.Normal,
-                GpuToGrade = (int)NativeAppliedOwnershipAdapterGrade.Extreme,
-                MaximumRecoveryAttempts = 3,
-                RecoveryDeadlineUtcMilliseconds = 10_000,
-                ActionIdentity = new NativeAppliedOwnershipActionIdentity
-                {
-                    ConfigurationGeneration = 1UL << 32,
-                    PlanEpoch = 5,
-                    ActionId = 6,
-                    HostSessionIncarnation = 7,
-                    TargetId = SoftwareKey,
-                    SoftwareId = SoftwareKey
-                }
-            },
-            Payload = CreatePayload(),
-            CurrentGrades = new NativeAppliedOwnershipCurrentGrades
-            {
-                ValidMask = (uint)(
-                    NativeAppliedOwnershipGradeValidity.Cpu |
-                    NativeAppliedOwnershipGradeValidity.Gpu),
-                CpuGrade = (int)NativeAppliedOwnershipAdapterGrade.Optimize,
-                GpuGrade = (int)NativeAppliedOwnershipAdapterGrade.Extreme
-            },
-            RecordRevision = 8,
-            PromotedAtUtcMilliseconds = 1_000,
-            UpdatedAtUtcMilliseconds = 1_100
-        };
 
     private static NativeAppliedOwnershipDurablePayloadReference CreatePayload()
         => new()

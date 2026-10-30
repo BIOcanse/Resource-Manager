@@ -183,7 +183,7 @@ pub fn plan(
     session: *Session,
     input: *const protocol.PlanInput,
     requested_metrics: []const protocol.PlanMetricInput,
-    source_modes: []const protocol.SourceModeInput,
+    source_modes: []const protocol.SourceStateInput,
     output: *protocol.PlanOutput,
     source_plans: []protocol.SourcePlanOutput,
     metric_plans: []protocol.MetricPlanOutput,

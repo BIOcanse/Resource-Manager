@@ -91,22 +91,10 @@ public sealed class HostManagerDecisionDiagnosticsTests
             BaseScore = 80,
             CpuScore = 64,
             CpuOccupancyPercent = 80,
-            AdapterCpuScore = 64,
-            AdapterGpuScore = 72,
             DesiredProcessGrade = NativeSmartCoordinatorProcessGrade.A1,
             AppliedProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
             PendingProcessGrade = NativeSmartCoordinatorProcessGrade.A1,
-            DesiredCpuGrade = NativeSmartCoordinatorAdapterGrade.Extreme,
-            AppliedCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            PendingCpuGrade = NativeSmartCoordinatorAdapterGrade.Extreme,
-            DesiredGpuGrade = NativeSmartCoordinatorAdapterGrade.Extreme,
-            AppliedGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            PendingGpuGrade = NativeSmartCoordinatorAdapterGrade.Extreme,
             ProcessPendingCount = 1,
-            CpuPendingCount = 1,
-            GpuPendingCount = 1,
-            CpuCapabilityMask = 3,
-            GpuCapabilityMask = 5,
             Flags = NativeSmartCoordinatorSnapshotRowFlags.ProcessInflight,
             ValidMask = NativeSmartCoordinatorInputValidity.ProcessIdentity |
                 NativeSmartCoordinatorInputValidity.SoftwareIdentity,
@@ -155,7 +143,7 @@ public sealed class HostManagerDecisionDiagnosticsTests
             [new NativeSmartCoordinatorSnapshotRow
             {
                 RowKind = NativeSmartCoordinatorSnapshotRowKind.Process,
-                Flags = NativeSmartCoordinatorSnapshotRowFlags.ProcessOwned | NativeSmartCoordinatorSnapshotRowFlags.CpuInflight,
+                Flags = NativeSmartCoordinatorSnapshotRowFlags.ProcessOwned | NativeSmartCoordinatorSnapshotRowFlags.ProcessInflight,
                 ValidMask = NativeSmartCoordinatorInputValidity.ProcessIdentity | (NativeSmartCoordinatorInputValidity)(1UL << 63)
             }]);
         var wire = System.Text.Json.JsonSerializer.SerializeToElement(projected,
@@ -166,7 +154,7 @@ public sealed class HostManagerDecisionDiagnosticsTests
         Assert.Equal(["awaiting_stability"], wire.GetProperty("reasonMask").EnumerateArray().Select(value => value.GetString()));
         Assert.Equal("9223372036855037952", wire.GetProperty("reasonMaskValue").GetString());
         var row = Assert.Single(wire.GetProperty("rows").EnumerateArray());
-        Assert.Equal(["process_owned", "cpu_inflight"], row.GetProperty("flags").EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal(["process_owned", "process_inflight"], row.GetProperty("flags").EnumerateArray().Select(value => value.GetString()));
         Assert.Equal(["process_identity"], row.GetProperty("validMask").EnumerateArray().Select(value => value.GetString()));
         Assert.Equal("9223372036854775809", row.GetProperty("validMaskValue").GetString());
         Assert.Equal(0, row.GetProperty("reasonMask").GetArrayLength());

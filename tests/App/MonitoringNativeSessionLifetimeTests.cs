@@ -1,4 +1,3 @@
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Vendors.Nvidia;
 using ResourceManager.ReadWrite.Windows.Metrics.Resources;
@@ -8,33 +7,24 @@ namespace Resource_Manager_APP.Tests;
 public sealed class MonitoringNativeSessionLifetimeTests
 {
     [Fact]
-    public async Task NvmlFreezeReturnsOnlyItsInitializationAndResumeDoesNotEagerlyInitialize()
+    public void NvmlRepeatedReadsRetainInitializationUntilDispose()
     {
         var initializations = 0;
         var shutdowns = 0;
         var reader = new NvidiaNvmlReader(() => { initializations++; return 0; },
             () => { shutdowns++; return 0; });
         using var zone = new NvidiaNvmlMonitoringZone(reader);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Equal(0, shutdowns);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
+        Assert.Equal(0, initializations);
         for (var cycle = 0; cycle < 3; cycle++)
         {
             Assert.True(reader.EnsureInitialized());
             Assert.True(reader.EnsureInitialized());
-            Assert.Equal(cycle + 1, initializations);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            Assert.Equal(cycle + 1, shutdowns);
-            Assert.Empty(await zone.ReadAsync(NvidiaNvmlReadRequest.All, null!, default));
-            Assert.Equal(cycle + 1, initializations);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-            Assert.Equal(cycle + 1, initializations);
+            Assert.Equal(1, initializations);
+            Assert.Equal(0, shutdowns);
         }
-        Assert.True(reader.EnsureInitialized());
         zone.Dispose();
         zone.Dispose();
-        Assert.Equal(4, shutdowns);
+        Assert.Equal(1, shutdowns);
         Assert.Throws<ObjectDisposedException>(() => reader.EnsureInitialized());
     }
 
@@ -58,7 +48,7 @@ public sealed class MonitoringNativeSessionLifetimeTests
     }
 
     [Fact]
-    public void FrequencyFreezeReturnsItsQueryAndUnfreezeRetainsLazyRead()
+    public void FrequencyRepeatedReadsRetainQueryUntilDispose()
     {
         var held = false;
         var opens = 0;
@@ -72,18 +62,13 @@ public sealed class MonitoringNativeSessionLifetimeTests
         {
             Assert.Equal(2000, zone.ReadFrequency().CurrentMhz);
             Assert.Equal(2000, zone.ReadFrequency().CurrentMhz);
-            Assert.Equal(cycle + 1, opens);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            Assert.False(held);
-            Assert.Equal(cycle + 1, closes);
-            Assert.Equal(CpuFrequencySourceStates.Frozen, zone.ReadFrequency().Source);
-            zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-            Assert.Equal(cycle + 1, opens);
+            Assert.Equal(1, opens);
+            Assert.True(held);
+            Assert.Equal(0, closes);
         }
         _ = zone.ReadFrequency();
         zone.Dispose();
         Assert.False(held);
-        Assert.Equal(4, closes);
+        Assert.Equal(1, closes);
     }
 }

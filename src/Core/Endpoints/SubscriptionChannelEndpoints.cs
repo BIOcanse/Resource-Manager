@@ -388,12 +388,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 CompileResourceFactsSubscription(subscription, services, interval)),
             ["/api/performance-overlay/subscribe"] = new((subscription, services, interval) =>
                 CompilePerformanceOverlaySubscription(subscription, services, interval)),
-            ["/api/adapters/resource-manager/scheduling/subscribe"] =
-                new((subscription, services, interval) => CompileAlignedPeriodicSubscription(
-                    subscription,
-                    services.GetRequiredService<IResourceManagerSelfSchedulingControl>()
-                        .GetSchedulingSnapshot,
-                    interval)),
             // 控制面的实际状态：这台机器现在实际是什么样。
             // 通道存活期间持有采样需求；发布只取当前值，不直接触碰硬件。
             ["/api/control/actual/subscribe"] =

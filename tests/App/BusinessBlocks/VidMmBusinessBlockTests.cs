@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using System.Reflection;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 
@@ -324,7 +323,7 @@ public sealed class VidMmBusinessBlockTests
     }
 
     [Fact]
-    public async Task FreezeAndThawRetainEvidenceWhileNativeResourcesAreReleased()
+    public async Task SubscriptionWithdrawalRetainsEvidenceWhileNativeResourcesAreReleased()
     {
         await using var harness = VidMmBusinessBlockTestHarness.Create();
         await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
@@ -335,20 +334,13 @@ public sealed class VidMmBusinessBlockTests
         harness.Zone.ObserveProcessMemory(41, "game.exe", 32 * 1024 * 1024,
             "VidMmProcessUsageChange", checked((ulong)now.UtcDateTime.ToFileTimeUtc()), now);
         var evidence = Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45)));
-        await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze).WaitAsync(TestTimeout);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
         await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
         Assert.Equal(BusinessBlockOutcome.Stopped, (await harness.NextResultAsync()).Outcome);
         Assert.Equal(evidence, Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45))));
         Assert.Equal(1, firstSession.DisposeCount);
         Assert.False(firstSession.ConsumerThread!.IsAlive);
-        AssertFieldInUse(harness, true);
-        await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal).WaitAsync(TestTimeout);
-        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
-        Assert.Equal(2, harness.Sessions.Attempts);
-        Assert.Equal(evidence, Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45))));
-        Assert.Equal("Running", harness.Zone.State);
-        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
-        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
+        AssertFieldInUse(harness, false);
     }
 
     private static void AssertFieldInUse(VidMmBusinessBlockTestHarness harness, bool expected)

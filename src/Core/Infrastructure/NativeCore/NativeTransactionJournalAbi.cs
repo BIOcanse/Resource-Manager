@@ -141,7 +141,7 @@ internal enum NativeTransactionJournalPayloadKind : uint
 internal enum NativeTransactionJournalScope : uint
 {
     Process = 1,
-    Software = 2,
+    // Value 2 is retired software-grade scope; never reuse.
     Resource = 3
 }
 
@@ -185,13 +185,6 @@ internal enum NativeTransactionJournalProcessGrade : int
     A1 = 1
 }
 
-internal enum NativeTransactionJournalAdapterGrade : int
-{
-    Freeze = 0,
-    Optimize = 1,
-    Normal = 2,
-    Extreme = 3
-}
 
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct NativeTransactionJournalCreateConfiguration

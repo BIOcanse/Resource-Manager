@@ -177,8 +177,8 @@ public sealed class MetricScratchOwnerLifecycleTests
     private static void OpenCompletion(NativeMetricSnapshotWorkspace workspace)
     {
         var catalog = workspace.ReadCatalog();
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,
-            1, NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle,
+            1, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var at = DateTimeOffset.UtcNow;
         var plan = workspace.PlanCollection([catalog.MetricHandles.Values.First()], modes, false, at);
         var metric = plan.Metrics.First(row => (row.Flags & (uint)NativeMetricSnapshotMetricPlanFlags.Selected) != 0);

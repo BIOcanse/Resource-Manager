@@ -248,7 +248,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         JsonSerializer.Serialize(assessment, LongSoakCompactJsonOptions));
                 }
 
-                fixture.AssertNoMemoryCleanupAttemptEntries();
                 var effectCounters = fixture.CaptureHostedScoreOnlyEffectCounters();
                 effectCounters.AssertAllZero();
                 var rollbackIncarnationAfter =

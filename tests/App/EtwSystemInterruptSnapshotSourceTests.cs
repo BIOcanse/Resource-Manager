@@ -2,7 +2,6 @@ using ResourceManager.App.Domain.SystemHealth;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.SystemHealth.Interrupts;
 
 namespace Resource_Manager_APP.Tests;
@@ -22,13 +21,6 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
         var repeated = source.Read();
 
         Assert.Same(first, repeated);
-
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        var frozen = source.Read();
-
-        Assert.NotSame(first, frozen);
-        Assert.Same(frozen, source.Read());
-        Assert.Equal(SystemInterruptProviderStates.Frozen, frozen.ProviderState.State);
     }
 
     [Fact]
@@ -95,37 +87,6 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
     {
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (!condition()) await Task.Delay(10, cancellation.Token);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task FrozenRunRetainsOneKernelHolderUntilItsFinalReturn(bool initiallyFrozen)
-    {
-        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new DemandBroker(true);
-        using var source = new EtwSystemInterruptSnapshotSource(broker, fixture.Owner,
-            NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
-        if (initiallyFrozen) source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Equal(0, broker.SubscribeCount);
-        await source.StartAsync(CancellationToken.None);
-        try
-        {
-            await WaitUntilAsync(() => broker.SubscribeCount == (initiallyFrozen ? 1 : 2));
-            for (var cycle = 0; cycle < 3; cycle++)
-            {
-                source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-                source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-                Assert.Equal(SystemInterruptProviderStates.Frozen, source.Read().ProviderState.State);
-                Assert.Equal(cycle + (initiallyFrozen ? 1 : 2), broker.SubscribeCount);
-                Assert.Equal(cycle + (initiallyFrozen ? 0 : 1), broker.DisposeCount);
-                source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-                Assert.Equal(cycle + (initiallyFrozen ? 2 : 3), broker.SubscribeCount);
-                Assert.Equal(cycle + (initiallyFrozen ? 0 : 1), broker.DisposeCount);
-            }
-        }
-        finally { await source.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)); }
-        Assert.Equal(broker.SubscribeCount, broker.DisposeCount);
     }
 
     private sealed class DemandBroker(bool running) : IKernelEtwSessionBroker

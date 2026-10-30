@@ -16,7 +16,6 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerComputeScoringCycleResult? computeScoring,
         NativeAppliedOwnershipFactIndex ownership,
         IReadOnlyDictionary<string, int> protectionLevels,
-        bool policyExecutionEnabled,
         bool cpuPlacementEnabled,
         bool gpuPlacementEnabled,
         HostManagerTransactionJournalAdmission? executionAdmission,
@@ -38,7 +37,6 @@ public sealed partial class HostManagerSmartCoordinator
             ownership,
             protectionLevels,
             modePlan,
-            policyExecutionEnabled,
             cpuPlacementEnabled,
             computeScoring);
         cycleDiagnostics?.CaptureProjection(projection.InputCount);

@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Application.ResourceBreakdown;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -25,54 +24,45 @@ public sealed class KernelEtwActualUseHoldTests
         | KernelTraceEventParser.Keywords.ImageLoad;
 
     [Fact]
-    public async Task LongRunningNetworkAndDiskRunsHoldOnlyUnfrozenResourcesAtEveryBoundary()
+    public async Task LongRunningNetworkAndDiskRunsHoldResourcesUntilTheirRunsReturn()
     {
         var broker = new RecordingBroker();
-        var zone = new EtwNetworkTcpIpMonitoringZone();
         long tick = 0;
-        using var network = new EtwNetworkTcpIpAttributionReader(zone, broker,
+        using var network = new EtwNetworkTcpIpAttributionReader(broker,
             NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => tick, static _ => null);
         using var disk = new EtwPhysicalDiskIoAttributionReader(new EtwPhysicalDiskIoCaptureOwner(
             broker, new(), () => tick, static _ => null));
-        network.Read(true);
-        disk.Read(true);
+        Assert.Null(network.Read(true).ObservedTraffic);
+        Assert.Null(disk.Read(true).ObservedTraffic);
         broker.Checkpoint("no running users");
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        disk.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
         await network.StartAsync(default);
         await disk.StartAsync(default);
-        Assert.True(SpinWait.SpinUntil(() => IsRunActive(network) && IsRunActive(disk), TimeSpan.FromSeconds(5)));
-        // Reads serialize with entry; entry is frozen and cannot acquire.
-        network.Read(true);
-        disk.Read(true);
-        broker.Checkpoint("started frozen");
+        Assert.True(SpinWait.SpinUntil(() => broker.Acquires == 2, TimeSpan.FromSeconds(5)));
         try
         {
+            Assert.Null(network.Read(true).ObservedTraffic);
+            Assert.False(disk.Read(true).ObservedTraffic?.Complete ?? false);
             for (var round = 0; round < 12; round++)
             {
                 tick += 10_000;
-                zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-                broker.Checkpoint($"{round}: only network used", ("network-tcpip-attribution", Network));
-                disk.ApplyMode(ResourceManagerComputeZoneMode.Normal);
                 broker.Checkpoint($"{round}: both used", ("network-tcpip-attribution", Network), ("physical-disk-io-attribution", Disk));
-                Assert.Null(network.Read(true).ObservedTraffic);
-                Assert.False(disk.Read(true).ObservedTraffic?.Complete ?? false);
+                var observedTraffic = network.Read(true).ObservedTraffic;
+                Assert.NotNull(observedTraffic);
+                Assert.Equal(2000, observedTraffic.WindowMilliseconds);
+                Assert.Empty(observedTraffic.Processes);
+                var observedDiskTraffic = disk.Read(true).ObservedTraffic;
+                Assert.NotNull(observedDiskTraffic);
+                Assert.True(observedDiskTraffic.Complete);
+                Assert.Equal(2000, observedDiskTraffic.WindowMilliseconds);
+                Assert.Empty(observedDiskTraffic.Processes);
                 var acquires = broker.Acquires;
                 for (var read = 0; read < 5; read++)
                 {
                     network.Read(true);
                     disk.Read(true);
                 }
-                zone.ApplyMode(ResourceManagerComputeZoneMode.LowPower);
-                disk.ApplyMode(ResourceManagerComputeZoneMode.LowPower);
                 Assert.Equal(acquires, broker.Acquires);
-                broker.Checkpoint($"{round}: low power still consumes", ("network-tcpip-attribution", Network), ("physical-disk-io-attribution", Disk));
-                zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-                broker.Checkpoint($"{round}: only disk used", ("physical-disk-io-attribution", Disk));
-                Assert.Equal(NetworkAttributionProviderStates.Frozen, network.Read(true).ProviderState.State);
-                disk.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-                broker.Checkpoint($"{round}: both frozen");
-                Assert.Equal(PhysicalDiskIoProviderStates.Frozen, disk.Read(true).ProviderState.State);
+                broker.Checkpoint($"{round}: reads retain the same holds", ("network-tcpip-attribution", Network), ("physical-disk-io-attribution", Disk));
             }
         }
         finally
@@ -82,14 +72,12 @@ public sealed class KernelEtwActualUseHoldTests
         }
         broker.Checkpoint("runs returned");
         var before = broker.Acquires;
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-        disk.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-        network.Read(true);
-        disk.Read(true);
-        broker.Checkpoint("mode changes and reads after stop");
+        Assert.Null(network.Read(true).ObservedTraffic);
+        Assert.Null(disk.Read(true).ObservedTraffic);
+        broker.Checkpoint("reads after stop");
         Assert.Equal(before, broker.Acquires);
         Assert.Equal(broker.Acquires, broker.Releases);
-        Assert.Equal(64, broker.Checkpoints.Count);
+        Assert.Equal(27, broker.Checkpoints.Count);
     }
 
     [Fact]
@@ -188,8 +176,6 @@ public sealed class KernelEtwActualUseHoldTests
         public Task InvalidateSoftwareSnapshotAsync() => Task.CompletedTask;
     }
 
-    private static bool IsRunActive(object reader)
-        => (bool)reader.GetType().GetField("runActive", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(reader)!;
 
     private sealed class FixtureEnvironment : IHostEnvironment
     {

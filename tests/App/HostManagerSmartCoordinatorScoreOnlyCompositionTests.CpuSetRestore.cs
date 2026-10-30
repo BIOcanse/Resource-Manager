@@ -38,7 +38,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             warm: true,
             scoreOnlyEnabled: false,
             processFactsSnapshot: processFacts,
-            policyExecutionEnabled: false,
             automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => residency),

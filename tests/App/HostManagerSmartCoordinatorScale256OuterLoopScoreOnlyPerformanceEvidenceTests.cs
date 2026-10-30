@@ -195,7 +195,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             recordObserverAttached = false;
             var observations = capture.AssertCompleteAndExact();
             var steadyAssessment = AssertScale256HostedSteadyBudgets(observations);
-            fixture.AssertNoMemoryCleanupAttemptEntries();
             var effectCounters = fixture.CaptureHostedScoreOnlyEffectCounters();
             effectCounters.AssertAllZero();
             var rollbackIncarnationAfter =
@@ -1275,7 +1274,16 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                             Math.Abs(tuple.CpuScore - expectedScore),
                             0D,
                             0.000_000_001D);
-                        Assert.Equal(7679UL, tuple.ValidMaskValue);
+                        Assert.Equal(
+                            (ulong)(NativeSmartCoordinatorInputValidity.ProcessIdentity
+                                | NativeSmartCoordinatorInputValidity.SoftwareIdentity
+                                | NativeSmartCoordinatorInputValidity.SoftwareKind
+                                | NativeSmartCoordinatorInputValidity.BaseScore
+                                | NativeSmartCoordinatorInputValidity.SurfaceFacts
+                                | NativeSmartCoordinatorInputValidity.Eligibility
+                                | NativeSmartCoordinatorInputValidity.Protection
+                                | NativeSmartCoordinatorInputValidity.AppliedProcessGrade),
+                            tuple.ValidMaskValue);
                         var expectedReason = fact.BaseScore >= 81
                             ? NativeSmartCoordinatorReason.HighTierBlocksOptimization
                             : NativeSmartCoordinatorReason.None;

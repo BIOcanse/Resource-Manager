@@ -388,10 +388,8 @@ public sealed partial class JsonMetadataContractTests
             (App, "ResourceManager.App.Infrastructure.Control.JsonControlInstanceRegistry", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Optimization.JsonOptimizationProtectionStore", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.GpuPlacement.JsonGpuPlacementProcessHistoryStore", "JsonOptions"),
-            (App, "ResourceManager.App.Infrastructure.Optimization.HostManagerMemoryCleanupAttemptJournal", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Optimization.HostManagerProcessEffectValidationScopeAuthority", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Optimization.HostManagerRollbackStateEnvelopeCodec", "JsonOptions"),
-            (App, "ResourceManager.App.Infrastructure.Adaptation.ResourceManagerSelfSchedulingControl", "SchedulingPayloadJson"),
             (App, "ResourceManager.App.Infrastructure.Monitoring.GpuTelemetry.GpuTelemetryWorkerProtocol", "SerializerOptions"),
             (App, "ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.JsonDeviceTopologySnapshotStore", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySemanticComparer", "JsonOptions"),
@@ -480,8 +478,7 @@ public sealed partial class JsonMetadataContractTests
             or "SoftwareContentJsonContext" or "TrustedAccessInvocationJsonContext" or "NativeBackendProbeJsonContext"
             or "UserShellExecuteJsonContext" or "LoginStartupJsonContext"
             or "PackageRuntimeCatalogJson" or "StartupModuleStorageJson" or "OverlayStartupModulesJson"
-            or "DeviceFingerprintJsonContext" or "ExternalGpuPlacementJsonContext"
-            || owner.EndsWith("ResourceManagerSelfSchedulingControl", StringComparison.Ordinal);
+            or "DeviceFingerprintJsonContext" or "ExternalGpuPlacementJsonContext";
         var options = new JsonSerializerOptions(plain ? JsonSerializerDefaults.General : JsonSerializerDefaults.Web)
         { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         if (owner is "host-profile" or "metric-profile" or "freedom-point" or "freedom-declarations")
@@ -496,19 +493,12 @@ public sealed partial class JsonMetadataContractTests
             options.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
             options.RespectRequiredConstructorParameters = true;
         }
-        if (owner.EndsWith("ResourceManagerSelfSchedulingControl", StringComparison.Ordinal))
-        {
-            options.MaxDepth = 8;
-            options.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
-            options.RespectRequiredConstructorParameters = true;
-        }
         if (owner.EndsWith("HostManagerRollbackStateEnvelopeCodec", StringComparison.Ordinal)) options.MaxDepth = 32;
         if (owner.EndsWith("JsonAppSettingsStore", StringComparison.Ordinal)
             || owner.EndsWith("JsonOptimizationProtectionStore", StringComparison.Ordinal)
             || owner.EndsWith("JsonGpuPlacementProcessHistoryStore", StringComparison.Ordinal)
             || owner.EndsWith("JsonManualSoftwareRegistry", StringComparison.Ordinal)
             || owner.EndsWith("JsonControlInstanceRegistry", StringComparison.Ordinal)
-            || owner.EndsWith("HostManagerMemoryCleanupAttemptJournal", StringComparison.Ordinal)
             || owner.EndsWith("HostManagerProcessEffectValidationScopeAuthority", StringComparison.Ordinal)) options.WriteIndented = true;
         if (owner == "http-subscription")
             options = new(new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions)

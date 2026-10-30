@@ -8,7 +8,6 @@ internal static partial class HostManagerTransactionJournalProjection
         => value switch
         {
             NativeSmartCoordinatorActionScope.ProcessPolicy => NativeTransactionJournalScope.Process,
-            NativeSmartCoordinatorActionScope.AdapterSoftware => NativeTransactionJournalScope.Software,
             _ => throw new ArgumentOutOfRangeException(nameof(value), value, null)
         };
 
@@ -16,7 +15,6 @@ internal static partial class HostManagerTransactionJournalProjection
         => (NativeTransactionJournalScope)value switch
         {
             NativeTransactionJournalScope.Process => NativeSmartCoordinatorActionScope.ProcessPolicy,
-            NativeTransactionJournalScope.Software => NativeSmartCoordinatorActionScope.AdapterSoftware,
             _ => throw new ArgumentOutOfRangeException(nameof(value), value, null)
         };
 
@@ -49,14 +47,6 @@ internal static partial class HostManagerTransactionJournalProjection
         {
             result |= NativeTransactionJournalDomain.Process;
         }
-        if (value.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu))
-        {
-            result |= NativeTransactionJournalDomain.Cpu;
-        }
-        if (value.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu))
-        {
-            result |= NativeTransactionJournalDomain.Gpu;
-        }
         if ((value & ~NativeSmartCoordinatorGradeDomains.Known) != 0 || result == 0)
         {
             throw new ArgumentOutOfRangeException(nameof(value), value, null);
@@ -67,23 +57,10 @@ internal static partial class HostManagerTransactionJournalProjection
     private static NativeTransactionJournalGradeValidity MapGradeValidity(
         NativeSmartCoordinatorActionScope scope,
         NativeSmartCoordinatorGradeDomains domains)
-    {
-        if (scope == NativeSmartCoordinatorActionScope.ProcessPolicy)
-        {
-            return NativeTransactionJournalGradeValidity.Process;
-        }
-
-        var result = NativeTransactionJournalGradeValidity.None;
-        if (domains.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu))
-        {
-            result |= NativeTransactionJournalGradeValidity.Cpu;
-        }
-        if (domains.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu))
-        {
-            result |= NativeTransactionJournalGradeValidity.Gpu;
-        }
-        return result;
-    }
+        => scope == NativeSmartCoordinatorActionScope.ProcessPolicy &&
+            domains == NativeSmartCoordinatorGradeDomains.Process
+            ? NativeTransactionJournalGradeValidity.Process
+            : throw new ArgumentOutOfRangeException(nameof(scope), scope, null);
 
     private static NativeTransactionJournalProcessGrade MapProcessGrade(
         NativeSmartCoordinatorProcessGrade value)
@@ -95,17 +72,6 @@ internal static partial class HostManagerTransactionJournalProjection
             NativeSmartCoordinatorProcessGrade.Level1 => NativeTransactionJournalProcessGrade.Level1,
             NativeSmartCoordinatorProcessGrade.Normal => NativeTransactionJournalProcessGrade.Normal,
             NativeSmartCoordinatorProcessGrade.A1 => NativeTransactionJournalProcessGrade.A1,
-            _ => throw new ArgumentOutOfRangeException(nameof(value), value, null)
-        };
-
-    private static NativeTransactionJournalAdapterGrade MapAdapterGrade(
-        NativeSmartCoordinatorAdapterGrade value)
-        => value switch
-        {
-            NativeSmartCoordinatorAdapterGrade.Freeze => NativeTransactionJournalAdapterGrade.Freeze,
-            NativeSmartCoordinatorAdapterGrade.Optimize => NativeTransactionJournalAdapterGrade.Optimize,
-            NativeSmartCoordinatorAdapterGrade.Normal => NativeTransactionJournalAdapterGrade.Normal,
-            NativeSmartCoordinatorAdapterGrade.Extreme => NativeTransactionJournalAdapterGrade.Extreme,
             _ => throw new ArgumentOutOfRangeException(nameof(value), value, null)
         };
 

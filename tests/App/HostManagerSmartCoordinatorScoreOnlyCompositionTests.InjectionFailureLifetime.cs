@@ -40,8 +40,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         };
         var reads = 0;
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
-            scoreOnlyEnabled: false, policyExecutionEnabled: false,
-            automaticMemoryCleanupEnabled: false, processFactsSnapshot: facts,
+            scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false, processFactsSnapshot: facts,
             runningGpuActions: service, processRecoveryRead: processId =>
             {
                 Assert.Equal(failedProcessId, processId);

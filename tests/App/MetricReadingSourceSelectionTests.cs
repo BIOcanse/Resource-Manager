@@ -337,11 +337,11 @@ public sealed class MetricReadingSourceSelectionTests
         var tracker = new MetricReadingSourceTracker();
         var at = DateTimeOffset.UtcNow;
         workspace.ReplaceCatalog(catalog, at);
-        var runtime = new NativeMetricSnapshotSourceRuntimeFacts(static _ => NativeMetricSnapshotZoneMode.Normal, TimeSpan.FromSeconds(5));
+        var runtime = new NativeMetricSnapshotSourceRuntimeFacts(TimeSpan.FromSeconds(5));
         for (ulong step = 1; step <= 2; step++)
         {
             var time = at.AddSeconds(step);
-            var plan = workspace.PlanCollection([binding.MetricHandle], runtime.CaptureModes(catalog, time), false, time);
+            var plan = workspace.PlanCollection([binding.MetricHandle], runtime.CaptureStates(catalog, time), false, time);
             var source = Assert.Single(plan.Sources);
             var identity = new NativeMetricSnapshotSourceObservationIdentity(source.SourceHandle, 1, step);
             var metric = Assert.Single(plan.Metrics);

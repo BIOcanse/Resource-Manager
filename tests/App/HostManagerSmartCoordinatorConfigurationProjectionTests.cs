@@ -19,7 +19,7 @@ public sealed class HostManagerSmartCoordinatorConfigurationProjectionTests
             plan.ConfigurationGeneration);
 
         Assert.Equal(NativeSmartCoordinatorAbi.Version, configuration.AbiVersion);
-        Assert.Equal(424u, configuration.StructSize);
+        Assert.Equal(264u, configuration.StructSize);
         Assert.Equal(plan.ConfigurationGeneration, configuration.Generation);
         Assert.Equal(NativeSmartCoordinatorConfigFields.Required, configuration.FieldMask);
         Assert.Equal((NativeSmartCoordinatorFeatures)plan.HotPublish.FeatureFlags, configuration.FeatureFlags);
@@ -46,20 +46,12 @@ public sealed class HostManagerSmartCoordinatorConfigurationProjectionTests
         Assert.Equal(0, configuration.ReservedProcessPolicy0);
         Assert.Equal(plan.HotPublish.BaseScoreTiers.HighMinimumBaseScore, configuration.HighTierMinimumBaseScore);
         Assert.Equal(plan.HotPublish.BaseScoreTiers.MiddleMinimumBaseScore, configuration.MiddleTierMinimumBaseScore);
-        Assert.Equal(plan.HotPublish.CpuAdapterPolicy.ExtremeMinimumScore, configuration.CpuAdapter.ExtremeMinimumScore);
-        Assert.Equal(plan.HotPublish.CpuAdapterPolicy.NormalMinimumScore, configuration.CpuAdapter.NormalMinimumScore);
-        Assert.Equal(plan.HotPublish.CpuAdapterPolicy.OptimizeMinimumScore, configuration.CpuAdapter.OptimizeMinimumScore);
-        Assert.Equal(plan.HotPublish.GpuAdapterPolicy.ExtremeMinimumScore, configuration.GpuAdapter.ExtremeMinimumScore);
-        Assert.Equal(plan.HotPublish.GpuAdapterPolicy.NormalMinimumScore, configuration.GpuAdapter.NormalMinimumScore);
-        Assert.Equal(plan.HotPublish.GpuAdapterPolicy.OptimizeMinimumScore, configuration.GpuAdapter.OptimizeMinimumScore);
 
         var projected = configuration;
         var bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref projected, 1));
         for (var index = 0; index < NativeSmartCoordinatorAbi.RuntimeStateCount; index++)
         {
             Assert.Equal(plan.HotPublish.ProcessStateMultipliers[index], ReadDouble(bytes, 104 + (index * sizeof(double))));
-            Assert.Equal(plan.HotPublish.ProcessStateMultipliers[index], ReadDouble(bytes, 232 + (index * sizeof(double))));
-            Assert.Equal(plan.HotPublish.GpuAdapterPolicy.StateMultipliers[index], ReadDouble(bytes, 312 + (index * sizeof(double))));
         }
         for (var index = 0; index < 3; index++)
         {
@@ -67,7 +59,7 @@ public sealed class HostManagerSmartCoordinatorConfigurationProjectionTests
         }
         for (var index = 0; index < 4; index++)
         {
-            Assert.Equal(0UL, BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(392 + (index * sizeof(ulong)), sizeof(ulong))));
+            Assert.Equal(0UL, BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(232 + (index * sizeof(ulong)), sizeof(ulong))));
         }
 
         Assert.Equal(
@@ -117,23 +109,6 @@ public sealed class HostManagerSmartCoordinatorConfigurationProjectionTests
         Assert.NotEqual(
             NativeSmartCoordinatorConfigurationWriter.ComputeSha256(in original, plan.HotPublish.RealtimeActionBudget),
             NativeSmartCoordinatorConfigurationWriter.ComputeSha256(in changed, plan.HotPublish.RealtimeActionBudget));
-    }
-
-    [Fact]
-    public void ProjectionRejectsCpuAdapterStateMultiplierDrift()
-    {
-        var plan = HostManagerTestPlanFactory.CreatePlan().SmartCoordinator;
-        var driftedCpuPolicy = plan.HotPublish.CpuAdapterPolicy with
-        {
-            StateMultipliers = plan.HotPublish.CpuAdapterPolicy.StateMultipliers.SetItem(0, 0.5)
-        };
-        var driftedHotPublish = plan.HotPublish with { CpuAdapterPolicy = driftedCpuPolicy };
-
-        Assert.Throws<InvalidDataException>(() => NativeSmartCoordinatorConfigurationWriter.Create(
-            plan.Build,
-            plan.Recreate,
-            driftedHotPublish,
-            plan.ConfigurationGeneration));
     }
 
     private static double ReadDouble(ReadOnlySpan<byte> bytes, int offset)

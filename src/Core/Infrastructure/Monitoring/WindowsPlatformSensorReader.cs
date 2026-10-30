@@ -44,13 +44,6 @@ internal sealed partial class WindowsPlatformSensorReader(
         return new WindowsPlatformSensorSnapshot(state, state, state, state, null, null, null, null, null, null, null, [], [], []);
     }
 
-    public bool CanReadAnySource()
-    {
-        return storageZone.CanRead
-            || hardwareMonitorZone.CanRead
-            || notebookOemFanZone.CanRead;
-    }
-
     internal StorageSensorSnapshot ReadStorageSensors()
         => storageZone.ReadSensors();
 

@@ -9,12 +9,10 @@ public sealed class WindowsBatteryMonitoringZone : MonitoringSourceZone
     public WindowsBatteryMonitoringZone() : this(new WindowsBatteryReader()) { }
     internal WindowsBatteryMonitoringZone(WindowsBatteryReader reader) : base(MonitoringSourceZoneIds.WindowsBattery)
         => this.reader = reader;
-    internal BatteryTopologyRead ReadIdentities() => CanRead ? reader.ReadIdentities()
-        : new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
-    internal BatteryTopologyRead ReadDeclarations() => CanRead ? reader.ReadIdentities(includeDeclarations: true)
-        : new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
+    internal BatteryTopologyRead ReadIdentities() => reader.ReadIdentities();
+    internal BatteryTopologyRead ReadDeclarations() => reader.ReadIdentities(includeDeclarations: true);
     internal IReadOnlyList<BatteryMetricRead> Read(IReadOnlyList<BatteryCatalogIdentity> devices,
         IReadOnlyDictionary<int, IReadOnlySet<MetricFieldCode>> requested)
-        => CanRead ? devices.Where(device => requested.ContainsKey(device.DisplayIndex))
-            .Select(device => reader.Read(device, requested[device.DisplayIndex])).ToArray() : [];
+        => devices.Where(device => requested.ContainsKey(device.DisplayIndex))
+            .Select(device => reader.Read(device, requested[device.DisplayIndex])).ToArray();
 }

@@ -226,27 +226,11 @@ internal static partial class HostManagerTransactionJournalProjection
         {
             validMask |= NativeTransactionJournalFeedbackValidity.ActualProcessGrade;
         }
-        if (feedback.ValidMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualCpuGrade))
-        {
-            validMask |= NativeTransactionJournalFeedbackValidity.ActualCpuGrade;
-        }
-        if (feedback.ValidMask.HasFlag(NativeSmartCoordinatorFeedbackValidity.ActualGpuGrade))
-        {
-            validMask |= NativeTransactionJournalFeedbackValidity.ActualGpuGrade;
-        }
 
         var flags = NativeTransactionJournalFeedbackFlags.None;
         if (feedback.Flags.HasFlag(NativeSmartCoordinatorFeedbackFlags.ProcessOwned))
         {
             flags |= NativeTransactionJournalFeedbackFlags.ProcessOwned;
-        }
-        if (feedback.Flags.HasFlag(NativeSmartCoordinatorFeedbackFlags.CpuOwned))
-        {
-            flags |= NativeTransactionJournalFeedbackFlags.CpuOwned;
-        }
-        if (feedback.Flags.HasFlag(NativeSmartCoordinatorFeedbackFlags.GpuOwned))
-        {
-            flags |= NativeTransactionJournalFeedbackFlags.GpuOwned;
         }
         if (feedback.Flags.HasFlag(NativeSmartCoordinatorFeedbackFlags.RollbackPayloadPersisted))
         {
@@ -271,14 +255,8 @@ internal static partial class HostManagerTransactionJournalProjection
                 NativeTransactionJournalFeedbackValidity.ActualProcessGrade)
                 ? (int)MapProcessGrade(feedback.ActualProcessGrade)
                 : 0,
-            ActualCpuGrade = validMask.HasFlag(
-                NativeTransactionJournalFeedbackValidity.ActualCpuGrade)
-                ? (int)MapAdapterGrade(feedback.ActualCpuGrade)
-                : 0,
-            ActualGpuGrade = validMask.HasFlag(
-                NativeTransactionJournalFeedbackValidity.ActualGpuGrade)
-                ? (int)MapAdapterGrade(feedback.ActualGpuGrade)
-                : 0
+            ActualCpuGrade = 0,
+            ActualGpuGrade = 0
         };
     }
 
@@ -297,9 +275,7 @@ internal static partial class HostManagerTransactionJournalProjection
             action.Disposition is not (NativeSmartCoordinatorActionDisposition.Apply or
                 NativeSmartCoordinatorActionDisposition.Restore) ||
             (action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.CpuScore) &&
-                (!double.IsFinite(action.CpuScore) || action.CpuScore < 0)) ||
-            (action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.GpuScore) &&
-                (!double.IsFinite(action.GpuScore) || action.GpuScore < 0)))
+                (!double.IsFinite(action.CpuScore) || action.CpuScore < 0)))
         {
             throw new ArgumentException("The smart coordinator action is not executable.");
         }
@@ -334,11 +310,7 @@ internal static partial class HostManagerTransactionJournalProjection
                     action.DomainMask != NativeSmartCoordinatorGradeDomains.Process ||
                     (action.ValidMask & processRequired) != processRequired ||
                     (action.ValidMask & ~processAllowed) != 0 ||
-                    hasSoftwareIdentity != (action.SoftwareKey != 0) ||
-                    action.FromCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal ||
-                    action.ToCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal ||
-                    action.FromGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal ||
-                    action.ToGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal)
+                    hasSoftwareIdentity != (action.SoftwareKey != 0))
                 {
                     throw new ArgumentException("The process action identity or grade is incomplete.");
                 }
@@ -349,60 +321,6 @@ internal static partial class HostManagerTransactionJournalProjection
                     action.ToProcessGrade != NativeSmartCoordinatorProcessGrade.Level4))
                 {
                     throw new ArgumentException("Only a complete software freeze group can be atomic.");
-                }
-                break;
-            case NativeSmartCoordinatorActionScope.AdapterSoftware:
-                var expectedGradeValidity = NativeSmartCoordinatorActionValidity.None;
-                if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu))
-                {
-                    expectedGradeValidity |= NativeSmartCoordinatorActionValidity.CpuGrade;
-                }
-                if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu))
-                {
-                    expectedGradeValidity |= NativeSmartCoordinatorActionValidity.GpuGrade;
-                }
-                if (action.ProcessId != 0 ||
-                    action.ProcessStartKey != 0 ||
-                    action.SoftwareKey == 0 ||
-                    action.TargetKey != action.SoftwareKey ||
-                    action.DomainMask == NativeSmartCoordinatorGradeDomains.None ||
-                    (action.DomainMask & ~(
-                        NativeSmartCoordinatorGradeDomains.Cpu |
-                        NativeSmartCoordinatorGradeDomains.Gpu)) != 0 ||
-                    !action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.SoftwareIdentity) ||
-                    (action.ValidMask & expectedGradeValidity) != expectedGradeValidity ||
-                    (action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.CpuScore)
-                        && !action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)) ||
-                    (action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.GpuScore)
-                        && !action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)) ||
-                    (action.Disposition == NativeSmartCoordinatorActionDisposition.Apply &&
-                        ((action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu) &&
-                            action.ToCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal &&
-                            !action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.CpuScore)) ||
-                         (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu) &&
-                            action.ToGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal &&
-                            !action.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.GpuScore)))) ||
-                    (action.ValidMask & ~(
-                        NativeSmartCoordinatorActionValidity.SoftwareIdentity |
-                        NativeSmartCoordinatorActionValidity.CpuGrade |
-                        NativeSmartCoordinatorActionValidity.GpuGrade |
-                        NativeSmartCoordinatorActionValidity.CpuScore |
-                        NativeSmartCoordinatorActionValidity.GpuScore)) != 0 ||
-                    atomic ||
-                    action.FromProcessGrade != NativeSmartCoordinatorProcessGrade.Normal ||
-                    action.ToProcessGrade != NativeSmartCoordinatorProcessGrade.Normal)
-                {
-                    throw new ArgumentException("The adapter action identity or grade is incomplete.");
-                }
-                if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu))
-                {
-                    _ = MapAdapterGrade(action.FromCpuGrade);
-                    _ = MapAdapterGrade(action.ToCpuGrade);
-                }
-                if (action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu))
-                {
-                    _ = MapAdapterGrade(action.FromGpuGrade);
-                    _ = MapAdapterGrade(action.ToGpuGrade);
                 }
                 break;
             default:
@@ -435,6 +353,8 @@ internal static partial class HostManagerTransactionJournalProjection
         => feedback.Reserved0[0] == 0 &&
             feedback.Reserved0[1] == 0 &&
             feedback.Reserved0[2] == 0 &&
+            feedback.Reserved0[3] == 0 &&
+            feedback.Reserved0[4] == 0 &&
             feedback.Reserved1 == 0;
 
     private static void ValidateFeedbackIdentity(

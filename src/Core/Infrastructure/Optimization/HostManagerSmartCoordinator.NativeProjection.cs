@@ -1,5 +1,4 @@
 using ResourceManager.Adapter.SharedMemory;
-using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -19,7 +18,6 @@ internal static class HostManagerNativeExternalEffectDispatcher
     internal static async ValueTask RunAsync<TSink>(
         HostManagerCycleEffectAdmission effectAdmission,
         bool automaticMemoryCleanupEnabled,
-        bool policyExecutionEnabled,
         HostManagerCycleEffectKind kind,
         TSink sink)
         where TSink : class, IHostManagerNativeExternalEffectSink
@@ -39,7 +37,6 @@ internal static class HostManagerNativeExternalEffectDispatcher
 
         if (kind == HostManagerCycleEffectKind.AutomaticMemoryCleanup
             && automaticMemoryCleanupEnabled
-            && policyExecutionEnabled
             && effectAdmission.TryAcquire(
                 HostManagerCycleEffectKind.AutomaticMemoryCleanup,
                 out var memoryCleanupPermit))
@@ -64,8 +61,6 @@ public sealed partial class HostManagerSmartCoordinator
         ulong cycleSequence,
         CancellationToken cancellationToken)
     {
-        var policyExecutionEnabled = hostManagerSmartControlZones.CanRun(
-            HostManagerSmartControlZoneIds.PolicyExecution);
         var cleanup = hostPlan.HotPublish.MemoryCleanup;
         var normalReleaseCycle = new HostPublicResourceNormalReleaseCycle(
             runtimePlanVersion,
@@ -77,7 +72,6 @@ public sealed partial class HostManagerSmartCoordinator
             hostPlan.SmartCoordinator.ConfigurationGeneration,
             hostPlan.SmartCoordinator.ConfigurationSha256,
             NormalMemoryReleaseEnabled: modePlan.AutomaticMemoryCleanupEnabled
-                && policyExecutionEnabled
                 && !effectAdmission.IsScoreOnly
                 && HostManagerProcessEffectValidationCyclePolicy.AllowsCycleEffect(
                     processEffectValidationScope,
@@ -87,12 +81,12 @@ public sealed partial class HostManagerSmartCoordinator
             hostPublicResourceNormalReleaseEvidence.BeginCycle(
                 normalReleaseCycle,
                 HostPublicResourceCapacityObserver.ObserveMemory(
-                    policyExecutionEnabled,
+                    true,
                     cleanup,
                     sample.IdleCapacity.MemoryFreeRatio,
                     sample.IdleCapacity.MemoryFreeRatioCurrent));
         var videoMemoryCapacityCurrent = HostPublicResourceCapacityObserver.ObserveVideoMemory(
-            policyExecutionEnabled,
+            true,
             hostPlan.HotPublish.ResourceScheduler.Configuration,
             sample.Hardware.GpuInventory);
         var newCapacityRound = sample.RoundNumber > lastPublicResourceCapacityRound;

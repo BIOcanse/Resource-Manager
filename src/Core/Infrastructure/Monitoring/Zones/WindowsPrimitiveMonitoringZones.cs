@@ -21,17 +21,6 @@ public sealed class WindowsCpuMonitoringZone : MonitoringSourceZone
     public CpuCounterObservation ReadCounters()
     {
         var observedAt = DateTimeOffset.UtcNow;
-        if (!CanRead)
-        {
-            return new CpuCounterObservation(
-                false,
-                0,
-                0,
-                0,
-                0,
-                0,
-                observedAt);
-        }
 
         var counters = WindowsSystemCounters.ReadCpuCounters();
         return new CpuCounterObservation(counters.IsAvailable, counters.IdleTicks, counters.KernelTicks, counters.UserTicks,
@@ -68,14 +57,14 @@ public sealed partial class WindowsMemoryMonitoringZone : MonitoringSourceZone
 {
     private readonly ResourceManager.ReadWrite.Windows.Metrics.Resources.WindowsMemoryMetricResource resource = new();
     public WindowsMemoryMonitoringZone() : base(MonitoringSourceZoneIds.WindowsMemory) { }
-    public MemoryMetrics ReadMetrics() => CanRead ? resource.ReadMetrics() : resource.CreateNotRequestedMetrics();
+    public MemoryMetrics ReadMetrics() => resource.ReadMetrics();
     public MemoryMetrics CreateNotRequestedMetrics() => resource.CreateNotRequestedMetrics();
 }
 public sealed class WindowsVirtualMemoryMonitoringZone : MonitoringSourceZone
 {
     private readonly ResourceManager.ReadWrite.Windows.Metrics.Resources.WindowsVirtualMemoryMetricResource resource = new();
     public WindowsVirtualMemoryMonitoringZone() : base(MonitoringSourceZoneIds.WindowsVirtualMemory) { }
-    public VirtualMemoryMetrics ReadMetrics() => CanRead ? resource.ReadMetrics() : CreateNotRequestedMetrics();
+    public VirtualMemoryMetrics ReadMetrics() => resource.ReadMetrics();
     public static VirtualMemoryMetrics CreateNotRequestedMetrics()
         => ResourceManager.ReadWrite.Windows.Metrics.Resources.WindowsVirtualMemoryMetricResource.CreateNotRequestedMetrics();
     internal static VirtualMemoryMetrics CreateCommitMetrics(PerformanceInformation value)

@@ -88,11 +88,9 @@ public sealed partial class IntelGpuInformationCollectorTests
         var device = dashboard.Current!.FieldBindings.Values.Single(binding => binding.SourceId == "intel.igcl" &&
             binding.Field.Code == MetricFieldCode.GpuGraphicsClock && binding.DeviceIdentity == gpuIdentity).DeviceIdentity;
         var sdk = new Sdk(); var zone = new IntelGclMonitoringZone(new IntelGclReader(sdk.Open));
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds
-            .Select(id => id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("No system memory demand"), () => throw new InvalidOperationException("No system memory demand"));
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory, null!, new WindowsGpuAdapterOrderMonitoringZone(Inventory),
-            null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, registry,
+            null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, 
             slots.Owner, slots.Provider, new DiagnosticSamplerLogger(), intelGclZone: zone);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, device, ClockNames);
         Dictionary<string, DeviceMetricFieldValue> Fields(HardwareMetricSnapshot snapshot)

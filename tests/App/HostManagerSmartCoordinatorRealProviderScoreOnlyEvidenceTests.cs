@@ -266,7 +266,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 CapturePrivateState(fixture.Coordinator,
                     "hostPublicResourceNormalReleaseEvidence"));
             Assert.Equal(durableBefore, CaptureDurableFiles(fixture.Root));
-            fixture.AssertNoMemoryCleanupAttemptEntries();
             fixture.CaptureHostedScoreOnlyEffectCounters().AssertAllZero();
             mutationWatcher.AssertNoMutation();
             Assert.NotNull(status);
@@ -375,7 +374,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 "hostPublicResourceNormalReleaseEvidence"));
         var durableAfter = CaptureDurableFiles(fixture.Root);
         Assert.Equal(durableBefore, durableAfter);
-        fixture.AssertNoMemoryCleanupAttemptEntries();
         var effectCounters = fixture.CaptureHostedScoreOnlyEffectCounters();
         effectCounters.AssertAllZero();
         mutationWatcher.AssertNoMutation();
@@ -491,8 +489,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             ]
         };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true, processFactsSnapshot: facts, performanceLogEnabled: true,
-            policyExecutionEnabled: false);
+            warm: true, processFactsSnapshot: facts, performanceLogEnabled: true);
 
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
 
@@ -1310,7 +1307,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     effectCounters.ProcessPolicyRecoveryReadCalls,
                     effectCounters.ProcessPolicyBatchCalls,
                     effectCounters.ProcessPolicyBatchRequestCount,
-                    effectCounters.AdapterTotalCalls,
                     effectCounters.MemoryCleanupPlanAttempts,
                     effectCounters.MemoryCleanupPlanCalls,
                     effectCounters.MemoryCleanupCompleteAttempts,

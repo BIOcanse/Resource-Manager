@@ -46,7 +46,7 @@ public sealed partial class HostManagerSmartCoordinator
     {
         // Ownership records may need a standalone restore row. Counting all current
         // records also covers ones represented by a target without a second index.
-        ulong rows = checked((ulong)ownership.ProcessRecords.Count + (ulong)ownership.AdapterRecords.Count
+        ulong rows = checked((ulong)ownership.ProcessRecords.Count
             + (ulong)sample.ProcessFacts.CurrentInventoryProcesses.Count);
         for (var targetIndex = 0; targetIndex < sample.Targets.Count; targetIndex++)
         {
@@ -75,7 +75,6 @@ public sealed partial class HostManagerSmartCoordinator
         NativeAppliedOwnershipFactIndex ownership,
         IReadOnlyDictionary<string, int> protectionLevels,
         CompiledOptimizationModePlan modePlan,
-        bool policyExecutionEnabled,
         bool cpuPlacementEnabled,
         HostManagerComputeScoringCycleResult? computeScoring)
     {
@@ -107,7 +106,6 @@ public sealed partial class HostManagerSmartCoordinator
         // Missing decision facts can omit a still-live process; its absence here is not exit evidence.
         var representedProcesses = new HashSet<(int ProcessId, ulong ProcessStartKey)>();
         var seenProcessOwnership = new HashSet<NativeAppliedOwnershipProcessIdentity>();
-        var seenAdapterOwnership = new HashSet<ulong>();
         foreach (var target in sample.Targets)
         {
             if (target.ProcessIds.Count != 1)
@@ -156,22 +154,6 @@ public sealed partial class HostManagerSmartCoordinator
                 {
                     Exclude(processId, startKey, target.TargetId, SchedulingFactCode.ComputeScore, SchedulingFactExclusionReason.OwnershipSoftwareAttributionMismatch, null);
                 }
-                var hasAdapterRecord = ownership.AdapterRecords.TryGetValue(
-                    softwareKey,
-                    out var adapterRecord);
-                var adapterGrades = adapterRecord.CurrentGrades;
-                var cpuOwned = hasAdapterRecord
-                    && (adapterGrades.ValidMask &
-                        (uint)NativeAppliedOwnershipGradeValidity.Cpu) != 0;
-                var gpuOwned = hasAdapterRecord
-                    && (adapterGrades.ValidMask &
-                        (uint)NativeAppliedOwnershipGradeValidity.Gpu) != 0;
-                var cpuGrade = cpuOwned
-                    ? ToNativeAdapterGrade(adapterGrades.CpuGrade)
-                    : NativeSmartCoordinatorAdapterGrade.Normal;
-                var gpuGrade = gpuOwned
-                    ? ToNativeAdapterGrade(adapterGrades.GpuGrade)
-                    : NativeSmartCoordinatorAdapterGrade.Normal;
                 var processIdentity = new NativeAppliedOwnershipProcessIdentity(
                     targetKey,
                     softwareKey,
@@ -218,29 +200,15 @@ public sealed partial class HostManagerSmartCoordinator
                     sourceIndex++,
                     checked((byte)protectionLevel),
                     processGrade,
-                    cpuGrade,
-                    gpuGrade,
                     processOwned,
-                    cpuOwned,
-                    gpuOwned,
-                    policyExecutionEnabled
-                        && scoreMembershipConsistent
+                    scoreMembershipConsistent
                         && CanExecuteAutomaticProcessPolicyForMode(modePlan, target),
-                    policyExecutionEnabled
-                        && scoreMembershipConsistent
-                        && CanExecuteSoftwareLevelAdapterModesForMode(modePlan, target),
                     cpuPlacementEnabled
                         && scoreMembershipConsistent
                         && target.CanApplyPhysicalCorePlacement,
                     processCpuMetricsComplete && scoreMembershipConsistent,
-                    processGpuMetricsComplete && scoreMembershipConsistent,
-                    modePlan.CpuSchedulingEnabled && !target.GpuPlacementPolicy.CpuSchedulingExcluded,
-                    modePlan.GpuSchedulingEnabled && !target.GpuPlacementPolicy.GpuSchedulingExcluded);
+                    processGpuMetricsComplete && scoreMembershipConsistent);
                 Append(inputRows, identity);
-                if (hasAdapterRecord)
-                {
-                    seenAdapterOwnership.Add(softwareKey);
-                }
                 if (processCpuMetricsComplete)
                 {
                     IncrementMemberCount(observedCpuSoftwareMembers, attributedSoftwareKey);
@@ -373,26 +341,11 @@ public sealed partial class HostManagerSmartCoordinator
             seenProcessOwnership.Add(pair.Key);
         }
 
-        foreach (var pair in ownership.AdapterRecords
-            .Where(pair => !seenAdapterOwnership.Contains(pair.Key))
-            .OrderBy(static pair => pair.Key))
-        {
-            var record = pair.Value;
-            Append(inputRows, CreateNativeStandaloneAdapterFact(
-                pair.Key,
-                in record,
-                sourceIndex++));
-            seenAdapterOwnership.Add(pair.Key);
-        }
-
-        var allNativeOwnershipRepresented = seenProcessOwnership.Count == ownership.ProcessRecords.Count
-            && seenAdapterOwnership.Count == ownership.AdapterRecords.Count;
-
         Volatile.Read(ref transitionProbe)?.ObserveNativeInputs(inputRows[..cursor]);
         return new NativeFactProjectionResult(
             checked((uint)cursor),
             sample.ProcessFacts.IsInventoryCurrentComplete(),
-            allNativeOwnershipRepresented);
+            seenProcessOwnership.Count == ownership.ProcessRecords.Count);
 
         void AppendMetric(
             Span<NativeSmartCoordinatorInputRow> outputRows,
@@ -461,18 +414,11 @@ public sealed partial class HostManagerSmartCoordinator
         uint sourceIndex,
         byte protectionLevel,
         NativeSmartCoordinatorProcessGrade processGrade,
-        NativeSmartCoordinatorAdapterGrade cpuGrade,
-        NativeSmartCoordinatorAdapterGrade gpuGrade,
         bool processOwned,
-        bool cpuOwned,
-        bool gpuOwned,
         bool canApplyProcessPolicy,
-        bool canApplyAdapterPolicy,
         bool hardwareSchedulingEligible,
         bool processCpuMetricsComplete,
-        bool processGpuMetricsComplete,
-        bool cpuSchedulingEnabled,
-        bool gpuSchedulingEnabled)
+        bool processGpuMetricsComplete)
     {
         var flags = NativeSmartCoordinatorInputFlags.Running;
         if (target.ForegroundFocused)
@@ -503,10 +449,6 @@ public sealed partial class HostManagerSmartCoordinator
         {
             flags |= NativeSmartCoordinatorInputFlags.CanApplyProcessPolicy;
         }
-        if (canApplyAdapterPolicy)
-        {
-            flags |= NativeSmartCoordinatorInputFlags.CanApplyAdapterPolicy;
-        }
         if (hardwareSchedulingEligible)
         {
             flags |= NativeSmartCoordinatorInputFlags.HardwareSchedulingEligible;
@@ -514,14 +456,6 @@ public sealed partial class HostManagerSmartCoordinator
         if (processOwned)
         {
             flags |= NativeSmartCoordinatorInputFlags.OwnsProcessGrade;
-        }
-        if (cpuOwned)
-        {
-            flags |= NativeSmartCoordinatorInputFlags.OwnsCpuGrade;
-        }
-        if (gpuOwned)
-        {
-            flags |= NativeSmartCoordinatorInputFlags.OwnsGpuGrade;
         }
 
         return new NativeSmartCoordinatorInputRow
@@ -537,11 +471,7 @@ public sealed partial class HostManagerSmartCoordinator
                 | NativeSmartCoordinatorInputValidity.SurfaceFacts
                 | NativeSmartCoordinatorInputValidity.Eligibility
                 | NativeSmartCoordinatorInputValidity.Protection
-                | NativeSmartCoordinatorInputValidity.CpuCapabilities
-                | NativeSmartCoordinatorInputValidity.GpuCapabilities
-                | NativeSmartCoordinatorInputValidity.AppliedProcessGrade
-                | NativeSmartCoordinatorInputValidity.AppliedCpuGrade
-                | NativeSmartCoordinatorInputValidity.AppliedGpuGrade,
+                | NativeSmartCoordinatorInputValidity.AppliedProcessGrade,
             Flags = flags,
             TargetKey = NativeStableIdentity.CreateCaseInsensitiveKey(target.TargetId),
             SoftwareKey = softwareKey,
@@ -549,57 +479,7 @@ public sealed partial class HostManagerSmartCoordinator
             BaseScore = target.BaseScore,
             SourceIndex = sourceIndex,
             ProcessId = checked((uint)processId),
-            CpuCapabilityMask = cpuSchedulingEnabled ? CreateCapabilityMask(target.SupportedCpuGrades) : (byte)0,
-            GpuCapabilityMask = gpuSchedulingEnabled ? CreateCapabilityMask(target.SupportedGpuGrades) : (byte)0,
             AppliedProcessGrade = processGrade,
-            AppliedCpuGrade = cpuGrade,
-            AppliedGpuGrade = gpuGrade
-        };
-    }
-
-    internal static NativeSmartCoordinatorInputRow CreateNativeStandaloneAdapterFact(
-        ulong softwareKey,
-        in NativeAppliedOwnershipRecord record,
-        uint sourceIndex)
-    {
-        if (softwareKey == 0
-            || record.Primary.Scope != (uint)NativeAppliedOwnershipScope.Adapter
-            || record.Primary.SoftwareId != softwareKey)
-        {
-            throw new InvalidDataException(
-                "The Host Manager applied ownership record cannot be projected as an authoritative software fact.");
-        }
-
-        var grades = record.CurrentGrades;
-        var cpuOwned = (grades.ValidMask & (uint)NativeAppliedOwnershipGradeValidity.Cpu) != 0;
-        var gpuOwned = (grades.ValidMask & (uint)NativeAppliedOwnershipGradeValidity.Gpu) != 0;
-        var flags = NativeSmartCoordinatorInputFlags.None;
-        if (cpuOwned)
-        {
-            flags |= NativeSmartCoordinatorInputFlags.OwnsCpuGrade;
-        }
-        if (gpuOwned)
-        {
-            flags |= NativeSmartCoordinatorInputFlags.OwnsGpuGrade;
-        }
-
-        return new NativeSmartCoordinatorInputRow
-        {
-            StructSize = checked((uint)NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorInputRow>()),
-            ValidMask = NativeSmartCoordinatorInputValidity.SoftwareIdentity
-                | NativeSmartCoordinatorInputValidity.SurfaceFacts
-                | NativeSmartCoordinatorInputValidity.AppliedCpuGrade
-                | NativeSmartCoordinatorInputValidity.AppliedGpuGrade,
-            Flags = flags,
-            SoftwareKey = softwareKey,
-            SourceIndex = sourceIndex,
-            AppliedProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            AppliedCpuGrade = cpuOwned
-                ? ToNativeAdapterGrade(grades.CpuGrade)
-                : NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedGpuGrade = gpuOwned
-                ? ToNativeAdapterGrade(grades.GpuGrade)
-                : NativeSmartCoordinatorAdapterGrade.Normal
         };
     }
 
@@ -628,9 +508,7 @@ public sealed partial class HostManagerSmartCoordinator
             StructSize = checked((uint)NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorInputRow>()),
             ValidMask = NativeSmartCoordinatorInputValidity.ProcessIdentity
                 | NativeSmartCoordinatorInputValidity.SoftwareIdentity
-                | NativeSmartCoordinatorInputValidity.AppliedProcessGrade
-                | NativeSmartCoordinatorInputValidity.AppliedCpuGrade
-                | NativeSmartCoordinatorInputValidity.AppliedGpuGrade,
+                | NativeSmartCoordinatorInputValidity.AppliedProcessGrade,
             // Ownership proves the applied grade, not whether the process is
             // running. Exit reconciliation supplies the separate exit evidence.
             Flags = NativeSmartCoordinatorInputFlags.OwnsProcessGrade,
@@ -641,8 +519,6 @@ public sealed partial class HostManagerSmartCoordinator
             ProcessId = identity.ProcessId,
             AppliedProcessGrade = ToNativeProcessGrade(
                 record.CurrentGrades.ProcessGrade),
-            AppliedCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal
         };
     }
 
@@ -654,7 +530,6 @@ public sealed partial class HostManagerSmartCoordinator
 
         var processes = new Dictionary<NativeAppliedOwnershipProcessIdentity, NativeAppliedOwnershipRecord>();
         var memoryProcesses = new Dictionary<NativeAppliedOwnershipProcessIdentity, NativeAppliedOwnershipRecord>();
-        var adapters = new Dictionary<ulong, NativeAppliedOwnershipRecord>();
         var processAnchors = new Dictionary<
             NativeAppliedOwnershipProcessIncarnation,
             NativeAppliedOwnershipProcessAnchor>();
@@ -685,13 +560,6 @@ public sealed partial class HostManagerSmartCoordinator
                             memoryPolicy);
                         break;
                     }
-                case NativeAppliedOwnershipScope.Adapter:
-                    if (!adapters.TryAdd(record.Primary.SoftwareId, record))
-                    {
-                        throw new InvalidDataException(
-                            "The Host Manager applied ownership snapshot contains a duplicate adapter identity.");
-                    }
-                    break;
                 default:
                     throw new InvalidDataException(
                         $"Unknown Host Manager applied ownership scope {record.Primary.Scope}.");
@@ -702,7 +570,6 @@ public sealed partial class HostManagerSmartCoordinator
             snapshot.Header.LedgerRevision,
             processes,
             memoryProcesses,
-            adapters,
             processAnchors);
     }
 
@@ -773,16 +640,6 @@ public sealed partial class HostManagerSmartCoordinator
             (int)NativeAppliedOwnershipProcessGrade.Level3 => NativeSmartCoordinatorProcessGrade.Level3,
             (int)NativeAppliedOwnershipProcessGrade.Level4 => NativeSmartCoordinatorProcessGrade.Level4,
             _ => throw new InvalidDataException($"Unknown Host Manager applied process grade {grade}.")
-        };
-
-    private static NativeSmartCoordinatorAdapterGrade ToNativeAdapterGrade(int grade)
-        => grade switch
-        {
-            (int)NativeAppliedOwnershipAdapterGrade.Freeze => NativeSmartCoordinatorAdapterGrade.Freeze,
-            (int)NativeAppliedOwnershipAdapterGrade.Optimize => NativeSmartCoordinatorAdapterGrade.Optimize,
-            (int)NativeAppliedOwnershipAdapterGrade.Normal => NativeSmartCoordinatorAdapterGrade.Normal,
-            (int)NativeAppliedOwnershipAdapterGrade.Extreme => NativeSmartCoordinatorAdapterGrade.Extreme,
-            _ => throw new InvalidDataException($"Unknown Host Manager applied adapter grade {grade}.")
         };
 
     private static unsafe void ValidateAppliedOwnershipSnapshotHeader(
@@ -918,95 +775,6 @@ public sealed partial class HostManagerSmartCoordinator
                     _ = ToNativeProcessGrade(grades.ProcessGrade);
                 }
                 break;
-            case NativeAppliedOwnershipScope.Adapter:
-                {
-                    var domain = (NativeAppliedOwnershipDomain)binding.DomainMask;
-                    var originalValidity = (uint)(domain &
-                        (NativeAppliedOwnershipDomain.Cpu | NativeAppliedOwnershipDomain.Gpu));
-                    var currentValidity = (NativeAppliedOwnershipGradeValidity)grades.ValidMask;
-                    if (primary.TargetId != 0
-                        || primary.SoftwareId == 0
-                        || primary.ProcessId != 0
-                        || primary.ProcessStartKey != 0
-                        || binding.Scope != (uint)NativeAppliedOwnershipJournalScope.Software
-                        || domain == NativeAppliedOwnershipDomain.None
-                        || (domain & ~(NativeAppliedOwnershipDomain.Cpu | NativeAppliedOwnershipDomain.Gpu)) != 0
-                        || binding.GradeValidMask != originalValidity
-                        || currentValidity == NativeAppliedOwnershipGradeValidity.None
-                        || (currentValidity & ~(NativeAppliedOwnershipGradeValidity.Cpu |
-                            NativeAppliedOwnershipGradeValidity.Gpu)) != 0
-                        || grades.ProcessGrade != 0
-                        || binding.ProcessFromGrade != 0
-                        || binding.ProcessToGrade != 0
-                        || action.SoftwareId != primary.SoftwareId
-                        || action.ProcessId != 0
-                        || action.ProcessStartKey != 0)
-                    {
-                        throw new InvalidDataException(
-                            "The Host Manager applied adapter ownership record is not canonical.");
-                    }
-                    if ((originalValidity & (uint)NativeAppliedOwnershipGradeValidity.Cpu) != 0)
-                    {
-                        if (!IsKnownAdapterGrade(binding.CpuFromGrade)
-                            || !IsKnownAdapterGrade(binding.CpuToGrade)
-                            || binding.CpuFromGrade == binding.CpuToGrade)
-                        {
-                            throw new InvalidDataException(
-                                "The Host Manager applied adapter ownership record has an invalid CPU transition.");
-                        }
-                    }
-                    else if (binding.CpuFromGrade != 0
-                        || binding.CpuToGrade != 0)
-                    {
-                        throw new InvalidDataException(
-                            "The Host Manager applied adapter ownership record has invalid original CPU data.");
-                    }
-                    if ((originalValidity & (uint)NativeAppliedOwnershipGradeValidity.Gpu) != 0)
-                    {
-                        if (!IsKnownAdapterGrade(binding.GpuFromGrade)
-                            || !IsKnownAdapterGrade(binding.GpuToGrade)
-                            || binding.GpuFromGrade == binding.GpuToGrade)
-                        {
-                            throw new InvalidDataException(
-                                "The Host Manager applied adapter ownership record has an invalid GPU transition.");
-                        }
-                    }
-                    else if (binding.GpuFromGrade != 0
-                        || binding.GpuToGrade != 0)
-                    {
-                        throw new InvalidDataException(
-                            "The Host Manager applied adapter ownership record has invalid original GPU data.");
-                    }
-                    if (currentValidity.HasFlag(NativeAppliedOwnershipGradeValidity.Cpu))
-                    {
-                        if (!IsOwnedAdapterGrade(grades.CpuGrade))
-                        {
-                            throw new InvalidDataException(
-                                "The Host Manager applied adapter ownership record has an invalid current CPU grade.");
-                        }
-                        _ = ToNativeAdapterGrade(grades.CpuGrade);
-                    }
-                    else if (grades.CpuGrade != 0)
-                    {
-                        throw new InvalidDataException(
-                            "The Host Manager applied adapter ownership record has a CPU grade without ownership.");
-                    }
-                    if (currentValidity.HasFlag(NativeAppliedOwnershipGradeValidity.Gpu))
-                    {
-                        if (!IsOwnedAdapterGrade(grades.GpuGrade))
-                        {
-                            throw new InvalidDataException(
-                                "The Host Manager applied adapter ownership record has an invalid current GPU grade.");
-                        }
-                        _ = ToNativeAdapterGrade(grades.GpuGrade);
-                    }
-                    else if (grades.GpuGrade != 0)
-                    {
-                        throw new InvalidDataException(
-                            "The Host Manager applied adapter ownership record has a GPU grade without ownership.");
-                    }
-                    break;
-                }
             default:
                 throw new InvalidDataException(
                     $"Unknown Host Manager applied ownership scope {primary.Scope}.");
@@ -1020,14 +788,6 @@ public sealed partial class HostManagerSmartCoordinator
     private static bool IsMemoryPriorityState(int value) => value is >= 0 and <= 5;
 
     private static bool IsMemoryPriorityTarget(int value) => value is >= 1 and <= 5;
-
-    private static bool IsKnownAdapterGrade(int grade)
-        => grade is >= (int)NativeAppliedOwnershipAdapterGrade.Freeze
-            and <= (int)NativeAppliedOwnershipAdapterGrade.Extreme;
-
-    private static bool IsOwnedAdapterGrade(int grade)
-        => IsKnownAdapterGrade(grade)
-            && grade != (int)NativeAppliedOwnershipAdapterGrade.Normal;
 
     private static bool IsCanonicalAtomicGroup(
         ulong groupId,
@@ -1051,26 +811,6 @@ public sealed partial class HostManagerSmartCoordinator
             SoftwareKinds.Other => NativeSmartCoordinatorSoftwareKind.GeneralApplication,
             _ => NativeSmartCoordinatorSoftwareKind.Unknown
         };
-
-    private static byte CreateCapabilityMask(IReadOnlyList<AdapterCpuSchedulingGrade> grades)
-    {
-        byte result = 0;
-        foreach (var grade in grades)
-        {
-            result |= checked((byte)(1 << (int)grade));
-        }
-        return result;
-    }
-
-    private static byte CreateCapabilityMask(IReadOnlyList<AdapterGpuSchedulingGrade> grades)
-    {
-        byte result = 0;
-        foreach (var grade in grades)
-        {
-            result |= checked((byte)(1 << (int)grade));
-        }
-        return result;
-    }
 
     private static NativeComputeScoreProjection CreateNativeComputeScoreProjection(
         HostManagerComputeScoringCycleResult? result)
@@ -1421,7 +1161,6 @@ internal sealed record NativeAppliedOwnershipFactIndex(
     ulong LedgerRevision,
     IReadOnlyDictionary<NativeAppliedOwnershipProcessIdentity, NativeAppliedOwnershipRecord> ProcessRecords,
     IReadOnlyDictionary<NativeAppliedOwnershipProcessIdentity, NativeAppliedOwnershipRecord> MemoryProcessRecords,
-    IReadOnlyDictionary<ulong, NativeAppliedOwnershipRecord> AdapterRecords,
     IReadOnlyDictionary<NativeAppliedOwnershipProcessIncarnation, NativeAppliedOwnershipProcessAnchor> ProcessAnchors);
 
 internal static class HostManagerRuntimeStateCodec

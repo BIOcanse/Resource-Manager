@@ -1,5 +1,4 @@
 using System.Text;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.DeviceTopology;
@@ -101,7 +100,7 @@ public sealed class WindowsGpuInformationCollectorTests
     }
 
     [Fact]
-    public void OriginalTopologyEntrySharesOneInventoryAndIsolatesVendorFailureAndSourceFreeze()
+    public void OriginalTopologyEntrySharesOneInventoryAndIsolatesVendorFailure()
     {
         var reads = 0; var vendorReads = 0;
         var inventory = Inventory(Adapter(9, NvidiaGpuDeclarationCollectorTests.PnpA));
@@ -112,12 +111,6 @@ public sealed class WindowsGpuInformationCollectorTests
         Assert.Equal(0, reads);
         var result = WindowsDeviceTopologyReader.ReadGpuDeclarations(nvml, source);
         Assert.Single(result.Windows!); Assert.Null(result.Nvidia); Assert.Equal(1, reads); Assert.Equal(1, vendorReads);
-        nvml.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        result = WindowsDeviceTopologyReader.ReadGpuDeclarations(nvml, source);
-        Assert.Single(result.Windows!); Assert.Null(result.Nvidia); Assert.Equal(2, reads); Assert.Equal(1, vendorReads);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        result = WindowsDeviceTopologyReader.ReadGpuDeclarations(nvml, source);
-        Assert.Null(result.Windows); Assert.Null(result.Nvidia); Assert.Equal(2, reads); Assert.Equal(1, vendorReads);
     }
 
     [Fact]

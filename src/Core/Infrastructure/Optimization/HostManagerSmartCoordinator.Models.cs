@@ -36,11 +36,7 @@ public sealed partial class HostManagerSmartCoordinator
         double baseScore,
         ResolvedGpuPlacementPolicy gpuPlacementPolicy,
         bool canApplyAutomaticPolicy,
-        bool canApplyAdaptedPolicy,
-        bool canApplyPhysicalCorePlacement,
-        CompiledAdapterDispatchRoute adapterDispatchRoute,
-        IReadOnlyList<AdapterCpuSchedulingGrade> supportedCpuGrades,
-        IReadOnlyList<AdapterGpuSchedulingGrade> supportedGpuGrades)
+        bool canApplyPhysicalCorePlacement)
     {
         private readonly HashSet<string> processNames = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> executablePaths = new(StringComparer.OrdinalIgnoreCase);
@@ -63,12 +59,8 @@ public sealed partial class HostManagerSmartCoordinator
         public bool HasBackgroundWindow { get; private set; }
         public bool HasHiddenWindow { get; private set; }
         public bool CanApplyAutomaticPolicy { get; } = canApplyAutomaticPolicy;
-        public bool CanApplyAdaptedPolicy { get; } = canApplyAdaptedPolicy;
         public bool CanApplyPhysicalCorePlacement { get; } = canApplyPhysicalCorePlacement;
         public string SoftwareKind { get; } = softwareKind;
-        public CompiledAdapterDispatchRoute AdapterDispatchRoute { get; } = adapterDispatchRoute;
-        public IReadOnlyList<AdapterCpuSchedulingGrade> SupportedCpuGrades { get; } = supportedCpuGrades;
-        public IReadOnlyList<AdapterGpuSchedulingGrade> SupportedGpuGrades { get; } = supportedGpuGrades;
         public ResolvedGpuPlacementPolicy GpuPlacementPolicy { get; } = gpuPlacementPolicy;
 
         public void AddFact(SchedulingProcessFact process)
@@ -161,11 +153,7 @@ public sealed partial class HostManagerSmartCoordinator
                 baseScore,
                 GpuPlacementPolicy,
                 CanApplyAutomaticPolicy,
-                CanApplyAdaptedPolicy,
                 CanApplyPhysicalCorePlacement,
-                AdapterDispatchRoute,
-                SupportedCpuGrades,
-                SupportedGpuGrades,
                 RuntimeState,
                 ForegroundFocused,
                 HasVisibleWindow,
@@ -260,11 +248,7 @@ public sealed partial class HostManagerSmartCoordinator
         double BaseScore,
         ResolvedGpuPlacementPolicy GpuPlacementPolicy,
         bool CanApplyAutomaticPolicy,
-        bool CanApplyAdaptedPolicy,
         bool CanApplyPhysicalCorePlacement,
-        CompiledAdapterDispatchRoute AdapterDispatchRoute,
-        IReadOnlyList<AdapterCpuSchedulingGrade> SupportedCpuGrades,
-        IReadOnlyList<AdapterGpuSchedulingGrade> SupportedGpuGrades,
         string RuntimeState,
         bool ForegroundFocused,
         bool HasVisibleWindow,

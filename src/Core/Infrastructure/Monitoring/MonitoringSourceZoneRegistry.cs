@@ -1,14 +1,12 @@
-using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Monitoring;
-using ResourceManager.App.Domain.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
 public sealed class MonitoringSourceZoneRegistry : IMonitoringSourceZoneRegistry
 {
     private readonly object gate = new();
-    private IReadOnlyDictionary<string, IResourceManagerSelfComputeZone> zones;
-    private IReadOnlyList<IResourceManagerSelfComputeZone> zoneList;
+    private IReadOnlyDictionary<string, IMonitoringSourceZone> zones;
+    private IReadOnlyList<IMonitoringSourceZone> zoneList;
     private long version;
 
     public event Action? Changed;
@@ -20,7 +18,7 @@ public sealed class MonitoringSourceZoneRegistry : IMonitoringSourceZoneRegistry
     {
     }
 
-    public MonitoringSourceZoneRegistry(IEnumerable<IResourceManagerSelfComputeZone> sourceZones)
+    public MonitoringSourceZoneRegistry(IEnumerable<IMonitoringSourceZone> sourceZones)
     {
         zones = sourceZones
             .ToDictionary(static zone => zone.DisplayName, StringComparer.OrdinalIgnoreCase);
@@ -29,31 +27,12 @@ public sealed class MonitoringSourceZoneRegistry : IMonitoringSourceZoneRegistry
             .ToArray();
     }
 
-    public bool CanRead(string sourceId)
-    {
-        return !zones.TryGetValue(sourceId, out var zone)
-            || zone.CurrentMode != ResourceManagerComputeZoneMode.Freeze;
-    }
-
-    public bool IsLowPower(string sourceId)
-    {
-        return zones.TryGetValue(sourceId, out var zone)
-            && zone.CurrentMode == ResourceManagerComputeZoneMode.LowPower;
-    }
-
-    public ResourceManagerComputeZoneMode GetMode(string sourceId)
-    {
-        return zones.TryGetValue(sourceId, out var zone)
-            ? zone.CurrentMode
-            : ResourceManagerComputeZoneMode.Normal;
-    }
-
-    public IResourceManagerSelfComputeZone GetZone(string sourceId)
+    public IMonitoringSourceZone GetZone(string sourceId)
     {
         return zones[sourceId];
     }
 
-    public IReadOnlyList<IResourceManagerSelfComputeZone> GetZones()
+    public IReadOnlyList<IMonitoringSourceZone> GetZones()
     {
         return zoneList;
     }
@@ -65,7 +44,7 @@ public sealed class MonitoringSourceZoneRegistry : IMonitoringSourceZoneRegistry
             .ToArray();
     }
 
-    public bool Register(IResourceManagerSelfComputeZone zone)
+    public bool Register(IMonitoringSourceZone zone)
     {
         ArgumentNullException.ThrowIfNull(zone);
         lock (gate)
@@ -76,7 +55,7 @@ public sealed class MonitoringSourceZoneRegistry : IMonitoringSourceZoneRegistry
                 return false;
             }
 
-            var next = new Dictionary<string, IResourceManagerSelfComputeZone>(zones, StringComparer.OrdinalIgnoreCase)
+            var next = new Dictionary<string, IMonitoringSourceZone>(zones, StringComparer.OrdinalIgnoreCase)
             {
                 [zone.DisplayName] = zone
             };
@@ -101,7 +80,7 @@ public sealed class MonitoringSourceZoneRegistry : IMonitoringSourceZoneRegistry
                 return false;
             }
 
-            var next = new Dictionary<string, IResourceManagerSelfComputeZone>(zones, StringComparer.OrdinalIgnoreCase);
+            var next = new Dictionary<string, IMonitoringSourceZone>(zones, StringComparer.OrdinalIgnoreCase);
             next.Remove(sourceId);
             Publish(next);
         }
@@ -110,7 +89,7 @@ public sealed class MonitoringSourceZoneRegistry : IMonitoringSourceZoneRegistry
         return true;
     }
 
-    private void Publish(IReadOnlyDictionary<string, IResourceManagerSelfComputeZone> next)
+    private void Publish(IReadOnlyDictionary<string, IMonitoringSourceZone> next)
     {
         zones = next;
         zoneList = next.Values

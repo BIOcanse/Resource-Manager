@@ -34,9 +34,7 @@ internal static class DefaultOwnerSubscriptionConsumer
         Require(processFields.Length == 2, "Actual current process PID/creation identity has image and CPU fields.");
         await RunOneAsync("actual-process", processCore, processes.BorrowSubscriptionCapture(), processFields, timeout.Token);
 
-        using var metrics = WindowsHardwareMetricOwner.CreateDefault(modeProvider: static source => source is
-            NativeMetricSnapshotSources.WindowsCpu or NativeMetricSnapshotSources.WindowsMemory
-            or NativeMetricSnapshotSources.WindowsVirtualMemory ? NativeMetricSnapshotZoneMode.Normal : NativeMetricSnapshotZoneMode.Freeze);
+        using var metrics = WindowsHardwareMetricOwner.CreateDefault();
         var metricCore = new ReadWriteCore(metrics.CreateBackend(), dependencies);
         ReadWriteCatalog metricCatalog;
         try { metricCatalog = await metricCore.DiscoverAsync(timeout.Token); }

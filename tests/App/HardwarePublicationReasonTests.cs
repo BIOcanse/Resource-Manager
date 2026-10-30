@@ -67,8 +67,8 @@ public sealed class HardwarePublicationReasonTests
         using var workspace = Workspace();
         var catalog = workspace.ReadCatalog();
         var binding = catalog.MetricBindings.Values.Single(row => row.FieldCode == MetricFieldCode.CpuUsage);
-        var modes = catalog.Sources.Select(row => new NativeMetricSnapshotSourceRuntimeMode(row.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(row => new NativeMetricSnapshotSourceRuntimeState(row.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         using var owner = new LastSuccessfulHardwareMetricSnapshot();
         for (ulong sequence = 1; sequence <= 2; sequence++)
         {

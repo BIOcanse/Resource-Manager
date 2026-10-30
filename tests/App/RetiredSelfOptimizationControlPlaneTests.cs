@@ -3,7 +3,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class RetiredSelfOptimizationControlPlaneTests
 {
     [Fact]
-    public void ProductionSourcesContainOnlyHostManagerSelfControlRoutes()
+    public void ProductionSourcesContainOnlyCentralOptimizationRoutes()
     {
         var appRoot = FindAppRoot();
         var retiredFiles = new[]
@@ -33,7 +33,7 @@ public sealed class RetiredSelfOptimizationControlPlaneTests
         Assert.DoesNotContain("/api/self-optimization/", backendSource, StringComparison.Ordinal);
         Assert.Contains("/api/optimization/smart/run-once", backendSource, StringComparison.Ordinal);
         Assert.DoesNotContain("/api/adapters/resource-manager/ledger", backendSource, StringComparison.Ordinal);
-        Assert.Contains("/api/adapters/resource-manager/scheduling", backendSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("/api/adapters/resource-manager/scheduling", backendSource, StringComparison.Ordinal);
         Assert.DoesNotContain("/api/adapters/resource-manager/visible-regions", backendSource, StringComparison.Ordinal);
         Assert.DoesNotContain("ResourceManagerSelfResourceMarker", backendSource, StringComparison.Ordinal);
 

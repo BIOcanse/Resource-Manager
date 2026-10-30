@@ -26,8 +26,8 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
         var binding = catalog.MetricBindings.Values.Single(row => row.LegacyMetricId == "gpu.0.usage");
         var at = DateTimeOffset.UtcNow;
         workspace.ReplaceCatalog(catalog, at);
-        var facts = new NativeMetricSnapshotSourceRuntimeFacts(static _ => NativeMetricSnapshotZoneMode.Normal, TimeSpan.FromSeconds(5));
-        var plan = workspace.PlanCollection([binding.MetricHandle], facts.CaptureModes(catalog, at), false, at.AddMilliseconds(1));
+        var facts = new NativeMetricSnapshotSourceRuntimeFacts(TimeSpan.FromSeconds(5));
+        var plan = workspace.PlanCollection([binding.MetricHandle], facts.CaptureStates(catalog, at), false, at.AddMilliseconds(1));
         var source = Assert.Single(plan.Sources);
         var completion = WindowsHardwareMetricCapture.CreatePdhGpuCompletion(plan, source,
             new(source.SourceHandle, 1, 1), at.AddMilliseconds(1),
@@ -38,8 +38,8 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
             NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), 1).Datasets["gpu.0.usage"].FailureCode);
         facts.RecordCompletion(source.SourceHandle, completion.Status, at.AddMilliseconds(2), applyUnavailableCooldown: false);
         Assert.Equal(NativeMetricSnapshotSourceAvailability.Available,
-            facts.CaptureModes(catalog, at.AddSeconds(1)).Single(row => row.SourceHandle == source.SourceHandle).Availability);
-        var next = workspace.PlanCollection([binding.MetricHandle], facts.CaptureModes(catalog, at.AddSeconds(1)), false, at.AddSeconds(1));
+            facts.CaptureStates(catalog, at.AddSeconds(1)).Single(row => row.SourceHandle == source.SourceHandle).Availability);
+        var next = workspace.PlanCollection([binding.MetricHandle], facts.CaptureStates(catalog, at.AddSeconds(1)), false, at.AddSeconds(1));
         var nextSource = Assert.Single(next.Sources);
         var recovered = WindowsHardwareMetricCapture.CreatePdhGpuCompletion(next, nextSource,
             new(source.SourceHandle, 1, 2), at.AddSeconds(1),
@@ -65,8 +65,8 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
         var at = DateTimeOffset.UtcNow;
         workspace.ReplaceCatalog(catalog, at);
         var runtime = new NativeMetricSnapshotSourceRuntimeFacts(
-            static _ => NativeMetricSnapshotZoneMode.Normal, TimeSpan.FromSeconds(5));
-        var plan = workspace.PlanCollection([binding.MetricHandle], runtime.CaptureModes(catalog, at),
+            TimeSpan.FromSeconds(5));
+        var plan = workspace.PlanCollection([binding.MetricHandle], runtime.CaptureStates(catalog, at),
             includeGpuInventory: false, commandAt: at.AddMilliseconds(1));
         var source = Assert.Single(plan.Sources);
         var completion = WindowsHardwareMetricCapture.CreateUnroutedAmdSmuCompletion(
@@ -119,9 +119,8 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
         workspace.ReplaceCatalog(catalog, at);
 
         var runtimeFacts = new NativeMetricSnapshotSourceRuntimeFacts(
-            static _ => NativeMetricSnapshotZoneMode.Normal,
             TimeSpan.FromSeconds(5));
-        var initiallyAvailable = runtimeFacts.CaptureModes(catalog, at);
+        var initiallyAvailable = runtimeFacts.CaptureStates(catalog, at);
         var requested = new[] { binding.MetricHandle };
         var firstPlan = workspace.PlanCollection(
             requested,
@@ -157,7 +156,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
         _ = workspace.CompleteSource(firstPlan, unavailable, at.AddMilliseconds(1));
         runtimeFacts.RecordCompletion(smuPlan.SourceHandle, unavailable.Status, at.AddMilliseconds(1));
 
-        var duringCooldown = runtimeFacts.CaptureModes(catalog, at.AddSeconds(1));
+        var duringCooldown = runtimeFacts.CaptureStates(catalog, at.AddSeconds(1));
         Assert.Equal(
             NativeMetricSnapshotSourceAvailability.Unavailable,
             Assert.Single(duringCooldown.Where(mode => mode.SourceHandle == smuPlan.SourceHandle)).Availability);
@@ -176,55 +175,10 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
         var fallback = Assert.Single(fallbackPlan.Sources);
         Assert.Equal(NativeMetricSnapshotSources.AmdAdlx, catalog.SourceIds[fallback.SourceHandle]);
 
-        var afterCooldown = runtimeFacts.CaptureModes(catalog, at.AddSeconds(6));
+        var afterCooldown = runtimeFacts.CaptureStates(catalog, at.AddSeconds(6));
         Assert.Equal(
             NativeMetricSnapshotSourceAvailability.Available,
             Assert.Single(afterCooldown.Where(mode => mode.SourceHandle == smuPlan.SourceHandle)).Availability);
-    }
-
-    [Fact]
-    public void RequestCaptureReadsZoneModesOnlyForRequestedRulesAndGpuInventory()
-    {
-        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
-            compiled,
-            [new(0, "GPU", "gpu-exact", 1, 1, 1, true)],
-            [], [], NativeMetricSnapshotCatalogHandleMap.Empty);
-        var collectionRequest = WindowsHardwareMetricCapture.CreateCollectionRequest(
-            MetricSampleRequest.CatalogProbe, catalog, fieldCatalog: null);
-        var requested = NativeMetricSnapshotRequestProjection.CreateMetricHandles(
-            collectionRequest, catalog);
-        var requestedMetricSet = requested.ToHashSet();
-        var expectedSources = catalog.RuleBindings.Values
-            .Where(rule => requestedMetricSet.Contains(rule.MetricHandle))
-            .Select(static rule => rule.SourceHandle)
-            .ToHashSet();
-        expectedSources.UnionWith(catalog.Sources
-            .Where(static source => source.SourceRole
-                == (uint)NativeMetricSnapshotSourceRole.GpuInventory)
-            .Select(static source => source.SourceHandle));
-        var expectedSourceIds = expectedSources
-            .Select(handle => catalog.SourceIds[handle])
-            .ToHashSet(StringComparer.Ordinal);
-        var observedSourceIds = new HashSet<string>(StringComparer.Ordinal);
-        var facts = new NativeMetricSnapshotSourceRuntimeFacts(sourceId =>
-        {
-            observedSourceIds.Add(sourceId);
-            if (sourceId == NativeMetricSnapshotSources.WindowsCpu)
-            {
-                throw new InvalidOperationException(
-                    "An unrequested CPU source mode must not be queried for a GPU catalog probe.");
-            }
-            return NativeMetricSnapshotZoneMode.Normal;
-        }, TimeSpan.FromSeconds(5));
-
-        var modes = facts.CaptureModesForRequest(
-            catalog, DateTimeOffset.UtcNow, requested, includeGpuInventory: true);
-
-        Assert.Equal(catalog.Sources.Length, modes.Length);
-        Assert.True(expectedSourceIds.SetEquals(observedSourceIds));
-        Assert.Contains(NativeMetricSnapshotSources.PdhGpuEngine, observedSourceIds);
-        Assert.DoesNotContain(NativeMetricSnapshotSources.WindowsCpu, observedSourceIds);
     }
 
     [Fact]
@@ -248,11 +202,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
         Assert.Equal((uint)NativeMetricSnapshotSourceStatus.Unavailable,
             initialFan.Status);
 
-        var fanMode = NativeMetricSnapshotZoneMode.Normal;
         var runtimeFacts = new NativeMetricSnapshotSourceRuntimeFacts(
-            sourceId => sourceId == NativeMetricSnapshotSources.NotebookOemFan
-                ? fanMode
-                : NativeMetricSnapshotZoneMode.Normal,
             TimeSpan.FromSeconds(5));
         const ulong workspaceIdentity = 11;
         Assert.True(runtimeFacts.NeedsWorkspaceSourceSynchronization(
@@ -266,8 +216,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
 
         var fanMetric = catalog.MetricHandles["cpu.fanRpm"];
         var fanRequest = new[] { fanMetric };
-        var firstModes = runtimeFacts.CaptureModesForRequest(
-            catalog, startedAt, fanRequest, includeGpuInventory: false);
+        var firstModes = runtimeFacts.CaptureStates(catalog, startedAt);
         var firstFanMode = Assert.Single(firstModes,
             mode => mode.SourceHandle == fanSourceHandle);
         Assert.Equal(1UL, firstFanMode.CapabilityGeneration);
@@ -300,11 +249,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
             unsupportedCompletion.Status,
             unsupportedAt);
 
-        var afterUnsupported = runtimeFacts.CaptureModesForRequest(
-            catalog,
-            startedAt.AddMilliseconds(3),
-            fanRequest,
-            includeGpuInventory: false);
+        var afterUnsupported = runtimeFacts.CaptureStates(catalog, startedAt.AddMilliseconds(3));
         Assert.Equal(
             NativeMetricSnapshotSourceAvailability.Unsupported,
             Assert.Single(afterUnsupported.Where(mode =>
@@ -330,7 +275,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
     }
 
     [Fact]
-    public void RestartedOemFanStartsFreshAndCurrentUnsupportedStateClearsOnZoneChange()
+    public void RestartedOemFanStartsFreshAndCurrentUnsupportedStateSelectsFallback()
     {
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
         var directory = Path.Combine(
@@ -339,7 +284,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
         var persistencePath = Path.Combine(directory, "state.bin");
         try
         {
-            var fanMode = NativeMetricSnapshotZoneMode.LowPower;
+
             using (var original = NativeMetricSnapshotHostConfiguration.CreateWorkspace(
                        compiled, persistencePath))
             {
@@ -350,15 +295,11 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
                 var fanMetric = originalCatalog.MetricHandles["cpu.fanRpm"];
                 var originalFanRequest = new[] { fanMetric };
                 var facts = new NativeMetricSnapshotSourceRuntimeFacts(
-                    sourceId => sourceId == NativeMetricSnapshotSources.NotebookOemFan
-                        ? fanMode
-                        : NativeMetricSnapshotZoneMode.Normal,
                     TimeSpan.FromSeconds(5));
                 facts.SynchronizeWorkspaceSources(
                     21, originalCatalog, original.ReadCommitted().Sources);
 
-                var modes = facts.CaptureModesForRequest(
-                    originalCatalog, startedAt, originalFanRequest, includeGpuInventory: false);
+                var modes = facts.CaptureStates(originalCatalog, startedAt);
                 var plan = original.PlanCollection(
                     originalFanRequest,
                     modes,
@@ -388,7 +329,6 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
                     persistedOem.Status);
             }
 
-            fanMode = NativeMetricSnapshotZoneMode.Normal;
             using var restarted = NativeMetricSnapshotHostConfiguration.CreateWorkspace(
                 compiled, persistencePath);
             var restoredCatalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
@@ -405,25 +345,20 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
             Assert.Equal(0UL, restoredOem.SourceObservationSequence);
 
             var restoredFacts = new NativeMetricSnapshotSourceRuntimeFacts(
-                sourceId => sourceId == NativeMetricSnapshotSources.NotebookOemFan
-                    ? fanMode : NativeMetricSnapshotZoneMode.Normal,
                 TimeSpan.FromSeconds(5));
             restoredFacts.SynchronizeWorkspaceSources(22, restoredCatalog, restoredSources);
             var fanRequest = new[] { restoredCatalog.MetricHandles["cpu.fanRpm"] };
             var memoryRequest = new[] { restoredCatalog.MetricHandles["memory.usage"] };
             var restoredAt = DateTimeOffset.UtcNow;
-            var restoredModes = restoredFacts.CaptureModesForRequest(
-                restoredCatalog, restoredAt, memoryRequest, includeGpuInventory: false);
+            var restoredModes = restoredFacts.CaptureStates(restoredCatalog, restoredAt);
             var freshMode = Assert.Single(restoredModes, mode => mode.SourceHandle == restoredOemHandle);
             Assert.Equal(NativeMetricSnapshotSourceAvailability.Available, freshMode.Availability);
-            Assert.Equal(NativeMetricSnapshotZoneMode.Normal, freshMode.ZoneMode);
             var memoryPlan = restarted.PlanCollection(memoryRequest, restoredModes,
                 includeGpuInventory: false, commandAt: restoredAt.AddMilliseconds(1));
             Assert.Equal(NativeMetricSnapshotSources.WindowsMemory,
                 restoredCatalog.SourceIds[Assert.Single(memoryPlan.Sources).SourceHandle]);
 
-            var fanModes = restoredFacts.CaptureModesForRequest(
-                restoredCatalog, restoredAt.AddMilliseconds(2), fanRequest, includeGpuInventory: false);
+            var fanModes = restoredFacts.CaptureStates(restoredCatalog, restoredAt.AddMilliseconds(2));
             var freshPlan = restarted.PlanCollection(fanRequest, fanModes,
                 includeGpuInventory: false, commandAt: restoredAt.AddMilliseconds(3));
             var freshSource = Assert.Single(freshPlan.Sources);
@@ -434,8 +369,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
                 new(new HardwareSensorProviderState("recorded OEM fan", HardwareSensorProviderStates.UnsupportedFirmware, "recorded"), null, null, []));
             restarted.CompleteSource(freshPlan, unsupported, freshUnsupportedAt);
             restoredFacts.RecordCompletion(freshSource.SourceHandle, unsupported.Status, freshUnsupportedAt);
-            var fallbackModes = restoredFacts.CaptureModesForRequest(
-                restoredCatalog, restoredAt.AddMilliseconds(5), fanRequest, includeGpuInventory: false);
+            var fallbackModes = restoredFacts.CaptureStates(restoredCatalog, restoredAt.AddMilliseconds(5));
             Assert.Equal(NativeMetricSnapshotSourceAvailability.Unsupported,
                 Assert.Single(fallbackModes, mode => mode.SourceHandle == restoredOemHandle).Availability);
             var fallbackPlan = restarted.PlanCollection(fanRequest, fallbackModes,
@@ -443,16 +377,6 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
             Assert.Equal(NativeMetricSnapshotSources.HardwareMonitorWmi,
                 restoredCatalog.SourceIds[Assert.Single(fallbackPlan.Sources).SourceHandle]);
 
-            fanMode = NativeMetricSnapshotZoneMode.LowPower;
-            var changedModes = restoredFacts.CaptureModesForRequest(
-                restoredCatalog, restoredAt.AddMilliseconds(7), fanRequest, includeGpuInventory: false);
-            var changedOem = Assert.Single(changedModes, mode => mode.SourceHandle == restoredOemHandle);
-            Assert.Equal(NativeMetricSnapshotSourceAvailability.Available, changedOem.Availability);
-            Assert.Equal(freshMode.CapabilityGeneration + 1, changedOem.CapabilityGeneration);
-            var recoveredPlan = restarted.PlanCollection(fanRequest, changedModes,
-                includeGpuInventory: false, commandAt: restoredAt.AddMilliseconds(8));
-            Assert.Equal(NativeMetricSnapshotSources.NotebookOemFan,
-                restoredCatalog.SourceIds[Assert.Single(recoveredPlan.Sources).SourceHandle]);
         }
         finally
         {

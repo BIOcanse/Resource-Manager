@@ -324,11 +324,23 @@ fn decodeReplaceUnlocked(session: *Session, image: []const u8) protocol.Status {
         return growthStatus(err);
     session.staging.clear();
     var previous_primary: ?protocol.PrimaryIdentity = null;
+    var retired_count: u32 = 0;
     var record_index: u32 = 0;
     while (record_index < header.entry_count) : (record_index += 1) {
         const base = @sizeOf(protocol.ImageHeader) +
             @as(usize, record_index) * @sizeOf(protocol.Record);
         const record = codec.decodeRecord(image, base);
+        // Upgrade-only compatibility: scope 2 held dispatched software grades, not system state.
+        if (record.primary.scope == 2 and
+            record.original_binding.scope == 2 and
+            record.primary.process_start_key == 0 and record.primary.process_id == 0 and
+            record.original_binding.action_identity.process_start_key == 0 and
+            record.original_binding.action_identity.process_id == 0 and
+            (record.original_binding.domain_mask & ~(protocol.DomainBits.cpu | protocol.DomainBits.gpu)) == 0)
+        {
+            retired_count += 1;
+            continue;
+        }
         const validity = protocol.validRecord(&record);
         if (validity != .ok) {
             session.staging.clear();
@@ -359,6 +371,7 @@ fn decodeReplaceUnlocked(session: *Session, image: []const u8) protocol.Status {
         previous_primary = record.primary;
     }
     session.publishStaging(header.ledger_revision);
+    if (retired_count != 0) std.log.warn("Applied ownership upgrade discarded {d} retired software-grade rows (scope 2).", .{retired_count});
     return .ok;
 }
 

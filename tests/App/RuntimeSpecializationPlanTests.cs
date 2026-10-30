@@ -65,7 +65,7 @@ public sealed class RuntimeSpecializationPlanTests
         Assert.True(memoryOnly.ResourceManagerSelfMemoryActionsEnabled);
         Assert.True(memoryOnly.AutomaticMemoryCleanupEnabled);
         Assert.Equal(0, (byte)memoryOnly.Capabilities & (1 << 2));
-        Assert.False(memoryOnly.SoftwareSchedulingEnabled);
+        Assert.Equal(0, (byte)memoryOnly.Capabilities & (1 << 3));
         Assert.False(memoryOnly.AutomaticProcessPoliciesEnabled);
         Assert.False(memoryOnly.HardwarePlacementEnabled);
         Assert.True(memoryOnly.NonAdaptedMemoryPriorityEnabled);
@@ -74,7 +74,7 @@ public sealed class RuntimeSpecializationPlanTests
         Assert.True(smart.ResourceManagerSelfMemoryActionsEnabled);
         Assert.True(smart.AutomaticMemoryCleanupEnabled);
         Assert.Equal(0, (byte)smart.Capabilities & (1 << 2));
-        Assert.True(smart.SoftwareSchedulingEnabled);
+        Assert.Equal(0, (byte)smart.Capabilities & (1 << 3));
         Assert.True(smart.AutomaticProcessPoliciesEnabled);
         Assert.True(smart.HardwarePlacementEnabled);
         Assert.True(smart.NonAdaptedMemoryPriorityEnabled);
@@ -108,47 +108,7 @@ public sealed class RuntimeSpecializationPlanTests
         Assert.Equal(gpu, plan.GpuSchedulingEnabled);
         Assert.Equal(0, (byte)plan.Capabilities & (1 << 2));
         Assert.Equal(gpu, plan.GpuPlacementEnabled);
-        Assert.Equal(cpu || gpu, plan.SoftwareSchedulingEnabled);
-    }
-
-    [Fact]
-    public void AdapterDispatchPlan_ResolvesPrecompiledRoutes()
-    {
-        var plan = new CompiledAdapterDispatchPlan(
-            new Dictionary<string, CompiledAdapterDispatchRoute>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["software-a"] = CompiledAdapterDispatchRoute.SoftwareLevelScheduler
-            },
-            new Dictionary<string, IReadOnlyList<AdapterCpuSchedulingGrade>>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["software-a"] = [AdapterCpuSchedulingGrade.Normal, AdapterCpuSchedulingGrade.Optimize]
-            },
-            new Dictionary<string, IReadOnlyList<AdapterGpuSchedulingGrade>>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["software-a"] = [AdapterGpuSchedulingGrade.Normal]
-            });
-
-        Assert.Equal(CompiledAdapterDispatchRoute.SoftwareLevelScheduler, plan.ResolveRoute("SOFTWARE-A"));
-        Assert.Equal(CompiledAdapterDispatchRoute.ConstraintActions, plan.ResolveRoute("missing"));
-        Assert.Equal(
-            [AdapterCpuSchedulingGrade.Normal, AdapterCpuSchedulingGrade.Optimize],
-            plan.ResolveSupportedCpuGrades("software-a"));
-        Assert.Equal(
-            [AdapterGpuSchedulingGrade.Normal],
-            plan.ResolveSupportedGpuGrades("software-a"));
-        Assert.Empty(plan.ResolveSupportedCpuGrades("missing"));
-        Assert.Empty(plan.ResolveSupportedGpuGrades("missing"));
-    }
-
-    [Fact]
-    public void ResourceManagerSelfDescriptor_OnlySupportsNormalAndOptimizePerDimension()
-    {
-        Assert.Equal(
-            [AdapterCpuSchedulingGrade.Normal, AdapterCpuSchedulingGrade.Optimize],
-            ResourceManagerSelfDescriptor.SupportedCpuSchedulingGrades);
-        Assert.Equal(
-            [AdapterGpuSchedulingGrade.Normal, AdapterGpuSchedulingGrade.Optimize],
-            ResourceManagerSelfDescriptor.SupportedGpuSchedulingGrades);
+        Assert.Equal(0, (byte)plan.Capabilities & (1 << 3));
     }
 
     [Fact]
@@ -315,7 +275,7 @@ public sealed class RuntimeSpecializationPlanTests
 
         Assert.True(registry.Register(zone));
         Assert.Contains("collector.test.dynamic", registry.GetSourceIds());
-        Assert.True(registry.CanRead("collector.test.dynamic"));
+        Assert.Same(zone, registry.GetZone("collector.test.dynamic"));
 
         Assert.True(registry.Unregister("collector.test.dynamic"));
         Assert.DoesNotContain("collector.test.dynamic", registry.GetSourceIds());

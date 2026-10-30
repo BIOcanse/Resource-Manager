@@ -18,7 +18,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             CpuCoreResidencyTestValues.Process(pid, startKey, ("core:0", 50)));
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts(pid, startKey, software, 80, 50, 25),
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => residency), cpuTopology: topology,
             cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);

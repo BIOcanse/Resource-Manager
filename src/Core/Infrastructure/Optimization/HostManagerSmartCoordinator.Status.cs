@@ -55,7 +55,7 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     /// <summary>
-    /// 产品当前持有改动的对象数：旧式放置回执、原生行上的进程/软件所有权，以及账本里的进程内存优先级所有权。
+    /// 产品当前持有改动的对象数：旧式放置回执、原生行上的进程所有权，以及账本里的进程内存优先级所有权。
     /// 内存优先级归属到它所在的进程对象，同一进程的多项改动只算一个对象。
     /// </summary>
     internal static int CountAppliedTargets(
@@ -74,11 +74,8 @@ public sealed partial class HostManagerSmartCoordinator
 
         foreach (var row in rows)
         {
-            var ownership = row.RowKind == NativeSmartCoordinatorSnapshotRowKind.Process
-                ? NativeSmartCoordinatorSnapshotRowFlags.ProcessOwned
-                : NativeSmartCoordinatorSnapshotRowFlags.CpuOwned |
-                    NativeSmartCoordinatorSnapshotRowFlags.GpuOwned;
-            if ((row.Flags & ownership) != 0)
+            if (row.RowKind == NativeSmartCoordinatorSnapshotRowKind.Process
+                && row.Flags.HasFlag(NativeSmartCoordinatorSnapshotRowFlags.ProcessOwned))
             {
                 targets.Add(row.TargetKey);
             }

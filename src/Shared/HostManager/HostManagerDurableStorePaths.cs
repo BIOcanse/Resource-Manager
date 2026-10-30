@@ -41,8 +41,7 @@ public static class HostManagerDurableStorePaths
                 Adjacent("transaction-journal", ResolveRelativePath(dataRoot, journal)),
                 Adjacent("applied-ownership", ResolveRelativePath(dataRoot, ledger)),
                 Adjacent("operation-coordinator", ResolveRelativePath(Path.Combine(dataRoot, "HostManager"), operation)),
-                ResolveRollbackState(installRoot),
-                ResolveMemoryCleanup(installRoot)
+                ResolveRollbackState(installRoot)
             ];
         }
         catch (JsonException exception)
@@ -65,10 +64,6 @@ public static class HostManagerDurableStorePaths
         return new("rollback-state", Path.Combine(root, Generation, "rollback-state.json"),
             Path.Combine(root, "rollback-state.root.manifest"));
     }
-
-    public static HostManagerDurableStorePath ResolveMemoryCleanup(string installRoot)
-        => Adjacent("memory-cleanup-attempt-journal", Path.Combine(ResolveRuntimeDataRoot(installRoot),
-            "HostManager", "MemoryCleanup", Generation, "host-manager-memory-cleanup-attempts.json"));
 
     // Compiled paths already use '/', so runtime owners reject rather than
     // normalize malformed compiled values. Configuration normalization is separate.

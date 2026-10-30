@@ -466,36 +466,6 @@
       "changeEvent": "NativeEtwSessionAvailability initial publication or Report failure"
     },
     {
-      "uid": 56,
-      "kind": "item",
-      "process": "backend",
-      "name": "PresentUnfrozen",
-      "comment": "Whether the Present compute zone is not frozen. Applying a mode publishes the change event.",
-      "storage": "reference",
-      "type": "bool",
-      "owner": {
-        "component": "PresentFrameEtwSource compute mode"
-      },
-      "perBlock": false,
-      "trigger": "event",
-      "changeEvent": "PresentFrameEtwSource.ApplyMode mode changed"
-    },
-    {
-      "uid": 57,
-      "kind": "item",
-      "process": "backend",
-      "name": "VidMmUnfrozen",
-      "comment": "Whether the VidMm compute zone is not frozen. Applying a mode publishes the change event.",
-      "storage": "reference",
-      "type": "bool",
-      "owner": {
-        "component": "DxgkrnlVidMmEtwTelemetryZone compute mode"
-      },
-      "perBlock": false,
-      "trigger": "event",
-      "changeEvent": "DxgkrnlVidMmEtwTelemetryZone.ApplyModeAsync mode changed"
-    },
-    {
       "uid": 58,
       "kind": "item",
       "process": "desktop",
@@ -702,7 +672,7 @@
       "kind": "condition",
       "process": "backend",
       "name": "PresentEtwChildShouldRun",
-      "comment": "Host admitted and subscribed field in use, session available, and unfrozen (NotPublished mode permits running).",
+      "comment": "Host admitted and subscribed field in use, session available.",
       "perBlock": false,
       "node": 2,
       "items": [
@@ -715,9 +685,6 @@
         },
         {
           "item": 53
-        },
-        {
-          "item": 56
         }
       ],
       "conditions": [],
@@ -729,7 +696,7 @@
       "kind": "condition",
       "process": "backend",
       "name": "GpuAllocationEtwChildShouldRun",
-      "comment": "Host admitted and subscribed field in use, session available, and unfrozen (NotPublished mode permits running).",
+      "comment": "Host admitted and subscribed field in use, session available.",
       "perBlock": false,
       "node": 2,
       "items": [
@@ -753,7 +720,7 @@
       "kind": "condition",
       "process": "backend",
       "name": "VidMmEtwChildShouldRun",
-      "comment": "Host admitted and subscribed field in use, session available, and unfrozen (NotPublished mode permits running).",
+      "comment": "Host admitted and subscribed field in use, session available.",
       "perBlock": false,
       "node": 2,
       "items": [
@@ -766,9 +733,6 @@
         },
         {
           "item": 55
-        },
-        {
-          "item": 57
         }
       ],
       "conditions": [],
@@ -1822,9 +1786,6 @@
           "item": 53
         },
         {
-          "item": 56
-        },
-        {
           "item": 113
         },
         {
@@ -1835,9 +1796,6 @@
         },
         {
           "item": 55
-        },
-        {
-          "item": 57
         },
         {
           "item": 8,

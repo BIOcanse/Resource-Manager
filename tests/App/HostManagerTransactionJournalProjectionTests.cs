@@ -152,7 +152,8 @@ public sealed class HostManagerTransactionJournalProjectionTests
         AssertPrepareRejected(unknownReason);
 
         var reservedByte = CreateProcessAction();
-        SetPodByte(ref reservedByte, 122, 1);
+        SetPodByte(ref reservedByte,
+            Marshal.OffsetOf<NativeSmartCoordinatorAction>(nameof(NativeSmartCoordinatorAction.Reserved0)).ToInt32(), 1);
         AssertPrepareRejected(reservedByte);
 
     }
@@ -169,16 +170,13 @@ public sealed class HostManagerTransactionJournalProjectionTests
         AssertPrepareRejected(inconsistentSoftwareIdentity);
 
         var invalidScope = CreateProcessAction();
-        invalidScope.Scope = NativeSmartCoordinatorActionScope.AdapterSoftware;
+        invalidScope.Scope = (NativeSmartCoordinatorActionScope)2;
         AssertPrepareRejected(invalidScope);
 
         var invalidDomain = CreateProcessAction();
-        invalidDomain.DomainMask = NativeSmartCoordinatorGradeDomains.Cpu;
+        invalidDomain.DomainMask = (NativeSmartCoordinatorGradeDomains)2;
         AssertPrepareRejected(invalidDomain);
 
-        var invalidAdapterGrade = CreateProcessAction();
-        invalidAdapterGrade.ToCpuGrade = NativeSmartCoordinatorAdapterGrade.Optimize;
-        AssertPrepareRejected(invalidAdapterGrade);
 
         var invalidProcessGrade = CreateProcessAction();
         invalidProcessGrade.ToProcessGrade = (NativeSmartCoordinatorProcessGrade)12;
@@ -276,54 +274,6 @@ public sealed class HostManagerTransactionJournalProjectionTests
     }
 
     [Fact]
-    public void CreatePrepare_MapsAdapterCpuAndGpuActionExactly()
-    {
-        var action = CreateAdapterAction();
-        var payload = CreatePayload(3);
-
-        var result = CreatePrepare(action, payload);
-
-        AssertIdentity(action, result.Identity, HostSessionIncarnation);
-        Assert.Equal(action.SoftwareKey, result.Identity.TargetId);
-        Assert.Equal(action.SoftwareKey, result.Identity.SoftwareId);
-        Assert.Equal(0UL, result.Identity.ProcessStartKey);
-        Assert.Equal(0U, result.Identity.ProcessId);
-        Assert.Equal((uint)NativeTransactionJournalScope.Software, result.Scope);
-        Assert.Equal(
-            (uint)(NativeTransactionJournalDomain.Cpu | NativeTransactionJournalDomain.Gpu),
-            result.DomainMask);
-        Assert.Equal(
-            (uint)(NativeTransactionJournalGradeValidity.Cpu |
-                NativeTransactionJournalGradeValidity.Gpu),
-            result.GradeValidMask);
-        Assert.Equal((int)NativeTransactionJournalAdapterGrade.Normal, result.CpuFromGrade);
-        Assert.Equal((int)NativeTransactionJournalAdapterGrade.Optimize, result.CpuToGrade);
-        Assert.Equal((int)NativeTransactionJournalAdapterGrade.Normal, result.GpuFromGrade);
-        Assert.Equal((int)NativeTransactionJournalAdapterGrade.Extreme, result.GpuToGrade);
-        Assert.Equal(0UL, result.AtomicGroupId);
-    }
-
-    [Fact]
-    public void CreatePrepare_RejectsInvalidAdapterIdentityProcessFieldsAndAtomicShape()
-    {
-        var targetDrift = CreateAdapterAction();
-        targetDrift.TargetKey++;
-        AssertPrepareRejected(targetDrift);
-
-        var processFields = CreateAdapterAction();
-        processFields.ProcessId = 55;
-        processFields.ProcessStartKey = 66;
-        AssertPrepareRejected(processFields);
-
-        var atomic = CreateAdapterAction();
-        atomic.Flags |= NativeSmartCoordinatorActionFlags.Atomic;
-        atomic.ValidMask |= NativeSmartCoordinatorActionValidity.AtomicGroup;
-        atomic.AtomicGroupId = 77;
-        atomic.GroupMemberCount = 2;
-        AssertPrepareRejected(atomic);
-    }
-
-    [Fact]
     public void CreateFeedback_MapsSuccessfulRestoreToNormalWithoutOwnership()
     {
         var action = CreateProcessAction();
@@ -403,7 +353,7 @@ public sealed class HostManagerTransactionJournalProjectionTests
         AssertFeedbackRejected(record, wrongIdentity);
 
         var wrongScope = feedback;
-        wrongScope.Scope = NativeSmartCoordinatorActionScope.AdapterSoftware;
+        wrongScope.Scope = (NativeSmartCoordinatorActionScope)2;
         AssertFeedbackRejected(record, wrongScope);
 
         var unknownValidity = feedback;
@@ -414,9 +364,14 @@ public sealed class HostManagerTransactionJournalProjectionTests
         unknownFlags.Flags |= (NativeSmartCoordinatorFeedbackFlags)(1U << 31);
         AssertFeedbackRejected(record, unknownFlags);
 
-        var reserved = feedback;
-        SetPodByte(ref reserved, 85, 1);
-        AssertFeedbackRejected(record, reserved);
+        var reservedOffset = Marshal.OffsetOf<NativeSmartCoordinatorFeedback>(
+            nameof(NativeSmartCoordinatorFeedback.Reserved0)).ToInt32();
+        for (var index = 0; index < 5; index++)
+        {
+            var reserved = feedback;
+            SetPodByte(ref reserved, reservedOffset + index, 1);
+            AssertFeedbackRejected(record, reserved);
+        }
     }
 
     [Fact]
@@ -493,10 +448,6 @@ public sealed class HostManagerTransactionJournalProjectionTests
             DomainMask = NativeSmartCoordinatorGradeDomains.Process,
             FromProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
             ToProcessGrade = NativeSmartCoordinatorProcessGrade.Level2,
-            FromCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            FromGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal
         };
 
     private static NativeSmartCoordinatorAction CreateAtomicProcessAction(
@@ -521,36 +472,6 @@ public sealed class HostManagerTransactionJournalProjectionTests
         => Enumerable.Range(0, checked((int)memberCount))
             .Select(index => CreateAtomicProcessAction(checked((uint)index), memberCount))
             .ToArray();
-
-    private static NativeSmartCoordinatorAction CreateAdapterAction()
-        => new()
-        {
-            StructSize = NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorAction>(),
-            Flags = NativeSmartCoordinatorActionFlags.RequiresFeedback,
-            ValidMask = NativeSmartCoordinatorActionValidity.SoftwareIdentity |
-                NativeSmartCoordinatorActionValidity.CpuGrade |
-                NativeSmartCoordinatorActionValidity.GpuGrade |
-                NativeSmartCoordinatorActionValidity.CpuScore |
-                NativeSmartCoordinatorActionValidity.GpuScore,
-            ReasonMask = NativeSmartCoordinatorReason.CriticalFactChanged,
-            ActionId = 0x111,
-            PlanEpoch = 0x222,
-            ConfigurationGeneration = 0x333,
-            TargetKey = 0x444,
-            SoftwareKey = 0x444,
-            CpuScore = 9.5,
-            GpuScore = 7.25,
-            Scope = NativeSmartCoordinatorActionScope.AdapterSoftware,
-            Disposition = NativeSmartCoordinatorActionDisposition.Apply,
-            DomainMask = NativeSmartCoordinatorGradeDomains.Cpu |
-                NativeSmartCoordinatorGradeDomains.Gpu,
-            FromProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            ToProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            FromCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToCpuGrade = NativeSmartCoordinatorAdapterGrade.Optimize,
-            FromGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            ToGpuGrade = NativeSmartCoordinatorAdapterGrade.Extreme
-        };
 
     private static NativeTransactionJournalPrepareInput CreatePrepare(
         NativeSmartCoordinatorAction action,

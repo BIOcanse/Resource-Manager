@@ -22,7 +22,7 @@ internal static class IntelPsysSubscriptionConsumer
         if (!OperatingSystem.IsWindows()) return;
         var fixture = new RecordedIntelPsysResources();
         using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.CreateDefault(), fixture.Create(),
-            RecordedIntelPsysResources.Options(), modeProvider: fixture.Mode, unavailableCooldown: TimeSpan.Zero);
+            RecordedIntelPsysResources.Options(), unavailableCooldown: TimeSpan.Zero);
         using var http = new HttpClient();
         var core = new ReadWriteCore(owner.CreateBackend(), new DependencyActions(http, []));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -84,7 +84,7 @@ internal static class IntelPsysSubscriptionConsumer
         }
         Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && core.ReadCached(raw) == committedRaw,
             "canceling a different raw read after Stop preserves committed bits and observation time");
-        await RequireFrozenRawAsync("canceled");
+
         await core.CollectAsync([unit], timeout.Token);
         Require(core.ReadCached(raw) == committedRaw && fixture.LastFields.SetEquals([MetricFieldCode.IntelPsysEnergyUnit]),
             "later unit-only capture cannot expose canceled raw bits or their timestamp");
@@ -98,25 +98,11 @@ internal static class IntelPsysSubscriptionConsumer
             Require(!rejected.Committed && fixture.Reads == beforeRejectedReads + 1 && MetricSnapshotFactAssertions.SameCurrent(original, owner.ReadCachedSnapshot()),
                 "retired borrow rejects the real read after subscription Stop");
         }
-        await RequireFrozenRawAsync("rejected borrowed");
+
         await core.CollectAsync([unit], timeout.Token);
         Require(core.ReadCached(raw) == committedRaw && fixture.CatalogEngineProbeCount == 0 && fixture.UnselectedReads == 0,
             "subsequent publication cannot expose rejected borrowed raw bits or observation time");
         Console.WriteLine("[INTEL-PSYS-SUBSCRIPTION-PACKAGE-RECORDED] native-composition; one-platform; raw=0/4294967295; unit=J/count; same-current; failure-clears; stop-drains; direct-owner-usable; no-live-MSR.");
-
-        async Task RequireFrozenRawAsync(string rejectedRead)
-        {
-            var readsBeforeFreeze = fixture.Reads;
-            fixture.Frozen = true;
-            ImmutableArray<FieldReading> frozen;
-            try { frozen = await core.CollectAsync([raw], timeout.Token); }
-            finally { fixture.Frozen = false; }
-            var observed = frozen.Single();
-            Require(fixture.Reads == readsBeforeFreeze && observed.Field == committedRaw.Field
-                && observed.Status == committedRaw.Status && observed.Value == committedRaw.Value
-                && observed.ObservedAt == committedRaw.ObservedAt && observed.SourceId == committedRaw.SourceId,
-                $"Freeze explicitly projects raw without querying and cannot expose {rejectedRead} bits or observation time");
-        }
 
         async Task ObserveOnceAsync(bool failed)
         {
@@ -181,15 +167,14 @@ internal sealed class RecordedIntelPsysResources
     internal double Unit { get; set; } = Math.ScaleB(1d, -31);
     internal bool FailRaw { get; set; }
     internal bool FailUnit { get; set; }
-    internal bool Frozen { get; set; }
+
     internal Action? ReadCompleted { get; set; }
     internal HashSet<MetricFieldCode> LastFields { get; private set; } = [];
     internal IntelMsrCatalogIdentity? LastTarget { get; private set; }
     internal CpuOsTopologyInformation? Topology { get; set; } = CreateTopology();
     internal static WindowsMetricResourceOptions Options() => new()
         { IntelModulePath = "recorded-module-not-opened", PawnIoLibraryPath = "recorded-library-not-loaded" };
-    internal NativeMetricSnapshotZoneMode Mode(string source)
-        => Frozen && source == NativeMetricSnapshotSources.IntelMsr ? NativeMetricSnapshotZoneMode.Freeze : NativeMetricSnapshotZoneMode.Normal;
+
     internal WindowsHardwareMetricResources Create() => new()
     {
         Controls = new WindowsMetricControlResources

@@ -10,15 +10,14 @@ public sealed class NativeSmartCoordinatorAbiTests
     public void AbiUsesPublishedVersionAndFixedPodLayouts()
     {
         Assert.Equal(NativeSmartCoordinatorAbi.Version, NativeSmartCoordinatorSession.GetAbiVersion());
-        Assert.Equal(80, Unsafe.SizeOf<NativeSmartCoordinatorAdapterPolicyConfiguration>());
-        Assert.Equal(424, Unsafe.SizeOf<NativeSmartCoordinatorConfiguration>());
+        Assert.Equal(264, Unsafe.SizeOf<NativeSmartCoordinatorConfiguration>());
         Assert.Equal(88, Unsafe.SizeOf<NativeSmartCoordinatorCapacity>());
         Assert.Equal(80, Unsafe.SizeOf<NativeSmartCoordinatorCycleInput>());
         Assert.Equal(104, Unsafe.SizeOf<NativeSmartCoordinatorInputRow>());
-        Assert.Equal(136, Unsafe.SizeOf<NativeSmartCoordinatorAction>());
+        Assert.Equal(120, Unsafe.SizeOf<NativeSmartCoordinatorAction>());
         Assert.Equal(96, Unsafe.SizeOf<NativeSmartCoordinatorFeedback>());
         Assert.Equal(128, Unsafe.SizeOf<NativeSmartCoordinatorSnapshot>());
-        Assert.Equal(192, Unsafe.SizeOf<NativeSmartCoordinatorSnapshotRow>());
+        Assert.Equal(160, Unsafe.SizeOf<NativeSmartCoordinatorSnapshotRow>());
     }
 
     [Fact]
@@ -54,14 +53,8 @@ public sealed class NativeSmartCoordinatorAbiTests
         AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.ReservedProcessPolicy0), 208);
         AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.HighTierMinimumBaseScore), 216);
         AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.MiddleTierMinimumBaseScore), 224);
-        AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.CpuAdapter), 232);
-        AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.GpuAdapter), 312);
-        AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.Reserved), 392);
+        AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.Reserved), 232);
 
-        AssertOffset<NativeSmartCoordinatorAdapterPolicyConfiguration>(nameof(NativeSmartCoordinatorAdapterPolicyConfiguration.StateMultipliers), 0);
-        AssertOffset<NativeSmartCoordinatorAdapterPolicyConfiguration>(nameof(NativeSmartCoordinatorAdapterPolicyConfiguration.ExtremeMinimumScore), 56);
-        AssertOffset<NativeSmartCoordinatorAdapterPolicyConfiguration>(nameof(NativeSmartCoordinatorAdapterPolicyConfiguration.NormalMinimumScore), 64);
-        AssertOffset<NativeSmartCoordinatorAdapterPolicyConfiguration>(nameof(NativeSmartCoordinatorAdapterPolicyConfiguration.OptimizeMinimumScore), 72);
     }
 
     [Fact]
@@ -90,7 +83,6 @@ public sealed class NativeSmartCoordinatorAbiTests
         AssertOffset<NativeSmartCoordinatorAction>(nameof(NativeSmartCoordinatorAction.CpuScore), 80);
         AssertOffset<NativeSmartCoordinatorAction>(nameof(NativeSmartCoordinatorAction.SourceIndex), 88);
         AssertOffset<NativeSmartCoordinatorAction>(nameof(NativeSmartCoordinatorAction.Scope), 112);
-        AssertOffset<NativeSmartCoordinatorAction>(nameof(NativeSmartCoordinatorAction.GpuScore), 128);
 
         AssertOffset<NativeSmartCoordinatorFeedback>(nameof(NativeSmartCoordinatorFeedback.CompletedAtMilliseconds), 64);
         AssertOffset<NativeSmartCoordinatorFeedback>(nameof(NativeSmartCoordinatorFeedback.Status), 80);
@@ -107,16 +99,16 @@ public sealed class NativeSmartCoordinatorAbiTests
         AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.CpuOccupancyPercent), 104);
         AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.ReservedProcessScore0), 112);
         AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.ReservedProcessRatio0), 120);
-        AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.SourceIndex), 144);
-        AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.DesiredProcessGrade), 172);
-        AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.Reserved1), 184);
+        AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.SourceIndex), 128);
+        AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.DesiredProcessGrade), 148);
+        AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.Reserved1), 152);
     }
 
     [Fact]
     public void PublishedMasksKeepTheirExactWireValues()
     {
-        Assert.Equal(0x3FUL, (ulong)NativeSmartCoordinatorConfigFields.Required);
-        Assert.Equal(0x0FUL, (ulong)NativeSmartCoordinatorFeatures.Known);
+        Assert.Equal(0x27UL, (ulong)NativeSmartCoordinatorConfigFields.Required);
+        Assert.Equal(0x09UL, (ulong)NativeSmartCoordinatorFeatures.Known);
         Assert.Equal(1UL << 2, (ulong)NativeSmartCoordinatorCycleValidity.ScoreOnlyMode);
         Assert.Equal(1UL << 3, (ulong)NativeSmartCoordinatorCycleValidity.MaximumActionsThisCycle);
         Assert.Equal(0x0CUL, (ulong)NativeSmartCoordinatorCycleValidity.Known);
@@ -124,11 +116,11 @@ public sealed class NativeSmartCoordinatorAbiTests
         Assert.Equal(1UL << 3, (ulong)NativeSmartCoordinatorCycleFlags.ScoreOnly);
         Assert.Equal(1UL << 4, (ulong)NativeSmartCoordinatorCycleFlags.ExternalEvent);
         Assert.Equal(0x1DUL, (ulong)NativeSmartCoordinatorCycleFlags.Known);
-        Assert.Equal(0xFFFFUL, (ulong)NativeSmartCoordinatorInputValidity.Known);
-        Assert.Equal(0x1FFFUL, (ulong)NativeSmartCoordinatorInputFlags.Known);
-        Assert.Equal(0xFFUL, (ulong)NativeSmartCoordinatorActionValidity.Known);
+        Assert.Equal(0xE67FUL, (ulong)NativeSmartCoordinatorInputValidity.Known);
+        Assert.Equal(0x06FFUL, (ulong)NativeSmartCoordinatorInputFlags.Known);
+        Assert.Equal(0x67UL, (ulong)NativeSmartCoordinatorActionValidity.Known);
         Assert.Equal(
-            ((1UL << 38) - 1) & ~((1UL << 5) | (1UL << 15) | (1UL << 16) | (1UL << 36)),
+            ((1UL << 38) - 1) & ~((7UL << 20) | (1UL << 5) | (1UL << 15) | (1UL << 16) | (1UL << 36)),
             (ulong)NativeSmartCoordinatorReason.Known);
         Assert.Equal(11, (int)NativeSmartCoordinatorStatus.RecreateRequired);
     }

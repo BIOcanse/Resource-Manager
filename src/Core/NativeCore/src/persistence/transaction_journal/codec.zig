@@ -67,11 +67,20 @@ pub fn decodeUnlocked(session: *state.Session, image: []const u8) protocol.Statu
     const growth = session.ensureRecordCapacityUnlocked(metadata.entry_count, .decode);
     if (growth != .ok) return growth;
 
+    var retired_count: u32 = 0;
     var input_index: usize = 0;
     var staged_count: usize = 0;
     var previous_valid_unique_identity: ?protocol.Identity = null;
     while (input_index < metadata.entry_count) : (input_index += 1) {
         const decoded = decodeRecord(image, header_size + input_index * record_size);
+        // Upgrade-only compatibility: scope 2 held dispatched software grades, not system state.
+        if (decoded.scope == 2 and
+            decoded.identity.process_start_key == 0 and decoded.identity.process_id == 0 and
+            (decoded.domain_mask & ~(protocol.DomainBits.cpu | protocol.DomainBits.gpu)) == 0)
+        {
+            retired_count += 1;
+            continue;
+        }
         const record_validity = protocol.validRecord(&decoded);
         if (record_validity == .ok) {
             var duplicate_identity = false;
@@ -123,6 +132,7 @@ pub fn decodeUnlocked(session: *state.Session, image: []const u8) protocol.Statu
     session.count = @intCast(staged_count);
     session.journal_revision = metadata.journal_revision;
     if (!session.rebuildIndex()) return .corrupt_image;
+    if (retired_count != 0) std.log.warn("Transaction journal upgrade discarded {d} retired software-grade rows (scope 2).", .{retired_count});
     return .ok;
 }
 
@@ -148,7 +158,7 @@ fn quarantineDuplicate(left: *const protocol.Record, right: *const protocol.Reco
         marker.scope = if (marker.identity.process_start_key != 0 and marker.identity.process_id != 0)
             @intFromEnum(protocol.Scope.process)
         else
-            @intFromEnum(protocol.Scope.software);
+            @intFromEnum(protocol.Scope.resource);
     }
     if (!samePayloadReference(&marker, &right_marker)) clearPayload(&marker);
     return marker;
@@ -275,10 +285,9 @@ fn quarantineScope(record: *const protocol.Record) ?u32 {
     if (identity.process_start_key != 0 and identity.process_id != 0)
         return @intFromEnum(protocol.Scope.process);
     if (identity.software_id != 0 and
-        (record.scope == @intFromEnum(protocol.Scope.resource) or
-            record.scope == @intFromEnum(protocol.Scope.software))) return record.scope;
+        record.scope == @intFromEnum(protocol.Scope.resource)) return record.scope;
     if (identity.software_id != 0) {
-        return @intFromEnum(protocol.Scope.software);
+        return @intFromEnum(protocol.Scope.resource);
     }
     return null;
 }

@@ -35,8 +35,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
         using var resources = RecordedResources(
             () => new(true, 100, 1000, 1000, 10000, 1000, DateTimeOffset.UtcNow),
             () => throw new InvalidOperationException("unselected memory"));
-        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
-            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { });
+        var capture = new WindowsHardwareMetricCapture(resources, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { });
         using var cancellation = new CancellationTokenSource();
         var enrichmentCalls = 0;
         var publicationCalls = 0;
@@ -103,8 +102,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
         using var resources = RecordedResources(
             () => throw new InvalidOperationException("empty request sampled CPU"),
             () => throw new InvalidOperationException("empty request sampled memory"));
-        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
-            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { });
+        var capture = new WindowsHardwareMetricCapture(resources, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { });
         var request = MetricSampleRequest.ForIds([]);
         HardwareMetricSnapshot? Capture(HardwareMetricSnapshot? currentCatalog)
             => capture.CaptureUnderGateAsync(request, workspace, 1, null,
@@ -163,8 +161,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
             _ => new(new("recorded SMU", HardwareSensorProviderStates.Active, "recorded"), null, null, null, null,
                 ActualPowerWatts: 15, ApuTemperatureCelsius: 45));
         var failures = new List<string>();
-        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
-            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { }, (_, source) => failures.Add(source));
+        var capture = new WindowsHardwareMetricCapture(resources, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { }, (_, source) => failures.Add(source));
         try
         {
             var request = MetricSampleRequest.ForIds(requestGpu ? [cpu.MetricId, gpu.MetricId] : [cpu.MetricId]);
@@ -212,8 +209,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
                     [recorded]);
             });
         var failures = new List<string>();
-        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
-            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { }, (_, source) => failures.Add(source));
+        var capture = new WindowsHardwareMetricCapture(resources, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { }, (_, source) => failures.Add(source));
         try
         {
             var request = MetricSampleRequest.ForIds([MetricDatasetIds.SystemGpuInventory]);
@@ -283,8 +279,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
                 fail && failure == "completion" ? 0UL : 1000UL, DateTimeOffset.UtcNow);
         }, () => new(UsedBytes: memoryUsed, TotalBytes: 256, UsagePercent: memoryUsed * 100d / 256, IsUsageAvailable: true));
         var failures = new List<(Exception Error, string Source)>();
-        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
-            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { }, (error, source) => failures.Add((error, source)));
+        var capture = new WindowsHardwareMetricCapture(resources, TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { }, (error, source) => failures.Add((error, source)));
         try
         {
             var request = MetricSampleRequest.ForIds(["cpu.usage", "memory.usage"]);

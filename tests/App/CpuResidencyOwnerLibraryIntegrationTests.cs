@@ -320,7 +320,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         var committed = false;
         var permit = new BeforeCommitPermit(() =>
         {
-            if (pause) capture.SetCaptureEnabled(false); else capture.Stop();
+            if (pause) capture.PauseWindow(); else capture.Stop();
             Assert.Same(published, capture.Read());
             Assert.Equal(revision, capture.Revision);
         });
@@ -329,26 +329,13 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         Assert.Same(published, capture.Read());
         Assert.Equal(pause, capture.HasSessionLease);
         Assert.Equal(pause ? 1 : 2, broker.Releases);
-        if (pause) capture.SetCaptureEnabled(true);
+        if (pause) capture.BeginWindow();
         capture.EnsureStarted();
         capture.BeginWindow();
         Assert.Equal(pause ? 3 : 4, broker.Acquires);
         Assert.Same(published, capture.Read());
         Assert.True(capture.Collect()); // restarted capture is warming, with no old closed window
         Assert.Null(capture.Read());
-    }
-
-    [Fact]
-    public void ExternalFreezeDuringLeaseCreationRetainsTheRunHolderAndResumesWithANewWindow()
-    {
-        var broker = new Broker(); using var capture = Capture(broker);
-        broker.BeforeLeaseReturn = () => capture.SetCaptureEnabled(false);
-        capture.EnsureStarted();
-        Assert.Equal(1, broker.Acquires); Assert.Equal(0, broker.Releases); Assert.True(capture.HasSessionLease);
-        Assert.False(capture.IsWindowActive);
-        capture.EnsureStarted(); Assert.Equal(1, broker.Acquires); Assert.Null(capture.Read());
-        broker.BeforeLeaseReturn = null; capture.SetCaptureEnabled(true); capture.EnsureStarted();
-        Assert.Equal(2, broker.Acquires); Assert.True(capture.HasSessionLease); Assert.True(capture.IsWindowActive); Assert.Null(capture.Read());
     }
 
     [Fact]

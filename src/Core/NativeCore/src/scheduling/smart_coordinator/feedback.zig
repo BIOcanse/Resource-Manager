@@ -115,16 +115,10 @@ fn matchFeedback(session: *state.Session, item: *const protocol.Feedback) ?u32 {
         .domain_mask = reservation.action.domain_mask,
         .process_from_grade = reservation.action.from_process_grade,
         .process_to_grade = reservation.action.to_process_grade,
-        .cpu_from_grade = reservation.action.from_cpu_grade,
-        .cpu_to_grade = reservation.action.to_cpu_grade,
-        .gpu_from_grade = reservation.action.from_gpu_grade,
-        .gpu_to_grade = reservation.action.to_gpu_grade,
         .valid_mask = item.valid_mask,
         .flags = item.flags,
         .status = item.status,
         .actual_process_grade = item.actual_process_grade,
-        .actual_cpu_grade = item.actual_cpu_grade,
-        .actual_gpu_grade = item.actual_gpu_grade,
     })) return null;
     if (reservation.action.atomic_group_id != 0) {
         if (reservation.atomic_group_slot == no_slot or reservation.atomic_group_slot >= session.atomic_groups.len) return null;
@@ -136,12 +130,8 @@ fn matchFeedback(session: *state.Session, item: *const protocol.Feedback) ?u32 {
 }
 
 fn matchesIdentity(action: *const protocol.Action, item: *const protocol.Feedback) bool {
-    if (action.scope == @intFromEnum(protocol.ActionScope.process_policy)) {
-        return item.target_key == action.target_key and item.software_key == action.software_key and
-            item.process_id == action.process_id and item.process_start_key == action.process_start_key;
-    }
     return item.target_key == action.target_key and item.software_key == action.software_key and
-        item.process_id == 0 and item.process_start_key == 0;
+        item.process_id == action.process_id and item.process_start_key == action.process_start_key;
 }
 
 fn finishCompleteAtomicGroups(session: *state.Session) void {
@@ -192,14 +182,6 @@ fn finishReservation(session: *state.Session, reservation_slot: u32, atomic_grou
                 .state_uncertain => recordProcessUncertain(session, process, action, item.completed_at_ms),
             }
         }
-    } else if (reservation.software_slot != no_slot and session.softwares[reservation.software_slot].occupied) {
-        const software = &session.softwares[reservation.software_slot];
-        switch (status) {
-            .succeeded => commitSoftwareSuccess(software, action, item),
-            .failed_unchanged, .rejected, .skipped => recordSoftwareFailure(session, software, action, item.completed_at_ms, protocol.Reason.feedback_failed),
-            .ownership_lost => recordSoftwareOwnershipLost(session, software, action, item),
-            .state_uncertain => recordSoftwareUncertain(session, software, action, item.completed_at_ms),
-        }
     }
     session.releaseReservation(reservation_slot);
 }
@@ -212,25 +194,6 @@ fn commitProcessSuccess(transition: *state.ProcessTransition, action: protocol.A
     transition.last_feedback_ms = item.completed_at_ms;
     transition.failure_count = 0;
     if (action.to_process_grade == protocol.ProcessGrade.normal) transition.compensation_required = false;
-    if (transition.desired == transition.applied) transition.clearPending();
-}
-
-fn commitSoftwareSuccess(software: *state.SoftwareState, action: protocol.Action, item: protocol.Feedback) void {
-    if ((action.domain_mask & protocol.GradeDomains.cpu) != 0) {
-        commitAdapterSuccess(&software.cpu_transition, item.actual_cpu_grade, (item.flags & protocol.FeedbackFlags.cpu_owned) != 0, item.completed_at_ms);
-    }
-    if ((action.domain_mask & protocol.GradeDomains.gpu) != 0) {
-        commitAdapterSuccess(&software.gpu_transition, item.actual_gpu_grade, (item.flags & protocol.FeedbackFlags.gpu_owned) != 0, item.completed_at_ms);
-    }
-}
-
-fn commitAdapterSuccess(transition: *state.AdapterTransition, actual: u8, owned: bool, completed_at_ms: i64) void {
-    transition.applied = actual;
-    transition.owned = owned;
-    transition.inflight_action_id = 0;
-    transition.retry_not_before_ms = 0;
-    transition.last_feedback_ms = completed_at_ms;
-    transition.failure_count = 0;
     if (transition.desired == transition.applied) transition.clearPending();
 }
 
@@ -249,40 +212,6 @@ fn recordProcessFailure(
     armProcessPending(transition, action.to_process_grade, completed_at_ms, session.config.required_consecutive_decisions);
     process.reason_mask |= reason;
     session.last_reason_mask |= reason;
-}
-
-fn recordSoftwareFailure(
-    session: *state.Session,
-    software: *state.SoftwareState,
-    action: protocol.Action,
-    completed_at_ms: i64,
-    reason: u64,
-) void {
-    if ((action.domain_mask & protocol.GradeDomains.cpu) != 0) {
-        recordAdapterFailure(&software.cpu_transition, action.to_cpu_grade, completed_at_ms, session.config);
-    }
-    if ((action.domain_mask & protocol.GradeDomains.gpu) != 0) {
-        recordAdapterFailure(&software.gpu_transition, action.to_gpu_grade, completed_at_ms, session.config);
-    }
-    software.reason_mask |= reason;
-    session.last_reason_mask |= reason;
-}
-
-fn recordAdapterFailure(
-    transition: *state.AdapterTransition,
-    target: u8,
-    completed_at_ms: i64,
-    config: protocol.Config,
-) void {
-    transition.inflight_action_id = 0;
-    transition.last_feedback_ms = completed_at_ms;
-    transition.failure_count +|= 1;
-    transition.retry_not_before_ms = saturatingAdd(completed_at_ms, config.failure_retry_ms);
-    transition.pending_from = transition.applied;
-    transition.pending_to = target;
-    transition.pending_count = config.required_consecutive_decisions;
-    transition.pending_first_seen_ms = completed_at_ms;
-    transition.pending_last_seen_ms = completed_at_ms;
 }
 
 fn recordProcessOwnershipLost(
@@ -305,41 +234,8 @@ fn recordProcessOwnershipLost(
     session.last_reason_mask |= protocol.Reason.ownership_lost;
 }
 
-fn recordSoftwareOwnershipLost(session: *state.Session, software: *state.SoftwareState, action: protocol.Action, item: protocol.Feedback) void {
-    if ((action.domain_mask & protocol.GradeDomains.cpu) != 0) {
-        recordAdapterOwnershipLost(session, software, &software.cpu_transition, item.completed_at_ms);
-    }
-    if ((action.domain_mask & protocol.GradeDomains.gpu) != 0) {
-        recordAdapterOwnershipLost(session, software, &software.gpu_transition, item.completed_at_ms);
-    }
-    software.reason_mask |= protocol.Reason.ownership_lost;
-    session.last_reason_mask |= protocol.Reason.ownership_lost;
-}
-
-fn recordAdapterOwnershipLost(
-    session: *state.Session,
-    software: *state.SoftwareState,
-    transition: *state.AdapterTransition,
-    completed_at_ms: i64,
-) void {
-    session.requires_authoritative_resync = true;
-    software.reason_mask |= protocol.Reason.state_uncertain;
-    session.last_reason_mask |= protocol.Reason.state_uncertain;
-    transition.owned = false;
-    transition.inflight_action_id = 0;
-    transition.retry_not_before_ms = 0;
-    transition.last_feedback_ms = completed_at_ms;
-    transition.failure_count = 0;
-    transition.clearPending();
-}
-
 fn recordProcessUncertain(session: *state.Session, process: *state.ProcessState, action: protocol.Action, completed_at_ms: i64) void {
     recordProcessFailure(session, process, action, completed_at_ms, protocol.Reason.state_uncertain);
-    session.requires_authoritative_resync = true;
-}
-
-fn recordSoftwareUncertain(session: *state.Session, software: *state.SoftwareState, action: protocol.Action, completed_at_ms: i64) void {
-    recordSoftwareFailure(session, software, action, completed_at_ms, protocol.Reason.state_uncertain);
     session.requires_authoritative_resync = true;
 }
 
@@ -374,9 +270,7 @@ fn timeoutFeedback(reservation: *const state.Reservation, now_ms: i64) protocol.
         .status = @intFromEnum(protocol.FeedbackStatus.state_uncertain),
         .scope = reservation.action.scope,
         .actual_process_grade = protocol.ProcessGrade.normal,
-        .actual_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .actual_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .reserved0 = [_]u8{0} ** 3,
+        .reserved0 = [_]u8{0} ** 5,
         .reserved1 = 0,
     };
 }

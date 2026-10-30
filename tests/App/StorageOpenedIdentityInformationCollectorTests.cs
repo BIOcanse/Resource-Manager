@@ -143,8 +143,8 @@ public sealed class StorageOpenedIdentityInformationCollectorTests
             && binding.FieldCode is MetricFieldCode.NvmeCriticalWarning or MetricFieldCode.NvmeHealthLogRaw)
             .Select(binding => binding.MetricHandle).ToArray();
         Assert.Equal(2, selected.Length);
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         for (var capture = 1; capture <= 3; capture++)
         {
             changed = capture == 2;

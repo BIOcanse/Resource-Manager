@@ -29,12 +29,12 @@ pub const Status = enum(i32) {
 
 pub const Scope = enum(u32) {
     process = 1,
-    adapter = 2,
+    // Value 2 is retired software-grade ownership; never reuse.
 };
 
 pub const JournalScope = enum(u32) {
     process = 1,
-    software = 2,
+    // Value 2 is retired software-grade dispatch; never reuse.
 };
 
 pub const Disposition = enum(u32) {
@@ -67,12 +67,6 @@ pub const ProcessGrade = enum(i32) {
     a1 = 1,
 };
 
-pub const AdapterGrade = enum(i32) {
-    freeze = 0,
-    optimize = 1,
-    normal = 2,
-    extreme = 3,
-};
 
 pub const CreateConfig = extern struct {
     abi_version: u32,
@@ -306,8 +300,6 @@ pub fn validPrimary(primary: *const PrimaryIdentity) bool {
     return switch (primary.scope) {
         @intFromEnum(Scope.process) => primary.target_id != 0 and
             primary.process_start_key != 0 and primary.process_id != 0,
-        @intFromEnum(Scope.adapter) => primary.target_id == 0 and
-            primary.software_id != 0 and primary.process_start_key == 0 and primary.process_id == 0,
         else => false,
     };
 }
@@ -321,8 +313,6 @@ pub fn validActionIdentity(identity: *const ActionIdentity, scope: Scope) bool {
     }
     return switch (scope) {
         .process => identity.process_start_key != 0 and identity.process_id != 0,
-        .adapter => identity.software_id != 0 and
-            identity.process_start_key == 0 and identity.process_id == 0,
     };
 }
 
@@ -338,7 +328,6 @@ pub fn validOriginalBinding(binding: *const OriginalBinding, ownership_scope: Sc
     }
     return switch (ownership_scope) {
         .process => validProcessBinding(binding, .apply),
-        .adapter => validAdapterBinding(binding),
     };
 }
 
@@ -360,21 +349,6 @@ pub fn validCurrentGrades(grades: *const CurrentGrades, scope: Scope) bool {
                 GradeValid.memory => validOwnedMemoryPriority(grades.process_grade),
                 else => false,
             },
-        .adapter => blk: {
-            if (grades.valid_mask == 0 or
-                (grades.valid_mask & ~(GradeValid.cpu | GradeValid.gpu)) != 0 or
-                grades.process_grade != 0)
-            {
-                break :blk false;
-            }
-            break :blk validActiveAdapterGradeIfPresent(
-                (grades.valid_mask & GradeValid.cpu) != 0,
-                grades.cpu_grade,
-            ) and validActiveAdapterGradeIfPresent(
-                (grades.valid_mask & GradeValid.gpu) != 0,
-                grades.gpu_grade,
-            );
-        },
     };
 }
 
@@ -383,8 +357,6 @@ pub fn validPromotedGrades(grades: *const CurrentGrades, binding: *const Origina
     return switch (scope) {
         .process => grades.valid_mask == binding.grade_valid_mask and
             grades.process_grade == binding.process_to_grade,
-        .adapter => grades.valid_mask == binding.grade_valid_mask and
-            grades.cpu_grade == binding.cpu_to_grade and grades.gpu_grade == binding.gpu_to_grade,
     };
 }
 
@@ -470,7 +442,6 @@ pub fn projectTransition(
         return false;
     return switch (scope) {
         .process => projectProcessTransition(current, binding, target),
-        .adapter => projectAdapterTransition(current, binding, target),
     };
 }
 
@@ -484,7 +455,6 @@ pub fn primaryMatchesActionIdentity(primary: *const PrimaryIdentity, identity: *
             primary.software_id == identity.software_id and
             primary.process_start_key == identity.process_start_key and
             primary.process_id == identity.process_id,
-        .adapter => primary.software_id == identity.software_id,
     };
 }
 
@@ -538,30 +508,6 @@ pub fn payloadMatchesCas(record: *const Record, cas: *const OwnershipCas) bool {
         samePayload(&record.payload, &cas.payload);
 }
 
-fn validAdapterBinding(binding: *const OriginalBinding) bool {
-    if (binding.scope != @intFromEnum(JournalScope.software) or
-        binding.disposition != @intFromEnum(Disposition.apply) or
-        binding.domain_mask == 0 or (binding.domain_mask & ~(DomainBits.cpu | DomainBits.gpu)) != 0 or
-        binding.process_from_grade != 0 or binding.process_to_grade != 0)
-    {
-        return false;
-    }
-    const required = adapterGradeMask(binding.domain_mask) orelse return false;
-    return binding.grade_valid_mask == required and
-        validAdapterTransitionPair(
-            (required & GradeValid.cpu) != 0,
-            .apply,
-            binding.cpu_from_grade,
-            binding.cpu_to_grade,
-        ) and
-        validAdapterTransitionPair(
-            (required & GradeValid.gpu) != 0,
-            .apply,
-            binding.gpu_from_grade,
-            binding.gpu_to_grade,
-        );
-}
-
 fn validTransitionBinding(binding: *const OriginalBinding, ownership_scope: Scope) bool {
     if ((binding.journal_instance_low == 0 and binding.journal_instance_high == 0) or
         binding.recovery_reserved != 0 or binding.maximum_recovery_attempts == 0 or
@@ -578,7 +524,6 @@ fn validTransitionBinding(binding: *const OriginalBinding, ownership_scope: Scop
     };
     return switch (ownership_scope) {
         .process => validProcessBinding(binding, disposition),
-        .adapter => validAdapterTransitionBinding(binding, disposition),
     };
 }
 
@@ -604,86 +549,6 @@ fn projectProcessTransition(
         },
         .restore => emptyCurrentGrades(target),
     };
-}
-
-fn projectAdapterTransition(
-    current: *const CurrentGrades,
-    binding: *const OriginalBinding,
-    target: *CurrentGrades,
-) bool {
-    var expected = current.*;
-    const disposition: Disposition = @enumFromInt(binding.disposition);
-    if ((binding.domain_mask & DomainBits.cpu) != 0) {
-        const current_cpu = if ((current.valid_mask & GradeValid.cpu) != 0)
-            current.cpu_grade
-        else
-            @intFromEnum(AdapterGrade.normal);
-        if (binding.cpu_from_grade != current_cpu) return false;
-        switch (disposition) {
-            .apply => {
-                expected.valid_mask |= GradeValid.cpu;
-                expected.cpu_grade = binding.cpu_to_grade;
-            },
-            .restore => {
-                if ((current.valid_mask & GradeValid.cpu) == 0) return false;
-                expected.valid_mask &= ~GradeValid.cpu;
-                expected.cpu_grade = 0;
-            },
-        }
-    }
-    if ((binding.domain_mask & DomainBits.gpu) != 0) {
-        const current_gpu = if ((current.valid_mask & GradeValid.gpu) != 0)
-            current.gpu_grade
-        else
-            @intFromEnum(AdapterGrade.normal);
-        if (binding.gpu_from_grade != current_gpu) return false;
-        switch (disposition) {
-            .apply => {
-                expected.valid_mask |= GradeValid.gpu;
-                expected.gpu_grade = binding.gpu_to_grade;
-            },
-            .restore => {
-                if ((current.valid_mask & GradeValid.gpu) == 0) return false;
-                expected.valid_mask &= ~GradeValid.gpu;
-                expected.gpu_grade = 0;
-            },
-        }
-    }
-    target.* = expected;
-    return if (target.valid_mask == 0)
-        emptyCurrentGrades(target)
-    else
-        validCurrentGrades(target, .adapter);
-}
-
-fn validAdapterTransitionBinding(binding: *const OriginalBinding, disposition: Disposition) bool {
-    if (binding.scope != @intFromEnum(JournalScope.software) or
-        binding.domain_mask == 0 or
-        (binding.domain_mask & ~(DomainBits.cpu | DomainBits.gpu)) != 0 or
-        binding.process_from_grade != 0 or binding.process_to_grade != 0)
-    {
-        return false;
-    }
-    const required = adapterGradeMask(binding.domain_mask) orelse return false;
-    return binding.grade_valid_mask == required and
-        validAdapterTransitionPair(
-            (required & GradeValid.cpu) != 0,
-            disposition,
-            binding.cpu_from_grade,
-            binding.cpu_to_grade,
-        ) and
-        validAdapterTransitionPair(
-            (required & GradeValid.gpu) != 0,
-            disposition,
-            binding.gpu_from_grade,
-            binding.gpu_to_grade,
-        );
-}
-
-fn adapterGradeMask(domain_mask: u32) ?u32 {
-    if (domain_mask == 0 or (domain_mask & ~(DomainBits.cpu | DomainBits.gpu)) != 0) return null;
-    return (if ((domain_mask & DomainBits.cpu) != 0) GradeValid.cpu else 0) |
-        (if ((domain_mask & DomainBits.gpu) != 0) GradeValid.gpu else 0);
 }
 
 fn validProcessTransitionPair(disposition: Disposition, from: i32, to: i32) bool {
@@ -712,32 +577,6 @@ fn validProcessGrade(value: i32) bool {
 
 fn validActiveProcessGrade(value: i32) bool {
     return validProcessGrade(value) and value != @intFromEnum(ProcessGrade.normal);
-}
-
-fn validActiveAdapterGradeIfPresent(present: bool, value: i32) bool {
-    return if (present)
-        validAdapterGrade(value) and value != @intFromEnum(AdapterGrade.normal)
-    else
-        value == 0;
-}
-
-fn validAdapterGrade(value: i32) bool {
-    return value >= @intFromEnum(AdapterGrade.freeze) and value <= @intFromEnum(AdapterGrade.extreme);
-}
-
-fn validAdapterTransitionPair(
-    present: bool,
-    disposition: Disposition,
-    from: i32,
-    to: i32,
-) bool {
-    if (!present) return from == 0 and to == 0;
-    if (!validAdapterGrade(from) or !validAdapterGrade(to) or from == to) return false;
-    return switch (disposition) {
-        .apply => to != @intFromEnum(AdapterGrade.normal),
-        .restore => from != @intFromEnum(AdapterGrade.normal) and
-            to == @intFromEnum(AdapterGrade.normal),
-    };
 }
 
 fn emptyCurrentGrades(grades: *const CurrentGrades) bool {

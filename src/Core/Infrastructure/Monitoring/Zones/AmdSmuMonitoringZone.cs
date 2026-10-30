@@ -2,7 +2,6 @@ using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Application.Management;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Metrics;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.ReadWrite.Vendors.Amd.Smu;
 using ResourceManager.ReadWrite.Windows.Cpu.Models;
 
@@ -41,33 +40,21 @@ public sealed class AmdSmuMonitoringZone : MonitoringSourceZone, IDisposable
     internal CpuSensorMetrics Read(AmdSmuCpuSensorReadRequest request)
     {
         lock (gate)
-            return CanRead ? reader.Read(request) : CreateFrozen();
+            return reader.Read(request);
     }
 
     internal AmdCcdTopologyRead ReadCcdIdentities(CpuOsTopologyInformation? topology, uint maximum)
     {
         lock (gate)
-            return CanRead ? ccd.Discover(topology, maximum)
-                : new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
+            return ccd.Discover(topology, maximum);
     }
 
     internal IReadOnlyDictionary<string, double?> ReadCcd(IReadOnlyList<AmdCcdCatalogIdentity> identities,
         IReadOnlySet<string> requested)
     {
         lock (gate)
-            return CanRead ? identities.Where(identity => requested.Contains(identity.ExactIdentityKey))
-                .ToDictionary(identity => identity.ExactIdentityKey, ccd.Read, StringComparer.Ordinal)
-                : new Dictionary<string, double?>(StringComparer.Ordinal);
-    }
-
-    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
-    {
-        lock (gate)
-        {
-            base.ApplyMode(mode);
-            if (mode == ResourceManagerComputeZoneMode.Freeze)
-                try { reader.ReleaseSession(); } finally { ccd.ReleaseSession(); }
-        }
+            return identities.Where(identity => requested.Contains(identity.ExactIdentityKey))
+                .ToDictionary(identity => identity.ExactIdentityKey, ccd.Read, StringComparer.Ordinal);
     }
 
     public void Dispose()
@@ -76,16 +63,4 @@ public sealed class AmdSmuMonitoringZone : MonitoringSourceZone, IDisposable
             try { reader.Dispose(); } finally { ccd.Dispose(); }
     }
 
-    private static CpuSensorMetrics CreateFrozen()
-    {
-        return new CpuSensorMetrics(
-            new HardwareSensorProviderState(
-                "AMD SMU / PawnIO",
-                HardwareSensorProviderStates.Frozen,
-                "AMD SMU CPU 传感监控源当前处于功能区冻结。"),
-            null,
-            null,
-            null,
-            null);
-    }
 }

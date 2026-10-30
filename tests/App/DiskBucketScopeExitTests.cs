@@ -1,5 +1,4 @@
 using ResourceManager.App.Application.ResourceBreakdown;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -68,7 +67,7 @@ public sealed class DiskBucketScopeExitTests
     }
 
     [Fact]
-    public async Task FreezeReturnsBucketsImmediatelyAndResumeUsesAFreshWindowInsideTheHold()
+    public async Task NormalCaptureKeepsBucketsUntilTheHoldReturns()
     {
         using var ledger = new ResourceManagerLedgerOwner();
         var broker = new Broker();
@@ -81,23 +80,7 @@ public sealed class DiskBucketScopeExitTests
             tick = 3100;
             Feed(capture, tick);
             AssertHeld(ledger, capture);
-            reader.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            AssertReleased(ledger);
-            Assert.Equal(0, capture.RetainedPairCount);
-            Assert.Equal(0, broker.ActiveSubscriptions);
-            var frozen = reader.Read(includeObservedTraffic: true);
-            Assert.Equal(PhysicalDiskIoProviderStates.Frozen, frozen.ProviderState.State);
-            Assert.Empty(frozen.Processes);
-            Assert.Null(frozen.ObservedTraffic);
             await Task.Yield();
-            AssertReleased(ledger);
-
-            reader.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-            Assert.Equal(2, broker.Bindings);
-            AssertReleased(ledger);
-            Assert.Empty(reader.Read().Processes);
-            tick = 5200;
-            Feed(capture, tick);
             AssertHeld(ledger, capture);
             AssertPublished(reader.Read(includeObservedTraffic: true));
         });

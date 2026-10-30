@@ -4,7 +4,6 @@ public static class SystemInterruptProviderStates
 {
     public const string Running = "running";
     public const string Warming = "warming";
-    public const string Frozen = "frozen";
     public const string Unavailable = "unavailable";
     public const string Idle = "idle";
     public const string Starting = "starting";

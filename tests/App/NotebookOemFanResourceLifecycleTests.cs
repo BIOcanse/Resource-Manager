@@ -1,8 +1,6 @@
 using System.Collections.Immutable;
 using System.Reflection;
 using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Application.Adaptation;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -54,26 +52,7 @@ public sealed class NotebookOemFanResourceLifecycleTests
         Assert.Equal(2, sessions.Count);
     }
 
-    [Fact]
-    public void FreezeThroughTheRegisteredInterfaceReleasesAndNormalWaitsForAnExplicitRead()
-    {
-        var sessions = new List<RecordedSession>();
-        using var zone = CreateZone(() => Supported, () => "freeze.dll", _ =>
-        {
-            var session = new RecordedSession(_ => 0); sessions.Add(session); return session;
-        });
-        zone.ReadSensors();
-        IResourceManagerSelfComputeZone registeredZone = zone;
-        registeredZone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Equal(1, sessions[0].Releases);
-        Assert.Equal(HardwareSensorProviderStates.Frozen, zone.ReadSensors().ProviderState.State);
-        zone.SynchronizeDemand(true);
-        Assert.Single(sessions);
-        registeredZone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-        Assert.Single(sessions);
-        zone.ReadSensors();
-        Assert.Equal(2, sessions.Count);
-    }
+
 
     [Fact]
     public void RetiringTheConfiguredFirmwareProviderReleasesWithoutChangingTheReadImplementation()
@@ -199,7 +178,7 @@ public sealed class NotebookOemFanResourceLifecycleTests
             gpuEngineZone: null!, systemIoZone: null!, nvidiaZone: null!, nvidiaNvapiZone: null!, amdAdlxZone: null!, amdSmuZone: null!,
             integratedGpuSensorRoute: new AmdIntegratedGpuSensorRoute(), platformSensorReader: new(null!, null!, zone),
             metricSnapshotOwner: null!, metricCatalog: new HardwareMetricCatalogState(),
-            monitoringSourceZoneRegistry: new MonitoringSourceZoneRegistry([]), samplingSubscriptionOwner: subscriptions.Owner,
+ samplingSubscriptionOwner: subscriptions.Owner,
             runtimePlanProvider: subscriptions.Provider, logger: NullLogger<WindowsHardwareMetricSampler>.Instance);
 
     private sealed class RecordedSession(Func<int, int> read) : IUwAcpiReadSession

@@ -1,4 +1,4 @@
-﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Collections.Concurrent;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
@@ -137,15 +137,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
 
     private void ObserveSessionFailure(Exception error)
         => availability.ReportFailure(BlockUids.DxgkrnlVidMmEtwTelemetryZone, error, RequiredProviders);
-
-    private async Task AwaitReleasedAsync(Task dispatch)
-    {
-        await dispatch.ConfigureAwait(false);
-        Task drain;
-        lock (sessionGate) drain = activeRun is { StopNotification.IsCancellationRequested: true } current
-            ? current.Completed.Task : Task.CompletedTask;
-        await drain.ConfigureAwait(false);
-    }
 
     private sealed class VidMmRun(CancellationToken stopNotification)
     {

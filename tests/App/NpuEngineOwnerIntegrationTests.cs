@@ -332,10 +332,10 @@ public sealed class NpuEngineOwnerIntegrationTests
             ulong counter, ulong ticks, DateTimeOffset at)
         {
             var binding = catalog.RuleBindings.Values.Single(static rule => rule.FieldCode == MetricFieldCode.NpuEngineReportedRunningTimeRatioPercent);
-            var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceModeInput
+            var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceStateInput
             {
-                StructSize = Size<NativeMetricSnapshotSourceModeInput>(), SourceHandle = source.SourceHandle,
-                CapabilityGeneration = source.CapabilityMask, ZoneMode = (uint)NativeMetricSnapshotZoneMode.Normal,
+                StructSize = Size<NativeMetricSnapshotSourceStateInput>(), SourceHandle = source.SourceHandle,
+                CapabilityGeneration = source.CapabilityMask,
                 Availability = (uint)NativeMetricSnapshotSourceAvailability.Available
             }).ToArray();
             var input = new NativeMetricSnapshotPlanInput

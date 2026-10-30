@@ -36,8 +36,8 @@ public sealed partial class NetworkCounterInformationCollectorTests
 
         var binding = catalog.MetricBindings.Values.First(item => item.SourceId == "windows.network-interface"
             && item.FieldCode == MetricFieldCode.NetworkRxOctets);
-        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var plan = workspace.PlanCollection([binding.MetricHandle], modes, false, now);
         var sourcePlan = Assert.Single(plan.Sources);
         api.Transform = _ => null;

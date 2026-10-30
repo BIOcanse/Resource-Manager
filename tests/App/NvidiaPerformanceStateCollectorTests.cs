@@ -68,8 +68,8 @@ public sealed class NvidiaPerformanceStateCollectorTests
         Assert.All(selected, static binding => { Assert.Equal("nvidia.nvml", binding.SourceId); Assert.Equal("unsigned64", binding.Field!.ValueKind); });
         Assert.InRange(workspace.Capacity.ResidentByteCount,1UL,64UL * 1024 * 1024);
         var now = DateTimeOffset.UtcNow; workspace.ReplaceCatalog(catalog, now);
-        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,1,
-            NativeMetricSnapshotZoneMode.Normal,NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle,1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         for (var phase = 0; phase < 3; phase++)
         {
             var at = now.AddSeconds(phase + 1);
@@ -125,10 +125,8 @@ public sealed class NvidiaPerformanceStateCollectorTests
         });
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("No NUMA demand"),
             () => throw new InvalidOperationException("No memory demand"));
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(),memory,null!,inventoryZone,
-            null!,null!,null!,zone,null!,null!,null!,new AmdIntegratedGpuSensorRoute(),null!,owner,dashboard,registry,
+            null!,null!,null!,zone,null!,null!,null!,new AmdIntegratedGpuSensorRoute(),null!,owner,dashboard,
             slots.Owner,slots.Provider,NullLogger<WindowsHardwareMetricSampler>.Instance);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!,device,[Name]);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

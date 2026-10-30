@@ -43,20 +43,19 @@ public sealed partial class DeviceTopologySnapshotProvider
         => new(() =>
         {
             lock (publicationGate)
-                return Volatile.Read(ref disposed) == 0 && (outer?.IsActive() ?? true) && NvidiaDrsZone.CanRead;
+                return Volatile.Read(ref disposed) == 0 && (outer?.IsActive() ?? true);
         }, publish =>
         {
             // Direct survives Stop, but a queued direct request may not publish after provider Dispose.
-            // All actual Host captures enter publication -> owner token -> zone, never the reverse.
+            // All actual Host captures enter publication -> owner token, never the reverse.
             lock (publicationGate)
             {
                 if (Volatile.Read(ref disposed) != 0) return false;
                 var committed = false;
-                var zoneAccepted = false;
-                void InZone() => zoneAccepted = NvidiaDrsZone.TryPublishDrs(() => { publish(); committed = true; });
+                void Commit() { publish(); committed = true; }
                 var accepted = outer is null;
-                if (outer is null) InZone(); else accepted = outer.TryPublish(InZone);
-                return accepted && zoneAccepted && committed;
+                if (outer is null) Commit(); else accepted = outer.TryPublish(Commit);
+                return accepted && committed;
             }
         }, () => outer?.HasCurrentDemand() ?? true);
 

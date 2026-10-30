@@ -1,11 +1,7 @@
-﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Collections.Concurrent;
 using Microsoft.Diagnostics.Tracing;
-using ResourceManager.Adapter;
-using ResourceManager.App.Application.Adaptation;
-using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.ReadWrite.Windows.Devices;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
@@ -18,12 +14,11 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     BusinessBlockScheduler controller,
     BusinessBlockDiagnosticsRegistry diagnostics,
     NativeEtwSessionAvailability availability,
-    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IBusinessBlock, IResourceManagerSelfComputeZone
+    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IBusinessBlock
 {
     public const string ProviderStateId = "dxgkrnl-vidmm-etw";
     private const string ProviderName = "Microsoft-Windows-DxgKrnl";
     private const ulong DxgKrnlKeywords = 0x40UL | 0x80UL | 0x10000UL | 0x100000UL | 0x200000UL | 0x20000000UL;
-    private static readonly ulong ZoneObjectKey = AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwDxgkrnlVidMm}");
     private static readonly string SessionName = ResourceManagerEtwSessionNames.Create(
         ResourceManagerEtwSessionNames.DxgkrnlVidMmPrefix, ResourceManagerEtwSessionNames.CurrentOwner);
     private static readonly string[] ProcessIdPayloadNames = ["ProcessId", "ProcessID", "Pid", "PID", "OwnerProcessId", "OwnerProcessID"];
@@ -34,13 +29,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     private long nextPruneUtcTicks;
     private readonly Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess = WindowsNetworkEndpointProcessLease.Open;
     private readonly Func<string, IVidMmEtwSession> createSession = name => new TraceEventVidMmSession(name, ProviderName, DxgKrnlKeywords);
-    private ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
-    private readonly ResourceManager.Shared.BusinessBlocks.State.StateCell<bool> unfrozen =
-        ComputeZoneModeCell.ClaimUnfrozen(controller.Authority, ResourceManager.App.StateItems.StateItemUids.VidMmUnfrozen);
 
-    public ulong ZoneKey => ZoneObjectKey;
-    public string DisplayName => MonitoringSourceZoneIds.EtwDxgkrnlVidMm;
-    public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
     public string State => controller.ReadState(BlockUids.DxgkrnlVidMmEtwTelemetryZone).ToString();
     public string Message => diagnostics.Read(BlockUids.DxgkrnlVidMmEtwTelemetryZone).Result?.Outcome == BusinessBlockOutcome.Failed ? "etw-session-failed" : string.Empty;
     internal DxgkrnlVidMmEtwTelemetryZone(ILogger<DxgkrnlVidMmEtwTelemetryZone> logger,
@@ -71,14 +60,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     internal bool MatchesCurrentProcess(DxgkrnlVidMmEtwMemoryEvidence evidence)
         => evidence.ProcessStartKey > 0 && ReadProcessBirth(evidence.ProcessId) == evidence.ProcessStartKey;
 
-    public void ApplyMode(ResourceManagerComputeZoneMode mode) => _ = ApplyModeAsync(mode);
-    internal Task ApplyModeAsync(ResourceManagerComputeZoneMode mode)
-    {
-        currentComputeMode = mode;
-        var dispatch = unfrozen.PublishAsync(mode != ResourceManagerComputeZoneMode.Freeze,
-            new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwDxgkrnlVidMm, controller.CurrentPlanVersion));
-        return mode == ResourceManagerComputeZoneMode.Freeze ? AwaitReleasedAsync(dispatch) : dispatch;
-    }
     private bool OnDynamicEvent(TraceEvent data, ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence)
     {
         try

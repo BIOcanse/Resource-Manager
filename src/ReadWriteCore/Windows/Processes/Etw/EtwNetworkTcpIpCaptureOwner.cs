@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -13,14 +13,12 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
     private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.NetworkTCPIP;
 
     private readonly IKernelEtwSessionBroker kernelEtwBroker;
-    private readonly Func<bool> canRead;
     private readonly KernelEtwDiagnostics logger;
 
     public EtwNetworkTcpIpCaptureOwner(IKernelEtwSessionBroker broker,
-        Func<bool>? canRead = null, KernelEtwDiagnostics? diagnostics = null)
+        KernelEtwDiagnostics? diagnostics = null)
     {
         kernelEtwBroker = broker ?? throw new ArgumentNullException(nameof(broker));
-        this.canRead = canRead ?? (static () => true);
         logger = diagnostics ?? new();
     }
 
@@ -45,8 +43,8 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
     private volatile string message = "ETW 网络事件归因按需启动。";
 
     internal EtwNetworkTcpIpCaptureOwner(IKernelEtwSessionBroker broker,
-        Func<bool> canRead, KernelEtwDiagnostics diagnostics, Func<long> clock)
-        : this(broker, canRead, diagnostics)
+        KernelEtwDiagnostics diagnostics, Func<long> clock)
+        : this(broker, diagnostics)
     {
         readTickMilliseconds = clock ?? throw new ArgumentNullException(nameof(clock));
     }
@@ -64,18 +62,6 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
 
     private NetworkAttributionSnapshot ReadCore(bool includeObservedTraffic)
     {
-        if (!canRead())
-        {
-            InvalidateFrozenWindow(readTickMilliseconds());
-            return new NetworkAttributionSnapshot(
-                DateTimeOffset.UtcNow,
-                new Dictionary<int, NetworkProcessAttribution>(),
-                new NetworkAttributionProviderState(
-                    "etw-network-tcpip",
-                    NetworkAttributionProviderStates.Frozen,
-                    "ETW 网络事件归因当前处于功能区冻结。"),
-                new Dictionary<int, NetworkProcessAttribution>());
-        }
 
         if (kernelSubscription is null)
             return new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
@@ -101,14 +87,12 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
             || brokerAfter.Generation != Volatile.Read(ref sessionGeneration)
             || brokerAfter.EventsLost != brokerBefore.EventsLost
             || (processSnapshots.WindowRevision != 0
-                && processSnapshots.WindowRevision != Volatile.Read(ref windowRevision))
-            || !canRead())
+                && processSnapshots.WindowRevision != Volatile.Read(ref windowRevision)))
         {
             RefreshBrokerState(brokerAfter);
             processSnapshots = ProcessSnapshots.Empty;
             observedTraffic = null;
-            if (!canRead()) InvalidateFrozenWindow(nowTickMilliseconds);
-            else if (brokerAfter.IsRunning && brokerAfter.Generation == Volatile.Read(ref sessionGeneration)) state = NetworkAttributionProviderStates.Warming;
+            if (brokerAfter.IsRunning && brokerAfter.Generation == Volatile.Read(ref sessionGeneration)) state = NetworkAttributionProviderStates.Warming;
         }
         return new NetworkAttributionSnapshot(
             now,
@@ -263,13 +247,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
                 || !ReferenceEquals(destination, Volatile.Read(ref events)))
             { Reject("stale-binding"); return; }
             if (observedTick <= incompleteThroughTick) { Reject("incomplete-window"); return; }
-            if (!canRead())
-            {
-                ClearEventsCore(destination);
-                incompleteThroughTick = observedTick;
-                Reject("frozen");
-                return;
-            }
+
             if (retainedEventCount >= MaximumRetainedEvents)
             {
                 ClearEventsCore(destination);
@@ -370,17 +348,6 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
             retainedEventCount = 0;
             windowRevision = checked(windowRevision + 1);
         }
-    }
-
-    private void InvalidateFrozenWindow(long observedTick)
-    {
-        lock (eventGate)
-        {
-            ClearEventsCore(Volatile.Read(ref events));
-            incompleteThroughTick = observedTick;
-        }
-        state = NetworkAttributionProviderStates.Frozen;
-        message = "ETW 网络事件归因当前处于功能区冻结。";
     }
 
     private static bool LeavesHost(IPAddress? remoteAddress)

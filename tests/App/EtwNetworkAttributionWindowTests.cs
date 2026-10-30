@@ -146,7 +146,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
     }
 
     private static EtwNetworkTcpIpAttributionReader NewReader(Broker broker, Func<long> clock)
-        => StartReader(new(new EtwNetworkTcpIpMonitoringZone(), broker,
+        => StartReader(new(broker,
             NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock, pid => new ProcessLease(pid, 100)), broker);
 
     private static EtwNetworkTcpIpAttributionReader StartReader(EtwNetworkTcpIpAttributionReader reader, Broker broker)

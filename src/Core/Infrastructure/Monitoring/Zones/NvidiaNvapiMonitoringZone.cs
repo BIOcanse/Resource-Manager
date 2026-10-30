@@ -1,6 +1,5 @@
 using ResourceManager.ReadWrite.Vendors.Nvidia;
 using ResourceManager.App.Application.Monitoring;
-using ResourceManager.App.Domain.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -16,26 +15,16 @@ public sealed class NvidiaNvapiMonitoringZone : MonitoringSourceZone, IDisposabl
 
     internal NvidiaDrsSnapshot? ReadDrs(IReadOnlyList<NvidiaDrsProfileRequest> profiles, NvidiaDrsReadLimits limits, CancellationToken token)
     {
-        lock (gate) return CanRead ? reader.ReadDrs(profiles, limits, token) : null;
+        lock (gate) return reader.ReadDrs(profiles, limits, token);
     }
     internal NvidiaDrsSnapshot? DiscoverDrs(NvidiaDrsReadLimits limits, CancellationToken token)
     {
-        lock (gate) return CanRead ? reader.DiscoverDrs(limits, token) : null;
+        lock (gate) return reader.DiscoverDrs(limits, token);
     }
-    internal bool TryPublishDrs(Action publish) => TryPublishWhileReadable(publish);
     // DI owns the original zone; a failed close retains this same reader for explicit retry.
     public void Dispose()
     {
         lock (gate) reader.Dispose();
-    }
-
-    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
-    {
-        lock (gate)
-        {
-            base.ApplyMode(mode);
-            if (mode == ResourceManagerComputeZoneMode.Freeze) reader.ReleaseSession();
-        }
     }
 
     internal Task<IReadOnlyList<NvidiaNvapiGpuSensor>> ReadAsync(
@@ -44,7 +33,6 @@ public sealed class NvidiaNvapiMonitoringZone : MonitoringSourceZone, IDisposabl
         CancellationToken cancellationToken)
     {
         lock (gate)
-            return CanRead ? reader.ReadAsync(request, windowsInventory, cancellationToken)
-                : Task.FromResult<IReadOnlyList<NvidiaNvapiGpuSensor>>([]);
+            return reader.ReadAsync(request, windowsInventory, cancellationToken);
     }
 }

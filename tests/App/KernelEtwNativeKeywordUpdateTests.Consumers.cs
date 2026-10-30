@@ -34,7 +34,7 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         using var cpu = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
             NullLogger<EtwCpuCoreResidencyReader>.Instance);
         using var cpuDemand = cpu.AcquireSubscription("owned.native.cpu", TimeSpan.FromMilliseconds(100));
-        using var network = new EtwNetworkTcpIpAttributionReader(new EtwNetworkTcpIpMonitoringZone(), broker,
+        using var network = new EtwNetworkTcpIpAttributionReader(broker,
             NullLogger<EtwNetworkTcpIpAttributionReader>.Instance);
         using var interrupts = new EtwSystemInterruptSnapshotSource(broker, sampling.Owner,
             NullLogger<EtwSystemInterruptSnapshotSource>.Instance);

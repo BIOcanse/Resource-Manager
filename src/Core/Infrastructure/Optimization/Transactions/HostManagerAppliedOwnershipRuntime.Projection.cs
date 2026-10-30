@@ -256,11 +256,6 @@ internal static class HostManagerAppliedOwnershipProjection
                 ProcessStartKey = binding.ActionIdentity.ProcessStartKey,
                 ProcessId = binding.ActionIdentity.ProcessId
             },
-            NativeTransactionJournalScope.Software => new NativeAppliedOwnershipPrimaryIdentity
-            {
-                Scope = (uint)NativeAppliedOwnershipScope.Adapter,
-                SoftwareId = binding.ActionIdentity.SoftwareId
-            },
             _ => throw new ArgumentOutOfRangeException(nameof(binding))
         };
 

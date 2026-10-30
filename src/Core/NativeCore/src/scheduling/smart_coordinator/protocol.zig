@@ -2,7 +2,7 @@ const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const base_score_tier = @import("../base_score_tier.zig");
 
-pub const abi_version: u32 = 0x000b_0001;
+pub const abi_version: u32 = 0x000c_0001;
 
 /// Actual canonical storage, separate from configured Capacity ceilings.
 pub const WorkspaceCapacity = extern struct {
@@ -22,7 +22,6 @@ pub const WorkspaceCapacity = extern struct {
     growth: growth.Log,
 };
 pub const runtime_state_count: usize = 7;
-pub const adapter_grade_count: u8 = 4;
 
 pub const Status = enum(i32) {
     ok = 0,
@@ -79,16 +78,8 @@ pub const ProcessGrade = struct {
     pub const a1: i8 = 1;
 };
 
-pub const AdapterGrade = enum(u8) {
-    freeze = 0,
-    optimize = 1,
-    normal = 2,
-    extreme = 3,
-};
-
 pub const ActionScope = enum(u8) {
     process_policy = 1,
-    adapter_software = 2,
 };
 
 pub const ActionDisposition = enum(u8) {
@@ -116,19 +107,15 @@ pub const ConfigFields = struct {
     pub const capacities: u64 = 1 << 0;
     pub const timing: u64 = 1 << 1;
     pub const process_scoring: u64 = 1 << 2;
-    pub const cpu_adapter_policy: u64 = 1 << 3;
-    pub const gpu_adapter_policy: u64 = 1 << 4;
     pub const features: u64 = 1 << 5;
     pub const required: u64 = capacities | timing | process_scoring |
-        cpu_adapter_policy | gpu_adapter_policy | features;
+        features;
 };
 
 pub const FeatureFlags = struct {
     pub const process_policy: u64 = 1 << 0;
-    pub const adapter_cpu: u64 = 1 << 1;
-    pub const adapter_gpu: u64 = 1 << 2;
     pub const critical_events: u64 = 1 << 3;
-    pub const known: u64 = process_policy | adapter_cpu | adapter_gpu | critical_events;
+    pub const known: u64 = process_policy | critical_events;
 };
 
 pub const CycleValidity = struct {
@@ -155,19 +142,13 @@ pub const InputValidity = struct {
     pub const surface_facts: u64 = 1 << 4;
     pub const eligibility: u64 = 1 << 5;
     pub const protection: u64 = 1 << 6;
-    pub const cpu_capabilities: u64 = 1 << 7;
-    pub const gpu_capabilities: u64 = 1 << 8;
     pub const metric: u64 = 1 << 9;
     pub const applied_process_grade: u64 = 1 << 10;
-    pub const applied_cpu_grade: u64 = 1 << 11;
-    pub const applied_gpu_grade: u64 = 1 << 12;
     pub const process_score: u64 = 1 << 13;
     pub const software_score: u64 = 1 << 14;
     pub const score_member_count: u64 = 1 << 15;
     pub const known: u64 = process_identity | software_identity | software_kind |
-        base_score | surface_facts | eligibility | protection | cpu_capabilities |
-        gpu_capabilities | metric | applied_process_grade | applied_cpu_grade |
-        applied_gpu_grade | process_score | software_score | score_member_count;
+        base_score | surface_facts | eligibility | protection | metric | applied_process_grade | process_score | software_score | score_member_count;
 };
 
 pub const InputFlags = struct {
@@ -179,36 +160,29 @@ pub const InputFlags = struct {
     pub const process_cpu_metrics_complete: u64 = 1 << 5;
     pub const process_gpu_metrics_complete: u64 = 1 << 6;
     pub const can_apply_process_policy: u64 = 1 << 7;
-    pub const can_apply_adapter_policy: u64 = 1 << 8;
     pub const hardware_scheduling_eligible: u64 = 1 << 9;
     pub const owns_process_grade: u64 = 1 << 10;
-    pub const owns_cpu_grade: u64 = 1 << 11;
-    pub const owns_gpu_grade: u64 = 1 << 12;
     pub const known: u64 = running | foreground_focused | has_visible_window |
         has_background_window | has_hidden_window | process_cpu_metrics_complete |
         process_gpu_metrics_complete | can_apply_process_policy |
-        can_apply_adapter_policy | hardware_scheduling_eligible |
-        owns_process_grade | owns_cpu_grade | owns_gpu_grade;
+        hardware_scheduling_eligible |
+        owns_process_grade;
 };
 
 pub const GradeDomains = struct {
     pub const process: u8 = 1 << 0;
-    pub const cpu: u8 = 1 << 1;
-    pub const gpu: u8 = 1 << 2;
-    pub const known: u8 = process | cpu | gpu;
+
+    pub const known: u8 = process;
 };
 
 pub const ActionValidity = struct {
     pub const process_identity: u64 = 1 << 0;
     pub const software_identity: u64 = 1 << 1;
     pub const process_grade: u64 = 1 << 2;
-    pub const cpu_grade: u64 = 1 << 3;
-    pub const gpu_grade: u64 = 1 << 4;
     pub const cpu_score: u64 = 1 << 5;
     pub const atomic_group: u64 = 1 << 6;
-    pub const gpu_score: u64 = 1 << 7;
     pub const known: u64 = process_identity | software_identity | process_grade |
-        cpu_grade | gpu_grade | cpu_score | atomic_group | gpu_score;
+        cpu_score | atomic_group;
 };
 
 pub const ActionFlags = struct {
@@ -222,19 +196,13 @@ pub const ActionFlags = struct {
 pub const FeedbackValidity = struct {
     pub const completed_at: u64 = 1 << 0;
     pub const actual_process_grade: u64 = 1 << 1;
-    pub const actual_cpu_grade: u64 = 1 << 2;
-    pub const actual_gpu_grade: u64 = 1 << 3;
-    pub const known: u64 = completed_at | actual_process_grade |
-        actual_cpu_grade | actual_gpu_grade;
+    pub const known: u64 = completed_at | actual_process_grade;
 };
 
 pub const FeedbackFlags = struct {
     pub const process_owned: u32 = 1 << 0;
-    pub const cpu_owned: u32 = 1 << 1;
-    pub const gpu_owned: u32 = 1 << 2;
     pub const rollback_payload_persisted: u32 = 1 << 3;
-    pub const known: u32 = process_owned | cpu_owned | gpu_owned |
-        rollback_payload_persisted;
+    pub const known: u32 = process_owned | rollback_payload_persisted;
 };
 
 pub const SnapshotFlags = struct {
@@ -249,15 +217,10 @@ pub const SnapshotFlags = struct {
 
 pub const SnapshotRowFlags = struct {
     pub const process_owned: u32 = 1 << 0;
-    pub const cpu_owned: u32 = 1 << 1;
-    pub const gpu_owned: u32 = 1 << 2;
     pub const process_inflight: u32 = 1 << 3;
-    pub const cpu_inflight: u32 = 1 << 4;
-    pub const gpu_inflight: u32 = 1 << 5;
     pub const freeze_ready: u32 = 1 << 6;
     pub const critical_fact: u32 = 1 << 7;
-    pub const known: u32 = process_owned | cpu_owned | gpu_owned |
-        process_inflight | cpu_inflight | gpu_inflight | freeze_ready |
+    pub const known: u32 = process_owned | process_inflight | freeze_ready |
         critical_fact;
 };
 
@@ -282,9 +245,6 @@ pub const Reason = struct {
     pub const freeze_group_blocked: u64 = 1 << 17;
     pub const awaiting_stability: u64 = 1 << 18;
     pub const applied_matches_desired: u64 = 1 << 19;
-    pub const cpu_capability_missing: u64 = 1 << 20;
-    pub const gpu_capability_missing: u64 = 1 << 21;
-    pub const capability_clamped: u64 = 1 << 22;
     pub const critical_fact_changed: u64 = 1 << 23;
     pub const critical_membership_changed: u64 = 1 << 24;
     pub const startup_grace_active: u64 = 1 << 25;
@@ -300,15 +260,8 @@ pub const Reason = struct {
     pub const atomic_group_compensation: u64 = 1 << 35;
     pub const reservation_timed_out: u64 = 1 << 37;
     pub const known: u64 = ((@as(u64, 1) << 38) - 1) &
-        ~(@as(u64, reserved_process_reason5) | reserved_process_reason15 |
+        ~(@as(u64, reserved_process_reason5) | reserved_process_reason15 | (@as(u64, 7) << 20) |
             reserved_process_reason16 | (@as(u64, 1) << 36));
-};
-
-pub const AdapterPolicyConfig = extern struct {
-    state_multipliers: [runtime_state_count]f64,
-    extreme_minimum_score: f64,
-    normal_minimum_score: f64,
-    optimize_minimum_score: f64,
 };
 
 pub const Config = extern struct {
@@ -346,8 +299,6 @@ pub const Config = extern struct {
     high_tier_minimum_base_score: f64,
     middle_tier_minimum_base_score: f64,
 
-    cpu_adapter: AdapterPolicyConfig,
-    gpu_adapter: AdapterPolicyConfig,
     reserved: [4]u64,
 };
 
@@ -406,12 +357,8 @@ pub const InputRow = extern struct {
     process_id: u32,
     device_index: u32,
     score_member_count: u32,
-    cpu_capability_mask: u8,
-    gpu_capability_mask: u8,
     applied_process_grade: i8,
-    applied_cpu_grade: u8,
-    applied_gpu_grade: u8,
-    reserved2: [3]u8,
+    reserved2: [7]u8,
     process_score: f64,
     software_score: f64,
 };
@@ -441,12 +388,7 @@ pub const Action = extern struct {
     reserved0: u8,
     from_process_grade: i8,
     to_process_grade: i8,
-    from_cpu_grade: u8,
-    to_cpu_grade: u8,
-    from_gpu_grade: u8,
-    to_gpu_grade: u8,
     reserved1: [2]u8,
-    gpu_score: f64,
 };
 
 pub const Feedback = extern struct {
@@ -465,9 +407,7 @@ pub const Feedback = extern struct {
     status: u8,
     scope: u8,
     actual_process_grade: i8,
-    actual_cpu_grade: u8,
-    actual_gpu_grade: u8,
-    reserved0: [3]u8,
+    reserved0: [5]u8,
     reserved1: u64,
 };
 
@@ -514,13 +454,9 @@ pub const SnapshotRow = extern struct {
     cpu_occupancy_percent: f64,
     reserved_process_score0: f64,
     reserved_process_ratio0: f64,
-    adapter_cpu_score: f64,
-    adapter_gpu_score: f64,
     source_index: u32,
     process_id: u32,
     process_pending_count: u32,
-    cpu_pending_count: u32,
-    gpu_pending_count: u32,
     failure_count: u32,
     row_kind: u8,
     software_kind: u8,
@@ -529,30 +465,12 @@ pub const SnapshotRow = extern struct {
     desired_process_grade: i8,
     applied_process_grade: i8,
     pending_process_grade: i8,
-    desired_cpu_grade: u8,
-    applied_cpu_grade: u8,
-    pending_cpu_grade: u8,
-    desired_gpu_grade: u8,
-    applied_gpu_grade: u8,
-    pending_gpu_grade: u8,
-    cpu_capability_mask: u8,
-    gpu_capability_mask: u8,
     reserved0: u8,
     reserved1: u64,
 };
 
 pub fn isValidProcessGrade(value: i8) bool {
     return value >= ProcessGrade.level4 and value <= ProcessGrade.a1;
-}
-
-pub fn isValidAdapterGrade(value: u8) bool {
-    return value <= @intFromEnum(AdapterGrade.extreme);
-}
-
-pub fn isValidCapabilityMask(mask: u8) bool {
-    const known: u8 = (@as(u8, 1) << adapter_grade_count) - 1;
-    return (mask & ~known) == 0 and
-        (mask == 0 or (mask & (@as(u8, 1) << @intFromEnum(AdapterGrade.normal))) != 0);
 }
 
 pub fn isValidConfig(config: *const Config) bool {
@@ -573,10 +491,7 @@ pub fn validateConfig(config: *const Config) Status {
     {
         return .invalid_argument;
     }
-    const maximum_entities = std.math.add(u32, config.max_processes, config.max_software_groups) catch return .invalid_argument;
-    const maximum_adapter_reservations = std.math.mul(u32, config.max_software_groups, 2) catch return .invalid_argument;
-    const maximum_reservations = std.math.add(u32, config.max_processes, maximum_adapter_reservations) catch return .invalid_argument;
-    if (config.max_actions < maximum_entities or config.max_reservations < maximum_reservations or
+    if (config.max_actions < config.max_processes or config.max_reservations < config.max_processes or
         config.max_atomic_groups < config.max_processes) return .invalid_argument;
     if (config.normal_interval_ms == 0 or config.event_interval_ms == 0 or
         config.event_boost_rounds == 0 or config.game_start_grace_ms == 0 or
@@ -613,10 +528,7 @@ pub fn validateConfig(config: *const Config) Status {
     {
         return .invalid_argument;
     }
-    if (!isValidAdapterPolicy(&config.cpu_adapter) or
-        !isValidAdapterPolicy(&config.gpu_adapter) or
-        !stateMultipliersEqual(config.cpu_adapter.state_multipliers, config.process_state_multipliers) or
-        !scoreRangeRemainsFinite(config)) return .invalid_argument;
+    if (!scoreRangeRemainsFinite(config)) return .invalid_argument;
     return .ok;
 }
 
@@ -677,11 +589,7 @@ pub fn validateInputRow(row: *const InputRow, expected_source_index: u32) Status
             (row.flags & process_only_flags) != 0) return .invalid_argument;
     }
     if ((row.valid_mask & InputValidity.base_score) != 0 and !finitePercent(row.base_score)) return .invalid_argument;
-    if ((row.valid_mask & InputValidity.cpu_capabilities) != 0 and !isValidCapabilityMask(row.cpu_capability_mask)) return .invalid_argument;
-    if ((row.valid_mask & InputValidity.gpu_capabilities) != 0 and !isValidCapabilityMask(row.gpu_capability_mask)) return .invalid_argument;
     if ((row.valid_mask & InputValidity.applied_process_grade) != 0 and !isValidProcessGrade(row.applied_process_grade)) return .invalid_argument;
-    if ((row.valid_mask & InputValidity.applied_cpu_grade) != 0 and !isValidAdapterGrade(row.applied_cpu_grade)) return .invalid_argument;
-    if ((row.valid_mask & InputValidity.applied_gpu_grade) != 0 and !isValidAdapterGrade(row.applied_gpu_grade)) return .invalid_argument;
 
     const metric_valid = (row.valid_mask & InputValidity.metric) != 0;
     const metric: MetricKind = @enumFromInt(row.metric_kind);
@@ -716,12 +624,7 @@ pub fn validateInputRow(row: *const InputRow, expected_source_index: u32) Status
     }
 
     const owns_process = (row.flags & InputFlags.owns_process_grade) != 0;
-    const owns_cpu = (row.flags & InputFlags.owns_cpu_grade) != 0;
-    const owns_gpu = (row.flags & InputFlags.owns_gpu_grade) != 0;
     if (owns_process and (row.valid_mask & InputValidity.applied_process_grade) == 0) return .invalid_argument;
-    if (owns_cpu and (row.valid_mask & InputValidity.applied_cpu_grade) == 0) return .invalid_argument;
-    if (owns_gpu and (row.valid_mask & InputValidity.applied_gpu_grade) == 0) return .invalid_argument;
-    if ((row.valid_mask & (InputValidity.applied_cpu_grade | InputValidity.applied_gpu_grade)) != 0 and !has_software) return .invalid_argument;
     return .ok;
 }
 
@@ -736,18 +639,13 @@ pub fn validateFeedback(feedback: *const Feedback) Status {
         (feedback.valid_mask & ~FeedbackValidity.known) != 0 or
         feedback.status < @intFromEnum(FeedbackStatus.succeeded) or
         feedback.status > @intFromEnum(FeedbackStatus.state_uncertain) or
-        feedback.scope < @intFromEnum(ActionScope.process_policy) or
-        feedback.scope > @intFromEnum(ActionScope.adapter_software) or
+        feedback.scope != @intFromEnum(ActionScope.process_policy) or
         !allZero(u8, &feedback.reserved0) or feedback.reserved1 != 0)
     {
         return .invalid_argument;
     }
     if ((feedback.valid_mask & FeedbackValidity.actual_process_grade) != 0 and
         !isValidProcessGrade(feedback.actual_process_grade)) return .invalid_argument;
-    if ((feedback.valid_mask & FeedbackValidity.actual_cpu_grade) != 0 and
-        !isValidAdapterGrade(feedback.actual_cpu_grade)) return .invalid_argument;
-    if ((feedback.valid_mask & FeedbackValidity.actual_gpu_grade) != 0 and
-        !isValidAdapterGrade(feedback.actual_gpu_grade)) return .invalid_argument;
     return .ok;
 }
 
@@ -774,46 +672,6 @@ pub fn fillCapacity(config: *const Config, capacity: *Capacity) void {
     };
 }
 
-fn isValidAdapterPolicy(policy: *const AdapterPolicyConfig) bool {
-    for (policy.state_multipliers) |value| if (!finiteNonNegative(value)) return false;
-    return policy.state_multipliers[@intFromEnum(RuntimeState.not_running)] == 0 and
-        finiteNonNegative(policy.extreme_minimum_score) and
-        finiteNonNegative(policy.normal_minimum_score) and
-        finiteNonNegative(policy.optimize_minimum_score) and
-        policy.optimize_minimum_score <= policy.normal_minimum_score and
-        policy.normal_minimum_score <= policy.extreme_minimum_score;
-}
-
-fn stateMultipliersEqual(left: [runtime_state_count]f64, right: [runtime_state_count]f64) bool {
-    for (left, right) |left_value, right_value| {
-        if (left_value != right_value) return false;
-    }
-    return true;
-}
-
-fn scoreRangeRemainsFinite(config: *const Config) bool {
-    var maximum_cpu_state_multiplier: f64 = 0;
-    for (config.process_state_multipliers) |value| {
-        maximum_cpu_state_multiplier = @max(maximum_cpu_state_multiplier, value);
-    }
-    var maximum_gpu_state_multiplier: f64 = 0;
-    for (config.gpu_adapter.state_multipliers) |value| {
-        maximum_gpu_state_multiplier = @max(maximum_gpu_state_multiplier, value);
-    }
-    const maximum_cpu_process_score = 100 * maximum_cpu_state_multiplier;
-    const maximum_gpu_process_score = 100 * maximum_gpu_state_multiplier;
-    if (!finiteNonNegative(maximum_cpu_process_score) or
-        !finiteNonNegative(maximum_gpu_process_score)) return false;
-    const maximum_cpu_software_score = maximum_cpu_process_score *
-        @as(f64, @floatFromInt(config.max_processes));
-    const maximum_gpu_software_score = maximum_gpu_process_score *
-        @as(f64, @floatFromInt(config.max_processes));
-    if (!finiteNonNegative(maximum_cpu_software_score) or
-        !finiteNonNegative(maximum_gpu_software_score)) return false;
-    return finiteNonNegative(maximum_cpu_software_score) and
-        finiteNonNegative(maximum_gpu_software_score);
-}
-
 fn finitePercent(value: f64) bool {
     return std.math.isFinite(value) and value >= 0 and value <= 100;
 }
@@ -834,4 +692,9 @@ fn allZero(comptime T: type, values: []const T) bool {
 comptime {
     if (@sizeOf(WorkspaceCapacity) != 344 or @offsetOf(WorkspaceCapacity, "growth") != 80)
         @compileError("workspace capacity diagnostics ABI mismatch");
+}
+fn scoreRangeRemainsFinite(config: *const Config) bool {
+    var maximum_multiplier: f64 = 0;
+    for (config.process_state_multipliers) |value| maximum_multiplier = @max(maximum_multiplier, value);
+    return finiteNonNegative(100 * maximum_multiplier * @as(f64, @floatFromInt(config.max_processes)));
 }

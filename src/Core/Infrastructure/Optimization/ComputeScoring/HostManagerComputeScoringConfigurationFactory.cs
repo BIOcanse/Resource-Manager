@@ -23,7 +23,7 @@ internal static class HostManagerComputeScoringConfigurationFactory
         var maximumOutputCount = checked(
             checked(3U * maximumProcessCount) + checked(2U * maximumGpuRowCount));
         var cpuStateMultipliers = plan.HotPublish.ProcessStateMultipliers.AsSpan();
-        var gpuStateMultipliers = plan.HotPublish.GpuAdapterPolicy.StateMultipliers.AsSpan();
+        var gpuStateMultipliers = plan.HotPublish.GpuStateMultipliers.AsSpan();
         var maximumPolicyMultiplier = 1D;
         foreach (var multiplier in cpuStateMultipliers)
         {

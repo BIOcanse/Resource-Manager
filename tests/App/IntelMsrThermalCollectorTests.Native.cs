@@ -22,8 +22,8 @@ public sealed partial class IntelMsrThermalCollectorTests
         var bindings = catalog.MetricBindings.Values.Where(static binding => binding.SourceId == "intel.msr").ToArray();
         Assert.Equal(6, bindings.Length);
         var handles = bindings.Select(static binding => binding.MetricHandle).ToArray();
-        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
-            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, 1,
+            NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         var first = Publish(1, [new(core.ExactIdentityKey, Values(false, 80)), new(package.ExactIdentityKey, Values(true, 90))]);
         AssertTemperature(first, core.ExactIdentityKey, false, 80); AssertTemperature(first, package.ExactIdentityKey, true, 90);
         var wire = JsonSerializer.Serialize(MetricDeviceFields.Read(first, core.ExactIdentityKey), new JsonSerializerOptions(JsonSerializerDefaults.Web));

@@ -1,6 +1,5 @@
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Metrics;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.ReadWrite.Vendors.Nvidia;
 
@@ -42,19 +41,19 @@ public sealed class NvidiaNvmlMonitoringZone : MonitoringSourceZone, IDisposable
 
     internal IReadOnlyList<DeviceTopologyNvidiaGpuInformation>? ReadDeclarations(WindowsGpuAdapterInventoryRead inventory)
     {
-        lock (gate) return CanRead ? readDeclarations?.Invoke(inventory) : null;
+        lock (gate) return readDeclarations?.Invoke(inventory);
     }
 
     internal IReadOnlyList<NvidiaNvmlFanIdentity>? ReadFanIdentities(WindowsGpuAdapterInventoryRead inventory)
     {
-        lock (gate) return CanRead ? readFanIdentities?.Invoke(inventory) : null;
+        lock (gate) return readFanIdentities?.Invoke(inventory);
     }
 
     internal Task<IReadOnlyList<NvidiaNvmlFanReading>> ReadFansAsync(IReadOnlyList<NvidiaNvmlFanReadTarget> targets,
         WindowsGpuAdapterInventoryRead inventory, CancellationToken cancellationToken)
     {
         lock (gate)
-            return CanRead && readFans is not null ? readFans(targets, inventory, cancellationToken)
+            return readFans is not null ? readFans(targets, inventory, cancellationToken)
                 : Task.FromResult<IReadOnlyList<NvidiaNvmlFanReading>>([]);
     }
 
@@ -64,17 +63,7 @@ public sealed class NvidiaNvmlMonitoringZone : MonitoringSourceZone, IDisposable
         CancellationToken cancellationToken)
     {
         lock (gate)
-            return CanRead ? read(request, windowsInventory, cancellationToken)
-                : Task.FromResult<IReadOnlyList<GpuMetrics>>([]);
-    }
-
-    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
-    {
-        lock (gate)
-        {
-            base.ApplyMode(mode);
-            if (mode == ResourceManagerComputeZoneMode.Freeze) ownedReader?.ReleaseSession();
-        }
+            return read(request, windowsInventory, cancellationToken);
     }
 
     public void Dispose()

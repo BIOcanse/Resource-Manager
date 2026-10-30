@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.Text;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite.Vendors.Intel;
@@ -133,7 +132,7 @@ public sealed partial class IntelMsrThermalCollectorTests
     }
 
     [Fact]
-    public void EmptyUnsupportedFrozenAndUnselectedDemandDoNotCreateAccessOrOpenHardware()
+    public void EmptyUnsupportedAndUnselectedDemandDoNotCreateAccessOrOpenHardware()
     {
         var creates = 0;
         var reader = new IntelMsrReader(() => throw new InvalidOperationException(), () => { creates++; throw new InvalidOperationException(); });
@@ -142,9 +141,7 @@ public sealed partial class IntelMsrThermalCollectorTests
         Assert.Empty(reader.Read([device with { SupportsDts = false }], Request(device, Codes(false))));
         Assert.Empty(reader.Read([device with { SupportsTemperatureTarget = false }], Request(device, MetricFieldCode.IntelCoreDtsTemperature)));
         Assert.Empty(reader.Read([device], Request(Core(1), Codes(false))));
-        var zone = new IntelMsrMonitoringZone(reader);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Empty(zone.Read([device], Request(device, Codes(false)))); Assert.Equal(0, creates);
+        Assert.Equal(0, creates);
         _ = new IntelMsrMonitoringZone(Path.Combine(Path.GetTempPath(), "nonexistent-intel-dependencies"));
     }
 

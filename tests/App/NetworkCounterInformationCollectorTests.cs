@@ -1,7 +1,6 @@
 using System.Buffers.Binary;
 using System.Reflection;
 using System.Text.Json;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.DeviceTopology;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -43,16 +42,13 @@ public sealed partial class NetworkCounterInformationCollectorTests
     }
 
     [Fact]
-    public void NoDemandUnknownFieldAndFreezeDoNotReadAnyInterface()
+    public void NoDemandAndUnknownFieldDoNotReadAnyInterface()
     {
         var api = new Api(); var zone = new IpHelperNetworkMonitoringZone(api);
         Assert.Equal(0, api.DirectoryReads);
         var identities = zone.ReadInterfaceIdentities().Identities;
         Assert.Empty(zone.ReadInterfaces(identities, new Dictionary<string, IReadOnlySet<MetricFieldCode>>()));
         Assert.Empty(zone.ReadInterfaces(identities, Request(identities[0], MetricFieldCode.CpuUsage)));
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Empty(zone.ReadInterfaces(identities, Request(identities[0], MetricFieldCode.NetworkRxOctets)));
-        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, zone.ReadInterfaceIdentities().Status);
         Assert.Empty(api.Reads); Assert.Equal(1, api.DirectoryReads);
     }
 
@@ -188,7 +184,7 @@ public sealed partial class NetworkCounterInformationCollectorTests
     }
 
     [Fact]
-    public void FailureCapabilityIncarnationFreezeAndCancellationStartNewIntervals()
+    public void FailureCapabilityIncarnationAndDemandChangesStartNewIntervals()
     {
         using var h = new Workspace(); h.Publish(new(0,0,1000)); Assert.Equal(150,h.Publish(new(150,1000,1000)));
         Assert.Null(h.Publish(null)); Assert.Null(h.Publish(new(200,2000,1000))); Assert.Equal(150,h.Publish(new(350,3000,1000)));
@@ -196,9 +192,6 @@ public sealed partial class NetworkCounterInformationCollectorTests
         Assert.Null(h.Publish(new(800,6000,1000),capability:2,incarnation:2)); Assert.Equal(150,h.Publish(new(950,7000,1000),capability:2,incarnation:2));
         h.Sync([]); Assert.Equal(150,h.ReadField().NumericValue);
         Assert.Null(h.Publish(new(1100,8000,1000),capability:2,incarnation:2)); Assert.Equal(150,h.Publish(new(1250,9000,1000),capability:2,incarnation:2));
-        var frozen=h.Native.PlanCollection([h.Handle],h.Modes(2,NativeMetricSnapshotZoneMode.Freeze),false,h.NextTime());
-        Assert.Empty(frozen.Sources); Assert.Equal(150,h.ReadField().NumericValue);
-        Assert.Null(h.Publish(new(1400,10000,1000),capability:2,incarnation:2));
     }
 
     [Theory]
@@ -377,8 +370,8 @@ public sealed partial class NetworkCounterInformationCollectorTests
         }
         private ulong Find(NetworkInterfaceCatalogIdentity device,MetricFieldCode field)=>Catalog.MetricBindings.Values.Single(b=>b.DeviceIdentity==device.ExactIdentityKey&&b.FieldCode==field).MetricHandle;
         internal DateTimeOffset NextTime()=>start.AddMilliseconds(++sequence*100);
-        internal NativeMetricSnapshotSourceRuntimeMode[] Modes(ulong capability=1,NativeMetricSnapshotZoneMode mode=NativeMetricSnapshotZoneMode.Normal)
-            =>Catalog.Sources.Select(s=>new NativeMetricSnapshotSourceRuntimeMode(s.SourceHandle,capability,mode,NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        internal NativeMetricSnapshotSourceRuntimeState[] States(ulong capability=1)
+            =>Catalog.Sources.Select(s=>new NativeMetricSnapshotSourceRuntimeState(s.SourceHandle,capability,NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         internal void Sync(ulong[] active)=>Native.SynchronizeCounterDemand(active,NextTime());
         internal double? Publish(NativeMetricSnapshotTimedCounter? counter,ulong capability=1,ulong incarnation=1,int corruption=-1,bool second=false,bool send=false)
         {
@@ -389,7 +382,7 @@ public sealed partial class NetworkCounterInformationCollectorTests
         internal DeviceMetricFieldValue PublishUnsigned(ulong? value) { Capture(Identities[0],MetricFieldCode.NetworkRxErrors,value,null,1,1,-1);return ReadField(Identities[0],MetricFieldCode.NetworkRxErrors); }
         private void Capture(NetworkInterfaceCatalogIdentity device,MetricFieldCode field,ulong? value,NativeMetricSnapshotTimedCounter? counter,ulong capability,ulong incarnation,int corruption)
         {
-            var at=NextTime();var plan=Native.PlanCollection([Find(device,field)],Modes(capability),false,at);var source=Assert.Single(plan.Sources);
+            var at=NextTime();var plan=Native.PlanCollection([Find(device,field)],States(capability),false,at);var source=Assert.Single(plan.Sources);
             var read=new NetworkInterfaceMetricRead(device.ExactIdentityKey,value is {} number?new Dictionary<MetricFieldCode,ulong> { [field]=number }:[],counter is {} pair?new Dictionary<MetricFieldCode,NativeMetricSnapshotTimedCounter> { [field]=pair }:[]);
             var completion=WindowsHardwareMetricSampler.CreateNetworkInterfaceCompletion(plan,source,new(source.SourceHandle,incarnation,sequence),at,[read]);
             if(corruption>=0) { var observation=completion.Observations[0]; if(corruption==0)observation.Flags=0;if(corruption==1)observation.CounterTicksPerSecond=0;if(corruption==2)observation.ByteCount=1;if(corruption==3)observation.SampleDurationMilliseconds=1;completion=completion with { Observations=completion.Observations.SetItem(0,observation) }; }

@@ -13,10 +13,7 @@ internal static class WindowsMetricOwnerConsumer
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         // Real default sources, restricted explicitly to OS memory. No recorded backend or host assembly.
-        using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.CreateDefault(),
-            modeProvider: static source => source is NativeMetricSnapshotSources.WindowsMemory
-                or NativeMetricSnapshotSources.WindowsVirtualMemory
-                ? NativeMetricSnapshotZoneMode.Normal : NativeMetricSnapshotZoneMode.Freeze);
+        using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.CreateDefault());
         using var http = new HttpClient();
         var core = new ReadWriteCore(owner.CreateBackend(), new DependencyActions(http, []));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

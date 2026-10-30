@@ -226,7 +226,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
             a.Single(binding=>binding.FieldCode==MetricFieldCode.AdlxNpuActivityPercent),b.Single(binding=>binding.FieldCode==MetricFieldCode.AdlxNpuFrequencyMhz)]);
         Assert.Equal(1|8192,request.NativeFlagsByDisplayIndex![9]); Assert.Equal(32|4096|16384,request.NativeFlagsByDisplayIndex[3]);
         var now=DateTimeOffset.UtcNow; workspace.ReplaceCatalog(catalog,now);
-        var modes=catalog.Sources.Select(source=>new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,1,NativeMetricSnapshotZoneMode.Normal,NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var modes=catalog.Sources.Select(source=>new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle,1,NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         for(var phase=0;phase<5;phase++)
         {
             var at=now.AddSeconds(phase+1);
@@ -274,10 +274,9 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         var row=Row(10,PnpA,AllFlags); row.VoltageMillivolts=1250; row.SampleTimestampMilliseconds=9007199254740993; row.NpuActivityLevelPercent=0; row.NpuFrequencyMhz=1800;
         var native=new Bridge { Metadata=[Row(10,PnpA),Row(20,PnpB)],Values=[row] };
         var zone=new AmdAdlxMonitoringZone(new AmdAdlxBridgeReader(native));
-        var registry=new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id=>id==zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         var memory=new WindowsMemoryMonitoringZone(_=>throw new InvalidOperationException("No memory demand"),()=>throw new InvalidOperationException("No memory demand"));
         using var sampler=new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(),memory,null!,inventoryZone,
-            null!,null!,null!,null!,null!,zone,null!,new AmdIntegratedGpuSensorRoute(),null!,owner,dashboard,registry,
+            null!,null!,null!,null!,null!,zone,null!,new AmdIntegratedGpuSensorRoute(),null!,owner,dashboard,
             slots.Owner,slots.Provider,NullLogger<WindowsHardwareMetricSampler>.Instance);
         var request=MetricDeviceFields.CreateRequest(dashboard.Current!,device,Names);
         await using var app=await StartHttpAsync(sampler,dashboard);

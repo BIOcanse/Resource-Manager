@@ -141,7 +141,7 @@ public sealed class ExternalGpuResidentSubscriptionTests
             nvidiaNvapiZone: null!, amdAdlxZone: null!, amdSmuZone: null!,
             integratedGpuSensorRoute: new AmdIntegratedGpuSensorRoute(), platformSensorReader: null!,
             metricSnapshotOwner: null!, metricCatalog: new HardwareMetricCatalogState(),
-            monitoringSourceZoneRegistry: new MonitoringSourceZoneRegistry([]),
+
             samplingSubscriptionOwner: slots.Owner, runtimePlanProvider: slots.Provider,
             logger: NullLogger<WindowsHardwareMetricSampler>.Instance);
 

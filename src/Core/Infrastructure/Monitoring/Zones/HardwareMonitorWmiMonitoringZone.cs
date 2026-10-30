@@ -24,16 +24,13 @@ public sealed partial class HardwareMonitorWmiMonitoringZone
     {
         lock (gate)
             return WindowsNotebookFanProjection.CreateFanCatalog(
-                CanRead ? coreReader.ReadFanIdentities(TimeSpan.FromSeconds(2)) : new(false, []),
+                coreReader.ReadFanIdentities(TimeSpan.FromSeconds(2)),
                 enableMechrevo: false, generation);
     }
 
     internal HardwareMonitorSensorSnapshot ReadSensors()
     {
-        lock (gate) return CanRead ? coreReader.Read(TimeSpan.FromSeconds(2)) : HardwareMonitorSensorsFrozen();
+        lock (gate) return coreReader.Read(TimeSpan.FromSeconds(2));
     }
 
-    private static HardwareMonitorSensorSnapshot HardwareMonitorSensorsFrozen()
-        => new(new HardwareSensorProviderState("LibreHardwareMonitor Core", HardwareSensorProviderStates.Frozen,
-            "LibreHardwareMonitor Core 监控源当前处于功能区冻结。"), null, null, null, null, null, null, null, [], []);
 }

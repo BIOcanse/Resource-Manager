@@ -14,10 +14,9 @@ namespace Resource_Manager_APP.Tests;
 public sealed class AmdCcdMetricIntegrationTests(ITestOutputHelper output)
 {
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public async Task OriginalCapturePublishesOnlyRequestedCcdAndKeepsUnavailableOrFrozenValuesNull(bool unavailable, bool frozen)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OriginalCapturePublishesOnlyRequestedCcdAndKeepsUnavailableValuesNull(bool unavailable)
     {
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
         using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
@@ -42,7 +41,6 @@ public sealed class AmdCcdMetricIntegrationTests(ITestOutputHelper output)
         });
         using var ownedResources = resources;
         var capture = new WindowsHardwareMetricCapture(resources,
-            source => frozen && source == "amd.smn" ? NativeMetricSnapshotZoneMode.Freeze : NativeMetricSnapshotZoneMode.Normal,
             TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), static () => { });
         var topology = new NativeMetricSnapshotCatalogTopologySnapshot(1,
             NativeMetricSnapshotCatalogTopologyStatus.Complete, [], NativeMetricSnapshotCatalogTopologyStatus.Complete, [],
@@ -54,12 +52,12 @@ public sealed class AmdCcdMetricIntegrationTests(ITestOutputHelper output)
         var result = await capture.CaptureUnderGateAsync(MetricSampleRequest.ForIds([bindings[1].MetricId]), workspace, 1,
             topology, action => { action(); return true; }, default);
         Assert.NotNull(result);
-        Assert.Equal(unavailable || frozen ? 0 : 1, calls);
+        Assert.Equal(unavailable ? 0 : 1, calls);
         var fields = MetricDeviceFields.Read(result!, fields: new HashSet<string> { "cpu_amd_ccd_tdie_temperature_celsius" });
         Assert.Equal(2, fields.Count);
         var selected = Assert.Single(fields, field => field.DeviceIdentity == targets[1].ExactIdentityKey);
         var value = Assert.Single(selected.Fields);
-        if (unavailable || frozen) { Assert.NotEqual(SamplingObservationStatus.Current, value.Status); Assert.Null(value.NumericValue); }
+        if (unavailable) { Assert.NotEqual(SamplingObservationStatus.Current, value.Status); Assert.Null(value.NumericValue); }
         else
         {
             Assert.Equal(SamplingObservationStatus.Current, value.Status); Assert.Equal(-0.125, value.NumericValue);

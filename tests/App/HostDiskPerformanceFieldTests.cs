@@ -1,7 +1,6 @@
 using static Resource_Manager_APP.Tests.MetricSnapshotOwnerTestFixture;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.Monitoring;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Control;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -15,7 +14,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class MetricCatalogueSubscriptionTests
 {
     [Fact]
-    public async Task HostDiskPerformanceUsesOriginalStorageZoneAndCurrentWithFreezeAndRecovery()
+    public async Task HostDiskPerformanceUsesOriginalStorageZoneAndCurrent()
     {
         const string identity = "recorded-physical-disk";
         using var fixture = new Fixture(Topology([new(7, identity, 1) { SupportsAtaSmart = true }]));
@@ -36,12 +35,10 @@ public sealed partial class MetricCatalogueSubscriptionTests
         });
         using var notebook = new NotebookOemFanMonitoringZone();
         var platform = new WindowsPlatformSensorReader(zone, new HardwareMonitorWmiMonitoringZone(), notebook);
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == zone.DisplayName ? zone : new MonitoringSourceZone(id)));
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(),
             new WindowsMemoryMonitoringZone(), null!, null!, null!, null!, null!, null!, null!, null!, null!,
             new AmdIntegratedGpuSensorRoute(), platform, fixture.Owner, fixture.Catalog,
-            registry, fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
+ fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         using (var lease = fixture.Owner.Acquire())
             fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         using var client = new HttpClient();
@@ -74,14 +71,6 @@ public sealed partial class MetricCatalogueSubscriptionTests
         Assert.Equal(1, reads);
         Assert.Null(sampler.CaptureSamplingWorkerTask());
 
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        var frozen = Assert.Single(await core.CollectAsync([field]));
-        // Freeze stops queries and preserves the original current value.
-        Assert.Equal(captured, frozen);
-        Assert.Equal(captured, core.ReadCached(field));
-        Assert.Equal(1, reads);
-
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
         var recovered = Assert.Single(await core.CollectAsync([field]));
         Assert.Equal(FieldObservationStatus.Current, recovered.Status);
         Assert.Equal(4096d, recovered.Value!.Number);

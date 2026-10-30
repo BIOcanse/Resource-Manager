@@ -153,15 +153,11 @@ fn validFlagOwnership(row: *const protocol.InputRow) bool {
         (row.flags & protocol.InputFlags.running) == 0 and
         (row.flags & (surface_flags & ~protocol.InputFlags.running)) != 0) return false;
     const eligibility_flags = protocol.InputFlags.can_apply_process_policy |
-        protocol.InputFlags.can_apply_adapter_policy | protocol.InputFlags.hardware_scheduling_eligible;
+        protocol.InputFlags.hardware_scheduling_eligible;
     if ((row.flags & surface_flags) != 0 and (row.valid_mask & protocol.InputValidity.surface_facts) == 0) return false;
     if ((row.flags & eligibility_flags) != 0 and (row.valid_mask & protocol.InputValidity.eligibility) == 0) return false;
     if ((row.flags & protocol.InputFlags.owns_process_grade) != 0 and
         (row.valid_mask & protocol.InputValidity.applied_process_grade) == 0) return false;
-    if ((row.flags & protocol.InputFlags.owns_cpu_grade) != 0 and
-        (row.valid_mask & protocol.InputValidity.applied_cpu_grade) == 0) return false;
-    if ((row.flags & protocol.InputFlags.owns_gpu_grade) != 0 and
-        (row.valid_mask & protocol.InputValidity.applied_gpu_grade) == 0) return false;
     return true;
 }
 
@@ -178,8 +174,6 @@ fn newStagedProcess(row: *const protocol.InputRow) state.StagedProcess {
         .software_kind = @intFromEnum(protocol.SoftwareKind.unknown),
         .protection_level = 0,
         .runtime_state = @intFromEnum(protocol.RuntimeState.unknown),
-        .cpu_capability_mask = 0,
-        .gpu_capability_mask = 0,
         .base_score = 0,
         .cpu_usage_percent = 0,
         .cpu_metric_valid = false,
@@ -190,8 +184,6 @@ fn newStagedProcess(row: *const protocol.InputRow) state.StagedProcess {
         .software_cpu_score_valid = false,
         .software_slot = no_slot,
         .applied_process_grade = protocol.ProcessGrade.normal,
-        .applied_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .applied_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
     };
 }
 
@@ -231,22 +223,13 @@ fn mergeProcessRow(session: *state.Session, slot: u32, row: *const protocol.Inpu
         protocol.InputValidity.eligibility,
         &process.input_flags,
         row.flags,
-        protocol.InputFlags.can_apply_process_policy | protocol.InputFlags.can_apply_adapter_policy |
-            protocol.InputFlags.hardware_scheduling_eligible,
+        protocol.InputFlags.can_apply_process_policy | protocol.InputFlags.hardware_scheduling_eligible,
         row.valid_mask,
     );
     if (result != .ok) return result;
     result = mergeU8Fact(&process.valid_mask, &process.invalid_mask, protocol.InputValidity.protection, &process.protection_level, row.protection_level, row.valid_mask);
     if (result != .ok) return result;
-    result = mergeU8Fact(&process.valid_mask, &process.invalid_mask, protocol.InputValidity.cpu_capabilities, &process.cpu_capability_mask, row.cpu_capability_mask, row.valid_mask);
-    if (result != .ok) return result;
-    result = mergeU8Fact(&process.valid_mask, &process.invalid_mask, protocol.InputValidity.gpu_capabilities, &process.gpu_capability_mask, row.gpu_capability_mask, row.valid_mask);
-    if (result != .ok) return result;
     result = mergeAppliedProcessFact(process, row);
-    if (result != .ok) return result;
-    result = mergeAppliedAdapterFact(process, row, true);
-    if (result != .ok) return result;
-    result = mergeAppliedAdapterFact(process, row, false);
     if (result != .ok) return result;
 
     const metric: protocol.MetricKind = @enumFromInt(row.metric_kind);
@@ -305,30 +288,6 @@ fn mergeAppliedProcessFact(process: *state.StagedProcess, row: *const protocol.I
     process.valid_mask |= bit;
     process.applied_process_grade = row.applied_process_grade;
     if (owned) process.input_flags |= protocol.InputFlags.owns_process_grade;
-    return .ok;
-}
-
-fn mergeAppliedAdapterFact(process: *state.StagedProcess, row: *const protocol.InputRow, comptime cpu: bool) protocol.Status {
-    const bit = if (cpu) protocol.InputValidity.applied_cpu_grade else protocol.InputValidity.applied_gpu_grade;
-    const owned_flag = if (cpu) protocol.InputFlags.owns_cpu_grade else protocol.InputFlags.owns_gpu_grade;
-    if ((row.valid_mask & bit) == 0 or (process.invalid_mask & bit) != 0) return .ok;
-    const grade = if (cpu) row.applied_cpu_grade else row.applied_gpu_grade;
-    const owned = (row.flags & owned_flag) != 0;
-    if ((process.valid_mask & bit) != 0) {
-        const current_grade = if (cpu) process.applied_cpu_grade else process.applied_gpu_grade;
-        const current_owned = (process.input_flags & owned_flag) != 0;
-        if (current_grade != grade or current_owned != owned) {
-            process.valid_mask &= ~bit;
-            process.invalid_mask |= bit;
-            process.input_flags &= ~owned_flag;
-        }
-        return .ok;
-    }
-    process.valid_mask |= bit;
-    if (cpu) process.applied_cpu_grade = grade else process.applied_gpu_grade = grade;
-    if (owned) {
-        process.input_flags |= owned_flag;
-    }
     return .ok;
 }
 
@@ -398,8 +357,6 @@ fn newStagedSoftware(software_key: u64, source_index: u32) state.StagedSoftware 
         .software_kind = @intFromEnum(protocol.SoftwareKind.unknown),
         .protection_level = 0,
         .runtime_state = @intFromEnum(protocol.RuntimeState.unknown),
-        .cpu_capability_mask = 0,
-        .gpu_capability_mask = 0,
         .base_score = 0,
         .cpu_score = 0,
         .cpu_score_member_count = 0,
@@ -408,8 +365,6 @@ fn newStagedSoftware(software_key: u64, source_index: u32) state.StagedSoftware 
         .member_count = 0,
         .member_signature = 0,
         .critical_fact = false,
-        .applied_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .applied_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
         .selected_gpu_present = false,
         .selected_gpu_index = 0,
         .selected_gpu_usage = 0,
@@ -446,70 +401,12 @@ fn mergeStandaloneSoftwareRow(
         row.valid_mask,
     );
     if (result != .ok) return result;
-    result = mergeU8Fact(
-        &software.valid_mask,
-        &software.invalid_mask,
-        protocol.InputValidity.cpu_capabilities,
-        &software.cpu_capability_mask,
-        row.cpu_capability_mask,
-        row.valid_mask,
-    );
-    if (result != .ok) return result;
-    result = mergeU8Fact(
-        &software.valid_mask,
-        &software.invalid_mask,
-        protocol.InputValidity.gpu_capabilities,
-        &software.gpu_capability_mask,
-        row.gpu_capability_mask,
-        row.valid_mask,
-    );
-    if (result != .ok) return result;
-    result = mergeFlagFact(
-        &software.valid_mask,
-        &software.invalid_mask,
-        protocol.InputValidity.eligibility,
-        &software.input_flags,
-        row.flags,
-        protocol.InputFlags.can_apply_adapter_policy,
-        row.valid_mask,
-    );
-    if (result != .ok) return result;
     if ((row.valid_mask & protocol.InputValidity.surface_facts) != 0) {
         software.valid_mask |= protocol.InputValidity.surface_facts;
         software.runtime_state = higherRuntimeState(
             software.runtime_state,
             classifyRuntimeState(row.valid_mask, row.flags),
         );
-    }
-    result = mergeStandaloneSoftwareAppliedFact(software, row, true);
-    if (result != .ok) return result;
-    return mergeStandaloneSoftwareAppliedFact(software, row, false);
-}
-
-fn mergeStandaloneSoftwareAppliedFact(
-    software: *state.StagedSoftware,
-    row: *const protocol.InputRow,
-    comptime cpu: bool,
-) protocol.Status {
-    const bit = if (cpu) protocol.InputValidity.applied_cpu_grade else protocol.InputValidity.applied_gpu_grade;
-    const owned_flag = if (cpu) protocol.InputFlags.owns_cpu_grade else protocol.InputFlags.owns_gpu_grade;
-    if ((row.valid_mask & bit) == 0 or (software.invalid_mask & bit) != 0) return .ok;
-    const grade = if (cpu) row.applied_cpu_grade else row.applied_gpu_grade;
-    const owned = (row.flags & owned_flag) != 0;
-    if ((software.valid_mask & bit) != 0) {
-        const current_grade = if (cpu) software.applied_cpu_grade else software.applied_gpu_grade;
-        const current_owned = (software.input_flags & owned_flag) != 0;
-        if (current_grade != grade or current_owned != owned) {
-            software.valid_mask &= ~bit;
-            software.invalid_mask |= bit;
-            software.input_flags &= ~owned_flag;
-        }
-        return .ok;
-    }
-    software.valid_mask |= bit;
-    if (cpu) software.applied_cpu_grade = grade else software.applied_gpu_grade = grade;
-    if (owned) {
-        software.input_flags |= owned_flag;
     }
     return .ok;
 }
@@ -544,52 +441,20 @@ fn mergeProcessIntoSoftware(session: *state.Session, slot: u32, process: *const 
 
     var result = mergeU8Fact(&software.valid_mask, &software.invalid_mask, protocol.InputValidity.software_kind, &software.software_kind, process.software_kind, process.valid_mask);
     if (result != .ok) return result;
-    result = mergeU8Fact(&software.valid_mask, &software.invalid_mask, protocol.InputValidity.cpu_capabilities, &software.cpu_capability_mask, process.cpu_capability_mask, process.valid_mask);
-    if (result != .ok) return result;
-    result = mergeU8Fact(&software.valid_mask, &software.invalid_mask, protocol.InputValidity.gpu_capabilities, &software.gpu_capability_mask, process.gpu_capability_mask, process.valid_mask);
-    if (result != .ok) return result;
     result = mergeFlagFact(
         &software.valid_mask,
         &software.invalid_mask,
         protocol.InputValidity.eligibility,
         &software.input_flags,
         process.input_flags,
-        protocol.InputFlags.can_apply_adapter_policy | protocol.InputFlags.hardware_scheduling_eligible,
+        protocol.InputFlags.hardware_scheduling_eligible,
         process.valid_mask,
     );
-    if (result != .ok) return result;
-    result = mergeSoftwareAppliedFact(software, process, true);
-    if (result != .ok) return result;
-    result = mergeSoftwareAppliedFact(software, process, false);
     if (result != .ok) return result;
 
     const hardware_eligible = (process.valid_mask & protocol.InputValidity.eligibility) != 0 and
         (process.input_flags & protocol.InputFlags.hardware_scheduling_eligible) != 0;
     if (hardware_eligible and isCriticalProcess(session, process)) software.critical_fact = true;
-    return .ok;
-}
-
-fn mergeSoftwareAppliedFact(software: *state.StagedSoftware, process: *const state.StagedProcess, comptime cpu: bool) protocol.Status {
-    const bit = if (cpu) protocol.InputValidity.applied_cpu_grade else protocol.InputValidity.applied_gpu_grade;
-    const owned_flag = if (cpu) protocol.InputFlags.owns_cpu_grade else protocol.InputFlags.owns_gpu_grade;
-    if ((process.valid_mask & bit) == 0 or (software.invalid_mask & bit) != 0) return .ok;
-    const grade = if (cpu) process.applied_cpu_grade else process.applied_gpu_grade;
-    const owned = (process.input_flags & owned_flag) != 0;
-    if ((software.valid_mask & bit) != 0) {
-        const current_grade = if (cpu) software.applied_cpu_grade else software.applied_gpu_grade;
-        const current_owned = (software.input_flags & owned_flag) != 0;
-        if (current_grade != grade or current_owned != owned) {
-            software.valid_mask &= ~bit;
-            software.invalid_mask |= bit;
-            software.input_flags &= ~owned_flag;
-        }
-        return .ok;
-    }
-    software.valid_mask |= bit;
-    if (cpu) software.applied_cpu_grade = grade else software.applied_gpu_grade = grade;
-    if (owned) {
-        software.input_flags |= owned_flag;
-    }
     return .ok;
 }
 

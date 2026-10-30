@@ -18,7 +18,7 @@ test "owned grade without running evidence remains owned and does not schedule r
     row.process_id = 912;
     row.process_start_key = 91_003;
     row.valid_mask = protocol.InputValidity.process_identity | protocol.InputValidity.software_identity |
-        protocol.InputValidity.applied_process_grade | protocol.InputValidity.applied_cpu_grade | protocol.InputValidity.applied_gpu_grade;
+        protocol.InputValidity.applied_process_grade;
     row.flags = protocol.InputFlags.owns_process_grade;
     row.applied_process_grade = protocol.ProcessGrade.level2;
     var actions: ActionBuffer = undefined;
@@ -113,16 +113,15 @@ test "reconfigure applies changed content at the same generation and accepts rol
     try std.testing.expectEqual(original.normal_interval_ms, session.config.normal_interval_ms);
 }
 
-test "ABI layout is frozen for version 11.1" {
-    try std.testing.expectEqual(@as(usize, 424), @sizeOf(protocol.Config));
-    try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.AdapterPolicyConfig));
+test "ABI layout is frozen for version 12.1" {
+    try std.testing.expectEqual(@as(usize, 264), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 88), @sizeOf(protocol.Capacity));
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.CycleInput));
     try std.testing.expectEqual(@as(usize, 104), @sizeOf(protocol.InputRow));
-    try std.testing.expectEqual(@as(usize, 136), @sizeOf(protocol.Action));
+    try std.testing.expectEqual(@as(usize, 120), @sizeOf(protocol.Action));
     try std.testing.expectEqual(@as(usize, 96), @sizeOf(protocol.Feedback));
     try std.testing.expectEqual(@as(usize, 128), @sizeOf(protocol.Snapshot));
-    try std.testing.expectEqual(@as(usize, 192), @sizeOf(protocol.SnapshotRow));
+    try std.testing.expectEqual(@as(usize, 160), @sizeOf(protocol.SnapshotRow));
     try std.testing.expectEqual(@as(usize, 8), @offsetOf(protocol.InputRow, "valid_mask"));
     try std.testing.expectEqual(@as(usize, 24), @offsetOf(protocol.InputRow, "target_key"));
     try std.testing.expectEqual(@as(usize, 24), @offsetOf(protocol.Action, "action_id"));
@@ -143,15 +142,15 @@ test "ABI layout is frozen for version 11.1" {
     try std.testing.expectEqual(@as(usize, 112), @offsetOf(protocol.Snapshot, "reserved"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.SnapshotRow, "cpu_score"));
     try std.testing.expectEqual(@as(usize, 104), @offsetOf(protocol.SnapshotRow, "cpu_occupancy_percent"));
-    try std.testing.expectEqual(@as(usize, 172), @offsetOf(protocol.SnapshotRow, "desired_process_grade"));
-    try std.testing.expectEqual(@as(u64, 0x5d7118d7fe569a0e), corpus.layoutFingerprint(protocol.Config));
+    try std.testing.expectEqual(@as(usize, 148), @offsetOf(protocol.SnapshotRow, "desired_process_grade"));
     try std.testing.expectEqual(@as(u64, 0x822e9b7b868af1e6), corpus.layoutFingerprint(protocol.Capacity));
     try std.testing.expectEqual(@as(u64, 0x2a719fac7ecace97), corpus.layoutFingerprint(protocol.CycleInput));
-    try std.testing.expectEqual(@as(u64, 0x27f12d8b9e11d1c8), corpus.layoutFingerprint(protocol.InputRow));
-    try std.testing.expectEqual(@as(u64, 0x531d6c7ff4bcf206), corpus.layoutFingerprint(protocol.Action));
-    try std.testing.expectEqual(@as(u64, 0x7722db7daad0835b), corpus.layoutFingerprint(protocol.Feedback));
     try std.testing.expectEqual(@as(u64, 0xe47b5b314eba98ff), corpus.layoutFingerprint(protocol.Snapshot));
-    try std.testing.expectEqual(@as(u64, 0xba634188acc130a6), corpus.layoutFingerprint(protocol.SnapshotRow));
+    try std.testing.expectEqual(@as(u64, 0xf670cfab7bf4a42e), corpus.layoutFingerprint(protocol.Config));
+    try std.testing.expectEqual(@as(u64, 0x31022318a084b360), corpus.layoutFingerprint(protocol.InputRow));
+    try std.testing.expectEqual(@as(u64, 0x4ad18d061face5cd), corpus.layoutFingerprint(protocol.Action));
+    try std.testing.expectEqual(@as(u64, 0xe500f0f71e040e70), corpus.layoutFingerprint(protocol.Feedback));
+    try std.testing.expectEqual(@as(u64, 0x3f3e0d7705c4458a), corpus.layoutFingerprint(protocol.SnapshotRow));
 }
 
 test "strict config and capacity query have no defaults" {
@@ -177,15 +176,7 @@ test "strict config and capacity query have no defaults" {
 test "configuration rejects score ranges that overflow at declared capacity" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     config.process_state_multipliers[0] = 1e308;
-    config.cpu_adapter.state_multipliers[0] = 1e308;
     var capacity: protocol.Capacity = undefined;
-    try std.testing.expectEqual(
-        protocol.Status.invalid_argument,
-        coordinator.capacityForConfig(&config, &capacity),
-    );
-
-    config = corpus.explicitConfig(protocol.FeatureFlags.adapter_gpu);
-    config.gpu_adapter.state_multipliers[0] = 1e308;
     try std.testing.expectEqual(
         protocol.Status.invalid_argument,
         coordinator.capacityForConfig(&config, &capacity),
@@ -195,18 +186,6 @@ test "configuration rejects score ranges that overflow at declared capacity" {
 test "configuration rejects noncanonical not-running multipliers" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     config.process_state_multipliers[@intFromEnum(protocol.RuntimeState.not_running)] = 0.01;
-    try std.testing.expect(!protocol.isValidConfig(&config));
-
-    config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu);
-    config.cpu_adapter.state_multipliers[@intFromEnum(protocol.RuntimeState.not_running)] = 0.01;
-    try std.testing.expect(!protocol.isValidConfig(&config));
-
-    config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu);
-    config.cpu_adapter.state_multipliers[0] += 0.01;
-    try std.testing.expect(!protocol.isValidConfig(&config));
-
-    config = corpus.explicitConfig(protocol.FeatureFlags.adapter_gpu);
-    config.gpu_adapter.state_multipliers[@intFromEnum(protocol.RuntimeState.not_running)] = 0.01;
     try std.testing.expect(!protocol.isValidConfig(&config));
 }
 
@@ -269,30 +248,28 @@ test "retired config score-only bit and required per-cycle fields are rejected" 
 }
 
 test "ABI enum and validity bit assignments are frozen" {
-    try std.testing.expectEqual(@as(u32, 0x000b_0001), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x000c_0001), protocol.abi_version);
     try std.testing.expectEqual(@as(i32, 0), @intFromEnum(protocol.Status.ok));
     try std.testing.expectEqual(@as(i32, 11), @intFromEnum(protocol.Status.recreate_required));
-    try std.testing.expectEqual(@as(u64, 0x0f), protocol.FeatureFlags.known);
+    try std.testing.expectEqual(@as(u64, 0x09), protocol.FeatureFlags.known);
     try std.testing.expectEqual(@as(u64, 0x0c), protocol.CycleValidity.known);
     try std.testing.expectEqual(@as(u64, 0x0c), protocol.CycleValidity.required);
     try std.testing.expectEqual(@as(u64, 0x1d), protocol.CycleFlags.known);
-    try std.testing.expectEqual(@as(u64, 0xffff), protocol.InputValidity.known);
-    try std.testing.expectEqual(@as(u8, 0x07), protocol.GradeDomains.known);
-    try std.testing.expectEqual(@as(u64, 0xff), protocol.ActionValidity.known);
+    try std.testing.expectEqual(@as(u64, 0xe67f), protocol.InputValidity.known);
+    try std.testing.expectEqual(@as(u8, 0x01), protocol.GradeDomains.known);
+    try std.testing.expectEqual(@as(u64, 0x67), protocol.ActionValidity.known);
     try std.testing.expectEqual(@as(u32, 0x0f), protocol.ActionFlags.known);
-    try std.testing.expectEqual(@as(u64, 0x0f), protocol.FeedbackValidity.known);
-    try std.testing.expectEqual(@as(u32, 0x0f), protocol.FeedbackFlags.known);
+    try std.testing.expectEqual(@as(u64, 0x03), protocol.FeedbackValidity.known);
+    try std.testing.expectEqual(@as(u32, 0x09), protocol.FeedbackFlags.known);
     try std.testing.expectEqual(@as(u32, 0x1f), protocol.SnapshotFlags.known);
     try std.testing.expectEqual(
         ((@as(u64, 1) << 38) - 1) &
-            ~((@as(u64, 1) << 5) | (@as(u64, 1) << 15) |
+            ~((@as(u64, 7) << 20) | (@as(u64, 1) << 5) | (@as(u64, 1) << 15) |
                 (@as(u64, 1) << 16) | (@as(u64, 1) << 36)),
         protocol.Reason.known,
     );
     try std.testing.expectEqual(@as(i8, -4), protocol.ProcessGrade.level4);
     try std.testing.expectEqual(@as(i8, 1), protocol.ProcessGrade.a1);
-    try std.testing.expectEqual(@as(u8, 0), @intFromEnum(protocol.AdapterGrade.freeze));
-    try std.testing.expectEqual(@as(u8, 3), @intFromEnum(protocol.AdapterGrade.extreme));
 }
 
 test "authoritative facts never turn missing grades into normal" {
@@ -300,7 +277,7 @@ test "authoritative facts never turn missing grades into normal" {
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
 
-    var row = corpus.processFact(0, 101, 1001, 11, 111, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    var row = corpus.processFact(0, 101, 1001, 11, 111, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     row.valid_mask &= ~protocol.InputValidity.applied_process_grade;
     var rows = [_]protocol.InputRow{row};
     var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
@@ -323,53 +300,8 @@ test "authoritative facts never turn missing grades into normal" {
     }
 }
 
-test "software only authoritative facts preserve adapter ownership" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu);
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-
-    var rows = [_]protocol.InputRow{corpus.softwareFact(
-        0,
-        9_001,
-        .optimize,
-        .normal,
-        protocol.InputFlags.owns_cpu_grade,
-    )};
-    var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-        session,
-        &input,
-        rows[0..].ptr,
-        rows.len,
-        actions[0..].ptr,
-        actions.len,
-        &snapshot,
-    ));
-
-    const software_slot = session.findSoftware(9_001) orelse return error.MissingSoftwareSnapshot;
-    const software = session.softwares[software_slot];
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.optimize), software.cpu_transition.applied);
-    try std.testing.expect(software.cpu_transition.owned);
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.normal), software.gpu_transition.applied);
-    try std.testing.expect(!software.gpu_transition.owned);
-    try std.testing.expectEqual(@as(u32, 0), software.member_count);
-}
-
-test "software only row rejects process facts" {
-    var row = corpus.softwareFact(0, 9_002, .optimize, .normal, protocol.InputFlags.owns_cpu_grade);
-    row.valid_mask |= protocol.InputValidity.applied_process_grade;
-    try std.testing.expectEqual(protocol.Status.invalid_argument, protocol.validateInputRow(&row, 0));
-
-    row.valid_mask &= ~protocol.InputValidity.applied_process_grade;
-    row.flags |= protocol.InputFlags.running;
-    row.valid_mask |= protocol.InputValidity.surface_facts;
-    try std.testing.expectEqual(protocol.Status.invalid_argument, protocol.validateInputRow(&row, 0));
-}
-
 test "input rows reject base scores and utilization outside the percentage domain" {
-    var base = corpus.processFact(0, 9_102, 90_102, 92, 902, 100.000_001, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    var base = corpus.processFact(0, 9_102, 90_102, 92, 902, 100.000_001, .general_application, 0, protocol.ProcessGrade.normal, 0);
     try std.testing.expectEqual(protocol.Status.invalid_argument, protocol.validateInputRow(&base, 0));
 
     base.base_score = 100;
@@ -381,7 +313,7 @@ test "input rows reject base scores and utilization outside the percentage domai
 }
 
 test "CPU score validity is independent from legacy raw metric validity" {
-    const base = corpus.processFact(0, 9_104, 90_104, 94, 904, 80, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const base = corpus.processFact(0, 9_104, 90_104, 94, 904, 80, .general_application, 0, protocol.ProcessGrade.normal, 0);
     var row = corpus.metricFact(base, 1, .cpu_usage_percent, 50, 0);
     row.valid_mask &= ~protocol.InputValidity.metric;
     row.metric_value = 0;
@@ -413,10 +345,10 @@ test "CPU score validity is independent from legacy raw metric validity" {
 }
 
 test "CPU score-only facts reach native process and software state without raw occupancy" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy | protocol.FeatureFlags.adapter_cpu);
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    const base = corpus.processFact(0, 9_105, 90_105, 95, 905, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const base = corpus.processFact(0, 9_105, 90_105, 95, 905, 80, .adapted, 0, protocol.ProcessGrade.normal, 0);
     var process_score = corpus.metricFact(base, 1, .cpu_usage_percent, 0, 0);
     process_score.valid_mask &= ~(protocol.InputValidity.metric | protocol.InputValidity.software_score | protocol.InputValidity.score_member_count);
     process_score.process_score = 27;
@@ -443,116 +375,12 @@ test "CPU score-only facts reach native process and software state without raw o
     try std.testing.expectEqual(@as(f64, 27), session.softwares[software_slot].member_cpu_score);
 }
 
-test "standalone and process adapter facts merge in either order" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu);
-    var actions: ActionBuffer = undefined;
-    var first_snapshot: protocol.Snapshot = undefined;
-    var second_snapshot: protocol.Snapshot = undefined;
-
-    const first_session = try coordinator.create(&config);
-    defer coordinator.destroy(first_session);
-    const standalone_first = corpus.softwareFact(
-        0,
-        9_003,
-        .optimize,
-        .normal,
-        protocol.InputFlags.owns_cpu_grade,
-    );
-    const process_second = corpus.processFact(
-        1,
-        9_103,
-        9_003,
-        93,
-        903,
-        20,
-        .adapted,
-        0,
-        protocol.ProcessGrade.normal,
-        .optimize,
-        .normal,
-        protocol.InputFlags.owns_cpu_grade,
-    );
-    var first_rows = [_]protocol.InputRow{ standalone_first, process_second };
-    var first_input = corpus.cycle(&config, 1, 1_000, first_rows.len, true);
-    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-        first_session,
-        &first_input,
-        first_rows[0..].ptr,
-        first_rows.len,
-        actions[0..].ptr,
-        actions.len,
-        &first_snapshot,
-    ));
-
-    const second_session = try coordinator.create(&config);
-    defer coordinator.destroy(second_session);
-    var process_first = process_second;
-    process_first.source_index = 0;
-    var standalone_second = standalone_first;
-    standalone_second.source_index = 1;
-    var second_rows = [_]protocol.InputRow{ process_first, standalone_second };
-    var second_input = corpus.cycle(&config, 1, 1_000, second_rows.len, true);
-    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-        second_session,
-        &second_input,
-        second_rows[0..].ptr,
-        second_rows.len,
-        actions[0..].ptr,
-        actions.len,
-        &second_snapshot,
-    ));
-
-    const first_software = first_session.softwares[first_session.findSoftware(9_003) orelse return error.MissingSoftwareSnapshot];
-    const second_software = second_session.softwares[second_session.findSoftware(9_003) orelse return error.MissingSoftwareSnapshot];
-    try std.testing.expectEqual(first_software.cpu_transition.applied, second_software.cpu_transition.applied);
-    try std.testing.expectEqual(first_software.cpu_transition.owned, second_software.cpu_transition.owned);
-    try std.testing.expectEqual(first_software.member_count, second_software.member_count);
-    try std.testing.expectEqual(@as(u32, 1), first_software.member_count);
-}
-
-test "standalone and process adapter ownership conflicts exclude only that adapter" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu);
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-
-    const process = corpus.processFact(
-        1,
-        9_104,
-        9_004,
-        94,
-        904,
-        20,
-        .adapted,
-        0,
-        protocol.ProcessGrade.normal,
-        .extreme,
-        .normal,
-        protocol.InputFlags.owns_cpu_grade,
-    );
-    var rows = [_]protocol.InputRow{
-        corpus.softwareFact(0, 9_004, .optimize, .normal, protocol.InputFlags.owns_cpu_grade),
-        process,
-    };
-    var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-        session,
-        &input,
-        rows[0..].ptr,
-        rows.len,
-        actions[0..].ptr,
-        actions.len,
-        &snapshot,
-    ));
-}
-
 test "raw fact conflicts exclude only the contradictory fact" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
 
-    const base = corpus.processFact(0, 101, 1001, 11, 111, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const base = corpus.processFact(0, 101, 1001, 11, 111, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     var conflict = base;
     conflict.source_index = 1;
     conflict.base_score = 21;
@@ -638,9 +466,7 @@ test "identity-less level4 apply remains a non-atomic single action" {
     for (&rows) |*row| {
         row.valid_mask &= ~(protocol.InputValidity.software_identity |
             protocol.InputValidity.software_score |
-            protocol.InputValidity.score_member_count |
-            protocol.InputValidity.applied_cpu_grade |
-            protocol.InputValidity.applied_gpu_grade);
+            protocol.InputValidity.score_member_count);
         row.software_key = 0;
         row.software_score = 0;
         row.score_member_count = 0;
@@ -772,7 +598,9 @@ test "per-cycle action limit defers an atomic freeze group without splitting or 
         actions.len,
         &snapshot,
     ));
-    try std.testing.expectEqual(@as(u32, 1), snapshot.action_count);
+    // The only candidates are the two process actions in one atomic group.
+    // Neither fits a limit of one; software-grade no-op actions no longer exist.
+    try std.testing.expectEqual(@as(u32, 0), snapshot.action_count);
     try std.testing.expectEqual(@as(u32, 0), snapshot.inflight_count);
     try std.testing.expect(findProcessAction(actions[0..snapshot.action_count], 101) == null);
     try std.testing.expect(findProcessAction(actions[0..snapshot.action_count], 102) == null);
@@ -857,41 +685,6 @@ test "partial atomic freeze failure arms whole-software compensation" {
     try std.testing.expect((compensation.flags & protocol.ActionFlags.compensation) != 0);
     const blocked = findProcessAction(actions[0..snapshot.action_count], 102) orelse return error.MissingProcessAction;
     try std.testing.expectEqual(@as(u32, 0), blocked.flags & protocol.ActionFlags.requires_feedback);
-}
-
-test "adapter capability filtering also waits three rounds" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu);
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-
-    var static = corpus.processFact(0, 201, 2001, 21, 211, 30, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    static.cpu_capability_mask = (@as(u8, 1) << @intFromEnum(protocol.AdapterGrade.optimize)) |
-        (@as(u8, 1) << @intFromEnum(protocol.AdapterGrade.normal)) |
-        (@as(u8, 1) << @intFromEnum(protocol.AdapterGrade.extreme));
-    var rows = [_]protocol.InputRow{
-        static,
-        corpus.metricFact(static, 1, .cpu_usage_percent, 100, 0),
-    };
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    var sequence: u64 = 1;
-    while (sequence <= 3) : (sequence += 1) {
-        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, sequence == 1);
-        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-            session,
-            &input,
-            rows[0..].ptr,
-            rows.len,
-            actions[0..].ptr,
-            actions.len,
-            &snapshot,
-        ));
-    }
-    const software = findSoftwareAction(actions[0..snapshot.action_count], 2001) orelse return error.MissingSoftwareAction;
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.optimize), software.to_cpu_grade);
-    try std.testing.expectEqual(protocol.GradeDomains.cpu, software.domain_mask);
-    try std.testing.expect((software.reason_mask & protocol.Reason.capability_clamped) != 0);
-    try std.testing.expect((software.flags & protocol.ActionFlags.requires_feedback) != 0);
 }
 
 test "state uncertain preserves last-good and requires explicit authoritative resync" {
@@ -1015,9 +808,9 @@ test "critical start gives exactly ten five-second wakes then normal" {
             var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
             const session = try coordinator.create(&config);
             defer coordinator.destroy(session);
-            var row = corpus.processFact(0, 401, 4001, 41, 411, if (kind == .high_performance) 35 else 85, kind, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+            var row = corpus.processFact(0, 401, 4001, 41, 411, if (kind == .high_performance) 35 else 85, kind, 0, protocol.ProcessGrade.normal, 0);
             if (!software_identity) {
-                row.valid_mask &= ~(protocol.InputValidity.software_identity | protocol.InputValidity.applied_cpu_grade | protocol.InputValidity.applied_gpu_grade);
+                row.valid_mask &= ~(protocol.InputValidity.software_identity);
                 row.software_key = 0;
             }
             // No elapsed-time expiry: each completed cycle consumes just one round.
@@ -1036,7 +829,7 @@ test "game grace early wake consumes a round without changing grace" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    const row = corpus.processFact(0, 401, 4001, 41, 411, 35, .game, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const row = corpus.processFact(0, 401, 4001, 41, 411, 35, .game, 0, protocol.ProcessGrade.normal, 0);
     try expectBoostCycle(session, &config, 1, 1_000, &.{row}, 10, 5_000, false);
     try expectBoostCycle(session, &config, 2, 6_000, &.{row}, 9, 5_000, false);
     try expectBoostCycle(session, &config, 3, 11_000, &.{row}, 8, 1, false);
@@ -1055,9 +848,9 @@ test "critical close gives exactly ten five-second wakes then normal" {
             var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
             const session = try coordinator.create(&config);
             defer coordinator.destroy(session);
-            var row = corpus.processFact(0, 401, 4001, 41, 411, 35, kind, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+            var row = corpus.processFact(0, 401, 4001, 41, 411, 35, kind, 0, protocol.ProcessGrade.normal, 0);
             if (!software_identity) {
-                row.valid_mask &= ~(protocol.InputValidity.software_identity | protocol.InputValidity.applied_cpu_grade | protocol.InputValidity.applied_gpu_grade);
+                row.valid_mask &= ~(protocol.InputValidity.software_identity);
                 row.software_key = 0;
             }
             try expectBoostCycle(session, &config, 1, 1_000, &.{row}, 10, 5_000, false);
@@ -1077,7 +870,7 @@ test "a second critical change restarts the boost at ten rounds" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    const row = corpus.processFact(0, 401, 4001, 41, 411, 35, .high_performance, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const row = corpus.processFact(0, 401, 4001, 41, 411, 35, .high_performance, 0, protocol.ProcessGrade.normal, 0);
     try expectBoostCycle(session, &config, 1, 1_000, &.{row}, 10, 5_000, false);
     try expectBoostCycle(session, &config, 2, 6_000, &.{row}, 9, 5_000, false);
     try expectBoostCycle(session, &config, 3, 11_000, &.{}, 10, 5_000, false);
@@ -1137,7 +930,7 @@ test "critical membership changes do not extend the stable event boost" {
     var actions: ActionBuffer = undefined;
     var snapshot: protocol.Snapshot = undefined;
 
-    const first = corpus.processFact(0, 401, 4001, 41, 411, 85, .high_performance, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const first = corpus.processFact(0, 401, 4001, 41, 411, 85, .high_performance, 0, protocol.ProcessGrade.normal, 0);
     var first_rows = [_]protocol.InputRow{first};
     var input = corpus.cycle(&config, 1, 1_000, first_rows.len, true);
     try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
@@ -1153,7 +946,7 @@ test "critical membership changes do not extend the stable event boost" {
     try std.testing.expectEqual(@as(u32, 5_000), snapshot.wake_after_ms);
     try std.testing.expect((snapshot.reason_mask & protocol.Reason.critical_fact_changed) != 0);
 
-    const second = corpus.processFact(1, 402, 4001, 42, 412, 85, .high_performance, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const second = corpus.processFact(1, 402, 4001, 42, 412, 85, .high_performance, 0, protocol.ProcessGrade.normal, 0);
     var joined_rows = [_]protocol.InputRow{ first, second };
     joined_rows[0].source_index = 0;
     input = corpus.cycle(&config, 2, 2_000, joined_rows.len, false);
@@ -1180,7 +973,7 @@ test "game grace is inclusive and participates in next wake" {
     var actions: ActionBuffer = undefined;
     var snapshot: protocol.Snapshot = undefined;
 
-    const game = corpus.processFact(0, 501, 5001, 51, 511, 95, .game, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const game = corpus.processFact(0, 501, 5001, 51, 511, 95, .game, 0, protocol.ProcessGrade.normal, 0);
     var rows = [_]protocol.InputRow{game};
     var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
     try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
@@ -1249,8 +1042,6 @@ test "game and general application paired inputs differ only in startup grace" {
             case.kind,
             0,
             protocol.ProcessGrade.normal,
-            .normal,
-            .normal,
             0,
         );
         var rows = [_]protocol.InputRow{process_fact};
@@ -1304,37 +1095,6 @@ test "game and general application paired inputs differ only in startup grace" {
     }
 }
 
-test "GPU adapter grade uses only the canonical score" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_gpu);
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-
-    const base = corpus.processFact(0, 601, 6001, 61, 611, 20, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    var rows = [_]protocol.InputRow{
-        base,
-        corpus.metricFact(base, 1, .gpu_usage_percent, 2, 3),
-        corpus.metricFact(base, 2, .vram_usage_percent, 1, 3),
-    };
-    var sequence: u64 = 1;
-    while (sequence <= 3) : (sequence += 1) {
-        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, sequence == 1);
-        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-            session,
-            &input,
-            rows[0..].ptr,
-            rows.len,
-            actions[0..].ptr,
-            actions.len,
-            &snapshot,
-        ));
-    }
-    const software = findSoftwareAction(actions[0..snapshot.action_count], 6001) orelse return error.MissingSoftwareAction;
-    try std.testing.expectEqual(protocol.GradeDomains.gpu, software.domain_mask);
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.freeze), software.to_gpu_grade);
-}
-
 test "restore sorts before A1 and retained rows" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
@@ -1342,8 +1102,8 @@ test "restore sorts before A1 and retained rows" {
     var actions: ActionBuffer = undefined;
     var snapshot: protocol.Snapshot = undefined;
 
-    const restore_base = corpus.processFact(0, 701, 7001, 71, 711, 85, .general_application, 0, protocol.ProcessGrade.level4, .normal, .normal, protocol.InputFlags.owns_process_grade);
-    const a1_base = corpus.processFact(2, 702, 7002, 72, 712, 90, .general_application, protocol.InputFlags.foreground_focused, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const restore_base = corpus.processFact(0, 701, 7001, 71, 711, 85, .general_application, 0, protocol.ProcessGrade.level4, protocol.InputFlags.owns_process_grade);
+    const a1_base = corpus.processFact(2, 702, 7002, 72, 712, 90, .general_application, protocol.InputFlags.foreground_focused, protocol.ProcessGrade.normal, 0);
     var rows = [_]protocol.InputRow{
         restore_base,
         corpus.metricFact(restore_base, 1, .cpu_usage_percent, 0, 0),
@@ -1480,7 +1240,7 @@ test "missing surface facts remain unknown rather than becoming background" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    var row = corpus.processFact(0, 1001, 10_001, 101, 1_011, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    var row = corpus.processFact(0, 1001, 10_001, 101, 1_011, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     row.valid_mask &= ~protocol.InputValidity.surface_facts;
     row.flags &= ~(protocol.InputFlags.running | protocol.InputFlags.foreground_focused |
         protocol.InputFlags.has_visible_window | protocol.InputFlags.has_background_window |
@@ -1574,74 +1334,6 @@ test "feedback batches validate transactionally before advancing any action" {
     try std.testing.expectEqual(@as(u32, 0), session.inflightCount());
 }
 
-test "CPU and GPU adapter domains may hold independent inflight reservations" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu | protocol.FeatureFlags.adapter_gpu);
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-    const base = corpus.processFact(0, 1301, 13_001, 131, 1_311, 60, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    var cpu_rows = [_]protocol.InputRow{
-        base,
-        corpus.metricFact(base, 1, .cpu_usage_percent, 100, 0),
-    };
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    var sequence: u64 = 1;
-    while (sequence <= 3) : (sequence += 1) {
-        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, cpu_rows.len, sequence == 1);
-        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-            session,
-            &input,
-            cpu_rows[0..].ptr,
-            cpu_rows.len,
-            actions[0..].ptr,
-            actions.len,
-            &snapshot,
-        ));
-    }
-    const cpu_action_pointer = findSoftwareAction(actions[0..snapshot.action_count], 13_001) orelse return error.MissingSoftwareAction;
-    try std.testing.expectEqual(protocol.GradeDomains.cpu, cpu_action_pointer.domain_mask);
-    const cpu_action = cpu_action_pointer.*;
-
-    var gpu_rows = [_]protocol.InputRow{
-        base,
-        corpus.metricFact(base, 1, .cpu_usage_percent, 100, 0),
-        corpus.metricFact(base, 2, .gpu_usage_percent, 2, 5),
-        corpus.metricFact(base, 3, .vram_usage_percent, 1, 5),
-    };
-    sequence = 4;
-    while (sequence <= 6) : (sequence += 1) {
-        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, gpu_rows.len, false);
-        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-            session,
-            &input,
-            gpu_rows[0..].ptr,
-            gpu_rows.len,
-            actions[0..].ptr,
-            actions.len,
-            &snapshot,
-        ));
-    }
-    const gpu_action_pointer = findSoftwareAction(actions[0..snapshot.action_count], 13_001) orelse return error.MissingSoftwareAction;
-    try std.testing.expectEqual(protocol.GradeDomains.gpu, gpu_action_pointer.domain_mask);
-    const gpu_action = gpu_action_pointer.*;
-    try std.testing.expectEqual(@as(u32, 0), gpu_action.valid_mask & protocol.ActionValidity.cpu_score);
-    try std.testing.expect((gpu_action.valid_mask & protocol.ActionValidity.gpu_score) != 0);
-    try std.testing.expectEqual(@as(u32, 2), session.inflightCount());
-
-    var feedbacks = [_]protocol.Feedback{
-        corpus.feedbackFor(gpu_action, .succeeded, 6_100),
-        corpus.feedbackFor(cpu_action, .succeeded, 6_100),
-    };
-    try std.testing.expectEqual(protocol.Status.ok, coordinator.applyFeedback(
-        session,
-        feedbacks[0..].ptr,
-        feedbacks.len,
-        feedbacks.len,
-        &snapshot,
-    ));
-    try std.testing.expectEqual(@as(u32, 0), session.inflightCount());
-}
-
 test "process grade boundary corpus uses only direct CPU occupancy scores" {
     try expectFirstRoundDesiredGrade(20, 0, 50, 0, protocol.ProcessGrade.level4);
     try expectFirstRoundDesiredGrade(21, 0, 50, 0, protocol.ProcessGrade.level3);
@@ -1659,7 +1351,7 @@ test "process CPU score remains stable across cycles" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    const base = corpus.processFact(0, 17_001, 170_001, 171, 1_711, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const base = corpus.processFact(0, 17_001, 170_001, 171, 1_711, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     var rows = [_]protocol.InputRow{
         base,
         corpus.metricFact(base, 1, .cpu_usage_percent, 50, 0),
@@ -1701,7 +1393,7 @@ test "zero CPU occupancy produces an exact zero score" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    const base = corpus.processFact(0, 17_002, 170_002, 172, 1_712, 80, .general_application, protocol.InputFlags.foreground_focused, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const base = corpus.processFact(0, 17_002, 170_002, 172, 1_712, 80, .general_application, protocol.InputFlags.foreground_focused, protocol.ProcessGrade.normal, 0);
     var rows = [_]protocol.InputRow{
         base,
         corpus.metricFact(base, 1, .cpu_usage_percent, 0, 0),
@@ -1724,14 +1416,14 @@ test "zero CPU occupancy produces an exact zero score" {
     try std.testing.expect((action.valid_mask & protocol.ActionValidity.cpu_score) != 0);
 }
 
-test "adapter CPU score sums member process scores without process-count inflation" {
-    const single_base = corpus.processFact(0, 18_001, 180_001, 181, 1_811, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+test "software CPU score sums member process scores without process-count inflation" {
+    const single_base = corpus.processFact(0, 18_001, 180_001, 181, 1_811, 80, .adapted, 0, protocol.ProcessGrade.normal, 0);
     var single_rows = [_]protocol.InputRow{
         single_base,
         corpus.metricFact(single_base, 1, .cpu_usage_percent, 50, 0),
     };
-    const split_first = corpus.processFact(0, 18_101, 180_101, 182, 1_812, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    const split_second = corpus.processFact(2, 18_102, 180_101, 183, 1_813, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const split_first = corpus.processFact(0, 18_101, 180_101, 182, 1_812, 80, .adapted, 0, protocol.ProcessGrade.normal, 0);
+    const split_second = corpus.processFact(2, 18_102, 180_101, 183, 1_813, 80, .adapted, 0, protocol.ProcessGrade.normal, 0);
     var split_first_cpu = corpus.metricFact(split_first, 1, .cpu_usage_percent, 25, 0);
     var split_second_cpu = corpus.metricFact(split_second, 3, .cpu_usage_percent, 25, 0);
     corpus.setSoftwareScore(&split_first_cpu, 18, 2);
@@ -1747,116 +1439,26 @@ test "adapter CPU score sums member process scores without process-count inflati
     const split = try scoreSoftwareCpu(split_rows[0..], 180_101);
     try std.testing.expectApproxEqAbs(@as(f64, 18), single.member_score, 0.000_000_1);
     try std.testing.expectApproxEqAbs(single.member_score, split.member_score, 0.000_000_1);
-    try std.testing.expectApproxEqAbs(single.action_score, split.action_score, 0.000_000_1);
+    try std.testing.expectApproxEqAbs(single.snapshot_score, split.snapshot_score, 0.000_000_1);
 }
 
-test "adapter CPU consumes the canonical software score" {
-    const base = corpus.processFact(0, 18_201, 180_201, 184, 1_814, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+test "software CPU consumes the canonical software score" {
+    const base = corpus.processFact(0, 18_201, 180_201, 184, 1_814, 80, .adapted, 0, protocol.ProcessGrade.normal, 0);
     var cpu = corpus.metricFact(base, 1, .cpu_usage_percent, 50, 0);
     corpus.setCanonicalScores(&cpu, 10, 10, 1);
     var rows = [_]protocol.InputRow{
         base,
         cpu,
     };
-    var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu);
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const background_process = @intFromEnum(protocol.RuntimeState.background_process);
     config.process_state_multipliers[background_process] = 0.25;
-    config.cpu_adapter.state_multipliers[background_process] = 0.25;
-    config.gpu_adapter.state_multipliers[background_process] = 1.50;
 
     const scored = try scoreSoftwareCpuWithConfig(rows[0..], 180_201, config);
     try std.testing.expectApproxEqAbs(@as(f64, 10), scored.member_score, 0.000_000_1);
 }
 
-test "adapter GPU consumes the canonical software score" {
-    const base = corpus.processFact(0, 18_251, 180_251, 189, 1_819, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    var gpu = corpus.metricFact(base, 1, .gpu_usage_percent, 50, 7);
-    corpus.setCanonicalScores(&gpu, 60, 60, 1);
-    var rows = [_]protocol.InputRow{
-        base,
-        gpu,
-        corpus.metricFact(base, 2, .vram_usage_percent, 1, 7),
-    };
-    var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_gpu);
-    const background_process = @intFromEnum(protocol.RuntimeState.background_process);
-    config.process_state_multipliers[background_process] = 0.25;
-    config.cpu_adapter.state_multipliers[background_process] = 0.25;
-    config.gpu_adapter.state_multipliers[background_process] = 1.50;
-
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-    var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
-    input.flags |= protocol.CycleFlags.score_only;
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-        session,
-        &input,
-        rows[0..].ptr,
-        rows.len,
-        actions[0..].ptr,
-        actions.len,
-        &snapshot,
-    ));
-    const software_slot = session.findSoftware(180_251) orelse
-        return error.MissingSoftwareSnapshot;
-    const software = session.softwares[software_slot];
-    try std.testing.expect(software.member_gpu_score_valid);
-    try std.testing.expect(!software.adapter_cpu_score_valid);
-    try std.testing.expect(software.adapter_gpu_score_valid);
-    try std.testing.expectApproxEqAbs(@as(f64, 60), software.member_gpu_score, 0.000_000_1);
-    const action = findSoftwareAction(actions[0..snapshot.action_count], 180_251) orelse
-        return error.MissingSoftwareAction;
-    try std.testing.expect((action.valid_mask & protocol.ActionValidity.gpu_score) != 0);
-    try std.testing.expectEqual(@as(u64, 0), action.valid_mask & protocol.ActionValidity.cpu_score);
-    try std.testing.expectApproxEqAbs(software.adapter_gpu_score, action.gpu_score, 0.000_000_1);
-}
-
-test "adapter action preserves independent CPU and GPU scores" {
-    const base = corpus.processFact(0, 18_271, 180_271, 190, 1_820, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    var cpu = corpus.metricFact(base, 1, .cpu_usage_percent, 25, 0);
-    corpus.setCanonicalScores(&cpu, 10, 10, 1);
-    var gpu = corpus.metricFact(base, 2, .gpu_usage_percent, 75, 7);
-    corpus.setCanonicalScores(&gpu, 60, 60, 1);
-    var rows = [_]protocol.InputRow{
-        base,
-        cpu,
-        gpu,
-        corpus.metricFact(base, 3, .vram_usage_percent, 1, 7),
-    };
-    var config = corpus.explicitConfig(
-        protocol.FeatureFlags.adapter_cpu | protocol.FeatureFlags.adapter_gpu,
-    );
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-    var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
-    input.flags |= protocol.CycleFlags.score_only;
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-        session,
-        &input,
-        rows[0..].ptr,
-        rows.len,
-        actions[0..].ptr,
-        actions.len,
-        &snapshot,
-    ));
-    const software_slot = session.findSoftware(180_271) orelse
-        return error.MissingSoftwareSnapshot;
-    const software = session.softwares[software_slot];
-    try std.testing.expect(software.adapter_cpu_score_valid);
-    try std.testing.expect(software.adapter_gpu_score_valid);
-    const action = findSoftwareAction(actions[0..snapshot.action_count], 180_271) orelse
-        return error.MissingSoftwareAction;
-    try std.testing.expect((action.valid_mask & protocol.ActionValidity.cpu_score) != 0);
-    try std.testing.expect((action.valid_mask & protocol.ActionValidity.gpu_score) != 0);
-    try std.testing.expectApproxEqAbs(software.adapter_cpu_score, action.cpu_score, 0.000_000_1);
-    try std.testing.expectApproxEqAbs(software.adapter_gpu_score, action.gpu_score, 0.000_000_1);
-    try std.testing.expect(action.cpu_score != action.gpu_score);
-}
-
-test "adapter member aggregation is reproducible across input order" {
+test "software member aggregation is reproducible across input order" {
     var forward: [6]protocol.InputRow = undefined;
     appendProcessScoreRows(&forward, 0, 18_301, 180_301, 185, 1_815, 100);
     appendProcessScoreRows(&forward, 2, 18_302, 180_301, 186, 1_816, 0.000_000_000_000_01);
@@ -1873,116 +1475,16 @@ test "adapter member aggregation is reproducible across input order" {
     const first = try scoreSoftwareCpu(forward[0..], 180_301);
     const second = try scoreSoftwareCpu(reverse[0..], 180_301);
     try std.testing.expectEqual(first.member_score, second.member_score);
-    try std.testing.expectEqual(first.action_score, second.action_score);
-}
-
-test "CPU and GPU adapters share the exact three base score tier boundaries" {
-    try expectFirstRoundAdapterGrades(20, 0, .freeze);
-    try expectFirstRoundAdapterGrades(21, 0, .optimize);
-    try expectFirstRoundAdapterGrades(80, 0, .optimize);
-    try expectFirstRoundAdapterGrades(81, 0, .normal);
-    try expectFirstRoundAdapterGrades(80, protocol.InputFlags.foreground_focused, .normal);
-    try expectFirstRoundAdapterGrades(90, protocol.InputFlags.foreground_focused, .extreme);
-}
-
-test "level two protection clamps adapted CPU and GPU suppression without enhancing scores" {
-    const cases = [_]struct {
-        base_score: f64,
-        score: f64,
-        capabilities: u8,
-        expected: protocol.AdapterGrade,
-        blocked: bool,
-    }{
-        .{ .base_score = 20, .score = 0, .capabilities = corpus.allAdapterCapabilities(), .expected = .normal, .blocked = true },
-        .{ .base_score = 80, .score = 40, .capabilities = (@as(u8, 1) << @intFromEnum(protocol.AdapterGrade.normal)) | (@as(u8, 1) << @intFromEnum(protocol.AdapterGrade.optimize)), .expected = .normal, .blocked = true },
-        .{ .base_score = 80, .score = 150, .capabilities = corpus.allAdapterCapabilities(), .expected = .normal, .blocked = false },
-        .{ .base_score = 90, .score = 150, .capabilities = corpus.allAdapterCapabilities(), .expected = .extreme, .blocked = false },
-    };
-    for (cases) |case| {
-        var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu | protocol.FeatureFlags.adapter_gpu);
-        const session = try coordinator.create(&config);
-        defer coordinator.destroy(session);
-        var base = corpus.processFact(0, 16_001, 160_001, 161, 1_611, case.base_score, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-        base.protection_level = 2;
-        base.cpu_capability_mask = case.capabilities;
-        base.gpu_capability_mask = case.capabilities;
-        var rows = [_]protocol.InputRow{
-            base,
-            corpus.metricFact(base, 1, .cpu_usage_percent, 0, 0),
-            corpus.metricFact(base, 2, .gpu_usage_percent, 0, 7),
-        };
-        corpus.setCanonicalScores(&rows[1], case.score, case.score, 1);
-        corpus.setCanonicalScores(&rows[2], case.score, case.score, 1);
-        var actions: ActionBuffer = undefined;
-        var snapshot: protocol.Snapshot = undefined;
-        var sequence: u64 = 1;
-        while (sequence <= 3) : (sequence += 1) {
-            var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, sequence == 1);
-            try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, rows[0..].ptr, rows.len, actions[0..].ptr, actions.len, &snapshot));
-        }
-        const software = session.softwares[session.findSoftware(160_001) orelse return error.MissingSoftwareSnapshot];
-        try std.testing.expectEqual(@intFromEnum(case.expected), software.cpu_transition.desired);
-        try std.testing.expectEqual(@intFromEnum(case.expected), software.gpu_transition.desired);
-        try std.testing.expectEqual(case.score, software.adapter_cpu_score);
-        try std.testing.expectEqual(case.score, software.adapter_gpu_score);
-        try std.testing.expectEqual(case.blocked, (software.reason_mask & protocol.Reason.protection_level2_blocks_optimization) != 0);
-        for (actions[0..snapshot.action_count]) |action| {
-            if (action.scope != @intFromEnum(protocol.ActionScope.adapter_software)) continue;
-            try std.testing.expect(action.to_cpu_grade >= @intFromEnum(protocol.AdapterGrade.normal));
-            try std.testing.expect(action.to_gpu_grade >= @intFromEnum(protocol.AdapterGrade.normal));
-        }
-    }
-}
-
-test "enabling level two protection restores owned adapted CPU and GPU suppression" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu | protocol.FeatureFlags.adapter_gpu);
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-    const base = corpus.processFact(0, 16_002, 160_002, 162, 1_612, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    var rows = [_]protocol.InputRow{
-        base,
-        corpus.metricFact(base, 1, .cpu_usage_percent, 0, 0),
-        corpus.metricFact(base, 2, .gpu_usage_percent, 0, 7),
-    };
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    var sequence: u64 = 1;
-    while (sequence <= 3) : (sequence += 1) {
-        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, sequence == 1);
-        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, rows[0..].ptr, rows.len, actions[0..].ptr, actions.len, &snapshot));
-    }
-    const apply = findSoftwareAction(actions[0..snapshot.action_count], 160_002) orelse return error.MissingSoftwareAction;
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.optimize), apply.to_cpu_grade);
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.optimize), apply.to_gpu_grade);
-    const applied = corpus.feedbackFor(apply.*, .succeeded, 3_100);
-    try std.testing.expectEqual(protocol.Status.ok, coordinator.applyFeedback(session, @as([*]const protocol.Feedback, @ptrCast(&applied)), 1, 1, &snapshot));
-
-    for (&rows) |*row| row.protection_level = 2;
-    while (sequence <= 6) : (sequence += 1) {
-        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, false);
-        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, rows[0..].ptr, rows.len, actions[0..].ptr, actions.len, &snapshot));
-    }
-    const restore = findSoftwareAction(actions[0..snapshot.action_count], 160_002) orelse return error.MissingSoftwareAction;
-    try std.testing.expectEqual(protocol.GradeDomains.cpu | protocol.GradeDomains.gpu, restore.domain_mask);
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.normal), restore.to_cpu_grade);
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.normal), restore.to_gpu_grade);
-    try std.testing.expect((restore.flags & protocol.ActionFlags.requires_feedback) != 0);
-    try std.testing.expect((restore.reason_mask & protocol.Reason.protection_level2_blocks_optimization) != 0);
-    const restored = corpus.feedbackFor(restore.*, .succeeded, 6_100);
-    try std.testing.expectEqual(protocol.Status.ok, coordinator.applyFeedback(session, @as([*]const protocol.Feedback, @ptrCast(&restored)), 1, 1, &snapshot));
-    const software = session.softwares[session.findSoftware(160_002) orelse return error.MissingSoftwareSnapshot];
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.normal), software.cpu_transition.applied);
-    try std.testing.expectEqual(@intFromEnum(protocol.AdapterGrade.normal), software.gpu_transition.applied);
-    try std.testing.expect(!software.cpu_transition.owned and !software.gpu_transition.owned);
+    try std.testing.expectEqual(first.snapshot_score, second.snapshot_score);
 }
 
 test "adapted software preserves strongest member protection independent of input order" {
     for ([_]bool{ false, true }) |reverse| {
-        var config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu | protocol.FeatureFlags.adapter_gpu);
+        var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
         const session = try coordinator.create(&config);
         defer coordinator.destroy(session);
-        const first = corpus.processFact(0, 16_003, 160_003, 163, 1_613, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-        var second = corpus.processFact(1, 16_004, 160_003, 164, 1_614, 80, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+        const first = corpus.processFact(0, 16_003, 160_003, 163, 1_613, 80, .adapted, 0, protocol.ProcessGrade.normal, 0);
+        var second = corpus.processFact(1, 16_004, 160_003, 164, 1_614, 80, .adapted, 0, protocol.ProcessGrade.normal, 0);
         second.protection_level = 2;
         var rows = if (reverse) [_]protocol.InputRow{ second, first } else [_]protocol.InputRow{ first, second };
         for (&rows, 0..) |*row, index| row.source_index = @intCast(index);
@@ -2012,8 +1514,8 @@ test "capacity-scale corpus keeps allocation grouping and reservation paths boun
     config.max_software_groups = software_count;
     config.max_gpu_states = 1;
     config.max_input_rows = row_count;
-    config.max_actions = process_count + software_count;
-    config.max_reservations = process_count + 2 * software_count;
+    config.max_actions = process_count;
+    config.max_reservations = process_count;
     config.max_atomic_groups = process_count;
     try std.testing.expect(protocol.isValidConfig(&config));
 
@@ -2031,7 +1533,7 @@ test "capacity-scale corpus keeps allocation grouping and reservation paths boun
         const software_key = @as(u64, 200_000) + process_index;
         const process_id = process_index + 1;
         const start_key = @as(u64, 300_000) + process_index;
-        const base = corpus.processFact(source_index, target_key, software_key, process_id, start_key, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+        const base = corpus.processFact(source_index, target_key, software_key, process_id, start_key, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
         rows[source_index] = base;
         rows[source_index + 1] = corpus.metricFact(base, source_index + 1, .cpu_usage_percent, 50, 0);
     }
@@ -2147,12 +1649,11 @@ test "replaying one round does not advance hysteresis" {
     try std.testing.expect((ready.flags & protocol.ActionFlags.requires_feedback) != 0);
 }
 
-test "process and adapter confirmations advance only on larger rounds" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy |
-        protocol.FeatureFlags.adapter_cpu | protocol.FeatureFlags.adapter_gpu);
+test "process confirmations advance only on larger rounds" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    const base = corpus.processFact(0, 15_201, 152_001, 153, 1_513, 20, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const base = corpus.processFact(0, 15_201, 152_001, 153, 1_513, 20, .adapted, 0, protocol.ProcessGrade.normal, 0);
     var rows = [_]protocol.InputRow{
         base,
         corpus.metricFact(base, 1, .cpu_usage_percent, 100, 0),
@@ -2172,21 +1673,13 @@ test "process and adapter confirmations advance only on larger rounds" {
             session.findProcess(15_201, 153, 1_513) orelse
                 return error.MissingProcessSnapshot
         ];
-        const software = session.softwares[
-            session.findSoftware(152_001) orelse
-                return error.MissingSoftwareSnapshot
-        ];
         try std.testing.expectEqual(count, process.transition.pending_count);
-        try std.testing.expectEqual(count, software.cpu_transition.pending_count);
-        try std.testing.expectEqual(count, software.gpu_transition.pending_count);
         try std.testing.expectEqual(@max(@as(u64, 2), round_number), process.transition.last_round_number);
-        try std.testing.expectEqual(@max(@as(u64, 2), round_number), software.cpu_transition.last_round_number);
-        try std.testing.expectEqual(@max(@as(u64, 2), round_number), software.gpu_transition.last_round_number);
     }
 }
 
 test "missing canonical score excludes only the corresponding candidate" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy | protocol.FeatureFlags.adapter_cpu);
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
     var rows = twoIndependentProcessRows();
@@ -2220,16 +1713,14 @@ test "missing canonical score excludes only the corresponding candidate" {
     const missing_software_slot = session.findSoftware(1601) orelse return error.MissingSoftwareSnapshot;
     const complete_software_slot = session.findSoftware(1602) orelse return error.MissingSoftwareSnapshot;
     try std.testing.expect(!session.softwares[missing_software_slot].member_cpu_score_valid);
-    try std.testing.expect(!session.softwares[missing_software_slot].cpu_candidate_valid);
     try std.testing.expect(session.softwares[complete_software_slot].member_cpu_score_valid);
-    try std.testing.expect(session.softwares[complete_software_slot].cpu_candidate_valid);
 }
 
 test "missing CPU metric advances owned Normal restore confirmations only on larger rounds" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    var identity = corpus.processFact(0, 16_101, 161_001, 162, 1_612, 85, .general_application, 0, protocol.ProcessGrade.level3, .normal, .normal, protocol.InputFlags.owns_process_grade);
+    var identity = corpus.processFact(0, 16_101, 161_001, 162, 1_612, 85, .general_application, 0, protocol.ProcessGrade.level3, protocol.InputFlags.owns_process_grade);
     var rows = [_]protocol.InputRow{
         identity,
         corpus.metricFact(identity, 1, .cpu_usage_percent, 0, 0),
@@ -2341,9 +1832,9 @@ test "process CPU grade is independent from missing or saturated GPU metrics" {
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
 
-    var missing_gpu = corpus.processFact(0, 16_001, 160_001, 161, 1_611, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    var missing_gpu = corpus.processFact(0, 16_001, 160_001, 161, 1_611, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     missing_gpu.flags &= ~protocol.InputFlags.process_gpu_metrics_complete;
-    const saturated_gpu = corpus.processFact(2, 16_002, 160_002, 162, 1_612, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const saturated_gpu = corpus.processFact(2, 16_002, 160_002, 162, 1_612, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     var rows = [_]protocol.InputRow{
         missing_gpu,
         corpus.metricFact(missing_gpu, 1, .cpu_usage_percent, 50, 0),
@@ -2378,7 +1869,7 @@ test "process CPU grade is independent from missing or saturated GPU metrics" {
 }
 
 fn lowScoreProcessRows(target_key: u64, software_key: u64, process_id: u32, start_key: u64) [2]protocol.InputRow {
-    const base = corpus.processFact(0, target_key, software_key, process_id, start_key, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const base = corpus.processFact(0, target_key, software_key, process_id, start_key, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     return .{
         base,
         corpus.metricFact(base, 1, .cpu_usage_percent, 50, 0),
@@ -2506,8 +1997,8 @@ fn expectMissingScoreOwnedProcessRestore(case: MandatoryProcessRestoreCase) !voi
 }
 
 fn twoProcessRows() [4]protocol.InputRow {
-    const first = corpus.processFact(0, 101, 1001, 11, 111, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    const second = corpus.processFact(2, 102, 1001, 12, 112, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const first = corpus.processFact(0, 101, 1001, 11, 111, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
+    const second = corpus.processFact(2, 102, 1001, 12, 112, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     var first_cpu = corpus.metricFact(first, 1, .cpu_usage_percent, 50, 0);
     var second_cpu = corpus.metricFact(second, 3, .cpu_usage_percent, 50, 0);
     corpus.setSoftwareScore(&first_cpu, 9, 2);
@@ -2521,8 +2012,8 @@ fn twoProcessRows() [4]protocol.InputRow {
 }
 
 fn twoIndependentProcessRows() [4]protocol.InputRow {
-    const first = corpus.processFact(0, 161, 1601, 16, 1_161, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    const second = corpus.processFact(2, 162, 1602, 17, 1_162, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const first = corpus.processFact(0, 161, 1601, 16, 1_161, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
+    const second = corpus.processFact(2, 162, 1602, 17, 1_162, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
     return .{
         first,
         corpus.metricFact(first, 1, .cpu_usage_percent, 50, 0),
@@ -2546,13 +2037,6 @@ fn findProcessAction(actions: []protocol.Action, target_key: u64) ?*const protoc
     return null;
 }
 
-fn findSoftwareAction(actions: []protocol.Action, software_key: u64) ?*const protocol.Action {
-    for (actions) |*action| {
-        if (action.scope == @intFromEnum(protocol.ActionScope.adapter_software) and action.software_key == software_key) return action;
-    }
-    return null;
-}
-
 fn findProcessSnapshot(rows: []protocol.SnapshotRow, target_key: u64) ?*const protocol.SnapshotRow {
     for (rows) |*row| {
         if (row.row_kind == @intFromEnum(protocol.SnapshotRowKind.process) and row.target_key == target_key) return row;
@@ -2562,11 +2046,11 @@ fn findProcessSnapshot(rows: []protocol.SnapshotRow, target_key: u64) ?*const pr
 
 const SoftwareCpuScore = struct {
     member_score: f64,
-    action_score: f64,
+    snapshot_score: f64,
 };
 
 fn scoreSoftwareCpu(rows: []protocol.InputRow, software_key: u64) !SoftwareCpuScore {
-    const config = corpus.explicitConfig(protocol.FeatureFlags.adapter_cpu);
+    const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     return scoreSoftwareCpuWithConfig(rows, software_key, config);
 }
 
@@ -2594,11 +2078,14 @@ fn scoreSoftwareCpuWithConfig(
     const software_slot = session.findSoftware(software_key) orelse return error.MissingSoftwareSnapshot;
     const software = session.softwares[software_slot];
     try std.testing.expect(software.member_cpu_score_valid);
-    const action = findSoftwareAction(actions[0..snapshot.action_count], software_key) orelse return error.MissingSoftwareAction;
-    return .{
-        .member_score = software.member_cpu_score,
-        .action_score = action.cpu_score,
-    };
+    var snapshot_rows: [corpus.default_process_capacity + corpus.default_software_capacity]protocol.SnapshotRow = undefined;
+    try std.testing.expectEqual(protocol.Status.ok, coordinator.getSnapshot(session, &snapshot, &snapshot_rows, snapshot_rows.len));
+    for (snapshot_rows[0..snapshot.snapshot_row_count]) |row| {
+        if (row.row_kind == @intFromEnum(protocol.SnapshotRowKind.software) and row.software_key == software_key) {
+            return .{ .member_score = software.member_cpu_score, .snapshot_score = row.cpu_score };
+        }
+    }
+    return error.MissingSoftwareSnapshot;
 }
 
 fn appendProcessScoreRows(
@@ -2620,8 +2107,6 @@ fn appendProcessScoreRows(
         .adapted,
         0,
         protocol.ProcessGrade.normal,
-        .normal,
-        .normal,
         0,
     );
     rows[source_index] = base;
@@ -2658,88 +2143,39 @@ fn expectFirstRoundDesiredGrade(
     protection_level: u8,
     expected: i8,
 ) !void {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-    var base = corpus.processFact(0, 14_001, 140_001, 141, 1_411, base_score, .general_application, surface_flags, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    base.protection_level = protection_level;
-    var rows = [_]protocol.InputRow{
-        base,
-        corpus.metricFact(base, 1, .cpu_usage_percent, cpu_usage, 0),
-    };
-    var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-        session,
-        &input,
-        rows[0..].ptr,
-        rows.len,
-        actions[0..].ptr,
-        actions.len,
-        &snapshot,
-    ));
-    const process_slot = session.findProcess(14_001, 141, 1_411) orelse return error.MissingProcessSnapshot;
-    try std.testing.expectEqual(expected, session.processes[process_slot].transition.desired);
-}
-
-fn expectFirstRoundAdapterGrades(
-    base_score: f64,
-    surface_flags: u64,
-    expected: protocol.AdapterGrade,
-) !void {
-    var config = corpus.explicitConfig(
-        protocol.FeatureFlags.adapter_cpu | protocol.FeatureFlags.adapter_gpu,
-    );
-    const session = try coordinator.create(&config);
-    defer coordinator.destroy(session);
-    const base = corpus.processFact(
-        0,
-        15_001,
-        150_001,
-        151,
-        1_511,
-        base_score,
-        .adapted,
-        surface_flags,
-        protocol.ProcessGrade.normal,
-        .normal,
-        .normal,
-        0,
-    );
-    var rows = [_]protocol.InputRow{
-        base,
-        corpus.metricFact(base, 1, .cpu_usage_percent, 100, 0),
-        corpus.metricFact(base, 2, .gpu_usage_percent, 100, 7),
-        corpus.metricFact(base, 3, .vram_usage_percent, 1, 7),
-    };
-    var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
-    var actions: ActionBuffer = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-        session,
-        &input,
-        rows[0..].ptr,
-        rows.len,
-        actions[0..].ptr,
-        actions.len,
-        &snapshot,
-    ));
-    const software_slot = session.findSoftware(150_001) orelse
-        return error.MissingSoftwareSnapshot;
-    const software = session.softwares[software_slot];
-    try std.testing.expect(software.cpu_candidate_valid);
-    try std.testing.expect(software.gpu_candidate_valid);
-    try std.testing.expectEqual(@intFromEnum(expected), software.cpu_candidate_grade);
-    try std.testing.expectEqual(@intFromEnum(expected), software.gpu_candidate_grade);
+    for ([_]protocol.SoftwareKind{ .general_application, .adapted }) |kind| {
+        var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+        const session = try coordinator.create(&config);
+        defer coordinator.destroy(session);
+        var base = corpus.processFact(0, 14_001, 140_001, 141, 1_411, base_score, kind, surface_flags, protocol.ProcessGrade.normal, 0);
+        base.protection_level = protection_level;
+        var rows = [_]protocol.InputRow{
+            base,
+            corpus.metricFact(base, 1, .cpu_usage_percent, cpu_usage, 0),
+        };
+        var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
+        var actions: ActionBuffer = undefined;
+        var snapshot: protocol.Snapshot = undefined;
+        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
+            session,
+            &input,
+            rows[0..].ptr,
+            rows.len,
+            actions[0..].ptr,
+            actions.len,
+            &snapshot,
+        ));
+        const process_slot = session.findProcess(14_001, 141, 1_411) orelse return error.MissingProcessSnapshot;
+        try std.testing.expectEqual(expected, session.processes[process_slot].transition.desired);
+    }
 }
 
 test "invalid metric and ambiguous process identity preserve independent candidates" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy | protocol.FeatureFlags.adapter_cpu);
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    const first = corpus.processFact(0, 101, 1001, 11, 111, 20, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-    const second = corpus.processFact(1, 202, 2002, 22, 222, 20, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const first = corpus.processFact(0, 101, 1001, 11, 111, 20, .adapted, 0, protocol.ProcessGrade.normal, 0);
+    const second = corpus.processFact(1, 202, 2002, 22, 222, 20, .adapted, 0, protocol.ProcessGrade.normal, 0);
     var alias = first;
     alias.source_index = 2;
     alias.target_key = 303;
@@ -2768,12 +2204,12 @@ test "invalid metric and ambiguous process identity preserve independent candida
 }
 
 test "malformed per row flags masks indices and reserved bytes preserve sibling facts" {
-    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy | protocol.FeatureFlags.adapter_cpu);
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     for (0..5) |kind| {
         const session = try coordinator.create(&config);
         defer coordinator.destroy(session);
-        const first = corpus.processFact(0, 101, 1001, 11, 111, 20, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
-        const second = corpus.processFact(1, 202, 2002, 22, 222, 20, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+        const first = corpus.processFact(0, 101, 1001, 11, 111, 20, .adapted, 0, protocol.ProcessGrade.normal, 0);
+        const second = corpus.processFact(1, 202, 2002, 22, 222, 20, .adapted, 0, protocol.ProcessGrade.normal, 0);
         var rows = [_]protocol.InputRow{ first, second };
         switch (kind) {
             0 => rows[0].flags |= @as(u64, 1) << 63,
@@ -2878,4 +2314,8 @@ test "publication cadence keeps an independent early deadline even beyond the no
     planner.resolveNextWake(session, 1_000);
     try std.testing.expectEqual(@as(u32, 2_000), session.wake_after_ms);
     try std.testing.expectEqual(@as(u32, 2_000), session.early_wake_after_ms);
+}
+
+test {
+    _ = @import("ordinary_oracle.zig");
 }

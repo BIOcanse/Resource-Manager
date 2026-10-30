@@ -1,4 +1,3 @@
-using ResourceManager.App.Domain.Adaptation.Scheduling;
 using ResourceManager.Shared.Packages;
 
 namespace ResourceManager.App.Domain.ProcessAttribution;
@@ -6,17 +5,6 @@ namespace ResourceManager.App.Domain.ProcessAttribution;
 public static class ResourceManagerSelfDescriptor
 {
     public const string DisplayName = "资源管理器";
-    public static readonly IReadOnlyList<AdapterCpuSchedulingGrade> SupportedCpuSchedulingGrades =
-    [
-        AdapterCpuSchedulingGrade.Normal,
-        AdapterCpuSchedulingGrade.Optimize
-    ];
-    public static readonly IReadOnlyList<AdapterGpuSchedulingGrade> SupportedGpuSchedulingGrades =
-    [
-        AdapterGpuSchedulingGrade.Normal,
-        AdapterGpuSchedulingGrade.Optimize
-    ];
-
     public static readonly string[] ProcessNames = PackageRuntimeCatalog.Current.InfrastructureImages
         .Select(Path.GetFileNameWithoutExtension).Where(static name => !string.IsNullOrEmpty(name))
         .Select(static name => name!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();

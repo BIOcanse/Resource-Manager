@@ -16,14 +16,13 @@ namespace Resource_Manager_APP.Tests;
 public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task FiniteResumeOpensStorageOnlyInsideTheWindowMethod()
+    public async Task FiniteWindowOpensStorageOnlyInsideTheWindowMethod()
     {
         var broker = new Broker();
         using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), static (_, _) => { });
         owner.EnsureStarted();
         owner.BeginWindow();
-        owner.SetCaptureEnabled(false);
-        owner.SetCaptureEnabled(true, beginWindow: false);
+        owner.PauseWindow();
         Assert.False(owner.IsWindowActive);
         Assert.Equal(2, broker.Acquires);
         Assert.Equal(1, broker.Releases);
@@ -97,8 +96,6 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
     [Theory]
     [InlineData("publication", false)]
     [InlineData("publication", true)]
-    [InlineData("freeze", false)]
-    [InlineData("freeze", true)]
     [InlineData("stop", false)]
     [InlineData("stop", true)]
     public async Task WindowExitsReturnEveryBucketAndKeepPublishedValues(string exit, bool ledgerBacked)
@@ -154,8 +151,7 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
             var continuity = buffer.GetDiagnostics().ContinuityEpoch;
             var lastReset = buffer.GetDiagnostics().LastCapacityReset;
             var firstAllocations = allocations.Count;
-            if (exit == "freeze") owner.SetCaptureEnabled(false);
-            else if (exit == "stop") owner.Stop();
+            if (exit == "stop") owner.Stop();
             else owner.PauseWindow();
             Record("idle");
             Assert.False(owner.IsWindowActive);
@@ -173,7 +169,7 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
                 Assert.Equal(continuity, buffer.GetDiagnostics().ContinuityEpoch);
                 // Metadata remains writable during idle; published identities are copied.
                 buffer.ObserveProcessStart(end + 1, at.AddSeconds(2), 100, 11, 1000, "renamed");
-                if (exit == "freeze") owner.SetCaptureEnabled(true); else owner.BeginWindow();
+                owner.BeginWindow();
                 Assert.Equal(firstAllocations, allocations.Count); // Opening itself stays lazy.
                 var nextStart = Math.Max(Floor(session) + 1, end + 2);
                 Feed(owner, session, nextStart, at.AddSeconds(2), opening: true);
@@ -271,22 +267,20 @@ public sealed class CpuResidencyHeldResourceWindowTests(ITestOutputHelper output
         Assert.Equal(1, broker.Releases);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ResourceRebindPreservesThePausedWindowUntilItsCompositionOpensIt(bool freeze)
+    [Fact]
+    public void ResourceRebindPreservesThePausedWindowUntilItsCompositionOpensIt()
     {
         var broker = new Broker();
         using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), static (_, _) => { });
         owner.EnsureStarted();
         owner.BeginWindow();
-        if (freeze) owner.SetCaptureEnabled(false); else owner.PauseWindow();
+        owner.PauseWindow();
         broker.Rebind();
         Assert.True(owner.HasSessionLease);
         Assert.False(owner.IsWindowActive);
         Assert.Equal(2, broker.Acquires);
         Assert.Equal(1, broker.Releases);
-        if (freeze) owner.SetCaptureEnabled(true); else owner.BeginWindow();
+        owner.BeginWindow();
         Assert.True(owner.IsWindowActive);
         Assert.Equal(3, broker.Acquires);
     }

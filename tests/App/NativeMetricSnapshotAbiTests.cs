@@ -10,9 +10,9 @@ public sealed partial class NativeMetricSnapshotAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x000D_0000U, NativeMetricSnapshotAbi.Version);
+        Assert.Equal(0x000E_0000U, NativeMetricSnapshotAbi.Version);
         Assert.Equal(0x0005_0000U, NativeMetricSnapshotAbi.PersistenceContractVersion);
-        Assert.Equal(0x074957DC9F9DF65BUL, NativeMetricSnapshotAbi.LayoutFingerprint);
+        Assert.Equal(0xf686e3d8fabe568fUL, NativeMetricSnapshotAbi.LayoutFingerprint);
         Assert.Equal(
             NativeMetricSnapshotAbi.WireContractFingerprint,
             ComputeWireContractFingerprint());
@@ -29,7 +29,7 @@ public sealed partial class NativeMetricSnapshotAbiTests
         AssertSize<NativeMetricSnapshotPlanInput>(88);
         AssertSize<NativeMetricSnapshotPlanOutput>(88);
         AssertSize<NativeMetricSnapshotPlanMetricInput>(32);
-        AssertSize<NativeMetricSnapshotSourceModeInput>(48);
+        AssertSize<NativeMetricSnapshotSourceStateInput>(48);
         AssertSize<NativeMetricSnapshotSourcePlanOutput>(72);
         AssertSize<NativeMetricSnapshotMetricPlanOutput>(72);
         AssertSize<NativeMetricSnapshotRequestedMetricInput>(32);
@@ -134,7 +134,6 @@ public sealed partial class NativeMetricSnapshotAbiTests
         Assert.Equal(4U, (uint)NativeMetricSnapshotPhase.Ready);
         Assert.Equal(2U, (uint)NativeMetricSnapshotSourceRole.GpuInventory);
         Assert.Equal(5U, (uint)NativeMetricSnapshotSourceStatus.Skipped);
-        Assert.Equal(3U, (uint)NativeMetricSnapshotZoneMode.Freeze);
         Assert.Equal(4U, (uint)NativeMetricSnapshotObservationStatus.Skipped);
         Assert.Equal(5U, (uint)NativeMetricSnapshotMetricStatus.Skipped);
         Assert.Equal(13U, (uint)NativeMetricSnapshotMetricKind.CustomNumeric);
@@ -151,7 +150,7 @@ public sealed partial class NativeMetricSnapshotAbiTests
         Assert.Equal(0x07UL, (ulong)NativeMetricSnapshotObservationValidity.Known);
         Assert.Equal(0x0FUL, (ulong)NativeMetricSnapshotCpuCounterValidity.Required);
         Assert.Equal(0x03U, (uint)NativeMetricSnapshotMetricPlanFlags.Known);
-        Assert.Equal(0x03U, (uint)NativeMetricSnapshotSourcePlanFlags.Known);
+        Assert.Equal(0x01U, (uint)NativeMetricSnapshotSourcePlanFlags.Known);
         Assert.Equal(0x0FUL, (ulong)NativeMetricSnapshotInventoryValidity.Required);
     }
 
@@ -302,7 +301,7 @@ public sealed partial class NativeMetricSnapshotAbiTests
             typeof(NativeMetricSnapshotPlanInput),
             typeof(NativeMetricSnapshotPlanOutput),
             typeof(NativeMetricSnapshotPlanMetricInput),
-            typeof(NativeMetricSnapshotSourceModeInput),
+            typeof(NativeMetricSnapshotSourceStateInput),
             typeof(NativeMetricSnapshotSourcePlanOutput),
             typeof(NativeMetricSnapshotMetricPlanOutput),
             typeof(NativeMetricSnapshotRequestedMetricInput),
@@ -368,9 +367,6 @@ public sealed partial class NativeMetricSnapshotAbiTests
             (uint)NativeMetricSnapshotSourceStatus.Unavailable,
             (uint)NativeMetricSnapshotSourceStatus.Unsupported,
             (uint)NativeMetricSnapshotSourceStatus.Skipped,
-            (uint)NativeMetricSnapshotZoneMode.Normal,
-            (uint)NativeMetricSnapshotZoneMode.LowPower,
-            (uint)NativeMetricSnapshotZoneMode.Freeze,
             (uint)NativeMetricSnapshotSourceAvailability.Available,
             (uint)NativeMetricSnapshotSourceAvailability.Unavailable,
             (uint)NativeMetricSnapshotSourceAvailability.Unsupported,
@@ -458,7 +454,6 @@ public sealed partial class NativeMetricSnapshotAbiTests
             (uint)NativeMetricSnapshotMetricPlanFlags.Unavailable,
             (uint)NativeMetricSnapshotMetricPlanFlags.Known,
             (uint)NativeMetricSnapshotSourcePlanFlags.Selected,
-            (uint)NativeMetricSnapshotSourcePlanFlags.LowPower,
             (uint)NativeMetricSnapshotSourcePlanFlags.Known,
             (ulong)NativeMetricSnapshotInventoryValidity.AdapterIdentity,
             (ulong)NativeMetricSnapshotInventoryValidity.ObservedAt,

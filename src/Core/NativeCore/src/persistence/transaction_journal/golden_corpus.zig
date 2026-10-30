@@ -1,3 +1,5 @@
+// Historical software-grade values are only used to construct upgrade/rejection fixtures.
+const LegacyAdapterGrade = enum(i32) { freeze = 0, optimize = 1, normal = 2, extreme = 3 };
 const protocol = @import("protocol.zig");
 
 const test_resident_budget: u64 = 16 * 1024 * 1024;
@@ -105,15 +107,15 @@ pub fn softwarePrepare(
         .none_required,
     );
     value.identity = softwareIdentity(generation, action_id);
-    value.scope = @intFromEnum(protocol.Scope.software);
+    value.scope = 2;
     value.domain_mask = protocol.DomainBits.cpu | protocol.DomainBits.gpu;
     value.grade_valid_mask = protocol.GradeValid.cpu | protocol.GradeValid.gpu;
     value.process_from_grade = 0;
     value.process_to_grade = 0;
-    value.cpu_from_grade = @intFromEnum(protocol.AdapterGrade.normal);
-    value.cpu_to_grade = @intFromEnum(protocol.AdapterGrade.optimize);
-    value.gpu_from_grade = @intFromEnum(protocol.AdapterGrade.normal);
-    value.gpu_to_grade = @intFromEnum(protocol.AdapterGrade.freeze);
+    value.cpu_from_grade = @intFromEnum(LegacyAdapterGrade.normal);
+    value.cpu_to_grade = @intFromEnum(LegacyAdapterGrade.optimize);
+    value.gpu_from_grade = @intFromEnum(LegacyAdapterGrade.normal);
+    value.gpu_to_grade = @intFromEnum(LegacyAdapterGrade.freeze);
     return value;
 }
 

@@ -278,9 +278,7 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/disk-usage/scan",
             "POST /api/public/v1/sqlite/databases/{databaseId}/query");
         Add(Protected(AccessKeyScopes.AdaptersRegisterSelf),
-            "GET /api/adapters/resource-manager/scheduling",
             "POST /api/adapters/register",
-            "POST /api/adapters/resource-manager/scheduling",
             "POST /api/controlled/register");
         Add(Protected(AccessKeyScopes.ProcessesRead),
             "GET /api/memory-protection",
@@ -399,7 +397,6 @@ internal static class TrustedAccessHttpPolicy
             "/api/resource-monitor/subscribe" => [AccessKeyScopes.ProcessesRead],
             "/api/resource-facts/subscribe" => [AccessKeyScopes.ProcessesRead],
             "/api/performance-overlay/subscribe" => [AccessKeyScopes.MetricsRead, AccessKeyScopes.ProcessesRead],
-            "/api/adapters/resource-manager/scheduling/subscribe" => [AccessKeyScopes.AdaptersRegisterSelf],
             "/api/control/actual/subscribe" => [AccessKeyScopes.Read],
             "/api/local-system/status/subscribe" => [AccessKeyScopes.Read],
             "/api/device-topology/network-endpoints/fields/subscribe" => [AccessKeyScopes.Read],

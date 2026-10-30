@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Domain.ResourceTable;
@@ -11,27 +11,20 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 /// <summary>Host zone/run/display adapter; SDK owns the actual TCPIP lease and window.</summary>
 public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService, IEtwNetworkAttributionReader, IResourceTableProviderStateSource
 {
-    private readonly EtwNetworkTcpIpMonitoringZone sourceZone;
     private readonly EtwNetworkTcpIpCaptureOwner owner;
     private readonly object captureLifetimeGate = new();
-    private bool runActive;
     private bool disposed;
     internal const int MaximumRetainedEvents = EtwNetworkTcpIpCaptureOwner.MaximumRetainedEvents;
-    public EtwNetworkTcpIpAttributionReader(EtwNetworkTcpIpMonitoringZone sourceZone,
-        IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger)
-        : this(sourceZone, broker, logger, static () => Environment.TickCount64) { }
-    internal EtwNetworkTcpIpAttributionReader(EtwNetworkTcpIpMonitoringZone sourceZone,
-        IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger, Func<long> clock)
+    public EtwNetworkTcpIpAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger)
+        : this(broker, logger, static () => Environment.TickCount64) { }
+    internal EtwNetworkTcpIpAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger, Func<long> clock)
     {
-        this.sourceZone = sourceZone;
-        owner = new(broker, () => sourceZone.CanRead, new(value => KernelEtwSessionBroker.Report(logger, value)), clock);
+        owner = new(broker, new(value => KernelEtwSessionBroker.Report(logger, value)), clock);
     }
-    internal EtwNetworkTcpIpAttributionReader(EtwNetworkTcpIpMonitoringZone sourceZone,
-        IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger, Func<long> clock,
+    internal EtwNetworkTcpIpAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger, Func<long> clock,
         Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess)
     {
-        this.sourceZone = sourceZone;
-        owner = new(broker, () => sourceZone.CanRead, new(value => KernelEtwSessionBroker.Report(logger, value)), clock, openProcess);
+        owner = new(broker, new(value => KernelEtwSessionBroker.Report(logger, value)), clock, openProcess);
     }
     public NetworkAttributionSnapshot Read(bool includeObservedTraffic = false) => owner.Read(includeObservedTraffic);
     internal void ObserveBoundNetworkTransfer(KernelEtwEventSource source, KernelEtwSessionContext context,
@@ -69,9 +62,7 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
             lock (captureLifetimeGate)
             {
                 if (disposed) return;
-                runActive = true;
-                sourceZone.ModeChanged += SynchronizeCapture;
-                SynchronizeCapture();
+                owner.Start();
             }
             await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
         }
@@ -80,20 +71,8 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
         {
             lock (captureLifetimeGate)
             {
-                runActive = false;
-                sourceZone.ModeChanged -= SynchronizeCapture;
                 owner.Stop("ETW 网络事件归因正在随程序停止。");
             }
-        }
-    }
-
-    private void SynchronizeCapture()
-    {
-        lock (captureLifetimeGate)
-        {
-            if (!runActive) return;
-            if (sourceZone.CanRead) owner.Start();
-            else owner.Stop("ETW 网络事件归因当前处于功能区冻结。");
         }
     }
 
@@ -104,8 +83,6 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
             lock (captureLifetimeGate)
             {
                 disposed = true;
-                runActive = false;
-                sourceZone.ModeChanged -= SynchronizeCapture;
                 owner.Dispose("ETW 网络事件归因正在随程序停止。");
             }
         }

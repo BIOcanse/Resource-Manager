@@ -1,7 +1,6 @@
 using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Optimization.Scheduling;
-using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Application.Optimization.MemoryCleanup;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Diagnostics;
@@ -61,10 +60,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton(static provider =>
             new HostManagerProcessPolicyTransaction(
                 provider.GetRequiredService<IProcessResourcePolicyWriter>()));
-        services.AddSingleton(static provider =>
-            new HostManagerAdapterSchedulingTransaction(
-                provider.GetRequiredService<IAdapterPolicyDispatcher>(),
-                TimeProvider.System));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton(static provider =>
         {
@@ -109,7 +104,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddHostedServiceAlias<HostManagerReportCoordinatorOwner>(BlockUids.HostManagerReportCoordinatorOwner);
 
         services.AddSingleton<IAutomaticMemoryCleanupPlanner, NativeAutomaticMemoryCleanupPlanner>();
-        services.AddSingleton<HostManagerMemoryCleanupAttemptJournal>();
         services.AddSingleton<IWindowsJobMembershipProbe, WindowsJobMembershipProbe>();
         services.AddSingleton(static provider =>
             new HostManagerProcessEffectValidationScopeAuthority(
@@ -117,14 +111,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<IWindowsJobMembershipProbe>()));
         services.AddHostManagerSmartCoordinatorOwner();
-        services.AddHostManagerSmartControlZone<HostManagerCoordinatorControlZone>();
-        services.AddHostManagerSmartControlZone<HostManagerSamplingControlZone>();
-        services.AddHostManagerSmartControlZone<HostManagerScoringControlZone>();
-        services.AddHostManagerSmartControlZone<HostManagerPolicyExecutionControlZone>();
-        services.AddHostManagerSmartControlZone<HostManagerHardwarePlacementControlZone>();
-        services.AddSingleton<HostManagerSmartControlZoneRegistry>();
-        services.AddSingleton<IHostManagerSmartControlZoneRegistry>(static provider =>
-            provider.GetRequiredService<HostManagerSmartControlZoneRegistry>());
         return services;
     }
 
@@ -148,15 +134,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
         {
             services.AddHostedServiceAlias<HostManagerSmartCoordinator>(BlockUids.HostManagerSmartCoordinator);
         }
-        return services;
-    }
-
-    private static IServiceCollection AddHostManagerSmartControlZone<TZone>(this IServiceCollection services)
-        where TZone : HostManagerSmartControlZone
-    {
-        services.AddSingleton<TZone>();
-        services.AddSingleton<HostManagerSmartControlZone>(static provider => provider.GetRequiredService<TZone>());
-        services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<TZone>());
         return services;
     }
 

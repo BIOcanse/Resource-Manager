@@ -32,7 +32,6 @@ pub fn advance(
     const boost_restarted = observeCriticalEvents(session, input, removed_critical_fact);
     evaluateProcesses(session, input);
     resolveFreezeGroups(session);
-    evaluateSoftware(session, input);
 
     const score_only = (input.flags & protocol.CycleFlags.score_only) != 0;
     if (!score_only) {
@@ -71,20 +70,13 @@ pub fn advance(
 pub fn requiredActionCapacity(session: *const state.Session) usize {
     // Bound the complete candidate batch before reconcile mutates authoritative state.
     var process_count: usize = 0;
-    var software_count: usize = 0;
     for (session.processes) |process| if (process.occupied) {
         process_count += 1;
-    };
-    for (session.softwares) |software| if (software.occupied) {
-        software_count += 1;
     };
     for (session.staged_processes[0..session.staged_process_count]) |process| {
         if (session.findProcess(process.target_key, process.process_id, process.process_start_key) == null) process_count += 1;
     }
-    for (session.staged_softwares[0..session.staged_software_count]) |software| {
-        if (session.findSoftware(software.software_key) == null) software_count += 1;
-    }
-    return @min(process_count, session.config.max_processes) + @min(software_count, session.config.max_software_groups);
+    return @min(process_count, session.config.max_processes);
 }
 
 pub fn bankDemand(session: *const state.Session, input: *const protocol.CycleInput, output: *state.BankDemand) protocol.Status {
@@ -97,9 +89,7 @@ pub fn bankDemand(session: *const state.Session, input: *const protocol.CycleInp
             session.findStagedProcess(item.target_key, item.process_id, item.process_start_key) != null)) processes += 1;
     }
     for (session.softwares) |item| {
-        if (item.occupied and (!full or item.cpu_transition.owned or item.gpu_transition.owned or
-            item.cpu_transition.inflight_action_id != 0 or item.gpu_transition.inflight_action_id != 0 or
-            session.findStagedSoftware(item.software_key) != null)) softwares += 1;
+        if (item.occupied and (!full or session.findStagedSoftware(item.software_key) != null)) softwares += 1;
     }
     for (session.gpus) |item| {
         if (item.occupied and (!full or session.findStagedGpu(item.target_key, item.process_id, item.process_start_key, item.device_index) != null)) gpus += 1;
@@ -136,8 +126,7 @@ pub fn hasCapacityForPlan(session: *const state.Session, input: *const protocol.
     if ((input.flags & protocol.CycleFlags.score_only) != 0) return true;
     // These finite content bounds prove that no insertion can allocate. They
     // select the direct route only and are never passed to a growth allocator.
-    const adapters = std.math.mul(u32, demand.softwares, 2) catch return false;
-    const reservations = std.math.add(u32, demand.processes, adapters) catch return false;
+    const reservations = demand.processes;
     const groups = std.math.add(u32, demand.atomic_groups, demand.processes / 2) catch return false;
     return reservations <= session.reservations.len and
         @min(groups, session.config.max_atomic_groups) <= session.atomic_groups.len;
@@ -160,8 +149,6 @@ pub fn fillSnapshot(
     for (session.softwares) |software| {
         if (!software.occupied) continue;
         software_count += 1;
-        if (software.cpu_transition.pending_count > 0) pending_count += 1;
-        if (software.gpu_transition.pending_count > 0) pending_count += 1;
     }
     var flags: u32 = 0;
     if (session.invalid_fact_count > 0) flags |= protocol.SnapshotFlags.has_invalid_facts;
@@ -237,12 +224,8 @@ fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput, re
         }
         for (session.softwares, 0..) |software, index| {
             if (!software.occupied or session.findStagedSoftware(software.software_key) != null) continue;
-            if (!software.cpu_transition.owned and !software.gpu_transition.owned and
-                software.cpu_transition.inflight_action_id == 0 and software.gpu_transition.inflight_action_id == 0)
-            {
-                removed_critical_fact.* = removed_critical_fact.* or software.critical_fact;
-                session.releaseSoftware(@intCast(index));
-            }
+            removed_critical_fact.* = removed_critical_fact.* or software.critical_fact;
+            session.releaseSoftware(@intCast(index));
         }
         for (session.gpus, 0..) |gpu, index| {
             if (!gpu.occupied or session.findStagedGpu(gpu.target_key, gpu.process_id, gpu.process_start_key, gpu.device_index) != null) continue;
@@ -305,7 +288,7 @@ fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput, re
             session.softwares[slot].software_key = staged.software_key;
             session.insertSoftwareIndex(slot);
         }
-        copySoftwareFacts(session, slot, staged, input, authoritative);
+        copySoftwareFacts(session, slot, staged, input);
     }
 
     for (session.staged_gpus[0..@intCast(session.staged_gpu_count)]) |staged| {
@@ -361,8 +344,6 @@ fn copyProcessFacts(
     target.software_kind = staged.software_kind;
     target.protection_level = staged.protection_level;
     target.runtime_state = staged.runtime_state;
-    target.cpu_capability_mask = staged.cpu_capability_mask;
-    target.gpu_capability_mask = staged.gpu_capability_mask;
     target.base_score = staged.base_score;
     target.cpu_usage_percent = staged.cpu_usage_percent;
     target.cpu_score = staged.cpu_score;
@@ -399,7 +380,6 @@ fn copySoftwareFacts(
     slot: u32,
     staged: state.StagedSoftware,
     input: *const protocol.CycleInput,
-    authoritative: bool,
 ) void {
     const target = &session.softwares[slot];
     target.previous_critical_fact = target.critical_fact;
@@ -413,8 +393,6 @@ fn copySoftwareFacts(
     target.software_kind = staged.software_kind;
     target.protection_level = staged.protection_level;
     target.runtime_state = staged.runtime_state;
-    target.cpu_capability_mask = staged.cpu_capability_mask;
-    target.gpu_capability_mask = staged.gpu_capability_mask;
     target.base_score = staged.base_score;
     target.member_cpu_score = staged.cpu_score;
     target.member_gpu_score = staged.selected_gpu_score;
@@ -426,46 +404,7 @@ fn copySoftwareFacts(
     target.member_signature = staged.member_signature;
     target.critical_fact = staged.critical_fact;
     target.reason_mask = 0;
-    target.cpu_candidate_valid = false;
-    target.gpu_candidate_valid = false;
-    target.cpu_candidate_grade = target.cpu_transition.desired;
-    target.gpu_candidate_grade = target.gpu_transition.desired;
     target.planning_atomic_group_id = 0;
-    if (authoritative) {
-        syncAuthoritativeAdapterTransition(
-            &target.cpu_transition,
-            staged.valid_mask,
-            protocol.InputValidity.applied_cpu_grade,
-            staged.input_flags,
-            protocol.InputFlags.owns_cpu_grade,
-            staged.applied_cpu_grade,
-        );
-        syncAuthoritativeAdapterTransition(
-            &target.gpu_transition,
-            staged.valid_mask,
-            protocol.InputValidity.applied_gpu_grade,
-            staged.input_flags,
-            protocol.InputFlags.owns_gpu_grade,
-            staged.applied_gpu_grade,
-        );
-    }
-}
-
-fn syncAuthoritativeAdapterTransition(
-    transition: *state.AdapterTransition,
-    valid_mask: u64,
-    valid_bit: u64,
-    flags: u64,
-    owned_flag: u64,
-    grade: u8,
-) void {
-    if ((valid_mask & valid_bit) == 0) return;
-    transition.applied = grade;
-    transition.owned = (flags & owned_flag) != 0;
-    transition.inflight_action_id = 0;
-    transition.desired = transition.applied;
-    transition.clearPending();
-    transition.last_round_number = 0;
 }
 
 fn copyGpuFacts(session: *state.Session, slot: u32, staged: state.StagedGpu, input: *const protocol.CycleInput) void {
@@ -664,122 +603,6 @@ fn resolveFreezeGroups(session: *state.Session) void {
     }
 }
 
-fn evaluateSoftware(session: *state.Session, input: *const protocol.CycleInput) void {
-    const full_snapshot = (input.flags & protocol.CycleFlags.full_process_snapshot) != 0 and session.staged_inventory_complete;
-    for (session.softwares) |*software| {
-        if (!software.occupied) continue;
-        software.reason_mask = 0;
-        software.cpu_candidate_valid = false;
-        software.gpu_candidate_valid = false;
-        software.adapter_cpu_score = 0;
-        software.adapter_gpu_score = 0;
-        software.adapter_cpu_score_valid = false;
-        software.adapter_gpu_score_valid = false;
-        if (!software.seen_this_cycle) {
-            if (full_snapshot) {
-                software.reason_mask |= protocol.Reason.target_disappeared;
-                software.cpu_candidate_valid = true;
-                software.gpu_candidate_valid = true;
-                software.cpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-                software.gpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-            } else {
-                software.reason_mask |= protocol.Reason.no_complete_snapshot;
-                session.invalid_fact_count += 1;
-            }
-            session.last_reason_mask |= software.reason_mask;
-            continue;
-        }
-        const explicitly_ineligible = (software.valid_mask & protocol.InputValidity.eligibility) != 0 and
-            (software.input_flags & protocol.InputFlags.can_apply_adapter_policy) == 0;
-        const not_running = software.runtime_state == @intFromEnum(protocol.RuntimeState.not_running);
-        if (explicitly_ineligible or not_running) {
-            software.reason_mask |= if (not_running) protocol.Reason.not_running else protocol.Reason.ineligible;
-            software.cpu_candidate_valid = true;
-            software.gpu_candidate_valid = true;
-            software.cpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-            software.gpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-            session.last_reason_mask |= software.reason_mask;
-            continue;
-        }
-        if ((software.valid_mask & protocol.InputValidity.base_score) == 0 or
-            software.runtime_state == @intFromEnum(protocol.RuntimeState.unknown) or
-            (software.valid_mask & protocol.InputValidity.eligibility) == 0)
-        {
-            if ((software.valid_mask & protocol.InputValidity.base_score) == 0) software.reason_mask |= protocol.Reason.missing_base_score;
-            if (software.runtime_state == @intFromEnum(protocol.RuntimeState.unknown)) software.reason_mask |= protocol.Reason.missing_surface_facts;
-            if ((software.valid_mask & protocol.InputValidity.eligibility) == 0) software.reason_mask |= protocol.Reason.ineligible;
-            session.invalid_fact_count += 1;
-            session.last_reason_mask |= software.reason_mask;
-            continue;
-        }
-
-        if ((software.valid_mask & protocol.InputValidity.applied_cpu_grade) == 0) {
-            software.reason_mask |= protocol.Reason.ineligible;
-            session.invalid_fact_count += 1;
-        } else if ((session.config.feature_flags & protocol.FeatureFlags.adapter_cpu) == 0) {
-            software.cpu_candidate_valid = true;
-            software.cpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-            software.reason_mask |= protocol.Reason.feature_disabled;
-        } else if ((software.valid_mask & protocol.InputValidity.cpu_capabilities) == 0) {
-            software.reason_mask |= protocol.Reason.cpu_capability_missing;
-            session.invalid_fact_count += 1;
-        } else if (software.cpu_capability_mask == 0) {
-            software.cpu_candidate_valid = true;
-            software.cpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-            software.reason_mask |= protocol.Reason.cpu_capability_missing;
-        } else if (!software.member_cpu_score_valid) {
-            software.reason_mask |= protocol.Reason.missing_cpu_metric;
-            session.invalid_fact_count += 1;
-        } else {
-            const cpu = adapterDecision(
-                &session.config,
-                &session.config.cpu_adapter,
-                software.member_cpu_score,
-                software.base_score,
-                software.cpu_capability_mask,
-            );
-            software.adapter_cpu_score = cpu.score;
-            software.adapter_cpu_score_valid = true;
-            software.cpu_candidate_grade = clampAdapterByProtection(software, cpu.grade);
-            software.cpu_candidate_valid = true;
-            if (cpu.clamped) software.reason_mask |= protocol.Reason.capability_clamped;
-        }
-
-        if ((software.valid_mask & protocol.InputValidity.applied_gpu_grade) == 0) {
-            software.reason_mask |= protocol.Reason.ineligible;
-            session.invalid_fact_count += 1;
-        } else if ((session.config.feature_flags & protocol.FeatureFlags.adapter_gpu) == 0) {
-            software.gpu_candidate_valid = true;
-            software.gpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-            software.reason_mask |= protocol.Reason.feature_disabled;
-        } else if ((software.valid_mask & protocol.InputValidity.gpu_capabilities) == 0) {
-            software.reason_mask |= protocol.Reason.gpu_capability_missing;
-            session.invalid_fact_count += 1;
-        } else if (software.gpu_capability_mask == 0) {
-            software.gpu_candidate_valid = true;
-            software.gpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
-            software.reason_mask |= protocol.Reason.gpu_capability_missing;
-        } else if (!software.member_gpu_score_valid) {
-            software.reason_mask |= protocol.Reason.incomplete_gpu_metrics;
-            session.invalid_fact_count += 1;
-        } else {
-            const gpu = adapterDecision(
-                &session.config,
-                &session.config.gpu_adapter,
-                software.member_gpu_score,
-                software.base_score,
-                software.gpu_capability_mask,
-            );
-            software.adapter_gpu_score = gpu.score;
-            software.adapter_gpu_score_valid = true;
-            software.gpu_candidate_grade = clampAdapterByProtection(software, gpu.grade);
-            software.gpu_candidate_valid = true;
-            if (gpu.clamped) software.reason_mask |= protocol.Reason.capability_clamped;
-        }
-        session.last_reason_mask |= software.reason_mask;
-    }
-}
-
 fn updateTransitions(session: *state.Session, input: *const protocol.CycleInput) void {
     for (session.processes) |*process| {
         if (!process.occupied or !process.candidate_valid) continue;
@@ -797,34 +620,6 @@ fn updateTransitions(session: *state.Session, input: *const protocol.CycleInput)
             input.observed_at_ms,
             session.config.required_consecutive_decisions,
             immediate,
-        );
-    }
-    for (session.softwares) |*software| {
-        if (!software.occupied) continue;
-        const common_immediate = !software.seen_this_cycle or
-            (software.reason_mask & (protocol.Reason.target_disappeared |
-                protocol.Reason.not_running | protocol.Reason.ineligible)) != 0;
-        const cpu_immediate = common_immediate or
-            (session.config.feature_flags & protocol.FeatureFlags.adapter_cpu) == 0 or
-            (software.cpu_candidate_valid and software.cpu_capability_mask == 0);
-        const gpu_immediate = common_immediate or
-            (session.config.feature_flags & protocol.FeatureFlags.adapter_gpu) == 0 or
-            (software.gpu_candidate_valid and software.gpu_capability_mask == 0);
-        if (software.cpu_candidate_valid) updateAdapterTransition(
-            &software.cpu_transition,
-            software.cpu_candidate_grade,
-            input.round_number,
-            input.observed_at_ms,
-            session.config.required_consecutive_decisions,
-            cpu_immediate,
-        );
-        if (software.gpu_candidate_valid) updateAdapterTransition(
-            &software.gpu_transition,
-            software.gpu_candidate_grade,
-            input.round_number,
-            input.observed_at_ms,
-            session.config.required_consecutive_decisions,
-            gpu_immediate,
         );
     }
 }
@@ -876,63 +671,11 @@ fn updateProcessTransition(
     }
 }
 
-fn updateAdapterTransition(
-    transition: *state.AdapterTransition,
-    candidate: u8,
-    round_number: u64,
-    now_ms: i64,
-    required: u32,
-    immediate: bool,
-) void {
-    transition.desired = candidate;
-    if (candidate == transition.applied) {
-        transition.clearPending();
-        transition.last_round_number = @max(transition.last_round_number, round_number);
-        return;
-    }
-    if (transition.inflight_action_id != 0) return;
-    if (immediate) {
-        transition.pending_from = transition.applied;
-        transition.pending_to = candidate;
-        transition.pending_count = required;
-        transition.pending_first_seen_ms = now_ms;
-        transition.pending_last_seen_ms = now_ms;
-        transition.last_round_number = @max(transition.last_round_number, round_number);
-        return;
-    }
-    if (round_number <= transition.last_round_number) {
-        if (transition.pending_count > 0 and transition.pending_to != candidate) {
-            transition.pending_from = transition.applied;
-            transition.pending_to = candidate;
-            transition.pending_count = 0;
-            transition.pending_first_seen_ms = 0;
-            transition.pending_last_seen_ms = 0;
-        }
-        return;
-    }
-    transition.last_round_number = @max(transition.last_round_number, round_number);
-    if (transition.pending_count > 0 and transition.pending_from == transition.applied and transition.pending_to == candidate) {
-        transition.pending_count +|= 1;
-        transition.pending_last_seen_ms = now_ms;
-    } else {
-        transition.pending_from = transition.applied;
-        transition.pending_to = candidate;
-        transition.pending_count = 1;
-        transition.pending_first_seen_ms = now_ms;
-        transition.pending_last_seen_ms = now_ms;
-    }
-}
-
 fn buildActions(session: *state.Session, input: *const protocol.CycleInput, actions: []protocol.Action, score_only: bool) usize {
     var count: usize = 0;
     for (session.processes) |*process| {
         if (!process.occupied) continue;
         actions[count] = processAction(session, process, input, score_only);
-        count += 1;
-    }
-    for (session.softwares) |*software| {
-        if (!software.occupied) continue;
-        actions[count] = softwareAction(session, software, input, score_only);
         count += 1;
     }
     return count;
@@ -992,96 +735,8 @@ fn processAction(session: *state.Session, process: *state.ProcessState, input: *
         .reserved0 = 0,
         .from_process_grade = process.transition.applied,
         .to_process_grade = target_grade,
-        .from_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .to_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .from_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .to_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
         .reserved1 = [_]u8{0} ** 2,
-        .gpu_score = 0,
     };
-}
-
-fn softwareAction(session: *state.Session, software: *state.SoftwareState, input: *const protocol.CycleInput, score_only: bool) protocol.Action {
-    const normal = @intFromEnum(protocol.AdapterGrade.normal);
-    const target_cpu_grade = if (score_only and software.cpu_candidate_valid)
-        software.cpu_candidate_grade
-    else
-        software.cpu_transition.desired;
-    const target_gpu_grade = if (score_only and software.gpu_candidate_valid)
-        software.gpu_candidate_grade
-    else
-        software.gpu_transition.desired;
-    var domain_mask: u8 = 0;
-    var executable_mask: u8 = 0;
-    var reason_mask = software.reason_mask;
-    if (software.cpu_candidate_valid or software.cpu_transition.owned) domain_mask |= protocol.GradeDomains.cpu;
-    if (software.gpu_candidate_valid or software.gpu_transition.owned) domain_mask |= protocol.GradeDomains.gpu;
-    if (!score_only and software.cpu_candidate_valid and readyAdapterTransition(&software.cpu_transition, input.observed_at_ms, session.config.required_consecutive_decisions)) {
-        executable_mask |= protocol.GradeDomains.cpu;
-    }
-    if (!score_only and software.gpu_candidate_valid and readyAdapterTransition(&software.gpu_transition, input.observed_at_ms, session.config.required_consecutive_decisions)) {
-        executable_mask |= protocol.GradeDomains.gpu;
-    }
-    var disposition: protocol.ActionDisposition = if (software.cpu_transition.owned or software.gpu_transition.owned) .retain else .no_op;
-    var flags: u32 = 0;
-    if (score_only) {
-        reason_mask |= protocol.Reason.score_only;
-    } else if (executable_mask != 0) {
-        const cpu_restores = (executable_mask & protocol.GradeDomains.cpu) == 0 or software.cpu_transition.desired == normal;
-        const gpu_restores = (executable_mask & protocol.GradeDomains.gpu) == 0 or software.gpu_transition.desired == normal;
-        disposition = if (cpu_restores and gpu_restores) .restore else .apply;
-        flags |= protocol.ActionFlags.requires_feedback;
-        if (software.cpu_transition.failure_count > 0 or software.gpu_transition.failure_count > 0) flags |= protocol.ActionFlags.retry;
-        domain_mask = executable_mask;
-    } else if ((software.cpu_transition.pending_count > 0 or software.gpu_transition.pending_count > 0) and
-        software.cpu_transition.inflight_action_id == 0 and software.gpu_transition.inflight_action_id == 0)
-    {
-        reason_mask |= protocol.Reason.awaiting_stability;
-    } else {
-        reason_mask |= protocol.Reason.applied_matches_desired;
-    }
-    var valid_mask = protocol.ActionValidity.software_identity;
-    if ((domain_mask & protocol.GradeDomains.cpu) != 0) valid_mask |= protocol.ActionValidity.cpu_grade;
-    if ((domain_mask & protocol.GradeDomains.gpu) != 0) valid_mask |= protocol.ActionValidity.gpu_grade;
-    if ((domain_mask & protocol.GradeDomains.cpu) != 0 and software.adapter_cpu_score_valid) valid_mask |= protocol.ActionValidity.cpu_score;
-    if ((domain_mask & protocol.GradeDomains.gpu) != 0 and software.adapter_gpu_score_valid) valid_mask |= protocol.ActionValidity.gpu_score;
-    return .{
-        .struct_size = @sizeOf(protocol.Action),
-        .flags = flags,
-        .valid_mask = valid_mask,
-        .reason_mask = reason_mask,
-        .action_id = 0,
-        .plan_epoch = session.plan_epoch,
-        .config_generation = session.config.generation,
-        .atomic_group_id = 0,
-        .target_key = software.software_key,
-        .software_key = software.software_key,
-        .process_start_key = 0,
-        .cpu_score = software.adapter_cpu_score,
-        .source_index = software.source_index,
-        .process_id = 0,
-        .order_key = 0,
-        .wake_after_ms = 0,
-        .group_member_index = 0,
-        .group_member_count = 0,
-        .scope = @intFromEnum(protocol.ActionScope.adapter_software),
-        .disposition = @intFromEnum(disposition),
-        .domain_mask = domain_mask,
-        .reserved0 = 0,
-        .from_process_grade = protocol.ProcessGrade.normal,
-        .to_process_grade = protocol.ProcessGrade.normal,
-        .from_cpu_grade = software.cpu_transition.applied,
-        .to_cpu_grade = target_cpu_grade,
-        .from_gpu_grade = software.gpu_transition.applied,
-        .to_gpu_grade = target_gpu_grade,
-        .reserved1 = [_]u8{0} ** 2,
-        .gpu_score = software.adapter_gpu_score,
-    };
-}
-
-fn readyAdapterTransition(transition: *const state.AdapterTransition, now_ms: i64, required: u32) bool {
-    return transition.inflight_action_id == 0 and transition.desired != transition.applied and
-        transition.pending_count >= required and now_ms >= transition.retry_not_before_ms;
 }
 
 fn prepareAtomicFreezeGroups(session: *state.Session, actions: []protocol.Action) protocol.Status {
@@ -1259,17 +914,9 @@ fn assignIdsAndReserve(session: *state.Session, input: *const protocol.CycleInpu
         if (growth_status != .ok) return growth_status;
         const reservation_slot = session.allocateReservation() orelse return .capacity_exceeded;
         var process_slot = no_slot;
-        var software_slot = no_slot;
         var atomic_group_slot = no_slot;
-        if (action.scope == @intFromEnum(protocol.ActionScope.process_policy)) {
-            process_slot = session.findProcess(action.target_key, action.process_id, action.process_start_key) orelse return .invalid_argument;
-            session.processes[process_slot].transition.inflight_action_id = action.action_id;
-        } else {
-            software_slot = session.findSoftware(action.software_key) orelse return .invalid_argument;
-            const software = &session.softwares[software_slot];
-            if ((action.domain_mask & protocol.GradeDomains.cpu) != 0) software.cpu_transition.inflight_action_id = action.action_id;
-            if ((action.domain_mask & protocol.GradeDomains.gpu) != 0) software.gpu_transition.inflight_action_id = action.action_id;
-        }
+        process_slot = session.findProcess(action.target_key, action.process_id, action.process_start_key) orelse return .invalid_argument;
+        session.processes[process_slot].transition.inflight_action_id = action.action_id;
         if (action.atomic_group_id != 0) {
             atomic_group_slot = session.findAtomicGroup(action.atomic_group_id) orelse return .invalid_argument;
         }
@@ -1277,7 +924,6 @@ fn assignIdsAndReserve(session: *state.Session, input: *const protocol.CycleInpu
             .occupied = true,
             .action = action.*,
             .process_slot = process_slot,
-            .software_slot = software_slot,
             .atomic_group_slot = atomic_group_slot,
             .created_at_ms = input.observed_at_ms,
             .deadline_ms = saturatingAdd(input.observed_at_ms, session.config.reservation_timeout_ms),
@@ -1314,11 +960,6 @@ pub fn resolveNextWake(session: *state.Session, now_ms: i64) void {
             const first_expired_ms = std.math.add(i64, grace_end, 1) catch std.math.maxInt(i64);
             delay = @min(delay, nonNegativeDelay(now_ms, first_expired_ms));
         }
-    }
-    for (session.softwares) |software| {
-        if (!software.occupied) continue;
-        if (software.cpu_transition.retry_not_before_ms > now_ms) delay = @min(delay, nonNegativeDelay(now_ms, software.cpu_transition.retry_not_before_ms));
-        if (software.gpu_transition.retry_not_before_ms > now_ms) delay = @min(delay, nonNegativeDelay(now_ms, software.gpu_transition.retry_not_before_ms));
     }
     session.early_wake_after_ms = delay;
     delay = @min(cadence, delay);
@@ -1372,82 +1013,6 @@ fn clampProcessByBaseAndProtection(session: *const state.Session, process: *stat
     return grade;
 }
 
-const AdapterDecision = struct {
-    score: f64,
-    grade: u8,
-    clamped: bool,
-};
-
-fn clampAdapterByProtection(software: *state.SoftwareState, grade: u8) u8 {
-    if ((software.valid_mask & protocol.InputValidity.protection) != 0 and
-        software.protection_level >= 2 and grade < @intFromEnum(protocol.AdapterGrade.normal))
-    {
-        software.reason_mask |= protocol.Reason.protection_level2_blocks_optimization;
-        return @intFromEnum(protocol.AdapterGrade.normal);
-    }
-    return grade;
-}
-
-fn adapterDecision(
-    config: *const protocol.Config,
-    policy: *const protocol.AdapterPolicyConfig,
-    aggregate_score: f64,
-    base_score: f64,
-    capabilities: u8,
-) AdapterDecision {
-    const score = aggregate_score;
-    var requested: u8 = undefined;
-    const normal = @intFromEnum(protocol.AdapterGrade.normal);
-    const optimize = @intFromEnum(protocol.AdapterGrade.optimize);
-    if (capabilities == ((@as(u8, 1) << normal) | (@as(u8, 1) << optimize))) {
-        requested = if (score >= policy.normal_minimum_score) normal else optimize;
-    } else if (score >= policy.extreme_minimum_score) {
-        requested = @intFromEnum(protocol.AdapterGrade.extreme);
-    } else if (score >= policy.normal_minimum_score) {
-        requested = normal;
-    } else if (score >= policy.optimize_minimum_score) {
-        requested = optimize;
-    } else {
-        requested = @intFromEnum(protocol.AdapterGrade.freeze);
-    }
-    var base_clamped = requested;
-    switch (base_score_tier.resolve(
-        base_score,
-        config.middle_tier_minimum_base_score,
-        config.high_tier_minimum_base_score,
-    )) {
-        .high => base_clamped = std.math.clamp(
-            base_clamped,
-            normal,
-            @intFromEnum(protocol.AdapterGrade.extreme),
-        ),
-        .middle => base_clamped = std.math.clamp(base_clamped, optimize, normal),
-        .low => base_clamped = std.math.clamp(
-            base_clamped,
-            @intFromEnum(protocol.AdapterGrade.freeze),
-            normal,
-        ),
-    }
-    const effective = nearestCapability(base_clamped, capabilities);
-    return .{ .score = score, .grade = effective, .clamped = effective != requested };
-}
-
-fn nearestCapability(requested: u8, capabilities: u8) u8 {
-    if ((capabilities & (@as(u8, 1) << @intCast(requested))) != 0) return requested;
-    var best: u8 = @intFromEnum(protocol.AdapterGrade.normal);
-    var best_distance: u8 = std.math.maxInt(u8);
-    var candidate: u8 = 0;
-    while (candidate < protocol.adapter_grade_count) : (candidate += 1) {
-        if ((capabilities & (@as(u8, 1) << @intCast(candidate))) == 0) continue;
-        const distance = if (candidate > requested) candidate - requested else requested - candidate;
-        if (distance < best_distance or (distance == best_distance and candidate > best)) {
-            best = candidate;
-            best_distance = distance;
-        }
-    }
-    return best;
-}
-
 fn isOptimizationGrade(grade: i8) bool {
     return grade >= protocol.ProcessGrade.level4 and grade <= protocol.ProcessGrade.level1;
 }
@@ -1493,13 +1058,9 @@ fn processSnapshotRow(process: state.ProcessState) protocol.SnapshotRow {
         .cpu_occupancy_percent = process.cpu_usage_percent,
         .reserved_process_score0 = 0,
         .reserved_process_ratio0 = 0,
-        .adapter_cpu_score = 0,
-        .adapter_gpu_score = 0,
         .source_index = process.source_index,
         .process_id = process.process_id,
         .process_pending_count = process.transition.pending_count,
-        .cpu_pending_count = 0,
-        .gpu_pending_count = 0,
         .failure_count = process.transition.failure_count,
         .row_kind = @intFromEnum(protocol.SnapshotRowKind.process),
         .software_kind = process.software_kind,
@@ -1508,14 +1069,6 @@ fn processSnapshotRow(process: state.ProcessState) protocol.SnapshotRow {
         .desired_process_grade = process.transition.desired,
         .applied_process_grade = process.transition.applied,
         .pending_process_grade = process.transition.pending_to,
-        .desired_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .applied_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .pending_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .desired_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .applied_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .pending_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .cpu_capability_mask = process.cpu_capability_mask,
-        .gpu_capability_mask = process.gpu_capability_mask,
         .reserved0 = 0,
         .reserved1 = 0,
     };
@@ -1523,10 +1076,6 @@ fn processSnapshotRow(process: state.ProcessState) protocol.SnapshotRow {
 
 fn softwareSnapshotRow(software: state.SoftwareState) protocol.SnapshotRow {
     var flags: u32 = 0;
-    if (software.cpu_transition.owned) flags |= protocol.SnapshotRowFlags.cpu_owned;
-    if (software.gpu_transition.owned) flags |= protocol.SnapshotRowFlags.gpu_owned;
-    if (software.cpu_transition.inflight_action_id != 0) flags |= protocol.SnapshotRowFlags.cpu_inflight;
-    if (software.gpu_transition.inflight_action_id != 0) flags |= protocol.SnapshotRowFlags.gpu_inflight;
     if (software.critical_fact) flags |= protocol.SnapshotRowFlags.critical_fact;
     return .{
         .struct_size = @sizeOf(protocol.SnapshotRow),
@@ -1537,23 +1086,19 @@ fn softwareSnapshotRow(software: state.SoftwareState) protocol.SnapshotRow {
         .software_key = software.software_key,
         .process_start_key = 0,
         .last_seen_cycle = software.last_seen_cycle,
-        .pending_first_seen_ms = minNonZero(software.cpu_transition.pending_first_seen_ms, software.gpu_transition.pending_first_seen_ms),
-        .pending_last_seen_ms = @max(software.cpu_transition.pending_last_seen_ms, software.gpu_transition.pending_last_seen_ms),
-        .last_feedback_ms = @max(software.cpu_transition.last_feedback_ms, software.gpu_transition.last_feedback_ms),
+        .pending_first_seen_ms = 0,
+        .pending_last_seen_ms = 0,
+        .last_feedback_ms = 0,
         .game_started_at_ms = 0,
         .base_score = software.base_score,
         .cpu_score = software.member_cpu_score,
         .cpu_occupancy_percent = 0,
         .reserved_process_score0 = 0,
         .reserved_process_ratio0 = 0,
-        .adapter_cpu_score = software.adapter_cpu_score,
-        .adapter_gpu_score = software.adapter_gpu_score,
         .source_index = software.source_index,
         .process_id = 0,
         .process_pending_count = 0,
-        .cpu_pending_count = software.cpu_transition.pending_count,
-        .gpu_pending_count = software.gpu_transition.pending_count,
-        .failure_count = software.cpu_transition.failure_count +| software.gpu_transition.failure_count,
+        .failure_count = 0,
         .row_kind = @intFromEnum(protocol.SnapshotRowKind.software),
         .software_kind = software.software_kind,
         .runtime_state = software.runtime_state,
@@ -1561,14 +1106,6 @@ fn softwareSnapshotRow(software: state.SoftwareState) protocol.SnapshotRow {
         .desired_process_grade = protocol.ProcessGrade.normal,
         .applied_process_grade = protocol.ProcessGrade.normal,
         .pending_process_grade = protocol.ProcessGrade.normal,
-        .desired_cpu_grade = software.cpu_transition.desired,
-        .applied_cpu_grade = software.cpu_transition.applied,
-        .pending_cpu_grade = software.cpu_transition.pending_to,
-        .desired_gpu_grade = software.gpu_transition.desired,
-        .applied_gpu_grade = software.gpu_transition.applied,
-        .pending_gpu_grade = software.gpu_transition.pending_to,
-        .cpu_capability_mask = software.cpu_capability_mask,
-        .gpu_capability_mask = software.gpu_capability_mask,
         .reserved0 = 0,
         .reserved1 = 0,
     };
@@ -1582,10 +1119,4 @@ fn nonNegativeDelay(now_ms: i64, target_ms: i64) u32 {
 
 fn saturatingAdd(value: i64, milliseconds: u32) i64 {
     return std.math.add(i64, value, @as(i64, @intCast(milliseconds))) catch std.math.maxInt(i64);
-}
-
-fn minNonZero(left: i64, right: i64) i64 {
-    if (left == 0) return right;
-    if (right == 0) return left;
-    return @min(left, right);
 }

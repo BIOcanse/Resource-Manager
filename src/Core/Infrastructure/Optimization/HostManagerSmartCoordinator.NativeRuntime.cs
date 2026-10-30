@@ -6,7 +6,6 @@ using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Metrics;
-using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -160,7 +159,6 @@ public sealed partial class HostManagerSmartCoordinator
             desired.RuntimePlan.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled,
             processEffectValidationScope);
         PublishCpuLeasesUnavailable(effectAdmission.IsScoreOnly ? "score-only"
-            : !hostManagerSmartControlZones.CanRun(HostManagerSmartControlZoneIds.HardwarePlacement) ? "cpu-placement-disabled"
             : desired.RuntimePlan.CpuPlacementTopology is null ? "cpu-topology-unavailable" : "scheduler-cycle-in-progress");
         using var cycleDiagnostics = HostManagerSmartCoordinatorCycleDiagnostics.Create(
             this,
@@ -370,8 +368,7 @@ public sealed partial class HostManagerSmartCoordinator
             if (runtimeCpuLeases.HasLeases && placementStateAvailable)
             {
                 var leaseCapture = await CaptureHostManagerSampleAsync(runtimePlan, cancellationToken);
-                if (leaseCapture.Sample is { } leaseSample && runtimePlan.CpuPlacementTopology is not null
-                    && hostManagerSmartControlZones.CanRun(HostManagerSmartControlZoneIds.HardwarePlacement))
+                if (leaseCapture.Sample is { } leaseSample && runtimePlan.CpuPlacementTopology is not null)
                     normalRestorationComplete &= await RunAutomaticPlacementCycleAsync(effectAdmission,
                         processEffectValidationScope, desired, leaseSample, null, true, false,
                         cancellationToken, gpuControlAvailable: gpuControlAvailable);
@@ -412,19 +409,13 @@ public sealed partial class HostManagerSmartCoordinator
             sample,
             protectionLevels);
         cycleDiagnostics?.CaptureScoring(computeScoring);
-        var policyExecutionEnabled = hostManagerSmartControlZones.CanRun(
-            HostManagerSmartControlZoneIds.PolicyExecution);
-        var hardwareExecutionAvailable = hostManagerSmartControlZones.CanRun(
-            HostManagerSmartControlZoneIds.HardwarePlacement);
         var cpuPlacementEnabled = (modePlan.CpuPlacementEnabled || runtimeCpuLeases.HasLeases)
-            && desired.RuntimePlan.CpuPlacementTopology is not null
-            && hardwareExecutionAvailable;
+            && desired.RuntimePlan.CpuPlacementTopology is not null;
         if (!cpuPlacementEnabled) ResetCpuExclusivityState();
         var gpuPlacementEnabled = modePlan.GpuPlacementEnabled
-            && hardwareExecutionAvailable
             && gpuControlAvailable;
         cycleDiagnostics?.CaptureGuards(
-            policyExecutionEnabled,
+            true,
             cpuPlacementEnabled || gpuPlacementEnabled);
         cycleDiagnostics?.Mark("scheduling-authority");
         var ownershipSnapshot = effectAdmission.TryAcquire(
@@ -483,7 +474,7 @@ public sealed partial class HostManagerSmartCoordinator
                                     ?? throw new InvalidOperationException(
                                         "The memory transaction effect has no journal execution admission."),
                                 maximumActionsThisCycle,
-                                policyExecutionEnabled && modePlan.NonAdaptedMemoryPriorityEnabled,
+                                modePlan.NonAdaptedMemoryPriorityEnabled,
                                 cancellationToken);
                         }
                         else
@@ -513,7 +504,6 @@ public sealed partial class HostManagerSmartCoordinator
                                 computeScoring,
                                 CreateAppliedOwnershipFactIndex(ownershipSnapshot),
                                 protectionLevels,
-                                policyExecutionEnabled,
                                 cpuPlacementEnabled,
                                 gpuPlacementEnabled,
                                 executionAdmission,
@@ -554,7 +544,6 @@ public sealed partial class HostManagerSmartCoordinator
                         await HostManagerNativeExternalEffectDispatcher.RunAsync(
                             effectAdmission,
                             modePlan.AutomaticMemoryCleanupEnabled,
-                            policyExecutionEnabled,
                             externalEffectKind,
                             externalCycle.Sink);
                         cycleDiagnostics?.Mark(effectKind == NewEffectStage.PublicResource
@@ -1047,8 +1036,8 @@ public sealed partial class HostManagerSmartCoordinator
         var awaitingFeedbackFlag = snapshot.Flags.HasFlag(NativeSmartCoordinatorSnapshotFlags.AwaitingFeedback);
         var scoreOnlyFlag = snapshot.Flags.HasFlag(NativeSmartCoordinatorSnapshotFlags.ScoreOnly);
         var rowCount = checked((ulong)snapshot.ProcessCount + snapshot.SoftwareCount);
-        var maximumPlanActions = Math.Min(rowCount, expectedMaximumActionsThisCycle);
-        var maximumPending = checked((ulong)snapshot.ProcessCount + (2UL * snapshot.SoftwareCount));
+        var maximumPlanActions = Math.Min((ulong)snapshot.ProcessCount, expectedMaximumActionsThisCycle);
+        var maximumPending = (ulong)snapshot.ProcessCount;
         if (snapshot.AbiVersion != NativeSmartCoordinatorAbi.Version
             || snapshot.StructSize != NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorSnapshot>()
             || snapshot.SnapshotRowStructSize != NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorSnapshotRow>()
@@ -1104,21 +1093,13 @@ public sealed partial class HostManagerSmartCoordinator
             | NativeSmartCoordinatorSnapshotRowFlags.ProcessInflight
             | NativeSmartCoordinatorSnapshotRowFlags.FreezeReady
             | NativeSmartCoordinatorSnapshotRowFlags.CriticalFact;
-        var softwareFlags = NativeSmartCoordinatorSnapshotRowFlags.CpuOwned
-            | NativeSmartCoordinatorSnapshotRowFlags.GpuOwned
-            | NativeSmartCoordinatorSnapshotRowFlags.CpuInflight
-            | NativeSmartCoordinatorSnapshotRowFlags.GpuInflight
-            | NativeSmartCoordinatorSnapshotRowFlags.CriticalFact;
+        var softwareFlags = NativeSmartCoordinatorSnapshotRowFlags.CriticalFact;
         var softwareValidity = NativeSmartCoordinatorInputValidity.SoftwareIdentity
             | NativeSmartCoordinatorInputValidity.SoftwareKind
             | NativeSmartCoordinatorInputValidity.SurfaceFacts
             | NativeSmartCoordinatorInputValidity.BaseScore
             | NativeSmartCoordinatorInputValidity.Eligibility
-            | NativeSmartCoordinatorInputValidity.Protection
-            | NativeSmartCoordinatorInputValidity.CpuCapabilities
-            | NativeSmartCoordinatorInputValidity.GpuCapabilities
-            | NativeSmartCoordinatorInputValidity.AppliedCpuGrade
-            | NativeSmartCoordinatorInputValidity.AppliedGpuGrade;
+            | NativeSmartCoordinatorInputValidity.Protection;
 
         for (var index = 0; index < rows.Length; index++)
         {
@@ -1134,22 +1115,12 @@ public sealed partial class HostManagerSmartCoordinator
                 || !Enum.IsDefined(row.DesiredProcessGrade)
                 || !Enum.IsDefined(row.AppliedProcessGrade)
                 || !Enum.IsDefined(row.PendingProcessGrade)
-                || !Enum.IsDefined(row.DesiredCpuGrade)
-                || !Enum.IsDefined(row.AppliedCpuGrade)
-                || !Enum.IsDefined(row.PendingCpuGrade)
-                || !Enum.IsDefined(row.DesiredGpuGrade)
-                || !Enum.IsDefined(row.AppliedGpuGrade)
-                || !Enum.IsDefined(row.PendingGpuGrade)
-                || !IsNativeCapabilityMask(row.CpuCapabilityMask)
-                || !IsNativeCapabilityMask(row.GpuCapabilityMask)
                 || !IsFiniteNonNegative(row.BaseScore)
                 || !IsFiniteNonNegative(row.CpuScore)
                 || !IsFiniteNonNegative(row.CpuOccupancyPercent)
                 || row.CpuOccupancyPercent > 100
                 || row.ReservedProcessScore0 != 0
                 || row.ReservedProcessRatio0 != 0
-                || !IsFiniteNonNegative(row.AdapterCpuScore)
-                || !IsFiniteNonNegative(row.AdapterGpuScore)
                 || row.LastSeenCycle == 0
                 || row.LastSeenCycle > snapshot.CycleSequence
                 || row.Reserved0 != 0
@@ -1169,20 +1140,7 @@ public sealed partial class HostManagerSmartCoordinator
                     || row.ProcessId == 0
                     || row.ProcessStartKey == 0
                     || hasSoftware != (row.SoftwareKey != 0)
-                    || (!hasSoftware
-                        && (row.ValidMask & (NativeSmartCoordinatorInputValidity.AppliedCpuGrade
-                            | NativeSmartCoordinatorInputValidity.AppliedGpuGrade)) != 0)
                     || (row.Flags & ~processFlags) != 0
-                    || row.CpuPendingCount != 0
-                    || row.GpuPendingCount != 0
-                    || row.AdapterCpuScore != 0
-                    || row.AdapterGpuScore != 0
-                    || row.DesiredCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                    || row.AppliedCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                    || row.PendingCpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                    || row.DesiredGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                    || row.AppliedGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
-                    || row.PendingGpuGrade != NativeSmartCoordinatorAdapterGrade.Normal
                     || !processIdentities.Add((row.TargetKey, row.ProcessId, row.ProcessStartKey)))
                 {
                     throw new InvalidDataException(
@@ -1201,8 +1159,6 @@ public sealed partial class HostManagerSmartCoordinator
             }
             else
             {
-                var cpuInflight = row.Flags.HasFlag(NativeSmartCoordinatorSnapshotRowFlags.CpuInflight);
-                var gpuInflight = row.Flags.HasFlag(NativeSmartCoordinatorSnapshotRowFlags.GpuInflight);
                 if ((uint)index < snapshot.ProcessCount
                     || (row.ValidMask & NativeSmartCoordinatorInputValidity.SoftwareIdentity) == 0
                     || (row.ValidMask & ~softwareValidity) != 0
@@ -1212,6 +1168,10 @@ public sealed partial class HostManagerSmartCoordinator
                     || row.ProcessStartKey != 0
                     || (row.Flags & ~softwareFlags) != 0
                     || row.ProcessPendingCount != 0
+                    || row.FailureCount != 0
+                    || row.PendingFirstSeenMilliseconds != 0
+                    || row.PendingLastSeenMilliseconds != 0
+                    || row.LastFeedbackMilliseconds != 0
                     || row.GameStartedAtMilliseconds != 0
                     || (!row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.Protection)
                         && row.ProtectionLevel != 0)
@@ -1225,26 +1185,6 @@ public sealed partial class HostManagerSmartCoordinator
                         $"Host Manager smart coordinator software snapshot row {index} has an invalid shape.");
                 }
 
-                if (row.CpuPendingCount != 0)
-                {
-                    pendingCount++;
-                }
-                if (row.GpuPendingCount != 0)
-                {
-                    pendingCount++;
-                }
-                if (cpuInflight || gpuInflight)
-                {
-                    minimumInflightCount++;
-                }
-                if (cpuInflight)
-                {
-                    maximumInflightCount++;
-                }
-                if (gpuInflight)
-                {
-                    maximumInflightCount++;
-                }
             }
         }
 
@@ -1258,9 +1198,6 @@ public sealed partial class HostManagerSmartCoordinator
                 "The Host Manager smart coordinator snapshot row aggregates do not match their envelope.");
         }
     }
-
-    private static bool IsNativeCapabilityMask(byte mask)
-        => (mask & 0xF0) == 0 && (mask == 0 || (mask & (1 << (byte)NativeSmartCoordinatorAdapterGrade.Normal)) != 0);
 
     private static bool IsFiniteNonNegative(double value)
         => double.IsFinite(value) && value >= 0;

@@ -1018,14 +1018,14 @@ public sealed class HostManagerProcessEffectValidationScopeTests
     }
 
     [Fact]
-    public void DeclaredMemoryCleanupBatchReconcilesAsOneExactTarget()
+    public void RestartDropsDeclaredMemoryCleanupHandoffWithoutPendingBatch()
     {
         using var fixture = ScopeFixture.Create();
         var first = new HostManagerComputeProcessIdentity(103, 10301);
         var second = new HostManagerComputeProcessIdentity(104, 10401);
         fixture.Probe.Set(first, WindowsJobMembershipStatus.ExactMember);
         fixture.Probe.Set(second, WindowsJobMembershipStatus.ExactMember);
-        _ = fixture.Open([first, second]);
+        var opened = fixture.Open([first, second]);
         Assert.True(fixture.Authority.TryBeginBatchAdmission(
             fixture.Authority.Capture(),
             HostManagerProcessEffectValidationFamily.AutomaticMemoryCleanup,
@@ -1042,12 +1042,15 @@ public sealed class HostManagerProcessEffectValidationScopeTests
             attemptGeneration: 9));
 
         var restarted = fixture.CreateRestartedAuthority();
-        Assert.True(restarted.ReconcileDeclaredMemoryCleanupHandoff([batch]));
-        Assert.True(restarted.ReconcileDeclaredMemoryCleanupHandoff([]));
+        Assert.True(restarted.ReconcileDeclaredMemoryCleanupHandoff());
+        Assert.True(restarted.ReconcileDeclaredMemoryCleanupHandoff());
+        Assert.Equal("closed", restarted.Close(new(
+            opened.ScopeId!.Value, fixture.RunNonce, fixture.ReleaseToken)).State);
+        Assert.True(restarted.Capture().IsProductionUnscoped);
     }
 
     [Fact]
-    public void DeclaredMemoryCleanupBatchRejectsSamePrimaryIdentityWithChangedProcessSet()
+    public void MemoryCleanupCommitRejectsChangedDeclaredProcessSet()
     {
         using var fixture = ScopeFixture.Create();
         var first = new HostManagerComputeProcessIdentity(105, 10501);
@@ -1079,21 +1082,20 @@ public sealed class HostManagerProcessEffectValidationScopeTests
             },
             AttemptGeneration: 10);
 
-        var restarted = fixture.CreateRestartedAuthority();
-
-        Assert.False(restarted.ReconcileDeclaredMemoryCleanupHandoff([changed]));
-        Assert.Equal("faultedBlocked", restarted.GetStatus().State);
+        Assert.False(fixture.Authority.TryCommitMemoryCleanupAttemptBatch(
+            permit!, changed, attemptGeneration: 10));
+        Assert.Equal("faultedBlocked", fixture.Authority.GetStatus().State);
     }
 
     [Fact]
-    public void CommittedMemoryCleanupBatchRejectsSamePrimaryIdentityWithRemovedProcess()
+    public void RestartRetiresCommittedMemoryCleanupHandoff()
     {
         using var fixture = ScopeFixture.Create();
         var first = new HostManagerComputeProcessIdentity(107, 10701);
         var second = new HostManagerComputeProcessIdentity(108, 10801);
         fixture.Probe.Set(first, WindowsJobMembershipStatus.ExactMember);
         fixture.Probe.Set(second, WindowsJobMembershipStatus.ExactMember);
-        _ = fixture.Open([first, second]);
+        var opened = fixture.Open([first, second]);
         Assert.True(fixture.Authority.TryBeginBatchAdmission(
             fixture.Authority.Capture(),
             HostManagerProcessEffectValidationFamily.AutomaticMemoryCleanup,
@@ -1113,15 +1115,14 @@ public sealed class HostManagerProcessEffectValidationScopeTests
             permit!,
             committed,
             attemptGeneration: 11));
-        var changed = new HostManagerMemoryCleanupAttemptBatch(
-            batchId,
-            new HashSet<HostManagerComputeProcessIdentity> { first },
-            AttemptGeneration: 11);
 
         var restarted = fixture.CreateRestartedAuthority();
 
-        Assert.False(restarted.ReconcileDeclaredMemoryCleanupHandoff([changed]));
-        Assert.Equal("faultedBlocked", restarted.GetStatus().State);
+        Assert.True(restarted.ReconcileDeclaredMemoryCleanupHandoff());
+        Assert.True(restarted.ReconcileDeclaredMemoryCleanupHandoff());
+        Assert.Equal("closed", restarted.Close(new(
+            opened.ScopeId!.Value, fixture.RunNonce, fixture.ReleaseToken)).State);
+        Assert.True(restarted.Capture().IsProductionUnscoped);
     }
 
     [Fact]

@@ -48,7 +48,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true, scoreOnlyEnabled: false,
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false);
+            automaticMemoryCleanupEnabled: false);
         var original = fixture.RuntimePlan.HostManager.SmartCoordinator;
         var changed = HostManagerTestPlanFactory.CreatePlan(root =>
             root["hot_publish"]!["smart_coordinator"]!["normal_interval_ms"] =

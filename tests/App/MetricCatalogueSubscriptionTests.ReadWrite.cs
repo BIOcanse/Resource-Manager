@@ -28,11 +28,9 @@ public sealed partial class MetricCatalogueSubscriptionTests
             return new(1024 - value, 1024, 0, available)
             { AvailableBytes = value, ObservationStatus = available ? SamplingObservationStatus.Current : SamplingObservationStatus.Unavailable };
         });
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == memory.DisplayName ? memory : new MonitoringSourceZone(id)));
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory, null!, null!, null!, null!,
             null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, fixture.Owner, fixture.Catalog,
-            registry, fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
+ fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         using (var lease = fixture.Owner.Acquire())
             fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         using var client = new HttpClient();
@@ -149,11 +147,9 @@ public sealed partial class MetricCatalogueSubscriptionTests
             return new(1024, 1024, 0, current)
             { AvailableBytes = 0, ObservationStatus = current ? SamplingObservationStatus.Current : SamplingObservationStatus.Unavailable };
         });
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == memory.DisplayName ? memory : new MonitoringSourceZone(id)));
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory, null!, null!, null!, null!,
             null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, fixture.Owner, fixture.Catalog,
-            registry, fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
+ fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         using (var lease = fixture.Owner.Acquire())
             fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         using var client = new HttpClient();

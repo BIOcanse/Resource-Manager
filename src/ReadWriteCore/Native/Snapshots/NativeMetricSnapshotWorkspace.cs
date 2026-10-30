@@ -187,7 +187,7 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
 
     public NativeMetricSnapshotCollectionPlan PlanCollection(
         IReadOnlyCollection<ulong> requestedMetricHandles,
-        IReadOnlyCollection<NativeMetricSnapshotSourceRuntimeMode> sourceModes,
+        IReadOnlyCollection<NativeMetricSnapshotSourceRuntimeState> sourceModes,
         bool includeGpuInventory,
         DateTimeOffset commandAt)
     {
@@ -243,15 +243,14 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
                 .ToArray();
             var nativeModes = modes
                 .Select(static mode =>
-                    new NativeMetricSnapshotSourceModeInput
+                    new NativeMetricSnapshotSourceStateInput
                     {
                         StructSize =
-                            SizeOf<NativeMetricSnapshotSourceModeInput>(),
+                            SizeOf<NativeMetricSnapshotSourceStateInput>(),
                         Flags = 0,
                         SourceHandle = mode.SourceHandle,
                         CapabilityGeneration =
                             mode.CapabilityGeneration,
-                        ZoneMode = (uint)mode.ZoneMode,
                         Availability = (uint)mode.Availability
                     })
                 .ToArray();

@@ -1,6 +1,5 @@
 using Microsoft.Diagnostics.Tracing;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -226,7 +225,7 @@ public sealed class PresentFrameEtwProviderDemandTests
     [InlineData(true, false)]
     [InlineData(true, true)]
     [InlineData(false, true)]
-    public async Task FreezeStopsAndThawStartsOnlyTheProviderSetNeededBySurvivingLeases(bool includeApi, bool includeFrames)
+    public async Task OutputLeasesEnableOnlyTheProviderSetTheyNeed(bool includeApi, bool includeFrames)
     {
         await using var fixture = PresentFrameEtwTestHarness.Create();
         IDisposable? api = includeApi ? fixture.Source.AcquireGraphicsApiSubscription(Process) : null;
@@ -234,17 +233,10 @@ public sealed class PresentFrameEtwProviderDemandTests
         if (api is not null) await fixture.WaitRunningAsync();
         if (frame is not null) await fixture.WaitRunningAsync();
         var session = Assert.Single(fixture.Sessions.Snapshot());
-        await fixture.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze).WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(1, session.Stops);
-        Assert.True(session.ProcessExited.IsCompleted);
+        Assert.Equal(0, session.Stops);
+        Assert.False(session.ProcessExited.IsCompleted);
         Assert.Equal(includeFrames, fixture.Source.Read(TimeSpan.FromSeconds(1)) is not null);
-        Assert.Single(fixture.Sessions.Snapshot());
-        await fixture.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal).WaitAsync(TimeSpan.FromSeconds(10));
-        if (api is not null) await fixture.WaitRunningAsync();
-        if (frame is not null) await fixture.WaitRunningAsync();
-        var sessions = fixture.Sessions.Snapshot();
-        Assert.Equal(2, sessions.Length);
-        var current = fixture.Sessions.Snapshot()[1];
+        var current = Assert.Single(fixture.Sessions.Snapshot());
         Assert.Equal(includeFrames ? ApiProviders.Concat(DisplayProviders) : ApiProviders, current.Enabled);
         if (includeFrames) Assert.False(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
         if (frame is not null) await fixture.ReleaseAsync(frame);
@@ -252,18 +244,13 @@ public sealed class PresentFrameEtwProviderDemandTests
     }
 
     [Fact]
-    public async Task FrameAndApiLeasesAddedWhileFrozenStartTogetherWhenThawed()
+    public async Task FrameAndApiLeasesStartTogetherWithTheirRequiredProviders()
     {
         await using var fixture = PresentFrameEtwTestHarness.Create();
-        await fixture.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze).WaitAsync(TimeSpan.FromSeconds(10));
         var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
         var frame = fixture.Source.AcquireSubscription();
         var apiReady = fixture.WaitRunningAsync();
         var frameReady = fixture.WaitRunningAsync();
-        Assert.False(apiReady.IsCompleted);
-        Assert.False(frameReady.IsCompleted);
-        Assert.Empty(fixture.Sessions.Snapshot());
-        await fixture.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal).WaitAsync(TimeSpan.FromSeconds(10));
         await Task.WhenAll(apiReady, frameReady).WaitAsync(TimeSpan.FromSeconds(10));
         var session = Assert.Single(fixture.Sessions.Snapshot());
         Assert.Equal(ApiProviders.Concat(DisplayProviders), session.Enabled);

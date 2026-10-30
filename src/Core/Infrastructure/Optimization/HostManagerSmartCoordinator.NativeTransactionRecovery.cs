@@ -282,31 +282,7 @@ public sealed partial class HostManagerSmartCoordinator
                     record.ProcessFromGrade,
                     record.ProcessToGrade));
         }
-        if ((NativeTransactionJournalScope)record.Scope != NativeTransactionJournalScope.Software)
-        {
-            return TransactionEffectResult.Rejected();
-        }
-
-        var maximumEnvelopeBytes = ToExplicitPayloadLimit(payloadByteBudget);
-        var restored = await adapterSchedulingTransaction.RestoreAsync(
-            new HostManagerAdapterSchedulingRestoreCommand(
-                payload,
-                maximumEnvelopeBytes,
-                maximumEnvelopeBytes,
-                deadline),
-            cancellationToken);
-        return restored.Status switch
-        {
-            HostManagerAdapterSchedulingRestoreStatus.Restored or
-                HostManagerAdapterSchedulingRestoreStatus.AlreadyRestored =>
-                TransactionEffectResult.Succeeded(),
-            HostManagerAdapterSchedulingRestoreStatus.OwnershipLost or
-                HostManagerAdapterSchedulingRestoreStatus.Conflict =>
-                TransactionEffectResult.OwnershipLost(),
-            HostManagerAdapterSchedulingRestoreStatus.InvalidPayload =>
-                TransactionEffectResult.Rejected(),
-            _ => TransactionEffectResult.StateUncertain()
-        };
+        return TransactionEffectResult.Rejected();
     }
 
     private static HostManagerProcessEffectValidationFamily
@@ -455,11 +431,6 @@ public sealed partial class HostManagerSmartCoordinator
                 SoftwareId = record.Identity.SoftwareId,
                 ProcessStartKey = record.Identity.ProcessStartKey,
                 ProcessId = record.Identity.ProcessId
-            },
-            NativeTransactionJournalScope.Software => new NativeAppliedOwnershipPrimaryIdentity
-            {
-                Scope = (uint)NativeAppliedOwnershipScope.Adapter,
-                SoftwareId = record.Identity.SoftwareId
             },
             _ => throw new InvalidDataException(
                 $"Journal scope {record.Scope} is not an applied ownership scope.")

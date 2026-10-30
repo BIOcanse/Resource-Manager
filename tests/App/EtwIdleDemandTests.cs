@@ -12,8 +12,7 @@ public sealed class EtwIdleDemandTests
     public void NetworkAndDiskReadsDoNotAcquireSessionLeases()
     {
         var networkBroker = new DeniedBroker();
-        using var network = new EtwNetworkTcpIpAttributionReader(new EtwNetworkTcpIpMonitoringZone(),
-            networkBroker, NullLogger<EtwNetworkTcpIpAttributionReader>.Instance);
+        using var network = new EtwNetworkTcpIpAttributionReader(networkBroker, NullLogger<EtwNetworkTcpIpAttributionReader>.Instance);
         var diskBroker = new DeniedBroker();
         using var disk = new EtwPhysicalDiskIoAttributionReader(diskBroker,
             NullLogger<EtwPhysicalDiskIoAttributionReader>.Instance);
@@ -30,8 +29,7 @@ public sealed class EtwIdleDemandTests
     public async Task UnavailableNetworkAndDiskLeasesRemainHeldUntilTheirHostedRunsStop()
     {
         var networkBroker = new DeniedBroker();
-        using var network = new EtwNetworkTcpIpAttributionReader(new EtwNetworkTcpIpMonitoringZone(),
-            networkBroker, NullLogger<EtwNetworkTcpIpAttributionReader>.Instance);
+        using var network = new EtwNetworkTcpIpAttributionReader(networkBroker, NullLogger<EtwNetworkTcpIpAttributionReader>.Instance);
         var diskBroker = new DeniedBroker();
         using var disk = new EtwPhysicalDiskIoAttributionReader(diskBroker,
             NullLogger<EtwPhysicalDiskIoAttributionReader>.Instance);

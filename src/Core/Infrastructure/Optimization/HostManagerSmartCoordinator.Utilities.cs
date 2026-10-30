@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Text;
 using ResourceManager.App.Domain.Diagnostics;
 using ResourceManager.App.Application.Optimization;
-using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.Optimization.Scoring;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -15,15 +14,6 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
-    private static bool CanExecuteSoftwareLevelAdapterModesForMode(
-        CompiledOptimizationModePlan modePlan,
-        HostManagerTargetInfo target)
-    {
-        return modePlan.SoftwareSchedulingEnabled
-            && target.CanApplyAdaptedPolicy
-            && target.AdapterDispatchRoute == CompiledAdapterDispatchRoute.SoftwareLevelScheduler;
-    }
-
     private static bool CanExecuteAutomaticProcessPolicyForMode(
         CompiledOptimizationModePlan modePlan,
         HostManagerTargetInfo target)

@@ -20,15 +20,6 @@ public sealed class PdhSystemIoMonitoringZone : MonitoringSourceZone
 
     internal PdhSystemIoMetrics Read(PdhSystemIoReadRequest request)
     {
-        return CanRead
-            ? reader.Read(request)
-            : new PdhSystemIoMetrics(
-                PdhDiskMetrics.NotRequested,
-                PdhNetworkMetrics.NotRequested)
-            {
-                ProviderAvailability =
-                    NativePdhProviderAvailability.NotRequested,
-                ObservedAt = null
-            };
+        return reader.Read(request);
     }
 }

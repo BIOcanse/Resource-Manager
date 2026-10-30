@@ -30,7 +30,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         var memory = new WindowsMemoryMonitoringZone();
         using var hardware = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(),
-            null!, fixture.Owner, fixture.Catalog, new MonitoringSourceZoneRegistry([memory]),
+            null!, fixture.Owner, fixture.Catalog, 
             fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         using var catalog = new VersionedProcessAttributionCatalogProvider();
         var counterCaptures = 0;

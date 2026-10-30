@@ -125,14 +125,12 @@ public sealed partial class IntelGpuInformationCollectorTests
     }
 
     [Fact]
-    public void FailureCapabilityIncarnationFreezeAndDemandExitResetOnlyTheExistingBaseline()
+    public void FailureCapabilityIncarnationAndDemandExitResetOnlyTheExistingBaseline()
     {
         using var h = new FloatingWorkspace(); h.Publish(new(0, 0)); Assert.Equal(0.25, h.Publish(new(0.5, 2)));
         Assert.Null(h.Publish(null)); Assert.Null(h.Publish(new(1, 4))); Assert.Equal(0.25, h.Publish(new(1.5, 6)));
         Assert.Null(h.Publish(new(2, 8), capability: 2)); Assert.Equal(0.25, h.Publish(new(2.5, 10), capability: 2));
         Assert.Null(h.Publish(new(3, 12), capability: 2, incarnation: 2)); Assert.Equal(0.25, h.Publish(new(3.5, 14), capability: 2, incarnation: 2));
-        var plan = h.Workspace.PlanCollection([h.Handle], h.Modes(2, NativeMetricSnapshotZoneMode.Freeze), false, h.NextTime());
-        Assert.Empty(plan.Sources); Assert.Equal(0.25, h.Value()); Assert.Null(h.Publish(new(4, 16), capability: 2, incarnation: 2));
         Assert.Equal(0.25, h.Publish(new(4.5, 18), capability: 2, incarnation: 2)); h.Sync([]); Assert.Equal(0.25, h.Value());
         h.Sync([h.Handle]); Assert.Null(h.Publish(new(10, 30), capability: 2, incarnation: 2));
     }
@@ -177,8 +175,8 @@ public sealed partial class IntelGpuInformationCollectorTests
         }
         private ulong Find(MetricFieldCode field) => catalog.MetricBindings.Values.Single(binding => binding.DeviceIdentity == target.ExactIdentityKey && binding.FieldCode == field).MetricHandle;
         internal DateTimeOffset NextTime() => start.AddSeconds(++sequence);
-        internal NativeMetricSnapshotSourceRuntimeMode[] Modes(ulong capability = 1, NativeMetricSnapshotZoneMode mode = NativeMetricSnapshotZoneMode.Normal)
-            => catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, capability, mode, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        internal NativeMetricSnapshotSourceRuntimeState[] Modes(ulong capability = 1)
+            => catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(source.SourceHandle, capability, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         internal void Sync(ulong[] active) => Workspace.SynchronizeCounterDemand(active, NextTime());
         internal double? Publish(NativeMetricSnapshotFloatingCounterPair? pair, ulong capability = 1, ulong incarnation = 1, int? defect = null)
             => Capture(Handle, pair, capability, incarnation, defect);

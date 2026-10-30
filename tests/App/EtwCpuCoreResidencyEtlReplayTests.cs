@@ -110,9 +110,6 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             var retained = Assert.IsType<CpuCoreResidencySnapshot>(reader.Read());
             AssertPublishedCoreMapping(retained, topology);
 
-            reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
-            Assert.Same(retained, reader.Read());
-
             await reader.StopAsync(CancellationToken.None);
             Assert.Same(retained, reader.Read());
         }

@@ -268,7 +268,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var schedulingAuthority = fixture.Coordinator.SchedulingAuthority;
             Assert.Null(schedulingAuthority.Compute?.Cpu);
             AssertHostedScoreOnlyCorpus(plan, permits, completedPermits, records);
-            fixture.AssertNoMemoryCleanupAttemptEntries();
             var effectCounters = fixture.CaptureHostedScoreOnlyEffectCounters();
             effectCounters.AssertAllZero();
             var rollbackIncarnationAfter =
@@ -1162,7 +1161,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         processPolicyRecoveryReadCalls = effectCounters.ProcessPolicyRecoveryReadCalls,
                         processPolicyBatchCalls = effectCounters.ProcessPolicyBatchCalls,
                         processPolicyBatchRequestCount = effectCounters.ProcessPolicyBatchRequestCount,
-                        adapterTotalCalls = effectCounters.AdapterTotalCalls,
                         memoryCleanupPlanAttempts = effectCounters.MemoryCleanupPlanAttempts,
                         memoryCleanupPlanCalls = effectCounters.MemoryCleanupPlanCalls,
                         memoryCleanupCompleteAttempts = effectCounters.MemoryCleanupCompleteAttempts,
@@ -1509,7 +1507,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         int ProcessPolicyRecoveryReadCalls,
         int ProcessPolicyBatchCalls,
         int ProcessPolicyBatchRequestCount,
-        int AdapterTotalCalls,
         int MemoryCleanupPlanAttempts,
         int MemoryCleanupPlanCalls,
         int MemoryCleanupCompleteAttempts,
@@ -1529,7 +1526,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             && ProcessPolicyRecoveryReadCalls == 0
             && ProcessPolicyBatchCalls == 0
             && ProcessPolicyBatchRequestCount == 0
-            && AdapterTotalCalls == 0
             && MemoryCleanupPlanAttempts == 0
             && MemoryCleanupPlanCalls == 0
             && MemoryCleanupCompleteAttempts == 0
@@ -1554,7 +1550,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     $"processPolicyRecoveryReadCalls={ProcessPolicyRecoveryReadCalls}",
                     $"processPolicyBatchCalls={ProcessPolicyBatchCalls}",
                     $"processPolicyBatchRequestCount={ProcessPolicyBatchRequestCount}",
-                    $"adapterTotalCalls={AdapterTotalCalls}",
                     $"memoryCleanupPlanAttempts={MemoryCleanupPlanAttempts}",
                     $"memoryCleanupPlanCalls={MemoryCleanupPlanCalls}",
                     $"memoryCleanupCompleteAttempts={MemoryCleanupCompleteAttempts}",

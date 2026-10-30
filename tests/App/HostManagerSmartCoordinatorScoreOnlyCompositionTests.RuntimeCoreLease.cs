@@ -21,7 +21,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var facts = CreateCompleteProcessFacts((pid, birth, "probe", 80d, 20d, 5d),
             (sibling, birth + 1, "probe", 20d, 20d, 5d), (other, birth + 2, "other", 20d, 20d, 5d));
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            processFactsSnapshot: facts, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false,
             optimizationMode: mode, optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var allowed = RecordCpuLeaseBindings(fixture);
@@ -77,7 +77,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var topology = CreateAutomaticPlacementTopology();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts(pid, birth, "probe", 80, 20, 5),
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         RecordCpuLeaseBindings(fixture);
@@ -106,7 +106,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var topology = CreateAutomaticPlacementTopology();
         var facts = CreateCompleteProcessFacts(pid, birth, "probe", 80, 20, 5);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            processFactsSnapshot: facts, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         RecordCpuLeaseBindings(fixture);
@@ -130,7 +130,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var facts = CreateCompleteProcessFacts(pid, birth, "probe", 80, 20, 5);
         var residency = new PublicationControlledCpuResidencyReader();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            processFactsSnapshot: facts, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement, cpuCoreReader: residency,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var allowed = RecordCpuLeaseBindings(fixture);
@@ -162,7 +162,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var topology = CreateAutomaticPlacementTopology();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts(pid, birth, "probe", 80, 20, 5),
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         RecordCpuLeaseBindings(fixture);
@@ -208,7 +208,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var topology = CreateAutomaticPlacementTopology();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts(pid, birth, "probe", 80, 20, 5),
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var allowed = RecordCpuLeaseBindings(fixture);
@@ -235,7 +235,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var topology = CreateAutomaticPlacementTopology();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts(pid, birth, "probe", 80, 20, 5),
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var allowed = RecordCpuLeaseBindings(fixture);
@@ -258,7 +258,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var topology = CreateAutomaticPlacementTopology();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts((pid, birth, "probe", 80d, 20d, 5d), (peer, birth + 1, "peer", 20d, 20d, 5d)),
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var allowed = RecordCpuLeaseBindings(fixture);
@@ -281,7 +281,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var topology = CreateAutomaticPlacementTopology();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts((firstPid, birth, "one", 80d, 20d, 5d), (secondPid, birth + 1, "two", 20d, 20d, 5d)),
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         RecordCpuLeaseBindings(fixture);

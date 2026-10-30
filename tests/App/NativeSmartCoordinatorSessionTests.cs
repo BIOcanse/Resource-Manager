@@ -43,24 +43,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         Assert.Equal(0u, capacity.AbiVersion);
     }
 
-    [Fact]
-    public void CpuAdapterStateMultiplierDriftIsRejectedAtNativeCapacityBoundary()
-    {
-        var configuration = CreateConfiguration();
-        Span<double> driftedCpuStateMultipliers = stackalloc double[
-            NativeSmartCoordinatorAbi.RuntimeStateCount];
-        driftedCpuStateMultipliers[0] = 1;
-        NativeSmartCoordinatorConfigurationWriter.SetAdapterStateMultipliers(
-            ref configuration.CpuAdapter,
-            driftedCpuStateMultipliers);
 
-        var result = NativeSmartCoordinatorSession.CapacityForConfiguration(
-            in configuration,
-            out var capacity);
-
-        Assert.Equal(NativeSmartCoordinatorStatus.InvalidArgument, result);
-        Assert.Equal(0u, capacity.AbiVersion);
-    }
 
     [Fact]
     public void RetiredStaticScoreOnlyFeatureBitIsRejected()
@@ -430,159 +413,9 @@ public sealed class NativeSmartCoordinatorSessionTests
         Assert.Equal(0u, workspace.Snapshot.InflightCount);
     }
 
-    [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, false)]
-    [InlineData(true, true)]
-    public void AdapterActionScoresMatchTheDomainsReadyForExecution(bool cpuFirst, bool simultaneous)
-    {
-        var configuration = CreateProcessPolicyConfiguration();
-        configuration.FeatureFlags = NativeSmartCoordinatorFeatures.AdapterCpu |
-            NativeSmartCoordinatorFeatures.AdapterGpu;
-        configuration.CpuAdapter.ExtremeMinimumScore = 120;
-        configuration.CpuAdapter.NormalMinimumScore = 60;
-        configuration.CpuAdapter.OptimizeMinimumScore = 25;
-        configuration.GpuAdapter = configuration.CpuAdapter;
-        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
-        workspace.EnsureRows(Math.Min(8U, workspace.Capacity.InputRowCapacity));
-        using var operation = workspace.BeginOperation();
-        using var buffers = workspace.CreateScratchView();
-        var process = CreateProcessFact();
-        process.SoftwareKind = NativeSmartCoordinatorSoftwareKind.Adapted;
-        process.BaseScore = 60;
-        NativeSmartCoordinatorAction readyAction = default;
-        for (ulong sequence = 1; sequence <= 3; sequence++)
-        {
-            uint count = 0;
-            buffers.Inputs[checked((int)count++)] = process;
-            if (cpuFirst || simultaneous || sequence > 1)
-            {
-                buffers.Inputs[checked((int)count)] = CreateMetricFact(
-                    in process, count, NativeSmartCoordinatorMetricKind.CpuUsagePercent, 100);
-                count++;
-            }
-            if (!cpuFirst || simultaneous || sequence > 1)
-            {
-                var gpu = CreateMetricFact(
-                    in process, count, NativeSmartCoordinatorMetricKind.GpuUsagePercent, 2);
-                gpu.DeviceIndex = 5;
-                buffers.Inputs[checked((int)count++)] = gpu;
-                var vram = process;
-                vram.SourceIndex = count;
-                vram.MetricKind = NativeSmartCoordinatorMetricKind.VramUsagePercent;
-                vram.MetricValue = 1;
-                vram.DeviceIndex = 5;
-                vram.ValidMask |= NativeSmartCoordinatorInputValidity.Metric;
-                buffers.Inputs[checked((int)count++)] = vram;
-            }
-            var cycle = CreateEmptyCycleInput(configuration.Generation,
-                workspace.Capacity.ActionCapacity, sequence, authoritative: sequence == 1);
-            cycle.InputCount = count;
-            cycle.ObservedAtMilliseconds = checked((long)sequence * 1_000);
-            Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.PlanCurrent(in cycle));
-            var requiresFeedback = HostManagerSmartCoordinator.ValidateNativeActionBatch(workspace);
-            if (sequence == 3)
-            {
-                Assert.Equal(1u, requiresFeedback);
-                readyAction = Assert.Single(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray(),
-                    action => action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.RequiresFeedback));
-            }
-        }
-        var expectedDomains = simultaneous
-            ? NativeSmartCoordinatorGradeDomains.Cpu | NativeSmartCoordinatorGradeDomains.Gpu
-            : cpuFirst ? NativeSmartCoordinatorGradeDomains.Cpu : NativeSmartCoordinatorGradeDomains.Gpu;
-        Assert.Equal(expectedDomains, readyAction.DomainMask);
-        Assert.Equal(expectedDomains.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu),
-            readyAction.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.CpuScore));
-        Assert.Equal(expectedDomains.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu),
-            readyAction.ValidMask.HasFlag(NativeSmartCoordinatorActionValidity.GpuScore));
-    }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void DeferredAdapterActionWaitsWhenItsCurrentScoreIsMissing(bool cpu)
-    {
-        var configuration = CreateProcessPolicyConfiguration();
-        configuration.MaximumGpuStates = 2;
-        configuration.FeatureFlags = cpu
-            ? NativeSmartCoordinatorFeatures.AdapterCpu
-            : NativeSmartCoordinatorFeatures.AdapterGpu;
-        configuration.CpuAdapter.ExtremeMinimumScore = 120;
-        configuration.CpuAdapter.NormalMinimumScore = 60;
-        configuration.CpuAdapter.OptimizeMinimumScore = 25;
-        configuration.GpuAdapter = configuration.CpuAdapter;
-        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
-        workspace.EnsureRows(Math.Min(8U, workspace.Capacity.InputRowCapacity));
-        using var operation = workspace.BeginOperation();
-        using var buffers = workspace.CreateScratchView();
-        ulong deferredSoftware = 0;
-        for (ulong sequence = 1; sequence <= 5; sequence++)
-        {
-            uint count = 0;
-            for (uint member = 0; member < 2; member++)
-            {
-                var process = CreateProcessFact();
-                process.TargetKey += member;
-                process.SoftwareKey += member;
-                process.ProcessId += member;
-                process.ProcessStartKey += member;
-                process.SoftwareKind = NativeSmartCoordinatorSoftwareKind.Adapted;
-                process.BaseScore = 60;
-                process.SourceIndex = count;
-                buffers.Inputs[checked((int)count++)] = process;
-                var metric = CreateMetricFact(in process, count,
-                    cpu ? NativeSmartCoordinatorMetricKind.CpuUsagePercent : NativeSmartCoordinatorMetricKind.GpuUsagePercent,
-                    cpu ? 100 : 2);
-                metric.DeviceIndex = cpu ? 0u : 5u;
-                if (sequence == 4 && process.SoftwareKey == deferredSoftware)
-                {
-                    metric.ValidMask &= ~(NativeSmartCoordinatorInputValidity.ProcessScore |
-                        NativeSmartCoordinatorInputValidity.SoftwareScore | NativeSmartCoordinatorInputValidity.ScoreMemberCount);
-                    metric.ProcessScore = 0;
-                    metric.SoftwareScore = 0;
-                    metric.ScoreMemberCount = 0;
-                }
-                buffers.Inputs[checked((int)count++)] = metric;
-                if (!cpu)
-                {
-                    var vram = process;
-                    vram.SourceIndex = count;
-                    vram.MetricKind = NativeSmartCoordinatorMetricKind.VramUsagePercent;
-                    vram.MetricValue = 1;
-                    vram.DeviceIndex = 5;
-                    vram.ValidMask |= NativeSmartCoordinatorInputValidity.Metric;
-                    buffers.Inputs[checked((int)count++)] = vram;
-                }
-            }
-            var cycle = CreateEmptyCycleInput(configuration.Generation,
-                workspace.Capacity.ActionCapacity, sequence, authoritative: sequence == 1);
-            cycle.InputCount = count;
-            cycle.ObservedAtMilliseconds = checked((long)sequence * 1_000);
-            cycle.MaximumActionsThisCycle = 1;
-            Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.PlanCurrent(in cycle));
-            var feedbackCount = HostManagerSmartCoordinator.ValidateNativeActionBatch(workspace);
-            if (sequence == 3)
-            {
-                Assert.Equal(1u, feedbackCount);
-                var selected = Assert.Single(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray(),
-                    action => action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.RequiresFeedback));
-                deferredSoftware = selected.SoftwareKey == 1_001 ? 1_002u : 1_001u;
-            }
-            if (sequence == 4)
-            {
-                Assert.Equal(0u, feedbackCount);
-                Assert.Equal(1u, workspace.Snapshot.InflightCount);
-            }
-            if (sequence == 5)
-            {
-                Assert.Equal(1u, feedbackCount);
-                var resumed = Assert.Single(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray(),
-                    action => action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.RequiresFeedback));
-                Assert.Equal(deferredSoftware, resumed.SoftwareKey);
-            }
-        }
-    }
+
+
 
     [Theory]
     [InlineData(false)]
@@ -647,16 +480,11 @@ public sealed class NativeSmartCoordinatorSessionTests
                 NativeSmartCoordinatorInputValidity.SurfaceFacts |
                 NativeSmartCoordinatorInputValidity.Eligibility |
                 NativeSmartCoordinatorInputValidity.Protection |
-                NativeSmartCoordinatorInputValidity.CpuCapabilities |
-                NativeSmartCoordinatorInputValidity.GpuCapabilities |
-                NativeSmartCoordinatorInputValidity.AppliedProcessGrade |
-                NativeSmartCoordinatorInputValidity.AppliedCpuGrade |
-                NativeSmartCoordinatorInputValidity.AppliedGpuGrade,
+                NativeSmartCoordinatorInputValidity.AppliedProcessGrade,
             Flags = NativeSmartCoordinatorInputFlags.Running |
                 NativeSmartCoordinatorInputFlags.ProcessCpuMetricsComplete |
                 NativeSmartCoordinatorInputFlags.ProcessGpuMetricsComplete |
                 NativeSmartCoordinatorInputFlags.CanApplyProcessPolicy |
-                NativeSmartCoordinatorInputFlags.CanApplyAdapterPolicy |
                 NativeSmartCoordinatorInputFlags.HardwareSchedulingEligible,
             TargetKey = 101,
             SoftwareKey = 1_001,
@@ -664,11 +492,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             BaseScore = 20,
             SourceIndex = 0,
             ProcessId = 11,
-            CpuCapabilityMask = 0x0f,
-            GpuCapabilityMask = 0x0f,
             AppliedProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
-            AppliedCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
         };
 
     private static NativeSmartCoordinatorInputRow CreateMetricFact(
@@ -785,10 +609,10 @@ public sealed class NativeSmartCoordinatorSessionTests
     {
         var layout = new NativeSmartScratchLayout(64, 20_000_000, 6, 0, 1);
         Assert.Equal(104, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorInputRow>());
-        Assert.Equal(136, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorAction>());
+        Assert.Equal(120, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorAction>());
         Assert.Equal(96, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorFeedback>());
         Assert.Equal(64UL * 104, layout.Actions);
-        Assert.Equal(64UL * 104 + 20_000_000UL * 136, layout.Feedback);
+        Assert.Equal(64UL * 104 + 20_000_000UL * 120, layout.Feedback);
         Assert.Equal(layout.Feedback + 6UL * 96, layout.Length);
         Assert.True(layout.Length > int.MaxValue); // Layout proof only: no large allocation.
         Assert.Throws<OverflowException>(() => new NativeSmartScratchLayout(uint.MaxValue, 1, 1, 0, 1));
@@ -824,7 +648,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             var actualLease = SmartActiveLease(workspace);
             var layout = workspace.ScratchLayout;
             var nativeOutput = System.Runtime.InteropServices.MemoryMarshal.Read<NativeSmartCoordinatorAction>(
-                actualLease.GetMemoryChunk(layout.Actions, 136).Span);
+                actualLease.GetMemoryChunk(layout.Actions, 120).Span);
             Assert.Equal(action.ActionId, nativeOutput.ActionId);
             Assert.True(actualLease.AllocationNumber != 0);
             workspace.SetFeedback(0, CreateSucceededFeedback(in action, 3_100));
@@ -960,8 +784,6 @@ public sealed class NativeSmartCoordinatorSessionTests
             Generation = 1,
             FieldMask = NativeSmartCoordinatorConfigFields.Required,
             FeatureFlags = NativeSmartCoordinatorFeatures.ProcessPolicy |
-                NativeSmartCoordinatorFeatures.AdapterCpu |
-                NativeSmartCoordinatorFeatures.AdapterGpu |
                 NativeSmartCoordinatorFeatures.CriticalEvents,
             MaximumProcesses = 2,
             MaximumSoftwareGroups = 2,
@@ -986,8 +808,6 @@ public sealed class NativeSmartCoordinatorSessionTests
             ReservedProcessPolicy0 = 0,
             HighTierMinimumBaseScore = 81,
             MiddleTierMinimumBaseScore = 21,
-            CpuAdapter = CreateAdapterPolicy(),
-            GpuAdapter = CreateAdapterPolicy()
         };
 
     private static NativeSmartCoordinatorConfiguration CreateProcessPolicyConfiguration()
@@ -1024,18 +844,8 @@ public sealed class NativeSmartCoordinatorSessionTests
         NativeSmartCoordinatorConfigurationWriter.SetProcessStateMultipliers(
             ref configuration,
             stateMultipliers);
-        NativeSmartCoordinatorConfigurationWriter.SetAdapterStateMultipliers(
-            ref configuration.CpuAdapter,
-            stateMultipliers);
 
         return configuration;
     }
 
-    private static NativeSmartCoordinatorAdapterPolicyConfiguration CreateAdapterPolicy()
-        => new()
-        {
-            ExtremeMinimumScore = 3,
-            NormalMinimumScore = 2,
-            OptimizeMinimumScore = 1
-        };
 }

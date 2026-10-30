@@ -200,36 +200,6 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     }
 
     [Fact]
-    public async Task FreezeWhileRunLeaseIsBeingAcquiredRetainsTheReturnedLeaseUntilStop()
-    {
-        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new CrossThreadBindingBroker();
-        using var reader = new EtwCpuCoreResidencyReader(
-            broker, sampling.Provider, sampling.Owner,
-            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
-        broker.BeforeLeaseReturn = () => reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
-        using var demand = reader.AcquireSubscription("test.freeze-during-acquisition", TimeSpan.FromSeconds(1));
-        await reader.StartAsync(CancellationToken.None);
-        try
-        {
-            Assert.True(await broker.BindingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5)));
-            await WaitUntilAsync(() => reader.GetDiagnostics().SessionGeneration == 37);
-            Assert.False(IsWindowActive(reader));
-            Assert.Equal(0, broker.DisposeCount);
-            Assert.Equal(1, broker.SubscribeCount);
-            Assert.Equal(HeldKeywords, broker.Keywords);
-            Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
-            Assert.Null(reader.Read());
-        }
-        finally
-        {
-            await reader.StopAsync(CancellationToken.None);
-        }
-        Assert.Equal(1, broker.DisposeCount);
-        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.GetSnapshot().EnabledKeywords);
-    }
-
-    [Fact]
     public async Task StartingSubscriptionAllowsTheBrokerToBindOnAnotherThread()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
@@ -422,20 +392,19 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     }
 
     [Fact]
-    public async Task FreezeDoesNotPublishASyntheticCurrentValue()
+    public async Task IdleSubscriptionDoesNotPublishASyntheticCurrentValue()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new UnavailableBroker();
         using var reader = CreateReader(sampling, broker);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         await using var subscription = reader.SubscribeAsync(
-                "test.freeze",
+                "test.idle",
                 TimeSpan.FromSeconds(1),
                 cancellation.Token)
             .GetAsyncEnumerator();
         var next = subscription.MoveNextAsync().AsTask();
 
-        reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
         await Task.Delay(50);
 
         Assert.False(next.IsCompleted);

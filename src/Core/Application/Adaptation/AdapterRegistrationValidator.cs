@@ -1,5 +1,4 @@
 using ResourceManager.App.Domain.Adaptation;
-using ResourceManager.App.Domain.Adaptation.Scheduling;
 
 namespace ResourceManager.App.Application.Adaptation;
 
@@ -51,7 +50,7 @@ public static class AdapterRegistrationValidator
 
         if (request.ProgramRootPaths.Count > 64 || request.Processes?.Count > 256)
             return "Adapter registration contains too many roots or processes.";
-        return ValidateProgramPaths(request) ?? ValidateSchedulingCapabilities(request.SchedulingCapabilities);
+        return ValidateProgramPaths(request);
     }
 
     private static string? ValidateProgramPaths(AdapterSoftwareRegistrationRequest request)
@@ -121,53 +120,4 @@ public static class AdapterRegistrationValidator
         return null;
     }
 
-    private static string? ValidateSchedulingCapabilities(AdapterSoftwareSchedulingCapabilities? capabilities)
-    {
-        if (capabilities is null)
-        {
-            return null;
-        }
-
-        if (!capabilities.HasAnyDimension)
-        {
-            return "schedulingCapabilities must declare cpu or gpu capabilities.";
-        }
-
-        if (capabilities.Cpu is { } cpu)
-        {
-            if (cpu.SupportedGrades is null || cpu.SupportedGrades.Count == 0)
-            {
-                return "CPU scheduling capabilities must declare at least one supported grade.";
-            }
-
-            if (cpu.SupportedGrades.Any(static grade => !Enum.IsDefined(grade)))
-            {
-                return "CPU scheduling capabilities contain an invalid grade.";
-            }
-
-            if (!cpu.SupportedGrades.Contains(AdapterCpuSchedulingGrade.Normal))
-            {
-                return "CPU scheduling capabilities must include normal.";
-            }
-        }
-
-        if (capabilities.Gpu is not { } gpu)
-        {
-            return null;
-        }
-
-        if (gpu.SupportedGrades is null || gpu.SupportedGrades.Count == 0)
-        {
-            return "GPU scheduling capabilities must declare at least one supported grade.";
-        }
-
-        if (gpu.SupportedGrades.Any(static grade => !Enum.IsDefined(grade)))
-        {
-            return "GPU scheduling capabilities contain an invalid grade.";
-        }
-
-        return !gpu.SupportedGrades.Contains(AdapterGpuSchedulingGrade.Normal)
-            ? "GPU scheduling capabilities must include normal."
-            : null;
-    }
 }

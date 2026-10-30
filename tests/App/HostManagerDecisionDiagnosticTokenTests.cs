@@ -42,10 +42,6 @@ public sealed class HostManagerDecisionDiagnosticTokenTests
         => AssertTokens<NativeSmartCoordinatorProcessGrade>(HostManagerDecisionDiagnosticTokens.Token);
 
     [Fact]
-    public void NativeSmartCoordinatorAdapterGradeHasExplicitUniqueTokens()
-        => AssertTokens<NativeSmartCoordinatorAdapterGrade>(HostManagerDecisionDiagnosticTokens.Token);
-
-    [Fact]
     public void NativeSmartCoordinatorSnapshotRowFlagsHasExplicitUniqueTokens()
         => AssertTokens<NativeSmartCoordinatorSnapshotRowFlags>(HostManagerDecisionDiagnosticTokens.Token);
 
@@ -73,7 +69,6 @@ public sealed class HostManagerDecisionDiagnosticTokenTests
     public void UndefinedValuesPublishNumericTextWithoutGuessingNames()
     {
         Assert.Equal("-128", HostManagerDecisionDiagnosticTokens.Token((NativeSmartCoordinatorProcessGrade)(-128)));
-        Assert.Equal("255", HostManagerDecisionDiagnosticTokens.Token((NativeSmartCoordinatorAdapterGrade)255));
         Assert.Equal("255", HostManagerDecisionDiagnosticTokens.Token((NativeMemoryMode)255));
         Assert.Equal("255", HostManagerDecisionDiagnosticTokens.Token((NativeSmartCoordinatorSnapshotRowKind)255));
         Assert.Equal("255", HostManagerDecisionDiagnosticTokens.Token((NativeComputeScoringOutputKind)255));

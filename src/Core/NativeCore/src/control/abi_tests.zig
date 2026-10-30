@@ -56,7 +56,7 @@ test "C read functions return current owner values outside controller locks and 
     defer closeHandle(&handle);
     var context = FunctionContext{ .handle = handle };
     const function = abi.ReadFunction{ .context = &context, .read = functionRead };
-    const key = abi.ItemKeyView{ .item = declarations.ItemUids.PresentUnfrozen, .block = 0 };
+    const key = abi.ItemKeyView{ .item = declarations.ItemUids.PresentNativeSessionAvailable, .block = 0 };
     var claim: ?*anyopaque = null;
     try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_claim_read_function(handle, &key, &function, &claim));
     var value: u32 = 99;

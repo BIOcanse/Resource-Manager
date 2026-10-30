@@ -156,10 +156,9 @@ public sealed partial class IntelMsrThermalCollectorTests
         }
 
         internal DateTimeOffset NextTime() => start.AddSeconds(++sequence);
-        internal NativeMetricSnapshotSourceRuntimeMode[] Modes()
-            => catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(
-                source.SourceHandle, 1, NativeMetricSnapshotZoneMode.Normal,
-                NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        internal NativeMetricSnapshotSourceRuntimeState[] Modes()
+            => catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeState(
+                source.SourceHandle, 1, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         internal void Sync(ulong[] active) => Workspace.SynchronizeCounterDemand(active, NextTime());
 
         internal double? Publish(NativeMetricSnapshotCounterPair? pair)

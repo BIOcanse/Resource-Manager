@@ -104,7 +104,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var reader = new RecordingCpuCoreResidencyReader(() => physical);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true, processFactsSnapshot: facts, cpuCoreReader: reader,
-            scoreOnlyEnabled: false, policyExecutionEnabled: true, automaticMemoryCleanupEnabled: true,
+            scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: true,
             processRecoveryRead: processId =>
             {
                 Assert.InRange(processId, pid, pid + 1);

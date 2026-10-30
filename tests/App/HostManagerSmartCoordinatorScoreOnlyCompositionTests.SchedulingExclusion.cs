@@ -1,6 +1,5 @@
 using System.Reflection;
 using ResourceManager.App.Application.Optimization;
-using ResourceManager.App.Domain.Adaptation.Scheduling;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Optimization;
@@ -15,60 +14,6 @@ namespace Resource_Manager_APP.Tests;
 // from the published runtime plan; the other two domains must stay identical.
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
-    [Theory]
-    [InlineData(true, false, false)]
-    [InlineData(false, true, false)]
-    [InlineData(false, false, true)]
-    [InlineData(true, true, true)]
-    public async Task SchedulingExclusionClearsOnlyItsOwnAdapterGradeCapability(
-        bool cpuExcluded,
-        bool memoryExcluded,
-        bool gpuExcluded)
-    {
-        const string software = "software:exclusion-adapter";
-        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true,
-            optimizationMode: AppOptimizationModes.Smart,
-            processFactsSnapshot: CreateCompleteProcessFacts(4_251, 132_537_599_900_000_100, software, 60, 10, 20));
-        var adapterDispatch = new CompiledAdapterDispatchPlan(
-            new Dictionary<string, CompiledAdapterDispatchRoute>(StringComparer.OrdinalIgnoreCase)
-            {
-                [software] = CompiledAdapterDispatchRoute.SoftwareLevelScheduler
-            },
-            new Dictionary<string, IReadOnlyList<AdapterCpuSchedulingGrade>>(StringComparer.OrdinalIgnoreCase)
-            {
-                [software] = [AdapterCpuSchedulingGrade.Normal, AdapterCpuSchedulingGrade.Optimize]
-            },
-            new Dictionary<string, IReadOnlyList<AdapterGpuSchedulingGrade>>(StringComparer.OrdinalIgnoreCase)
-            {
-                [software] = [AdapterGpuSchedulingGrade.Normal, AdapterGpuSchedulingGrade.Optimize]
-            });
-        PublishSchedulingExclusions(fixture, software, false, false, false, adapterDispatch);
-        var baseline = await CaptureIdentityRowsAsync(fixture);
-        Assert.All(baseline, static row =>
-        {
-            Assert.NotEqual(0, row.CpuCapabilityMask);
-            Assert.NotEqual(0, row.GpuCapabilityMask);
-        });
-
-        PublishSchedulingExclusions(fixture, software, cpuExcluded, memoryExcluded, gpuExcluded);
-        var excluded = await CaptureIdentityRowsAsync(fixture);
-
-        Assert.Equal(baseline.Length, excluded.Length);
-        for (var index = 0; index < baseline.Length; index++)
-        {
-            Assert.Equal(cpuExcluded ? (byte)0 : baseline[index].CpuCapabilityMask, excluded[index].CpuCapabilityMask);
-            Assert.Equal(gpuExcluded ? (byte)0 : baseline[index].GpuCapabilityMask, excluded[index].GpuCapabilityMask);
-            // CPU exclusion also removes automatic process-policy eligibility (covered on its own below).
-            Assert.Equal(
-                cpuExcluded
-                    ? baseline[index].Flags & ~NativeSmartCoordinatorInputFlags.CanApplyProcessPolicy
-                    : baseline[index].Flags,
-                excluded[index].Flags);
-            Assert.Equal(baseline[index].ProtectionLevel, excluded[index].ProtectionLevel);
-        }
-    }
-
     [Theory]
     [InlineData(true, false, false)]
     [InlineData(false, true, false)]
@@ -207,7 +152,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 memoryUsagePercent: 25),
             processRecoveryRead: _ => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new ProcessInstanceRecoverySnapshot(processId, startedAt)),
-            policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler = CreateFinalAdmissionAwareMemoryCleanupPlan;
@@ -254,7 +198,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             warm: true,
             scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts(processId, processStartKey, software, 80, 50, 25),
-            policyExecutionEnabled: false,
             automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => residency),
@@ -310,7 +253,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts(pid, startKey, software, 80, 50, 25),
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationMode: AppOptimizationModes.CpuOnly,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => CpuCoreResidencyTestValues.Create(
@@ -428,8 +371,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         string softwareId,
         bool cpuExcluded,
         bool memoryExcluded,
-        bool gpuExcluded,
-        CompiledAdapterDispatchPlan? adapterDispatch = null)
+        bool gpuExcluded)
     {
         var current = fixture.RuntimePlanProvider.Current;
         var policies = new Dictionary<string, ResolvedGpuPlacementPolicy>(
@@ -448,7 +390,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Version = checked(current.Version + 1),
             CompiledAt = DateTimeOffset.UtcNow,
             Reason = "scheduling-exclusion-test",
-            AdapterDispatch = adapterDispatch ?? current.AdapterDispatch,
             GpuPlacement = current.GpuPlacement with { SoftwarePoliciesBySoftwareId = policies }
         });
     }

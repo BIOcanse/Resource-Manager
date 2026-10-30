@@ -54,7 +54,7 @@ finally {
     $receiptPath = Join-Path $runtime $(if ($FilterOnly) { 'evidence/gpu-filter-only.json' } else { 'evidence/acceptance.json' })
     $receipt = if (Test-Path -LiteralPath $receiptPath) { Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json } else { $null }
     $passed = $probeExit -eq 0 -and $null -eq $failure -and $null -ne $receipt -and $receipt.status -eq 'passed'
-    $stateNames = if ($FilterOnly) { @('filtered-no-capture','filtered-capture','filtered-capture-reenabled','unfiltered-baseline','owned-session-cleanup') } else { @('a-no-subscriptions','b-30-second-residency-two-windows','c-tray-smart-with-interrupt-report','d-interrupt-freeze-and-resume','gpu-allocation-filter','e-subscriptions-removed','cleanup','owned-session-cleanup') }
+    $stateNames = if ($FilterOnly) { @('filtered-no-capture','filtered-capture','filtered-capture-reenabled','unfiltered-baseline','owned-session-cleanup') } else { @('a-no-subscriptions','b-30-second-residency-two-windows','c-tray-smart-with-interrupt-report','gpu-allocation-filter','e-subscriptions-removed','cleanup','owned-session-cleanup') }
     $states = foreach ($name in $stateNames) {
         $found = if ($null -ne $receipt) { @($receipt.cases | Where-Object Name -EQ $name) } else { @() }
         [ordered]@{ name = $name; passed = $found.Count -eq 1 -and $found[0].status -eq 'passed'; detail = $found }

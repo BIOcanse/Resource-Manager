@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.ResourceBreakdown;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.DeviceTopology;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
@@ -296,92 +295,6 @@ public sealed partial class EtwNetworkAttributionWindowTests
     }
 
     [Fact]
-    public void FrozenReadAcquiresNoSessionAndPerformsNoIdentityQueries()
-    {
-        var broker = new Broker();
-        var zone = new EtwNetworkTcpIpMonitoringZone();
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        using var reader = new EtwNetworkTcpIpAttributionReader(zone, broker,
-            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => 1000,
-            _ => throw new InvalidOperationException("No identity query is allowed while frozen."));
-
-        var snapshot = reader.Read(includeObservedTraffic: true);
-
-        Assert.Null(snapshot.ObservedTraffic);
-        Assert.Empty(snapshot.RawProcessValues);
-        Assert.Equal(NetworkAttributionProviderStates.Frozen, snapshot.ProviderState.State);
-        Assert.Equal(0, broker.SubscribeCount);
-    }
-
-    [Fact]
-    public async Task ExplicitHostedStartDoesNotAcquireEventsWhileFrozen()
-    {
-        var broker = new Broker();
-        var zone = new EtwNetworkTcpIpMonitoringZone();
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        using var reader = new EtwNetworkTcpIpAttributionReader(zone, broker,
-            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => 1000,
-            _ => throw new InvalidOperationException("Frozen reads cannot query process identity."));
-        await reader.StartAsync(CancellationToken.None);
-        try
-        {
-            Assert.Equal(NetworkAttributionProviderStates.Frozen, reader.Read(true).ProviderState.State);
-            Assert.Equal(0, broker.SubscribeCount);
-            Assert.Equal(0, broker.DisposeCount);
-        }
-        finally { await reader.StopAsync(CancellationToken.None); }
-        Assert.Equal(0, broker.DisposeCount);
-    }
-
-    [Fact]
-    public void FreezeWhileIdentitiesAreBeingReadDiscardsTheWindow()
-    {
-        var broker = new Broker();
-        var zone = new EtwNetworkTcpIpMonitoringZone();
-        long tick = 0;
-        var lease = new ProcessLease(41, 100);
-        using var reader = new EtwNetworkTcpIpAttributionReader(zone, broker,
-            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => tick,
-            _ => { zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze); return lease; });
-        StartReader(reader, broker);
-        reader.Read(includeObservedTraffic: true);
-        Transfer(reader, broker, 41, 100, true, false, IPAddress.Loopback, 1000, 100);
-        tick = 2001;
-
-        var snapshot = reader.Read(includeObservedTraffic: true);
-
-        Assert.Null(snapshot.ObservedTraffic);
-        Assert.Empty(snapshot.RawProcessValues);
-        Assert.Equal(1, lease.Disposals);
-        Assert.Equal(NetworkAttributionProviderStates.Frozen, snapshot.ProviderState.State);
-    }
-
-    [Fact]
-    public void FrozenDeliveriesInvalidateTheWindowBeforeAResumedRead()
-    {
-        var broker = new Broker();
-        var zone = new EtwNetworkTcpIpMonitoringZone();
-        long tick = 0;
-        using var reader = new EtwNetworkTcpIpAttributionReader(zone, broker,
-            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => tick,
-            pid => new ProcessLease(pid, 100));
-        StartReader(reader, broker);
-        reader.Read(includeObservedTraffic: true);
-        Transfer(reader, broker, 41, 5000, true, false, IPAddress.Loopback, 1000, 100);
-        tick = 2100;
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Assert.Equal(1, broker.DisposeCount);
-        Transfer(reader, broker, 41, 7000, true, false, IPAddress.Loopback, 2100, 100);
-        zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-        Assert.Equal(2, broker.SubscribeCount);
-        tick = 2101;
-        Assert.Null(reader.Read(includeObservedTraffic: true).ObservedTraffic);
-        Transfer(reader, broker, 41, 3, true, true, IPAddress.Loopback, 4100, 100);
-        tick = 4101;
-        Assert.Equal("3", Assert.Single(reader.Read(includeObservedTraffic: true).ObservedTraffic!.Processes).SendBytes);
-    }
-
-    [Fact]
     public async Task HostedStopReleasesTheSharedSessionLeaseAndQueuedEvents()
     {
         var broker = new Broker();
@@ -401,7 +314,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
     private static EtwNetworkTcpIpAttributionReader ObservationReader(Broker broker, Func<long> clock,
         Func<uint, IWindowsNetworkEndpointProcessLease?> open, bool start = true)
     {
-        var reader = new EtwNetworkTcpIpAttributionReader(new EtwNetworkTcpIpMonitoringZone(), broker,
+        var reader = new EtwNetworkTcpIpAttributionReader(broker,
             NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock, open);
         return start ? StartReader(reader, broker) : reader;
     }

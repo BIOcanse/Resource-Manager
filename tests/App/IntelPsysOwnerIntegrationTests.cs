@@ -2,7 +2,6 @@ using System.Collections.Immutable;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Infrastructure.CpuTopology;
@@ -73,11 +72,10 @@ public sealed class IntelPsysOwnerIntegrationTests
     }
 
     [Fact]
-    public async Task DirectCacheBorrowFreezeAndCanceledLateReadUseOriginalCurrentWithoutAnotherClockOrOwner()
+    public async Task DirectCacheBorrowAndCanceledLateReadUseOriginalCurrentWithoutAnotherClockOrOwner()
     {
         var probe = new IntelMsrThermalCollectorTests.PsysOwnerProbe();
-        var frozen = false;
-        using var owner = probe.Owner(_ => frozen ? NativeMetricSnapshotZoneMode.Freeze : NativeMetricSnapshotZoneMode.Normal);
+        using var owner = probe.Owner();
         var backend = owner.CreateBackend();
         var fields = PsysFields(await backend.DiscoverAsync(default));
         var raw = fields.Single(static field => field.FieldName == Raw);
@@ -119,18 +117,6 @@ public sealed class IntelPsysOwnerIntegrationTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => borrow.CollectAsync([raw],
             new Permit(beforePublish: admissionCancellation.Cancel), admissionCancellation.Token).AsTask());
         Assert.Equivalent(previous, owner.ReadCachedSnapshot(), strict: true);
-        var displayed = fields.ToDictionary(static field => field, backend.ReadCached);
-        frozen = true;
-        var opens = probe.Opens;
-        var retained = await backend.CollectAsync(fields, default);
-        Assert.All(retained, reading =>
-        {
-            Assert.Equal(displayed[reading.Field].Value, reading.Value);
-            Assert.Equal(displayed[reading.Field].ObservedAt, reading.ObservedAt);
-            Assert.Equal(displayed[reading.Field].Status, reading.Status);
-        });
-        Assert.Equal(opens, probe.Opens);
-        frozen = false;
         var recovered = Assert.Single(await backend.CollectAsync([unit], default));
         Assert.Equal(Math.ScaleB(1d, -14), recovered.Value!.Number);
         Assert.Equal(0, probe.Writes);
@@ -192,11 +178,9 @@ public sealed class IntelPsysOwnerIntegrationTests
         var zone = new IntelMsrMonitoringZone(probe.Reader);
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("PSys cannot read NUMA"),
             () => throw new InvalidOperationException("PSys cannot read global memory"));
-        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
-            id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner,
-            dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelMsrZone: zone);
+            dashboard,  slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelMsrZone: zone);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, Identity, [Raw, Unit]);
         Assert.Equal(2, request.Ids.Count);
         // Explicit cache inspection: GetSnapshotAsync acquires a single-fetch demand and waits for sampling.
@@ -310,8 +294,8 @@ public sealed partial class IntelMsrThermalCollectorTests
             () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
             () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
             () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, [])), ReadCpuTopology);
-        internal WindowsHardwareMetricOwner Owner(Func<string, NativeMetricSnapshotZoneMode>? mode = null)
-            => new(WindowsMetricConfiguration.Default, Resources(), new() { IntelModulePath = "recorded", PawnIoLibraryPath = "recorded" }, mode);
+        internal WindowsHardwareMetricOwner Owner()
+            => new(WindowsMetricConfiguration.Default, Resources(), new() { IntelModulePath = "recorded", PawnIoLibraryPath = "recorded" });
         private WindowsHardwareMetricResources Resources() => new()
         {
             Controls = new() { ControlReadCpuTopology = ReadCpuTopology },

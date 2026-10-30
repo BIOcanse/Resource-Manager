@@ -516,8 +516,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             platformSensorReader: null!,
             metricSnapshotOwner: owner!,
             metricCatalog: catalog,
-            monitoringSourceZoneRegistry: new MonitoringSourceZoneRegistry(memory is null ? []
-                : MonitoringSourceZoneCatalog.SourceIds.Select(id => id == memory.DisplayName ? memory : new MonitoringSourceZone(id))),
+
             samplingSubscriptionOwner: subscriptions.Owner,
             runtimePlanProvider: subscriptions.Provider,
             logger: NullLogger<WindowsHardwareMetricSampler>.Instance);

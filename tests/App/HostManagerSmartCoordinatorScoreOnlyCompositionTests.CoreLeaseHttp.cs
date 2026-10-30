@@ -27,7 +27,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var topology = CreateAutomaticPlacementTopology();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: CreateCompleteProcessFacts(pid, birth, "probe", 80, 20, 5),
-            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         RecordCpuLeaseBindings(fixture);

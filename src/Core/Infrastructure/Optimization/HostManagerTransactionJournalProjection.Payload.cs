@@ -83,18 +83,10 @@ internal static partial class HostManagerTransactionJournalProjection
             action.Scope == NativeSmartCoordinatorActionScope.ProcessPolicy
                 ? (int)MapProcessGrade(action.ToProcessGrade)
                 : 0,
-            action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                ? (int)MapAdapterGrade(action.FromCpuGrade)
-                : 0,
-            action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Cpu)
-                ? (int)MapAdapterGrade(action.ToCpuGrade)
-                : 0,
-            action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                ? (int)MapAdapterGrade(action.FromGpuGrade)
-                : 0,
-            action.DomainMask.HasFlag(NativeSmartCoordinatorGradeDomains.Gpu)
-                ? (int)MapAdapterGrade(action.ToGpuGrade)
-                : 0,
+            0, // Reserved persisted software-grade slot.
+            0, // Reserved persisted software-grade slot.
+            0, // Reserved persisted software-grade slot.
+            0, // Reserved persisted software-grade slot.
             action.AtomicGroupId,
             action.GroupMemberIndex,
             action.GroupMemberCount);

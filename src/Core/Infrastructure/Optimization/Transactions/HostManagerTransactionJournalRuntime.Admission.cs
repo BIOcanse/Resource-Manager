@@ -69,12 +69,10 @@ internal sealed class HostManagerTransactionJournalAdmission : IAsyncDisposable
         var snapshot = await ReadSnapshotAsync(cancellationToken);
         return snapshot.Records.Any(record =>
             (record.DomainMask == 0 || (record.DomainMask & (uint)domains) != 0) &&
-            (target.Scope == (uint)NativeAppliedOwnershipScope.Process
-                ? record.Scope == (uint)NativeTransactionJournalScope.Process &&
-                    record.Identity.ProcessId == target.ProcessId &&
-                    record.Identity.ProcessStartKey == target.ProcessStartKey
-                : record.Scope == (uint)NativeTransactionJournalScope.Software &&
-                    record.Identity.SoftwareId == target.SoftwareId));
+            target.Scope == (uint)NativeAppliedOwnershipScope.Process &&
+            record.Scope == (uint)NativeTransactionJournalScope.Process &&
+            record.Identity.ProcessId == target.ProcessId &&
+            record.Identity.ProcessStartKey == target.ProcessStartKey);
     }
 
     public Task<NativeTransactionJournalStatus> PrepareAsync(

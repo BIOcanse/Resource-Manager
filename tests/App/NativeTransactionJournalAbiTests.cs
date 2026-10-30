@@ -13,6 +13,9 @@ public sealed class NativeTransactionJournalAbiTests
     {
         Assert.Equal(0x0005_0000U, NativeTransactionJournalAbi.Version);
         Assert.Equal(128UL, NativeTransactionJournalAbi.ImageHeaderSize);
+        Assert.Equal(1U, (uint)NativeTransactionJournalScope.Process);
+        Assert.Equal(3U, (uint)NativeTransactionJournalScope.Resource);
+        Assert.DoesNotContain((NativeTransactionJournalScope)2, Enum.GetValues<NativeTransactionJournalScope>());
 
         Assert.Equal(64, Unsafe.SizeOf<NativeTransactionJournalCreateConfiguration>());
         Assert.Equal(32, Unsafe.SizeOf<NativeTransactionJournalOpenConfiguration>());

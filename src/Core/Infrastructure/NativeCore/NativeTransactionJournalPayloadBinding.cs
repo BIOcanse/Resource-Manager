@@ -149,7 +149,7 @@ internal readonly record struct NativeTransactionJournalPayloadBinding(
             NativeTransactionJournalScope.Process =>
                 ActionIdentity.ProcessStartKey != 0 &&
                 ActionIdentity.ProcessId != 0,
-            NativeTransactionJournalScope.Software or NativeTransactionJournalScope.Resource =>
+            NativeTransactionJournalScope.Resource =>
                 ActionIdentity.SoftwareId != 0 &&
                 ActionIdentity.ProcessStartKey == 0 &&
                 ActionIdentity.ProcessId == 0,
@@ -169,7 +169,6 @@ internal readonly record struct NativeTransactionJournalPayloadBinding(
             NativeTransactionJournalScope.Process =>
                 Domain is NativeTransactionJournalDomain.Process or
                     NativeTransactionJournalDomain.PhysicalMemory,
-            NativeTransactionJournalScope.Software => (Domain & ~SoftwareDomains) == 0,
             NativeTransactionJournalScope.Resource => (Domain & ~ResourceDomains) == 0,
             _ => false
         };
@@ -185,7 +184,6 @@ internal readonly record struct NativeTransactionJournalPayloadBinding(
         return Scope switch
         {
             NativeTransactionJournalScope.Process => IsProcessGradeSetValid(),
-            NativeTransactionJournalScope.Software => IsSoftwareGradeSetValid(),
             NativeTransactionJournalScope.Resource =>
                 GradeValidMask == NativeTransactionJournalGradeValidity.None &&
                 ProcessFromGrade == 0 &&
@@ -220,32 +218,6 @@ internal readonly record struct NativeTransactionJournalPayloadBinding(
         };
     }
 
-    private bool IsSoftwareGradeSetValid()
-    {
-        var required = NativeTransactionJournalGradeValidity.None;
-        if ((Domain & NativeTransactionJournalDomain.Cpu) != 0)
-        {
-            required |= NativeTransactionJournalGradeValidity.Cpu;
-        }
-
-        if ((Domain & NativeTransactionJournalDomain.Gpu) != 0)
-        {
-            required |= NativeTransactionJournalGradeValidity.Gpu;
-        }
-
-        return GradeValidMask == required &&
-            ProcessFromGrade == 0 &&
-            ProcessToGrade == 0 &&
-            IsAdapterGradePairValid(
-                (required & NativeTransactionJournalGradeValidity.Cpu) != 0,
-                CpuFromGrade,
-                CpuToGrade) &&
-            IsAdapterGradePairValid(
-                (required & NativeTransactionJournalGradeValidity.Gpu) != 0,
-                GpuFromGrade,
-                GpuToGrade);
-    }
-
     private bool IsAtomicGroupValid()
         => AtomicGroupId == 0
             ? GroupMemberIndex == 0 && GroupMemberCount == 0
@@ -257,15 +229,6 @@ internal readonly record struct NativeTransactionJournalPayloadBinding(
             to >= (int)NativeTransactionJournalProcessGrade.Level4 &&
             to <= (int)NativeTransactionJournalProcessGrade.A1 &&
             from != to;
-
-    private static bool IsAdapterGradePairValid(bool present, int from, int to)
-        => present
-            ? from >= (int)NativeTransactionJournalAdapterGrade.Freeze &&
-                from <= (int)NativeTransactionJournalAdapterGrade.Extreme &&
-                to >= (int)NativeTransactionJournalAdapterGrade.Freeze &&
-                to <= (int)NativeTransactionJournalAdapterGrade.Extreme &&
-                from != to
-            : from == 0 && to == 0;
 
     private static bool IsMemoryPriorityPairValid(
         NativeTransactionJournalDisposition disposition,

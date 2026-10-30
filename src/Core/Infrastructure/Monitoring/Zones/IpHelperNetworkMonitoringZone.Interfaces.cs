@@ -8,9 +8,8 @@ public sealed partial class IpHelperNetworkMonitoringZone
     internal IpHelperNetworkMonitoringZone(IWindowsNetworkInterfaceCounterApi api, Func<long>? monotonicTicks = null, ulong? ticksPerSecond = null)
         : base(Application.Monitoring.MonitoringSourceZoneIds.IpHelperNetwork)
         => interfaceResource = new(api, monotonicTicks, ticksPerSecond);
-    internal NetworkInterfaceTopologyRead ReadInterfaceIdentities() => CanRead ? interfaceResource.ReadInterfaceIdentities()
-        : new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
+    internal NetworkInterfaceTopologyRead ReadInterfaceIdentities() => interfaceResource.ReadInterfaceIdentities();
     internal IReadOnlyList<NetworkInterfaceMetricRead> ReadInterfaces(IReadOnlyList<NetworkInterfaceCatalogIdentity> identities,
-        IReadOnlyDictionary<string, IReadOnlySet<MetricFieldCode>> requested) => CanRead ? interfaceResource.ReadInterfaces(identities, requested) : [];
+        IReadOnlyDictionary<string, IReadOnlySet<MetricFieldCode>> requested) => interfaceResource.ReadInterfaces(identities, requested);
     internal static int CounterOffset(MetricFieldCode code) => WindowsNetworkInterfaceMetricResource.CounterOffset(code);
 }

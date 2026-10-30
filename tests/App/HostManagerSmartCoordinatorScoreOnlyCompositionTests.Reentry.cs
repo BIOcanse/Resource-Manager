@@ -11,7 +11,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             scoreOnlyEnabled: false,
-            policyExecutionEnabled: false,
             processFactsSnapshot: CreateRoundProcessFacts(),
             memoryModePolicyEnabled: true,
             automaticMemoryCleanupEnabled: false,

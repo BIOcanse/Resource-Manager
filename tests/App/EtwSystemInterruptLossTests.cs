@@ -2,7 +2,6 @@ using ResourceManager.App.Domain.SystemHealth;
 using System.Reflection;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization.Reports;
@@ -23,11 +22,8 @@ public sealed class EtwSystemInterruptLossTests
         Invoke(source, "EnsureStarted");
         var binding = Capture(source, broker);
         Interrupt(source, binding, Start.AddSeconds(1), 2);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Interrupt(source, binding, Start.AddSeconds(2), 2);
         now = Start.AddSeconds(5);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-        Interrupt(source, binding, Start.AddSeconds(4), 2);
+        Interrupt(source, binding, Start.AddMilliseconds(-1), 2);
         Interrupt(source, binding with { Context = binding.Context with { Generation = 999 } }, now, 2);
         Interrupt(source, binding, now, double.NaN);
         binding.Source.Cancel();
@@ -36,8 +32,8 @@ public sealed class EtwSystemInterruptLossTests
         var session = Assert.Single(EtwEventDropDiagnostics.Read().Sessions.Where(value => value.Name == broker.DiagnosticName));
         var prefix = "holder/system-interrupts/" + SystemInterruptEventKinds.Dpc;
         var total = Assert.Single(session.Kinds.Where(value => value.Kind == prefix));
-        Assert.Equal((6L, 5L), (total.Received, total.Dropped));
-        foreach (var reason in new[] { "frozen", "before-window", "generation-mismatch", "invalid-duration", "inactive-binding" })
+        Assert.Equal((5L, 4L), (total.Received, total.Dropped));
+        foreach (var reason in new[] { "before-window", "generation-mismatch", "invalid-duration", "inactive-binding" })
         {
             var rejected = Assert.Single(session.Kinds.Where(value => value.Kind == prefix + "/rejected:" + reason));
             Assert.Equal((1L, 1L), (rejected.Received, rejected.Dropped));
@@ -103,64 +99,9 @@ public sealed class EtwSystemInterruptLossTests
         Assert.True(source.Read().Available);
         Assert.Equal(0, source.Read().EventCount);
         Assert.Equal(0, source.Read().MaximumSingleDurationMilliseconds);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
     private static readonly DateTimeOffset Start = new(2026, 10, 3, 0, 0, 0, TimeSpan.Zero);
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void FreezeReleasesInterruptIntakeAndResumeSamplesFreshWindowsWithTheSameMetadataHolder(bool initiallyFrozen)
-    {
-        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
-        var broker = new Broker();
-        var now = Start;
-        using var source = NewSource(broker, fixture, () => now);
-        if (initiallyFrozen) source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        Invoke(source, "EnsureStarted");
-        var binding = Capture(source, broker);
-        for (var cycle = 0; cycle < 3; cycle++)
-        {
-            source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-            var frozen = source.Read();
-            now = now.AddSeconds(20);
-            if (cycle == 1)
-                Invoke(source, "ObserveBoundImage", binding.Source, binding.Context, binding.Session,
-                    0xFFFF_F800_0000_1000UL, 0x100, "frozen-driver.sys", true, now.ToUnixTimeMilliseconds());
-            else
-                Image(source, binding, "frozen-driver.sys", now);
-            Interrupt(source, binding, now, 50);
-            Assert.False(Publish(source, now));
-            Assert.Same(frozen, source.Read());
-            Assert.Equal((initiallyFrozen ? 1 : 2) + cycle, broker.SubscribeCount);
-            Assert.Equal((initiallyFrozen ? 0 : 1) + cycle, broker.DisposeCount);
-            Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad, broker.ActiveKeywords);
-            Assert.True(binding.Source.IsActive);
-
-            source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-            Assert.Equal((initiallyFrozen ? 2 : 3) + cycle, broker.SubscribeCount);
-            Assert.Equal((initiallyFrozen ? 0 : 1) + cycle, broker.DisposeCount);
-            Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad
-                | KernelTraceEventParser.Keywords.Interrupt | KernelTraceEventParser.Keywords.DeferedProcedureCalls,
-                broker.ActiveKeywords);
-            Assert.True(Publish(source, now));
-            Assert.False(source.Read().Available);
-            Assert.Equal(TimeSpan.Zero, source.Read().Window);
-            now = now.AddSeconds(1);
-            Interrupt(source, binding, now, 3);
-            now = now.AddSeconds(10);
-            Assert.True(Publish(source, now));
-            Assert.True(source.Read().Available);
-            Assert.Equal(1, source.Read().EventCount);
-            Assert.Equal(3, source.Read().TotalDurationMilliseconds);
-            Assert.Equal(cycle == 1 ? KernelModuleAddressMap.UnknownModuleName : "frozen-driver.sys",
-                Assert.Single(source.Read().Drivers).ModuleName);
-        }
-        source.Dispose();
-        Assert.Equal(initiallyFrozen ? 4 : 5, broker.DisposeCount);
-        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.ActiveKeywords);
-    }
 
     [Fact]
     public void RequestsBothHardwareInterruptsAndDeferredProcedureCalls()
@@ -173,7 +114,6 @@ public sealed class EtwSystemInterruptLossTests
         Assert.True(broker.Request.Keywords.HasFlag(KernelTraceEventParser.Keywords.DeferedProcedureCalls));
         Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad, broker.MetadataRequest!.Keywords);
         Assert.Equal(2, broker.SubscribeCount);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
     [Fact]
@@ -229,7 +169,6 @@ public sealed class EtwSystemInterruptLossTests
             rules[0].SourceHandle, rules[0].CoverageScopeHandle, rules, source.Read());
         Assert.Equal(NativeReportSourceStatus.Complete, observation.Status);
         Assert.Equal(rules.Length, observation.Facts.Count);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
     [Fact]
@@ -249,7 +188,6 @@ public sealed class EtwSystemInterruptLossTests
         Assert.Equal(1, source.Read().EventCount);
         Assert.Equal(8, source.Read().ProviderState.EventsLost);
         Assert.Equal(2, broker.SubscribeCount);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
     [Fact]
@@ -270,7 +208,6 @@ public sealed class EtwSystemInterruptLossTests
         Assert.Equal(0, source.Read().EventCount);
         Assert.Empty(source.Read().Drivers);
         Assert.Equal(1, source.Read().ProviderState.EventsLost);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
     [Fact]
@@ -297,7 +234,6 @@ public sealed class EtwSystemInterruptLossTests
         Assert.Equal(4, source.Read().TotalDurationMilliseconds);
         Assert.Equal(KernelModuleAddressMap.UnknownModuleName, Assert.Single(source.Read().Drivers).ModuleName);
         old.Source.Cancel();
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
     [Fact]
@@ -327,7 +263,6 @@ public sealed class EtwSystemInterruptLossTests
         now = Start.AddSeconds(11);
         Assert.True(Publish(source, now));
         Assert.Equal(1, source.Read().EventCount);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
     [Fact]
@@ -354,7 +289,6 @@ public sealed class EtwSystemInterruptLossTests
 
         Assert.False((bool)Invoke(source, "TryPublishCurrentSnapshot", now.AddSeconds(1), token)!);
         Assert.Same(current, source.Read());
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
     [Fact]
@@ -373,7 +307,6 @@ public sealed class EtwSystemInterruptLossTests
         now = Start.AddSeconds(10);
         Assert.True(Publish(source, now));
         Assert.True(source.Read().Available);
-        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
     [Fact]

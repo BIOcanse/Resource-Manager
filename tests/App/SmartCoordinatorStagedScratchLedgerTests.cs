@@ -71,7 +71,7 @@ public sealed class SmartCoordinatorStagedScratchLedgerTests(ITestOutputHelper o
         var uid = resource.Uid;
         Assert.Equal(requirements.ByteCount, layout.NativeScratchByteCount);
         var managed = checked(104UL * (ulong)layout.InputCapacity
-            + 136UL * (ulong)layout.ActionCapacity + 96UL * (ulong)layout.FeedbackCapacity);
+            + 120UL * (ulong)layout.ActionCapacity + 96UL * (ulong)layout.FeedbackCapacity);
         Assert.Equal(managed, layout.NativeScratch);
         Assert.Equal(checked((managed + requirements.Alignment - 1 + requirements.ByteCount + 7) / 8 * 8), resource.Length);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
@@ -186,11 +186,8 @@ public sealed class SmartCoordinatorStagedScratchLedgerTests(ITestOutputHelper o
                 NativeSmartCoordinatorInputValidity.ScoreMemberCount),
             Flags = NativeSmartCoordinatorInputFlags.Running | NativeSmartCoordinatorInputFlags.ProcessCpuMetricsComplete |
                 NativeSmartCoordinatorInputFlags.ProcessGpuMetricsComplete | NativeSmartCoordinatorInputFlags.CanApplyProcessPolicy |
-                NativeSmartCoordinatorInputFlags.CanApplyAdapterPolicy | NativeSmartCoordinatorInputFlags.HardwareSchedulingEligible,
+                NativeSmartCoordinatorInputFlags.HardwareSchedulingEligible,
             TargetKey = 101, SoftwareKey = 1001, ProcessStartKey = 111, BaseScore = 20, ProcessId = 11,
-            CpuCapabilityMask = 15, GpuCapabilityMask = 15,
-            AppliedCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
             AppliedProcessGrade = sequence > 3 ? NativeSmartCoordinatorProcessGrade.Level3 : NativeSmartCoordinatorProcessGrade.Normal
         };
         var metric = process;

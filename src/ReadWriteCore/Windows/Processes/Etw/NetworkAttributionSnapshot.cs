@@ -6,7 +6,6 @@ public static class NetworkAttributionProviderStates
     public const string Degraded = "degraded";
     public const string Unavailable = "unavailable";
     public const string NotRequested = "not_requested";
-    public const string Frozen = "frozen";
     public const string Starting = "starting";
     public const string Running = "running";
     public const string Idle = "idle";
