@@ -15,13 +15,11 @@ if (-not $owner.StartsWith('F:\', [StringComparison]::OrdinalIgnoreCase) -or
 if ($BuildDirectoryName -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,80}$') { throw 'BuildDirectoryName must be one child name.' }
 $build = Join-Path $owner $BuildDirectoryName
 if (Test-Path -LiteralPath $build) { throw 'Use a fresh build directory for a new accepted build.' }
-$policyPath = Join-Path $owner 'actual-use-retention-policy.json'
-$policy = [ordered]@{ schemaVersion = 1; enabled = $true; referenceRoots = @();
-    defaults = @{ maxRecentCompleted = 3; maxBytes = 8GB; maxNodes = 750000; maxMilliseconds = 300000 };
-    roots = @(@{ id = 'actual-use-runs'; path = $owner; excludedNames = @() }) }
-$policy | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $policyPath -Encoding utf8
-& (Join-Path $repo 'scripts/maintenance/Manage-GeneratedWorkspace.ps1') -Action New -RootId 'actual-use-runs' -WorkspacePath $build -Purpose 'Source-bound copied-image residency/interrupt actual-use acceptance' -PolicyPath $policyPath | Out-Null
-if (-not [IO.File]::Exists((Join-Path $build '.generated-workspace.json'))) { throw 'Build lifecycle registration failed.' }
+# The supplied running parent owns every build/run below it. Do not create a
+# second lifecycle record or private retention policy for a nested batch.
+$registration = Get-Content -LiteralPath (Join-Path $owner '.generated-workspace.json') -Raw | ConvertFrom-Json
+if ($registration.state -ne 'running') { throw 'The supplied task must still be running.' }
+[void][IO.Directory]::CreateDirectory($build)
 $artifacts = Join-Path $build 'artifacts'
 $env:RestorePackagesPath = $PackageRoot
 $env:RestoreIgnoreFailedSources = 'true'
@@ -100,5 +98,5 @@ while ($queue.Count -gt 0) {
 $actualRows = foreach ($path in $actualPaths) { [pscustomobject]@{ path = $path; length = ([IO.FileInfo]::new($path)).Length; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash } }
 [ordered]@{ contract = 'resource-manager-control-decision-source-inputs-v1'; sourceRoot = $repo; buildProperties = $properties; firstPartySources = $sourceRows.ToArray(); evaluatedCompileAndReferences = @($actualRows); compilerContext = @{ path = $contextPath; length = ([IO.FileInfo]::new($contextPath)).Length; sha256 = (Get-FileHash -LiteralPath $contextPath -Algorithm SHA256).Hash } } |
     ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $build 'source-input-manifest.json') -Encoding utf8
-& (Join-Path $repo 'src/Development/ControlDecisionAcceptance/Prepare-ArtifactCopy.ps1') -BuiltRoot (Join-Path $artifacts 'bin/ResourceManager.ControlDecisionAcceptance/release') -AcceptedSourceManifest (Join-Path $build 'source-input-manifest.json') -CopyRoot (Join-Path $build 'image') -RegisteredWorkspaceRoot $build
+& (Join-Path $repo 'src/Development/ControlDecisionAcceptance/Prepare-ArtifactCopy.ps1') -BuiltRoot (Join-Path $artifacts 'bin/ResourceManager.ControlDecisionAcceptance/release') -AcceptedSourceManifest (Join-Path $build 'source-input-manifest.json') -CopyRoot (Join-Path $build 'image') -RegisteredWorkspaceRoot $owner
 exit 0

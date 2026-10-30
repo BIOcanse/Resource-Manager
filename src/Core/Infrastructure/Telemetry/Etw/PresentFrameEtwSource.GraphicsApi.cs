@@ -63,6 +63,16 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
                 if (subscription.NeedsEvents && subscription.Process.ProcessId == pid
                     && timestampUtc.ToFileTimeUtc() >= (long)subscription.Process.ProcessStartKey)
                 {
+                    // Single-use identity check, only for a matching Present.
+                    // PID reuse/inaccessible identity completes the old attempt;
+                    // it must never archive the replacement's graphics API.
+                    if (!isCurrentGraphicsApiProcess(subscription.Process))
+                    {
+                        subscription.Active = false;
+                        subscription.Api = null;
+                        used = true;
+                        continue;
+                    }
                     subscription.Api = api;
                     subscription.ObservedApi = api;
                     used = true;

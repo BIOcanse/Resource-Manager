@@ -31,7 +31,6 @@ internal static class DriverFreeMetrics
             provider.GetRequiredService<WindowsPlatformSensorReader>(),
             provider.GetRequiredService<HostManagerMetricSnapshotOwner>(),
             provider.GetRequiredService<HardwareMetricCatalogState>(),
-            provider.GetRequiredService<IMonitoringSourceZoneRegistry>(),
             provider.GetRequiredService<HostManagerSamplingSubscriptionOwner>(),
             provider.GetRequiredService<RuntimePlanProvider>(),
             provider.GetRequiredService<ILogger<WindowsHardwareMetricSampler>>(),

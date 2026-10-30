@@ -73,9 +73,9 @@ public sealed class PresentFrameEtwProviderDemandTests
     }
 
     private static readonly Guid[] ApiProviders =
-    [PresentFrameEtwSource.KernelProcessProvider, PresentFrameEtwSource.DxgiProvider, PresentFrameEtwSource.Direct3D9Provider];
+    [PresentFrameEtwSource.DxgiProvider, PresentFrameEtwSource.Direct3D9Provider];
     private static readonly Guid[] DisplayProviders =
-    [PresentFrameEtwSource.GraphicsKernelProvider, PresentFrameEtwSource.Win32kProvider];
+    [PresentFrameEtwSource.KernelProcessProvider, PresentFrameEtwSource.GraphicsKernelProvider, PresentFrameEtwSource.Win32kProvider];
     private static readonly GpuPlacementProcessInstance Process =
         new(73, (ulong)DateTime.UnixEpoch.ToFileTimeUtc(), "recorded", "C:\\recorded.exe");
 
@@ -88,9 +88,8 @@ public sealed class PresentFrameEtwProviderDemandTests
         var session = Assert.Single(fixture.Sessions.Snapshot());
         Assert.Equal(ApiProviders, session.Enabled);
         Assert.Collection(session.Operations,
-            item => AssertEnable(item, ApiProviders[0], TraceEventLevel.Informational, 0x10, [1, 2]),
-            item => AssertEnable(item, ApiProviders[1], TraceEventLevel.Verbose, 2, [42, 55]),
-            item => AssertEnable(item, ApiProviders[2], TraceEventLevel.Verbose, 2, [1]));
+            item => AssertEnable(item, ApiProviders[0], TraceEventLevel.Verbose, 2, [42, 55]),
+            item => AssertEnable(item, ApiProviders[1], TraceEventLevel.Verbose, 2, [1]));
 
         fixture.Source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 42,
             Process.ProcessId, DateTime.FromFileTimeUtc((long)Process.ProcessStartKey));
@@ -101,7 +100,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         Assert.False(retained.NeedsEvents);
         Assert.True(retained.HasCurrent);
         Assert.Equal(GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12, api.Read());
-        Assert.Equal(6, session.Operations.Length);
+        Assert.Equal(4, session.Operations.Length);
         Assert.Equal(0, session.EventsLostReads);
         await fixture.ReleaseAsync(api);
         Assert.Equal(1, session.Stops);
@@ -122,16 +121,16 @@ public sealed class PresentFrameEtwProviderDemandTests
             .Select(holder => holder.ProcessId!.Value).Order());
         var initialOperations = session.Operations.Length;
 
-        Assert.True(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[1], 42, 73,
+        Assert.True(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[0], 42, 73,
             DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
         Assert.True(fixture.Source.HasActiveSubscriptions);
         Assert.Equal(74, Assert.Single(fixture.Source.ReadHolders().Where(holder => holder.NeedsEvents)).ProcessId);
         Assert.Equal(initialOperations + 2, session.Operations.Length);
-        Assert.False(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[1], 43, 74,
+        Assert.False(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[0], 43, 74,
             DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
-        Assert.False(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[1], 42, 73,
+        Assert.False(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[0], 42, 73,
             DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
-        Assert.True(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[2], 1, 74,
+        Assert.True(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[1], 1, 74,
             DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
         await EtwTestRunRecorder.UntilAsync(() => session.Stops == 1);
         Assert.False(fixture.Source.HasActiveSubscriptions);
@@ -164,7 +163,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         Assert.False(fixture.Source.HasActiveSubscriptions);
         Assert.False(Assert.Single(fixture.Source.ReadHolders()).NeedsEvents);
         Assert.Null(api.Read());
-        Assert.False(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[1], 42, Process.ProcessId,
+        Assert.False(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[0], 42, Process.ProcessId,
             DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
         Assert.Single(fixture.Sessions.Snapshot());
         await fixture.ReleaseAsync(api);
@@ -184,11 +183,12 @@ public sealed class PresentFrameEtwProviderDemandTests
         await fixture.WaitRunningAsync();
         await fixture.WaitRunningAsync();
         Assert.True(fixture.Source.HasActiveSubscriptions);
-        Assert.Equal(ApiProviders.Concat(DisplayProviders), session.Enabled);
-        Assert.Collection(session.Operations.Skip(5),
-            item => AssertEnable(item, DisplayProviders[0], TraceEventLevel.Verbose,
-                0x4000000008000001, [184, 168, 252, 178, 116, 17]),
+        Assert.Equal(ApiProviders.Concat(DisplayProviders).Order(), session.Enabled.Order());
+        Assert.Collection(session.Operations.Where(item => item.Kind == "enable" && DisplayProviders.Contains(item.Provider)),
+            item => AssertEnable(item, DisplayProviders[0], TraceEventLevel.Informational, 0x10, [1, 2]),
             item => AssertEnable(item, DisplayProviders[1], TraceEventLevel.Verbose,
+                0x4000000008000001, [184, 168, 252, 178, 116, 17]),
+            item => AssertEnable(item, DisplayProviders[2], TraceEventLevel.Verbose,
                 0x8000000400001000, [201, 301]));
         var initial = fixture.Source.Read(TimeSpan.FromSeconds(1))!;
         Assert.False(initial.Complete);
@@ -228,7 +228,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         var frame = fixture.Source.AcquireSubscription();
         await fixture.WaitRunningAsync();
         var session = Assert.Single(fixture.Sessions.Snapshot());
-        Assert.Equal(ApiProviders.Concat(DisplayProviders), session.Enabled);
+        Assert.Equal(ApiProviders.Concat(DisplayProviders).Order(), session.Enabled.Order());
         var initialOperations = session.Operations.Length;
         var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
         await fixture.WaitRunningAsync();
@@ -275,7 +275,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         if (frameLeavesFirst) await fixture.ReleaseAsync(frame);
         else await fixture.ReleaseAsync(api);
         Assert.Equal(0, session.Stops);
-        Assert.Equal(frameLeavesFirst ? ApiProviders : ApiProviders.Concat(DisplayProviders), session.Enabled);
+        Assert.Equal((frameLeavesFirst ? ApiProviders : ApiProviders.Concat(DisplayProviders)).Order(), session.Enabled.Order());
         if (frameLeavesFirst) await fixture.ReleaseAsync(api);
         else await fixture.ReleaseAsync(frame);
         Assert.Equal(1, session.Stops);
@@ -303,7 +303,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         Assert.False(session.ProcessExited.IsCompleted);
         Assert.Equal(includeFrames, fixture.Source.Read(TimeSpan.FromSeconds(1)) is not null);
         var current = Assert.Single(fixture.Sessions.Snapshot());
-        Assert.Equal(includeFrames ? ApiProviders.Concat(DisplayProviders) : ApiProviders, current.Enabled);
+        Assert.Equal((includeFrames ? ApiProviders.Concat(DisplayProviders) : ApiProviders).Order(), current.Enabled.Order());
         if (includeFrames) Assert.False(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
         if (frame is not null) await fixture.ReleaseAsync(frame);
         if (api is not null) await fixture.ReleaseAsync(api);
@@ -319,7 +319,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         var frameReady = fixture.WaitRunningAsync();
         await Task.WhenAll(apiReady, frameReady).WaitAsync(TimeSpan.FromSeconds(10));
         var session = Assert.Single(fixture.Sessions.Snapshot());
-        Assert.Equal(ApiProviders.Concat(DisplayProviders), session.Enabled);
+        Assert.Equal(ApiProviders.Concat(DisplayProviders).Order(), session.Enabled.Order());
         Assert.False(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
         await fixture.ReleaseAsync(frame);
         await fixture.ReleaseAsync(api);
@@ -331,7 +331,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         await using var fixture = PresentFrameEtwTestHarness.Create();
         fixture.Sessions.Configure = (session, attempt) =>
         {
-            if (attempt == 1) session.FailTransition = ("enable", DisplayProviders[0]);
+            if (attempt == 1) session.FailTransition = ("enable", DisplayProviders[1]);
         };
         var frame = fixture.Source.AcquireSubscription();
         var result = await fixture.NextResultAsync();

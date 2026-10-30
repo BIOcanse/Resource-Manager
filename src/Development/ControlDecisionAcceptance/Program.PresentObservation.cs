@@ -82,7 +82,8 @@ internal static partial class Program
             name =>
             {
                 RequireOwnSessionName(ResourceManagerEtwSessionNames.PresentFramesPrefix, name);
-                return new PresentMeasurementSession(name, transitions, closed);
+                return new PresentMeasurementSession(name, transitions, closed,
+                    () => provider.GetRequiredService<PresentFrameEtwSource>().ReadHolders());
             }, TimeProvider.System, provider.GetService<IEtwConsumerThreadObserver>())));
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole();
@@ -122,7 +123,9 @@ internal static partial class Program
                 foreach (var session in drops.Sessions.Where(item => item.Name.StartsWith(ResourceManagerEtwSessionNames.PresentFramesPrefix, StringComparison.Ordinal)))
                     sessions[(session.Name, session.Generation)] = session;
                 await File.AppendAllTextAsync(Path.Combine(evidence, "present-event-drops.jsonl"),
-                    JsonSerializer.Serialize(new { at = DateTimeOffset.UtcNow, seconds = elapsed.Elapsed.TotalSeconds, drops }, JsonSerializerOptions.Web) + "\n", deadline.Token);
+                    JsonSerializer.Serialize(new { at = DateTimeOffset.UtcNow, seconds = elapsed.Elapsed.TotalSeconds,
+                        presentState = app.Services.GetRequiredService<BusinessBlockScheduler>().ReadState(BlockUids.PresentFrameEtwSource).ToString(),
+                        holders = app.Services.GetRequiredService<PresentFrameEtwSource>().ReadHolders(), drops }, JsonSerializerOptions.Web) + "\n", deadline.Token);
                 await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token);
             }
             var final = await client.GetFromJsonAsync<EtwEventDropsSnapshot>("/api/debug/event-drops", deadline.Token)
@@ -159,13 +162,16 @@ internal static partial class Program
         private readonly string name;
         private readonly ConcurrentQueue<object> transitions;
         private readonly ConcurrentDictionary<(string Name, long Generation), (DateTimeOffset At, EtwSessionEventDrops Drops)> closed;
+        private readonly Func<PresentFrameEtwSource.PresentHolder[]> readHolders;
         private int opened;
         internal PresentMeasurementSession(string name, ConcurrentQueue<object> transitions,
-            ConcurrentDictionary<(string Name, long Generation), (DateTimeOffset At, EtwSessionEventDrops Drops)> closed)
+            ConcurrentDictionary<(string Name, long Generation), (DateTimeOffset At, EtwSessionEventDrops Drops)> closed,
+            Func<PresentFrameEtwSource.PresentHolder[]> readHolders)
         {
             this.name = name;
             this.transitions = transitions;
             this.closed = closed;
+            this.readHolders = readHolders;
             inner = new(name);
         }
         public int EventsLost => inner.EventsLost;
@@ -175,8 +181,11 @@ internal static partial class Program
         public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] ids, int[]? pids = null)
         {
             inner.EnableProvider(provider, level, keywords, ids, pids);
+            var generation = EtwEventDropDiagnostics.Read().Sessions.Single(item => item.Name == name).Generation;
+            transitions.Enqueue(new { at = DateTimeOffset.UtcNow, name, generation, transition = "enable",
+                provider, ids, pids, holders = readHolders() });
             if (Interlocked.Exchange(ref opened, 1) == 0)
-                transitions.Enqueue(new { at = DateTimeOffset.UtcNow, name, transition = "open" });
+                transitions.Enqueue(new { at = DateTimeOffset.UtcNow, name, generation, transition = "open", holders = readHolders() });
         }
         public void DisableProvider(Guid provider) => inner.DisableProvider(provider);
         public void Flush() => inner.Flush();
@@ -188,7 +197,7 @@ internal static partial class Program
                 var at = DateTimeOffset.UtcNow;
                 var drops = EtwEventDropDiagnostics.Read().Sessions.Single(item => item.Name == name);
                 closed[(name, drops.Generation)] = (at, drops);
-                transitions.Enqueue(new { at, name, transition = "close", drops });
+                transitions.Enqueue(new { at, name, generation = drops.Generation, transition = "close", holders = readHolders(), drops });
             }
         }
     }

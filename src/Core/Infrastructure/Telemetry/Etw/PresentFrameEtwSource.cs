@@ -3,6 +3,7 @@ using Microsoft.Diagnostics.Tracing;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.ReadWrite.Windows.Frames;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -57,6 +58,8 @@ public sealed partial class PresentFrameEtwSource(
         return new TraceEventPresentFrameEtwSession(name);
     };
     private readonly TimeProvider timeProvider = TimeProvider.System;
+    private readonly Func<GpuPlacementProcessInstance, bool> isCurrentGraphicsApiProcess =
+        static process => ReadProcessStartKey(process.ProcessId) == (long)process.ProcessStartKey;
     private readonly object gate = new();
     private PresentFrameLedger ledger = new(ReadProcessStartKey);
     private readonly HashSet<FrameSubscription> frameSubscriptions = [];
@@ -75,10 +78,12 @@ public sealed partial class PresentFrameEtwSource(
         NativeEtwSessionAvailability availability,
         Func<string, IPresentFrameEtwSession> createSession,
         TimeProvider? timeProvider = null,
-        IEtwConsumerThreadObserver? consumerThreadObserver = null) : this(logger, controller, diagnostics, availability, consumerThreadObserver)
+        IEtwConsumerThreadObserver? consumerThreadObserver = null,
+        Func<GpuPlacementProcessInstance, bool>? isCurrentGraphicsApiProcess = null) : this(logger, controller, diagnostics, availability, consumerThreadObserver)
     {
         this.createSession = createSession;
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        if (isCurrentGraphicsApiProcess is not null) this.isCurrentGraphicsApiProcess = isCurrentGraphicsApiProcess;
     }
 
     public IDisposable AcquireSubscription()
@@ -156,11 +161,12 @@ public sealed partial class PresentFrameEtwSource(
         // coverage on this session; frame consumers also require all processes.
         var pidFilter = !frames && observedPids.Length <= 8 ? observedPids : null;
         var desired = new List<ProviderSelection>();
+        // Only the frame ledger consumes machine-wide process lifetimes.
+        // API-only attempts validate birth on the matching Present instead.
+        if (frames) desired.Add(new(KernelProcessProvider, TraceEventLevel.Informational, KernelProcessKeyword,
+            [ProcessStart, ProcessStop]));
         if (frames || pending)
         {
-            // Process lifetime is read until identification, to reject PID reuse.
-            desired.Add(new(KernelProcessProvider, TraceEventLevel.Informational, KernelProcessKeyword,
-                [ProcessStart, ProcessStop]));
             desired.Add(new(DxgiProvider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
                 frames ? [DxgiPresentStart, DxgiPresentStop, DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop]
                     : [DxgiPresentStart, DxgiMultiplaneOverlayPresentStart], pidFilter));

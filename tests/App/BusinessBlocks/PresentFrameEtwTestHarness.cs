@@ -33,6 +33,8 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
     internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
     internal EtwTestRunRecorder Recorder { get; }
     internal NativeEtwSessionAvailability Availability { get; }
+    private SubscriptionActivityFacts? productionActivityFacts;
+    private HostManagerSamplingSubscriptionTestFixture? productionSampling;
     internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
 
     internal static PresentFrameEtwTestHarness Create(
@@ -40,7 +42,9 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         TimeProvider? timeProvider = null,
         IEtwConsumerThreadObserver? observer = null,
         BusinessBlockOptions? blockOptions = null,
-        bool useNativeSession = false)
+        bool useNativeSession = false,
+        Func<ResourceManager.App.Domain.GpuPlacement.GpuPlacementProcessInstance, bool>? isCurrentGraphicsApiProcess = null,
+        bool useProductionActivityFacts = false)
     {
         var sessions = new PresentFrameEtwTestSessionFactory();
         PresentFrameEtwSource? source = null;
@@ -63,14 +67,23 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         else
         {
             source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, availability, sessions.Create,
-                timeProvider ?? new PresentFrameEtwManualTimeProvider(), observer);
+                timeProvider ?? new PresentFrameEtwManualTimeProvider(), observer,
+                isCurrentGraphicsApiProcess ?? (static _ => true));
         }
 
         recorder = new(source, diagnostics, BackendUids.PresentFrameEtwSource);
         fixture.InitializeHostPermitsAsync().GetAwaiter().GetResult();
-        source.SubscriptionsChanged += () => fixture.SetNativeSubscriptionInUseAsync(
+        var result = new PresentFrameEtwTestHarness(fixture, source, sessions, diagnostics, recorder);
+        if (useProductionActivityFacts)
+        {
+            result.productionSampling = new(startOwner: false);
+            result.productionActivityFacts = new(result.productionSampling.Owner, source,
+                NullLogger<SubscriptionActivityFacts>.Instance);
+            result.productionActivityFacts.Initialize(fixture.Authority);
+        }
+        else source.SubscriptionsChanged += () => fixture.SetNativeSubscriptionInUseAsync(
             BackendUids.PresentFrameEtwSource, source.HasActiveSubscriptions).GetAwaiter().GetResult();
-        return new(fixture, source, sessions, diagnostics, recorder);
+        return result;
     }
 
     internal Task WaitRunningAsync()
@@ -94,6 +107,8 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         finally
         {
             Source.Dispose();
+            productionActivityFacts?.Dispose();
+            productionSampling?.Dispose();
             await Fixture.DisposeAsync();
         }
     }

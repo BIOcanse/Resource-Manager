@@ -20,6 +20,51 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuPresentGraphicsApiTests
 {
     [Fact]
+    public async Task TrayStartupSelfGpuAttemptStopsBeforeUiClosureAndDoesNotHoldForElevenMinutes()
+    {
+        using var files = new Files();
+        var clock = new PresentFrameEtwManualTimeProvider();
+        await using var harness = PresentFrameEtwTestHarness.Create(timeProvider: clock, useProductionActivityFacts: true);
+        var self = Process(files) with { SoftwareId = "resource-manager:self", SoftwareName = "资源管理器",
+            ProcessName = "ResourceManagerNativeUi", SoftwareKind = "adapted" };
+        var processes = new PublishedProcesses(Snapshot(self with { Gpus = [] }));
+        var registry = new SoftwareRegistry([new("resource-manager:self", "资源管理器", "adapted", "active", [], [],
+            new(false, "None", "self"), null)]);
+        using var owner = new GpuPlacementProcessHistoryObserver(processes, registry, Plans(),
+            new JsonGpuPlacementProcessHistoryStore(files), harness.Source,
+            NullLogger<GpuPlacementProcessHistoryObserver>.Instance, clock);
+        await owner.StartAsync(default);
+        await EtwTestRunRecorder.UntilAsync(() => processes.Reads > 0);
+        clock.Advance(TimeSpan.FromSeconds(7));
+        var deadline = clock.GetUtcNow() + GpuPlacementProcessHistoryObserver.ObservationWindow;
+        var armed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnTimerArmed(DateTimeOffset due) { if (due == deadline) armed.TrySetResult(); }
+        clock.TimerArmed += OnTimerArmed;
+        try
+        {
+            processes.Publish(Snapshot(self));
+            await harness.WaitRunningAsync();
+            await armed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally { clock.TimerArmed -= OnTimerArmed; }
+        var session = Assert.Single(harness.Sessions.Snapshot());
+        Assert.Equal(self.ProcessId, Assert.Single(harness.Source.ReadHolders()).ProcessId);
+        clock.Advance(TimeSpan.FromSeconds(29));
+        Assert.Equal(0, session.Stops);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await EtwTestRunRecorder.UntilAsync(() => session.Stops == 1);
+        Assert.Empty(harness.Source.ReadHolders());
+        // 11:33:46 UI closure, then the 11:43 tray read, relative to 11:32:02.
+        clock.Advance(TimeSpan.FromSeconds(67));
+        processes.Publish(Snapshot(self with { Gpus = [] }));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        Assert.Equal(1, session.Stops);
+        Assert.Single(harness.Sessions.Snapshot());
+        Assert.False(harness.Source.HasActiveSubscriptions);
+        await owner.StopAsync(default);
+    }
+
+    [Fact]
     public async Task AnImageNegativeCannotDiscardAFinalPresentFromAnAlreadyLiveAttempt()
     {
         using var files = new Files();

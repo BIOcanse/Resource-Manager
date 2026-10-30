@@ -23,7 +23,7 @@ $owner = [IO.Path]::GetFullPath($RegisteredWorkspaceRoot).TrimEnd('\')
 if (-not $owner.StartsWith('F:\', [StringComparison]::OrdinalIgnoreCase) -or
     -not [IO.File]::Exists((Join-Path $owner '.generated-workspace.json'))) { throw 'An existing registered task root on F: is required.' }
 $build = Join-Path $owner $BuildDirectoryName
-if (-not [IO.File]::Exists((Join-Path $build '.generated-workspace.json'))) { throw 'The accepted build must have its own generated workspace lifecycle.' }
+if (-not [IO.Directory]::Exists($build)) { throw 'The accepted build must exist inside its registered parent task.' }
 $image = Join-Path $build 'image'
 $runtime = Join-Path $build $RuntimeDirectoryName
 if (Test-Path -LiteralPath $runtime) { throw 'Use a fresh runtime directory name.' }
@@ -46,7 +46,7 @@ try {
     # The helper owns the complete child tree with a 4 GiB Job limit.
     & $MemoryLimitScript -FilePath $dotnet -ArgumentList @(
         (Join-Path $image 'ResourceManager.ControlDecisionAcceptance.dll'), $(if ($PresentObservationOnly) { '--present-observation' } elseif ($FilterOnly) { '--gpu-filter-only' } else { '--actual-use' }),
-        '--registered-root', $build, '--runtime-root', $runtime,
+        '--registered-root', $owner, '--runtime-root', $runtime,
         '--artifact-manifest', $manifest, '--source-manifest', $source
     ) -LimitGiB 4
     $probeExit = $LASTEXITCODE
