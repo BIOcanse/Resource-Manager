@@ -5,6 +5,10 @@ const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 pub const no_index: u32 = std.math.maxInt(u32);
 
+// persisted_mutation_version is the version storage holds for a source,
+// observation or bucket row, or 0 when storage holds no row or a row whose
+// semantic state is outdated. A 0 row is written by the next plan; a row with
+// only counter changes waits for the counter checkpoint (persistence.zig).
 pub const SourceSlot = struct {
     occupied: bool = false,
     status: protocol.SourceStatus = .skipped,
@@ -234,6 +238,11 @@ pub const Session = struct {
     metadata_mutation_version: u64 = 0,
     metadata_persisted_mutation_version: u64 = 0,
     metadata_logical_utc_ms: i64 = 0,
+    // Logical time of the last committed counter checkpoint.
+    counter_checkpoint_utc_ms: i64 = 0,
+    // Logical time carried by the outstanding plan when it is a counter checkpoint.
+    planned_counter_checkpoint_utc_ms: i64 = 0,
+    planned_counter_checkpoint: bool = false,
     next_source_slot: u32 = 0,
     next_observation_slot: u32 = 0,
     next_report_slot: u32 = 0,

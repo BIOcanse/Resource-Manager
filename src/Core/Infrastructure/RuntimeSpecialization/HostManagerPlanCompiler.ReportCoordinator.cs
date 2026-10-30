@@ -75,6 +75,13 @@ public sealed partial class HostManagerPlanCompiler
         ValidatePositive(source.DefaultStaleAfterMilliseconds, "hot_publish.report_coordinator.default_stale_after_ms");
         ValidatePositive(source.DefaultRetentionMilliseconds, "hot_publish.report_coordinator.default_retention_ms");
         ValidatePositive(source.MetadataCheckpointIntervalMilliseconds, "hot_publish.report_coordinator.metadata_checkpoint_interval_ms");
+        if (source.ObservationCheckpointIntervalMilliseconds < 0)
+        {
+            // 0 writes counter-only changes on every plan.
+            throw new InvalidDataException(
+                "hot_publish.report_coordinator.observation_checkpoint_interval_ms must be non-negative.");
+        }
+
         ValidatePositive(source.ResidentByteBudget, "hot_publish.report_coordinator.resident_byte_budget");
         if (source.Window7DaysMilliseconds <= source.Window24HoursMilliseconds
             || source.Window24HoursMilliseconds % source.BucketWidthMilliseconds != 0
@@ -94,6 +101,7 @@ public sealed partial class HostManagerPlanCompiler
             source.DefaultStaleAfterMilliseconds,
             source.DefaultRetentionMilliseconds,
             source.MetadataCheckpointIntervalMilliseconds,
+            source.ObservationCheckpointIntervalMilliseconds,
             source.ResidentByteBudget);
     }
 

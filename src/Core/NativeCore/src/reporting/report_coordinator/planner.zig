@@ -54,7 +54,11 @@ pub fn queryPlanSize(
     const maintenance = rules.maintain(session, logical_now);
     if (maintenance != .ok) return maintenance;
     const reports = collectReportOrder(session);
-    const dirty = persistence.collectDirty(session, logical_now) catch return .out_of_memory;
+    const dirty = persistence.collectDirty(
+        session,
+        logical_now,
+        counterCheckpoint(session, input, logical_now),
+    ) catch return .out_of_memory;
     report_count.* = @intCast(reports);
     operation_count.* = @intCast(dirty.len);
     return .ok;
@@ -123,7 +127,8 @@ pub fn plan(
     }
     for (reports[report_count..]) |*target| target.* = std.mem.zeroes(protocol.ReportOutput);
 
-    const dirty = persistence.collectDirty(session, logical_now) catch {
+    const counter_checkpoint = counterCheckpoint(session, input, logical_now);
+    const dirty = persistence.collectDirty(session, logical_now, counter_checkpoint) catch {
         for (reports) |*target| target.* = std.mem.zeroes(protocol.ReportOutput);
         for (operations) |*target| target.* = std.mem.zeroes(protocol.PersistenceOperation);
         session.rollbackFactTransaction();
@@ -183,6 +188,17 @@ pub fn plan(
         }
     }
     session.planned_persistence_count = @intCast(operation_count);
+    if (counter_checkpoint) {
+        // Plans are never cut short (buffer_too_small above). An empty
+        // checkpoint has nothing to confirm; a written one advances only after
+        // its batch is reported persisted (applyFeedback).
+        if (operation_count == 0) {
+            session.counter_checkpoint_utc_ms = @max(session.counter_checkpoint_utc_ms, logical_now);
+        } else {
+            session.planned_counter_checkpoint = true;
+            session.planned_counter_checkpoint_utc_ms = logical_now;
+        }
+    }
 
     session.commitFactTransaction();
     session.last_plan_epoch = input.plan_epoch;
@@ -198,6 +214,7 @@ pub fn plan(
     if (report_total > report_count) flags |= protocol.PlanFlags.has_more_reports;
     if (dirty.len > operation_count) flags |= protocol.PlanFlags.has_more_persistence;
     if (session.clock_rollback_observed) flags |= protocol.PlanFlags.clock_rollback_observed;
+    if (counter_checkpoint) flags |= protocol.PlanFlags.counter_checkpoint;
     const next_wake = nextWake(session, logical_now);
     if (next_wake != 0) flags |= protocol.PlanFlags.next_wake_valid;
 
@@ -255,6 +272,15 @@ fn persistenceAdditionBound(session: *const state.Session, report_additions: u64
         if (slot.occupied and slot.mutation_version > slot.persisted_mutation_version) count += 1;
     }
     return count;
+}
+
+fn counterCheckpoint(
+    session: *const state.Session,
+    input: *const protocol.PlanInput,
+    logical_now: i64,
+) bool {
+    return (input.flags & protocol.PlanInputFlags.flush_counters) != 0 or
+        persistence.counterCheckpointDue(session, logical_now);
 }
 
 fn replayPending(

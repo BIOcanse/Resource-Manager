@@ -34,6 +34,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner
 
         if (pendingWorkspaceClose is not null)
             throw new InvalidOperationException("The previous report workspace still has a close obligation.");
+        // The replacement imports from storage, so it must hold every counter the
+        // current workspace still keeps for its next counter checkpoint.
+        await FlushCountersAsync(cancellationToken);
         await RestoreRegisteredTargetsAsync(cancellationToken);
         var initial = workspace is null;
         var recreate = !initial
@@ -274,13 +277,28 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         await SettleAndPublishAsync(current, RequireAppliedPlan(), RequireCoordinatorState(), cancellationToken);
     }
 
+    // Native planning keeps counter-only row changes until its counter checkpoint.
+    // Write them now, before this workspace closes or storage is reloaded.
+    private async Task FlushCountersAsync(CancellationToken cancellationToken)
+    {
+        if (workspace is null) return;
+        await SettlePendingAsync(cancellationToken);
+        await SettleAndPublishAsync(
+            workspace,
+            RequireAppliedPlan(),
+            RequireCoordinatorState(),
+            cancellationToken,
+            flags: NativeReportPlanInputFlags.FlushCounters);
+    }
+
     private async Task SettleAndPublishAsync(
         NativeReportCoordinatorWorkspace target,
         CompiledHostManagerReportCoordinatorPlan plan,
         CoordinatorState state,
         CancellationToken cancellationToken,
         SystemInterruptSnapshot? interruptSnapshot = null,
-        bool evaluationCompleted = false)
+        bool evaluationCompleted = false,
+        NativeReportPlanInputFlags flags = NativeReportPlanInputFlags.None)
     {
         var committedInterrupts = interruptSnapshot
             ?? Volatile.Read(ref readModel).InterruptSnapshot;
@@ -289,7 +307,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             plan,
             state,
             committedInterrupts,
-            cancellationToken);
+            cancellationToken,
+            flags);
         if (evaluationCompleted)
         {
             model = model with { Status = model.Status with
@@ -307,7 +326,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         CompiledHostManagerReportCoordinatorPlan plan,
         CoordinatorState state,
         SystemInterruptSnapshot interruptSnapshot,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        NativeReportPlanInputFlags flags = NativeReportPlanInputFlags.None)
     {
         var settledInterrupts = target.PendingPlan?.InterruptSnapshot ?? interruptSnapshot;
         var commandUtc = DateTimeOffset.UtcNow;
@@ -316,7 +336,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         const int maximumSuccessfulBatches = 2;
         for (var successfulBatches = 0; ; successfulBatches++)
         {
-            var input = CreatePlanInput(target, plan, commandUtc);
+            var input = CreatePlanInput(target, plan, commandUtc, flags);
             RequireStatus(target.Session.QueryPlanSize(in input, out var reportCount,
                 out var persistenceCount), "plan sizing");
             target.EnsureScratch(reportCount, persistenceCount);
@@ -363,7 +383,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner
     private NativeReportPlanInput CreatePlanInput(
         NativeReportCoordinatorWorkspace target,
         CompiledHostManagerReportCoordinatorPlan plan,
-        DateTimeOffset commandUtc)
+        DateTimeOffset commandUtc,
+        NativeReportPlanInputFlags flags)
     {
         if (target.PendingPlan is { } pending) return pending.Input;
         var stamp = NextCommandStamp(commandUtc);
@@ -378,7 +399,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             CommandUtcMilliseconds = stamp.UtcMilliseconds,
             ValidMask = (ulong)NativeReportPlanValidity.Required,
             ReportLimit = target.Session.Capacity.ReportOutputCapacity,
-            PersistenceLimit = target.Session.Capacity.PersistenceOperationCapacity
+            PersistenceLimit = target.Session.Capacity.PersistenceOperationCapacity,
+            Flags = (ulong)flags
         };
     }
 

@@ -53,6 +53,88 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         Assert.Equal(history.Target.SoftwareName, restored.Target.SoftwareName);
     }
 
+    [Fact]
+    public async Task CounterOnlyRowsWaitForTheCheckpointAndTheLastReleaseWritesThemForRestart()
+    {
+        var observedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        // Interval 0 is the write-every-plan reference for the same samples.
+        var immediate = await RunCounterSamplesAsync(observedAt, observationCheckpointIntervalMilliseconds: 0);
+        var deferred = await RunCounterSamplesAsync(observedAt, observationCheckpointIntervalMilliseconds: null);
+
+        Assert.Contains(immediate.HeldRows, static row => IsCounterRow(row));
+        // While the run is held, cursors and growing counters wait for the checkpoint.
+        Assert.DoesNotContain(deferred.HeldRows, static row => IsCounterRow(row));
+        // Releasing the last hold closes the workspace and writes them first.
+        Assert.Contains(deferred.ReleaseRows, static row => row.OperationKind == (uint)NativeReportPersistenceKind.Source);
+        Assert.Contains(deferred.ReleaseRows, static row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation);
+        Assert.Equal(CounterFields(immediate.Stored), CounterFields(deferred.Stored));
+        // The next call imports exactly these rows and observes the same publication again.
+        Assert.Equal(CounterFields(deferred.Stored), CounterFields(deferred.Restarted));
+        Assert.Equal(deferred.Reports, deferred.RestartedReports);
+    }
+
+    private async Task<CounterSampleRun> RunCounterSamplesAsync(
+        DateTimeOffset observedAt,
+        long? observationCheckpointIntervalMilliseconds)
+    {
+        var persistence = new RecordingReportStore(new NativeReportCoordinatorPersistenceStore(CreateDatabase()));
+        var resources = new CachedResourceSource();
+        await using var owner = ScratchOwner(persistence, OperationScratchFixture.Create, resources, out var provider);
+        Assert.Equal(600_000, provider.Current.HostManager.ReportCoordinator.HotPublish.ObservationCheckpointIntervalMilliseconds);
+        if (observationCheckpointIntervalMilliseconds is { } interval)
+        {
+            provider.Publish(provider.Current with
+            {
+                Version = 2,
+                HostManager = HostManagerTestPlanFactory.CreatePlan(root =>
+                    root["hot_publish"]!["report_coordinator"]!["observation_checkpoint_interval_ms"] = interval),
+            });
+        }
+
+        NativeReportPersistenceOperation[] heldRows;
+        resources.Publish(CreateSoftwareMemorySnapshot(41, observedAt, 5));
+        await using (var call = await HoldReportCallAsync(owner))
+        {
+            persistence.Batches.Clear();
+            for (var sample = 1; sample <= 3; sample++)
+            {
+                resources.Publish(CreateSoftwareMemorySnapshot(41 + sample, observedAt.AddSeconds(sample * 10), 5));
+                await owner.RefreshReportsAsync(CancellationToken.None);
+            }
+            heldRows = persistence.Batches.SelectMany(static batch => batch).ToArray();
+            persistence.Batches.Clear();
+        }
+        var releaseRows = persistence.Batches.SelectMany(static batch => batch).ToArray();
+        var stored = await persistence.LoadAsync(CancellationToken.None);
+        var reports = (await owner.GetReportsAsync(CancellationToken.None)).Reports.Select(static item => item.Id).ToArray();
+        await owner.RefreshReportsAsync(CancellationToken.None);
+        var restarted = await persistence.LoadAsync(CancellationToken.None);
+        var restartedReports = (await owner.GetReportsAsync(CancellationToken.None)).Reports.Select(static item => item.Id).ToArray();
+        return new CounterSampleRun(heldRows, releaseRows, stored, restarted, reports, restartedReports);
+    }
+
+    private static bool IsCounterRow(NativeReportPersistenceOperation row)
+        => row.OperationKind is (uint)NativeReportPersistenceKind.Source
+            or (uint)NativeReportPersistenceKind.Observation;
+
+    private static string[] CounterFields(IEnumerable<NativeReportPersistenceOperation> rows)
+        => rows.Where(IsCounterRow)
+            .Select(static row => string.Join(',',
+                row.OperationKind, row.SourceHandle, row.RuleHandle, row.TargetHandle,
+                row.SourceGeneration, row.SourceSnapshotEpoch, row.SourceLastCompleteAtUtcMilliseconds, row.SourceStatus,
+                row.LastObservedAtUtcMilliseconds, row.CurrentValue, row.ValueSum, row.SampleDurationMilliseconds,
+                row.SampleCount, row.ActiveSampleCount, row.ConsecutiveHits, row.ConsecutiveMisses, row.FactSequence))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+    private sealed record CounterSampleRun(
+        NativeReportPersistenceOperation[] HeldRows,
+        NativeReportPersistenceOperation[] ReleaseRows,
+        NativeReportPersistenceOperation[] Stored,
+        NativeReportPersistenceOperation[] Restarted,
+        string[] Reports,
+        string[] RestartedReports);
+
     private sealed class RecordingReportStore(INativeReportCoordinatorPersistenceStore inner)
         : INativeReportCoordinatorPersistenceStore
     {

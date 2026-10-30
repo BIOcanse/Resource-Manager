@@ -166,6 +166,7 @@ public sealed record CompiledHostManagerReportCoordinatorHotPublishPlan(
     long DefaultStaleAfterMilliseconds,
     long DefaultRetentionMilliseconds,
     long MetadataCheckpointIntervalMilliseconds,
+    long ObservationCheckpointIntervalMilliseconds,
     long ResidentByteBudget)
 {
     public bool IsPublished => ConfigurationGeneration > 0
@@ -178,10 +179,11 @@ public sealed record CompiledHostManagerReportCoordinatorHotPublishPlan(
         && DefaultStaleAfterMilliseconds > 0
         && DefaultRetentionMilliseconds >= DefaultStaleAfterMilliseconds
         && MetadataCheckpointIntervalMilliseconds > 0
+        && ObservationCheckpointIntervalMilliseconds >= 0
         && ResidentByteBudget > 0;
 
     public static CompiledHostManagerReportCoordinatorHotPublishPlan Unpublished { get; } = new(
-        0, 0, 0, 0, 0, 0, 0, 0, 0);
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 public sealed record CompiledHostManagerReportCoordinatorPlan(

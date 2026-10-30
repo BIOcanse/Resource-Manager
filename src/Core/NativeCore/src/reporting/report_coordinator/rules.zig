@@ -119,7 +119,7 @@ pub fn replace(
             .first_observed_at_utc_ms = @max(session.logical_utc_ms, input.command_utc_milliseconds),
             .last_observed_at_utc_ms = @max(session.logical_utc_ms, input.command_utc_milliseconds),
             .mutation_version = session.allocateMutation().?,
-            .persisted_mutation_version = observation.persisted_mutation_version,
+            .persisted_mutation_version = 0,
         };
     }
     for (session.buckets) |*bucket| {
@@ -138,7 +138,7 @@ pub fn replace(
             .target_handle = bucket.target_handle,
             .bucket_start_utc_ms = bucket.bucket_start_utc_ms,
             .mutation_version = session.allocateMutation().?,
-            .persisted_mutation_version = bucket.persisted_mutation_version,
+            .persisted_mutation_version = 0,
         };
     }
 
@@ -334,6 +334,7 @@ fn observeInternal(
         return .out_of_memory;
     };
     var source = &session.sources[target_source_index];
+    if (source.status != status) source.persisted_mutation_version = 0;
     source.status = status;
     source.source_generation = input.source_generation;
     source.last_snapshot_epoch = input.source_snapshot_epoch;
@@ -362,6 +363,7 @@ fn observeInternal(
             observation.decision = .unknown;
             observation.evidence_available = false;
             if (!persisted_changed) continue;
+            observation.persisted_mutation_version = 0;
             observation.mutation_version = session.allocateMutation() orelse {
                 rollbackObserve(session, &checkpoint);
                 return .out_of_memory;
@@ -546,6 +548,7 @@ fn observeComplete(
                 observation.decision = .unknown;
                 observation.evidence_available = false;
                 if (persisted_changed) {
+                    observation.persisted_mutation_version = 0;
                     observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
                 }
             }
@@ -600,6 +603,7 @@ fn observeComplete(
         else
             session.config.default_stale_after_milliseconds;
         if (observation.last_observed_at_utc_ms != 0 and elapsedAtLeast(effective_now_utc_ms, observation.last_observed_at_utc_ms, stale_after)) {
+            if (observation.active or resetsPersistedCounters(observation)) observation.persisted_mutation_version = 0;
             observation.active = false;
             observation.consecutive_hits = 0;
             observation.consecutive_misses = 0;
@@ -676,6 +680,7 @@ fn observeComplete(
         observation.decision = .missing;
         observation.evidence_available = false;
         if (persisted_changed) {
+            observation.persisted_mutation_version = 0;
             observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
         }
     }
@@ -697,6 +702,22 @@ fn applyMetricOutcome(
     const comparison: protocol.Comparison = @enumFromInt(rule.comparison);
     const activation_hit = compare(metric, rule.activation_threshold, comparison);
     const clear_safe = !compare(metric, rule.clear_threshold, comparison);
+    const was_active = observation.active;
+    const previous_hits = observation.consecutive_hits;
+    const previous_misses = observation.consecutive_misses;
+    const previous_active_samples = observation.active_sample_count;
+    defer {
+        // Growing one streak is counter-only. Changing the active state or
+        // breaking a streak is semantic, so a restored row never joins two
+        // streaks that a persisted break separated.
+        if (observation.active != was_active or
+            (previous_hits != 0 and observation.consecutive_hits == 0) or
+            (previous_misses != 0 and observation.consecutive_misses == 0) or
+            (previous_active_samples != 0 and observation.active_sample_count == 0))
+        {
+            observation.persisted_mutation_version = 0;
+        }
+    }
     if (clear_safe) {
         observation.consecutive_hits = 0;
         observation.active_sample_count = 0;
@@ -787,6 +808,7 @@ fn updateStaleObservations(session: *state.Session, now_utc_ms: i64) ResultCode 
             observation.active_sample_count = 0;
             observation.decision = .unknown;
             observation.evidence_available = false;
+            observation.persisted_mutation_version = 0;
             observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
         }
         if (!observation.active and elapsedAtLeast(

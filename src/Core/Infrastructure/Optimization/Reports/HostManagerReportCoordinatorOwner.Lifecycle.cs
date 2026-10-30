@@ -90,6 +90,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         await executionGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
+            if (workspaceHolds.IsLastReference) await FlushCountersBeforeCloseAsync().ConfigureAwait(false);
             workspaceHolds.Release(() =>
             {
                 planProvider.Published -= OnPlanPublished;
@@ -99,6 +100,19 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             });
         }
         finally { executionGate.Release(); }
+    }
+
+    // A failed write is handled like a failed cycle write: it is logged and the
+    // close goes on. Storage keeps the last committed rows.
+    private async Task FlushCountersBeforeCloseAsync()
+    {
+        try { await FlushCountersAsync(CancellationToken.None).ConfigureAwait(false); }
+        catch (Exception failure)
+        {
+            logger.LogError(
+                failure,
+                "Host Manager report counters could not be written before the workspace closed; storage keeps the last committed rows.");
+        }
     }
 
     private void CloseWorkspacesLocked(ICollection<Exception> failures)
@@ -129,6 +143,13 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         internal bool HasReferences
         {
             get { lock (lifecycleGate) return referenceCount != 0; }
+        }
+
+        // A reference added after this check keeps the workspace open; the
+        // early write it caused is an ordinary counter checkpoint.
+        internal bool IsLastReference
+        {
+            get { lock (lifecycleGate) return referenceCount == 1; }
         }
 
         internal void AddReference(Action checkAdmission, Action firstReference)

@@ -1305,6 +1305,7 @@
       "default_stale_after_ms": 900000,
       "default_retention_ms": 604800000,
       "metadata_checkpoint_interval_ms": 3600000,
+      "observation_checkpoint_interval_ms": 600000,
       "resident_byte_budget": 134217728
     },
     "file_query": {

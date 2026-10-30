@@ -142,7 +142,9 @@ internal sealed class NativeReportCoordinatorWorkspace : IDisposable
             PlannedPersistenceIndexCapacity = checked(
                 (uint)capacity.PlannedPersistenceIndexCapacity),
             MetadataCheckpointIntervalMilliseconds = checked(
-                (ulong)plan.HotPublish.MetadataCheckpointIntervalMilliseconds)
+                (ulong)plan.HotPublish.MetadataCheckpointIntervalMilliseconds),
+            ObservationCheckpointIntervalMilliseconds = checked(
+                (ulong)plan.HotPublish.ObservationCheckpointIntervalMilliseconds)
         };
     }
 

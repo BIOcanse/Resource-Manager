@@ -262,6 +262,11 @@ pub fn importPersisted(
         imported_metadata_persisted_mutation_version;
     session.import_ready = true;
     session.logical_utc_ms = session.metadata_logical_utc_ms;
+    // Imported rows are exactly what storage holds, so the first counter
+    // checkpoint falls one interval after the import.
+    session.counter_checkpoint_utc_ms = session.logical_utc_ms;
+    session.planned_counter_checkpoint = false;
+    session.planned_counter_checkpoint_utc_ms = 0;
     session.commitOperation(
         input.operation_epoch,
         input.command_monotonic_milliseconds,
@@ -270,19 +275,32 @@ pub fn importPersisted(
     return .ok;
 }
 
+// A row change is semantic or counter-only. Semantic: the row is new or being
+// deleted, a source status changed, an observation became active or inactive,
+// a consecutive-hit/miss streak was broken or reset, a rule replacement reset
+// the row, a bucket is sealed (its width has passed), and every report or
+// trust change. Counter-only: accumulating sums, counts, durations, the latest
+// value and peak, observed times, fact sequences and source cursors (generation,
+// snapshot epoch, last complete time). Semantic rows are collected by every
+// plan. Counter-only rows wait for the counter checkpoint: interval 0, the
+// caller's flush flag, or observation_checkpoint_interval_milliseconds after
+// the last committed counter checkpoint.
 pub fn collectDirty(
     session: *state.Session,
     logical_utc_ms: i64,
+    counter_checkpoint: bool,
 ) error{OutOfMemory}![]state.DirtyReference {
     var count: usize = 0;
-    appendDirty(session.sources, .source, session.dirty_references, &count);
-    appendDirty(
+    appendPending(session, session.sources, .source, logical_utc_ms, counter_checkpoint, &count);
+    appendPending(
+        session,
         session.observations,
         .observation,
-        session.dirty_references,
+        logical_utc_ms,
+        counter_checkpoint,
         &count,
     );
-    appendDirty(session.buckets, .bucket, session.dirty_references, &count);
+    appendPending(session, session.buckets, .bucket, logical_utc_ms, counter_checkpoint, &count);
     appendDirty(session.reports, .report, session.dirty_references, &count);
     appendDirty(session.trusts, .trust, session.dirty_references, &count);
 
@@ -309,6 +327,17 @@ pub fn collectDirty(
     const dirty = session.dirty_references[0..count];
     std.sort.heap(state.DirtyReference, dirty, {}, lessDirty);
     return dirty;
+}
+
+pub fn counterCheckpointDue(session: *const state.Session, logical_utc_ms: i64) bool {
+    const interval = session.config.observation_checkpoint_interval_milliseconds;
+    if (interval == 0) return true;
+    const deadline = std.math.add(
+        i64,
+        session.counter_checkpoint_utc_ms,
+        @intCast(interval),
+    ) catch std.math.maxInt(i64);
+    return logical_utc_ms >= deadline;
 }
 
 fn metadataCheckpointDue(session: *const state.Session, logical_utc_ms: i64) bool {
@@ -394,6 +423,16 @@ pub fn applyFeedback(
         commitFeedbackRow(session, &feedback);
     }
     consumePlannedFeedback(session);
+    if (session.planned_counter_checkpoint) {
+        if (batch_status == .persisted) {
+            session.counter_checkpoint_utc_ms = @max(
+                session.counter_checkpoint_utc_ms,
+                session.planned_counter_checkpoint_utc_ms,
+            );
+        }
+        session.planned_counter_checkpoint = false;
+        session.planned_counter_checkpoint_utc_ms = 0;
+    }
     if (persisted_trust_change) {
         const suppression = syncTrustSuppression(session, logical_utc);
         if (suppression != .ok) unreachable;
@@ -1223,6 +1262,43 @@ fn releaseTrust(session: *state.Session, index: u32) void {
     session.trusts[index] = .{ .slot_generation = generation };
     session.next_trust_slot = index;
     if (!state.rebuildTrustIndex(session.trusts, session.trust_index)) unreachable;
+}
+
+fn appendPending(
+    session: *state.Session,
+    slots: anytype,
+    kind: state.DirtyKind,
+    logical_utc_ms: i64,
+    counter_checkpoint: bool,
+    count: *usize,
+) void {
+    for (slots, 0..) |slot, index| {
+        if (!slot.occupied or slot.mutation_version <= slot.persisted_mutation_version) continue;
+        if (!counter_checkpoint and !semanticPending(session, slot, logical_utc_ms)) continue;
+        session.dirty_references[count.*] = .{
+            .mutation_version = slot.mutation_version,
+            .index = @intCast(index),
+            .kind = kind,
+        };
+        count.* += 1;
+    }
+}
+
+fn semanticPending(session: *const state.Session, slot: anytype, logical_utc_ms: i64) bool {
+    if (slot.persisted_mutation_version == 0) return true;
+    const Slot = @TypeOf(slot);
+    if (@hasField(Slot, "delete_pending") and slot.delete_pending) return true;
+    if (Slot == state.BucketSlot) {
+        // Observed times never move behind logical time, so a bucket whose
+        // width has passed receives no further samples.
+        const bucket_end = std.math.add(
+            i64,
+            slot.bucket_start_utc_ms,
+            @intCast(session.config.bucket_width_milliseconds),
+        ) catch std.math.maxInt(i64);
+        return bucket_end <= logical_utc_ms;
+    }
+    return false;
 }
 
 fn appendDirty(

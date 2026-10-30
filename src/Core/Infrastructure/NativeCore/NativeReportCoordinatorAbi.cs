@@ -133,8 +133,18 @@ internal enum NativeReportPlanFlags : ulong
     HasMoreReports = 1UL << 3,
     HasMorePersistence = 1UL << 4,
     ClockRollbackObserved = 1UL << 5,
+    CounterCheckpoint = 1UL << 6,
     Known = ReportsAvailable | PersistenceAvailable | NextWakeValid |
-        HasMoreReports | HasMorePersistence | ClockRollbackObserved
+        HasMoreReports | HasMorePersistence | ClockRollbackObserved | CounterCheckpoint
+}
+
+[Flags]
+internal enum NativeReportPlanInputFlags : ulong
+{
+    None = 0,
+    // Write counter-only changes now instead of at the next counter checkpoint.
+    FlushCounters = 1UL << 0,
+    Known = FlushCounters
 }
 
 [Flags]
@@ -253,7 +263,8 @@ internal unsafe struct NativeReportCoordinatorConfiguration
     public uint MaximumRollingObservationCount;
     public uint PlannedPersistenceIndexCapacity;
     public ulong MetadataCheckpointIntervalMilliseconds;
-    public fixed ulong Reserved[6];
+    public ulong ObservationCheckpointIntervalMilliseconds;
+    public fixed ulong Reserved[5];
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8, Size = 96)]

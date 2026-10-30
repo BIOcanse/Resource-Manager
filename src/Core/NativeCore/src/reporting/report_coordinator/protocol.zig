@@ -59,8 +59,18 @@ pub const PlanFlags = struct {
     pub const has_more_reports: u64 = 1 << 3;
     pub const has_more_persistence: u64 = 1 << 4;
     pub const clock_rollback_observed: u64 = 1 << 5;
+    // The batch carries every row whose only change is a counter change.
+    pub const counter_checkpoint: u64 = 1 << 6;
     pub const known: u64 = reports_available | persistence_available | next_wake_valid |
-        has_more_reports | has_more_persistence | clock_rollback_observed;
+        has_more_reports | has_more_persistence | clock_rollback_observed |
+        counter_checkpoint;
+};
+
+pub const PlanInputFlags = struct {
+    // Write counter-only changes now instead of at the next counter checkpoint.
+    // The caller sets it before stopping or before reloading from storage.
+    pub const flush_counters: u64 = 1 << 0;
+    pub const known: u64 = flush_counters;
 };
 
 pub const SourceSnapshotValid = struct {
@@ -208,7 +218,9 @@ pub const Config = extern struct {
     maximum_rolling_observation_count: u32,
     planned_persistence_index_capacity: u32,
     metadata_checkpoint_interval_milliseconds: u64,
-    reserved: [6]u64,
+    // 0 writes counter-only changes with every plan.
+    observation_checkpoint_interval_milliseconds: u64,
+    reserved: [5]u64,
 };
 
 pub const Capacity = extern struct {
@@ -583,6 +595,7 @@ pub fn validConfig(config: *const Config) bool {
         config.default_retention_milliseconds < config.default_stale_after_milliseconds or
         config.metadata_checkpoint_interval_milliseconds == 0 or
         config.metadata_checkpoint_interval_milliseconds > std.math.maxInt(i64) or
+        config.observation_checkpoint_interval_milliseconds > std.math.maxInt(i64) or
         config.resident_byte_budget == 0) return false;
     return true;
 }
@@ -701,7 +714,7 @@ pub fn validPlan(input: *const PlanInput, config: *const Config) bool {
         input.report_limit > 0 and input.report_limit <= config.maximum_report_output_count and
         input.persistence_limit > 0 and
         input.persistence_limit <= config.maximum_persistence_operation_count and
-        input.flags == 0 and
+        (input.flags & ~PlanInputFlags.known) == 0 and
         allZero(input.reserved[0..]);
 }
 

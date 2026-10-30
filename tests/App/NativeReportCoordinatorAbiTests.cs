@@ -47,6 +47,9 @@ public sealed class NativeReportCoordinatorAbiTests
         AssertOffset<NativeReportCoordinatorConfiguration>(
             nameof(NativeReportCoordinatorConfiguration.MetadataCheckpointIntervalMilliseconds),
             160);
+        AssertOffset<NativeReportCoordinatorConfiguration>(
+            nameof(NativeReportCoordinatorConfiguration.ObservationCheckpointIntervalMilliseconds),
+            168);
         AssertOffset<NativeReportSourceSnapshotInput>(
             nameof(NativeReportSourceSnapshotInput.CommandMonotonicMilliseconds),
             24);
@@ -96,7 +99,8 @@ public sealed class NativeReportCoordinatorAbiTests
         Assert.Equal(0xFFU, (uint)NativeReportFactFlags.Known);
         Assert.Equal(0x03U, (uint)NativeReportOutputFlags.Known);
         Assert.Equal(0x1FU, (uint)NativeReportPersistenceFlags.Known);
-        Assert.Equal(0x3FUL, (ulong)NativeReportPlanFlags.Known);
+        Assert.Equal(0x7FUL, (ulong)NativeReportPlanFlags.Known);
+        Assert.Equal(0x01UL, (ulong)NativeReportPlanInputFlags.Known);
         Assert.Equal(0xFFUL, (ulong)NativeReportSourceSnapshotValidity.Required);
         Assert.Equal(0x07UL, (ulong)NativeReportRuleReplaceValidity.Required);
         Assert.Equal(0x0FUL, (ulong)NativeReportTrustCommandValidity.Required);

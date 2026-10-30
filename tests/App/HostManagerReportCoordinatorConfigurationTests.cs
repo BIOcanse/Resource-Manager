@@ -57,6 +57,9 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
             3_600_000,
             plan.HotPublish.MetadataCheckpointIntervalMilliseconds);
         Assert.Equal(
+            600_000,
+            plan.HotPublish.ObservationCheckpointIntervalMilliseconds);
+        Assert.Equal(
             HostManagerReportFactKind.CpuTemperatureCelsius,
             plan.Recreate.Rules.Single(rule => rule.RuleHandle == 1031).FactKind);
         Assert.Equal(3U, plan.Recreate.Rules.Single(rule => rule.RuleHandle == 1031).PredicateCount);

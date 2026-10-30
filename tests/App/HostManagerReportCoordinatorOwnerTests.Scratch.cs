@@ -494,8 +494,10 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         Assert.Equal(before.NativeReportById, failureModel.NativeReportById);
         var committed = (await inner.LoadAsync(CancellationToken.None))
             .OrderBy(row => row.OperationKind).ThenBy(row => row.IdentityHandle).ToArray();
+        // The active report row goes on every plan; its observation's growing
+        // counters wait for the counter checkpoint while the call is held.
         Assert.Contains(committed,
-            row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation && row.SampleCount == 4UL);
+            row => row.OperationKind == (uint)NativeReportPersistenceKind.Report && row.SampleCount == 4UL);
         ledger.SetMode(LedgerTableMode.Optimize);
         Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
         await owner.RefreshReportsAsync(CancellationToken.None);

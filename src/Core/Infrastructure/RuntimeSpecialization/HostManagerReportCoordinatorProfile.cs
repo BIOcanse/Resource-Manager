@@ -176,6 +176,10 @@ internal sealed class HostManagerReportCoordinatorHotPublishProfile
     [JsonPropertyName("metadata_checkpoint_interval_ms")]
     public required long MetadataCheckpointIntervalMilliseconds { get; init; }
 
+    // Rows whose only change is a counter wait this long between writes; 0 writes them on every plan.
+    [JsonPropertyName("observation_checkpoint_interval_ms")]
+    public required long ObservationCheckpointIntervalMilliseconds { get; init; }
+
     [JsonPropertyName("resident_byte_budget")]
     public required long ResidentByteBudget { get; init; }
 }

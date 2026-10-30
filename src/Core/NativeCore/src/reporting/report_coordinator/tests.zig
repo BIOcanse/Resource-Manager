@@ -175,9 +175,9 @@ test "default history footprint and false facts allocate no potential reports" {
     default_rules.maximum_rule_count = 16; // Nine default rules, doubled from one.
     default_rules.rule_index_capacity = 32;
     const default_rules_bytes = try state.requiredResidentBytes(&default_rules);
-    try std.testing.expectEqual(@as(u64, 10609952), configured_bytes);
-    try std.testing.expectEqual(@as(u64, 3632), initial_bytes);
-    try std.testing.expectEqual(@as(u64, 8912), default_rules_bytes);
+    try std.testing.expectEqual(@as(u64, 10609968), configured_bytes);
+    try std.testing.expectEqual(@as(u64, 3648), initial_bytes);
+    try std.testing.expectEqual(@as(u64, 8928), default_rules_bytes);
 
     const rule_row = rule();
     const session = try createReadySession(&config, &.{rule_row});
@@ -3962,4 +3962,252 @@ test "persistence row rejects non-finite secondary scalar" {
     row.secondary_current_value = std.math.nan(f64);
 
     try std.testing.expect(!protocol.validPersistenceRow(&row));
+}
+
+const CheckpointRows = struct {
+    source: usize = 0,
+    observation: usize = 0,
+    bucket: usize = 0,
+    other: usize = 0,
+};
+
+const CheckpointPlan = struct {
+    rows: CheckpointRows,
+    flags: u64,
+};
+
+// Drives observe -> plan -> persisted feedback and keeps the durable table.
+const CheckpointDriver = struct {
+    session: *state.Session,
+    table: [32]protocol.PersistenceOperation = undefined,
+    table_count: usize = 0,
+    epoch: u64 = 3,
+    plan_epoch: u64 = 1,
+    snapshot_epoch: u64 = 1,
+
+    fn observe(self: *CheckpointDriver, utc: i64, facts: []const protocol.FactInput) !void {
+        try observeRows(self.session, sourceSnapshot(
+            self.epoch,
+            self.epoch,
+            self.snapshot_epoch,
+            utc,
+            .complete,
+            @intCast(facts.len),
+        ), facts);
+        self.epoch += 1;
+        self.snapshot_epoch += 1;
+    }
+
+    fn observeUnavailable(self: *CheckpointDriver, utc: i64) !void {
+        try observeRows(self.session, sourceSnapshot(
+            self.epoch,
+            self.epoch,
+            self.snapshot_epoch,
+            utc,
+            .unavailable,
+            0,
+        ), &.{});
+        self.epoch += 1;
+        self.snapshot_epoch += 1;
+    }
+
+    fn plan(self: *CheckpointDriver, utc: i64, input_flags: u64) !CheckpointPlan {
+        var result: LifecyclePlan = undefined;
+        var input = planInput(self.epoch, self.epoch, self.plan_epoch, utc, result.reports.len, result.operations.len);
+        input.flags = input_flags;
+        try expectCode(.ok, session_module.plan(self.session, &input, &result.reports, result.reports.len, &result.operations, result.operations.len, &result.output));
+        self.epoch += 1;
+        const rows = result.operations[0..result.output.persistence_operation_count];
+        var counts: CheckpointRows = .{};
+        for (rows) |row| switch (@as(protocol.PersistenceKind, @enumFromInt(row.operation_kind))) {
+            .source => counts.source += 1,
+            .observation => counts.observation += 1,
+            .bucket => counts.bucket += 1,
+            .metadata => {},
+            else => counts.other += 1,
+        };
+        if (rows.len != 0) {
+            try storeRows(&self.table, &self.table_count, rows);
+            try settlePlan(self.session, rows, self.epoch, self.epoch, self.plan_epoch, utc + 1);
+            self.epoch += 1;
+        }
+        self.plan_epoch += 1;
+        return .{ .rows = counts, .flags = result.output.flags };
+    }
+};
+
+fn expectCheckpointRows(expected: CheckpointRows, actual: CheckpointPlan) !void {
+    try std.testing.expectEqualDeep(expected, actual.rows);
+}
+
+fn checkpointRule() protocol.RuleInput {
+    var value = rule();
+    // Rolling so every fact also changes a bucket; never activates.
+    value.flags = protocol.RuleFlags.rolling;
+    value.metric_selector = @intFromEnum(protocol.MetricSelector.sum_24h);
+    value.activation_threshold = 1_000_000;
+    value.clear_threshold = 999_999;
+    return value;
+}
+
+test "counter-only rows wait for the observation checkpoint and go together when it is due" {
+    var config = testConfig();
+    config.observation_checkpoint_interval_milliseconds = 1_000;
+    config.metadata_checkpoint_interval_milliseconds = 1_000_000;
+    const session = try createReadySession(&config, &.{checkpointRule()});
+    defer session.destroy();
+    var driver: CheckpointDriver = .{ .session = session };
+    var sequence: u64 = 1;
+
+    // New rows are semantic: they go on the first plan.
+    try driver.observe(100, &.{rollingFact(sequence, 1)});
+    try expectCheckpointRows(.{ .source = 1, .observation = 1, .bucket = 1 }, try driver.plan(101, 0));
+
+    // Growing a miss streak, cursors and bucket sums are counter-only.
+    var utc: i64 = 110;
+    while (utc <= 130) : (utc += 10) {
+        sequence += 1;
+        try driver.observe(utc, &.{rollingFact(sequence, 1)});
+        const planned = try driver.plan(utc + 1, 0);
+        try expectCheckpointRows(.{}, planned);
+        try std.testing.expectEqual(@as(u64, 0), planned.flags & protocol.PlanFlags.counter_checkpoint);
+    }
+
+    // A sealed bucket and a new bucket go before the checkpoint; the
+    // observation and source keep waiting.
+    sequence += 1;
+    try driver.observe(1_010, &.{rollingFact(sequence, 1)});
+    try expectCheckpointRows(.{ .bucket = 2 }, try driver.plan(1_011, 0));
+
+    // The checkpoint is due 1000 ms after import (logical 100): all
+    // counter-only rows go together.
+    sequence += 1;
+    try driver.observe(1_100, &.{rollingFact(sequence, 1)});
+    const due = try driver.plan(1_101, 0);
+    try expectCheckpointRows(.{ .source = 1, .observation = 1, .bucket = 1 }, due);
+    try std.testing.expect((due.flags & protocol.PlanFlags.counter_checkpoint) != 0);
+
+    sequence += 1;
+    try driver.observe(1_110, &.{rollingFact(sequence, 1)});
+    try expectCheckpointRows(.{}, try driver.plan(1_111, 0));
+
+    // Changing the source status is semantic and goes on the next plan.
+    try driver.observeUnavailable(1_120);
+    const unavailable = try driver.plan(1_121, 0);
+    try std.testing.expectEqual(@as(usize, 1), unavailable.rows.source);
+}
+
+test "a broken streak goes on the next plan while a growing one waits" {
+    var config = testConfig();
+    config.observation_checkpoint_interval_milliseconds = 1_000;
+    config.metadata_checkpoint_interval_milliseconds = 1_000_000;
+    var rule_row = rule();
+    rule_row.required_consecutive_hits = 3;
+    const session = try createReadySession(&config, &.{rule_row});
+    defer session.destroy();
+    var driver: CheckpointDriver = .{ .session = session };
+
+    try driver.observe(100, &.{fact(1, 0)});
+    try expectCheckpointRows(.{ .source = 1, .observation = 1 }, try driver.plan(101, 0));
+    try driver.observe(110, &.{fact(2, 0)});
+    try expectCheckpointRows(.{}, try driver.plan(111, 0));
+    // The miss streak breaks: the stored row must not join both streaks.
+    try driver.observe(120, &.{fact(3, 60)});
+    try expectCheckpointRows(.{ .observation = 1 }, try driver.plan(121, 0));
+    try driver.observe(130, &.{fact(4, 60)});
+    try expectCheckpointRows(.{}, try driver.plan(131, 0));
+    // The third hit activates the observation and creates a report.
+    try driver.observe(140, &.{fact(5, 60)});
+    const activated = try driver.plan(141, 0);
+    try std.testing.expectEqual(@as(usize, 1), activated.rows.observation);
+    try std.testing.expect(activated.rows.other != 0);
+}
+
+test "observation checkpoint interval zero writes every counter change on each plan" {
+    var config = testConfig();
+    try std.testing.expectEqual(@as(u64, 0), config.observation_checkpoint_interval_milliseconds);
+    const session = try createReadySession(&config, &.{checkpointRule()});
+    defer session.destroy();
+    var driver: CheckpointDriver = .{ .session = session };
+    var sequence: u64 = 1;
+    var utc: i64 = 100;
+    while (utc <= 140) : (utc += 10) {
+        try driver.observe(utc, &.{rollingFact(sequence, 1)});
+        const planned = try driver.plan(utc + 1, 0);
+        try expectCheckpointRows(.{ .source = 1, .observation = 1, .bucket = 1 }, planned);
+        try std.testing.expect((planned.flags & protocol.PlanFlags.counter_checkpoint) != 0);
+        sequence += 1;
+    }
+}
+
+test "flush writes pending counters before the checkpoint and restart restores the live rows" {
+    var config = testConfig();
+    config.observation_checkpoint_interval_milliseconds = 1_000;
+    config.metadata_checkpoint_interval_milliseconds = 1_000_000;
+    const session = try createReadySession(&config, &.{checkpointRule()});
+    defer session.destroy();
+    var driver: CheckpointDriver = .{ .session = session };
+    var sequence: u64 = 1;
+    var utc: i64 = 100;
+    while (utc <= 140) : (utc += 10) {
+        try driver.observe(utc, &.{rollingFact(sequence, 1)});
+        _ = try driver.plan(utc + 1, 0);
+        sequence += 1;
+    }
+    const flushed = try driver.plan(151, protocol.PlanInputFlags.flush_counters);
+    try expectCheckpointRows(.{ .source = 1, .observation = 1, .bucket = 1 }, flushed);
+    try std.testing.expect((flushed.flags & protocol.PlanFlags.counter_checkpoint) != 0);
+    // The flush is a checkpoint: the interval restarts from it.
+    try driver.observe(160, &.{rollingFact(sequence, 1)});
+    try expectCheckpointRows(.{}, try driver.plan(161, 0));
+    try expectCheckpointRows(.{ .source = 1, .observation = 1, .bucket = 1 }, try driver.plan(171, protocol.PlanInputFlags.flush_counters));
+
+    const restored = try state.Session.create(&config);
+    defer restored.destroy();
+    var rule_row = checkpointRule();
+    var replace = ruleReplaceInput(1, 1, 200, 1);
+    try expectCode(.ok, session_module.replaceRules(restored, &replace, @ptrCast(&rule_row), 1));
+    var import_input = importInput(2, 2, 200, 1, @intCast(driver.table_count));
+    try expectCode(.ok, session_module.importPersisted(restored, &import_input, &driver.table, @intCast(driver.table_count)));
+    const live = session.observations[session.findObservation(source_handle, coverage_scope_handle, rule_handle, target_handle).?];
+    const back = restored.observations[restored.findObservation(source_handle, coverage_scope_handle, rule_handle, target_handle).?];
+    try std.testing.expectEqual(live.sample_count, back.sample_count);
+    try std.testing.expectEqual(live.value_sum, back.value_sum);
+    try std.testing.expectEqual(live.consecutive_misses, back.consecutive_misses);
+    try std.testing.expectEqual(live.last_fact_sequence, back.last_fact_sequence);
+    try std.testing.expectEqual(live.last_observed_at_utc_ms, back.last_observed_at_utc_ms);
+    const live_bucket = session.buckets[0];
+    const back_bucket = restored.buckets[0];
+    try std.testing.expectEqual(live_bucket.delta_value, back_bucket.delta_value);
+    try std.testing.expectEqual(live_bucket.sample_duration_milliseconds, back_bucket.sample_duration_milliseconds);
+}
+
+test "a failed checkpoint batch keeps the counter checkpoint due" {
+    var config = testConfig();
+    config.observation_checkpoint_interval_milliseconds = 1_000;
+    config.metadata_checkpoint_interval_milliseconds = 1_000_000;
+    const session = try createReadySession(&config, &.{checkpointRule()});
+    defer session.destroy();
+    var driver: CheckpointDriver = .{ .session = session };
+    try driver.observe(100, &.{rollingFact(1, 1)});
+    _ = try driver.plan(101, 0);
+    try driver.observe(110, &.{rollingFact(2, 1)});
+
+    var result: LifecyclePlan = undefined;
+    var input = planInput(driver.epoch, driver.epoch, driver.plan_epoch, 1_101, result.reports.len, result.operations.len);
+    try expectCode(.ok, session_module.plan(session, &input, &result.reports, result.reports.len, &result.operations, result.operations.len, &result.output));
+    driver.epoch += 1;
+    const rows = result.operations[0..result.output.persistence_operation_count];
+    try std.testing.expect(rows.len != 0);
+    var feedbacks: [32]protocol.PersistenceFeedback = undefined;
+    for (rows, feedbacks[0..rows.len]) |row, *feedback| feedback.* = feedbackFor(row, .failed);
+    var feedback_input = persistenceFeedbackBatchInput(driver.epoch, driver.epoch, driver.plan_epoch, 1_102, @intCast(rows.len));
+    try expectCode(.ok, session_module.applyFeedback(session, &feedback_input, feedbacks[0..rows.len].ptr, @intCast(rows.len)));
+    driver.epoch += 1;
+    driver.plan_epoch += 1;
+    try std.testing.expectEqual(@as(i64, 100), session.counter_checkpoint_utc_ms);
+
+    const retry = try driver.plan(1_111, 0);
+    try expectCheckpointRows(.{ .source = 1, .observation = 1, .bucket = 1 }, retry);
+    try std.testing.expectEqual(@as(i64, 1_111), session.counter_checkpoint_utc_ms);
 }

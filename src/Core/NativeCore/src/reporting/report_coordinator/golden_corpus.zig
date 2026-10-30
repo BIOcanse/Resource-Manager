@@ -51,6 +51,10 @@ test "report coordinator ABI v8 layout is fixed" {
         @offsetOf(protocol.Config, "metadata_checkpoint_interval_milliseconds"),
     );
     try std.testing.expectEqual(
+        @as(usize, 168),
+        @offsetOf(protocol.Config, "observation_checkpoint_interval_milliseconds"),
+    );
+    try std.testing.expectEqual(
         @as(usize, 24),
         @offsetOf(protocol.SourceSnapshotInput, "command_monotonic_milliseconds"),
     );
