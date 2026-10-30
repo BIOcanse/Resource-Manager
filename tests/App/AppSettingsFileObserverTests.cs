@@ -184,5 +184,5 @@ public sealed class AppSettingsFileObserverTests : IDisposable
     }
 
     private static string Enabled(bool enabled) =>
-        $$"""{"systemIntegration":{"taskManagerShortcutReplacementEnabled":{{(enabled ? "true" : "false")}}}}""";
+        $$$"""{"systemIntegration":{"taskManagerShortcutReplacementEnabled":{{{(enabled ? "true" : "false")}}}}}""";
 }
