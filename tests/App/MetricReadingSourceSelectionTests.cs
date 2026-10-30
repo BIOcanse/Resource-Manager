@@ -61,7 +61,7 @@ public sealed class MetricReadingSourceSelectionTests
     }
 
     [Fact]
-    public void SelectionReusesStableCatalogFactsWhileReturningFreshResults()
+    public void SelectionReusesStableCatalogFactsAndReturnsAnUnchangedResultAgain()
     {
         const int iterations = 32;
         const int bindingCount = 128;
@@ -91,9 +91,8 @@ public sealed class MetricReadingSourceSelectionTests
         {
             var selection = tracker.Select(frame, 1);
             if (selection.Fields.Count != bindingCount
-                || !ReferenceEquals(cold.Fields[1].Id, selection.Fields[1].Id)
-                || ReferenceEquals(cold.Fields[1], selection.Fields[1]))
-                throw new InvalidOperationException("A steady selection changed its stable ID or reused a result object.");
+                || !ReferenceEquals(cold, selection))
+                throw new InvalidOperationException("A steady selection was rebuilt although nothing changed.");
             if (i == 0) firstWarm = selection;
             if (i == iterations - 1) lastWarm = selection;
         }
@@ -102,9 +101,9 @@ public sealed class MetricReadingSourceSelectionTests
 
         Assert.Equal(bindingCount, cold.Fields.Count);
         Assert.Equal(bindingCount, warm.Fields.Count);
-        Assert.Same(cold.Fields[1].Id, warm.Fields[1].Id);
-        Assert.NotSame(cold.Fields[1], warm.Fields[1]);
-        Assert.NotSame(cold.Fields[1], lastWarm!.Fields[1]);
+        // The result is immutable: equal sources and legacy handles return the previous selection.
+        Assert.Same(cold, warm);
+        Assert.Same(cold, lastWarm);
         var warmCeiling = iterations * (bindingCount * 160L + 8_192L);
         Assert.InRange(warmAllocated, 0L, warmCeiling);
         Assert.True(coldAllocated >= warmAllocated / iterations + bindingCount * 32L,
