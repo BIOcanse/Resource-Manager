@@ -25,10 +25,10 @@ assert.match(appShell, /<For each=\{visiblePages\(\)\}>[\s\S]*?aria-current=\{pr
 assert.equal(optimization.match(/<SegmentedControl/g)?.length, 1);
 assert.match(optimization, /aria-pressed=\{selectedOptimizationMode\(\) === "normal"\}/);
 assert.match(optimization, /aria-pressed=\{optimizationModeHasDomain\(selectedOptimizationMode\(\), domain\)\}/);
-// 详细信息的六个二级分页由外壳的二级分页条（页签组）画，页面只按选中项换内容。
+// 详细信息的七个二级分页由外壳的二级分页条（页签组）画，页面只按选中项换内容。
 assert.match(appShell, /<TabsRoot value=\{props\.navigation\.selected\(\)\}/);
-assert.match(detailsNavigation, /ids: \["device", "gpu", "cpu", "report", "targeted", "kernelLeaks"\]/);
-assert.equal(details.match(/<Match when=\{props\.activeTab === /g)?.length, 6);
+assert.match(detailsNavigation, /ids: \["device", "gpu", "cpu", "report", "targeted", "kernelLeaks", "memoryProtection"\]/);
+assert.equal(details.match(/<Match when=\{props\.activeTab === /g)?.length, 7);
 assert.match(settings, /aria-current=\{props\.activeSection === section/);
 assert.match(topology, /<SegmentedControl/);
 assert.equal(topology.match(/aria-pressed=/g)?.length, 1);
