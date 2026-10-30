@@ -90,7 +90,7 @@ public sealed partial class HostManagerSmartCoordinator
             ValidMask = validMask,
             Flags = flags,
             InputCount = projection.InputCount,
-            ActionCapacity = checked((uint)workspace.ScratchLayout.ActionCapacity),
+            ActionCapacity = workspace.Capacity.ActionCapacity,
             RoundNumber = sample.RoundNumber,
             MaximumActionsThisCycle = nativeMaximumActionsThisCycle
         };

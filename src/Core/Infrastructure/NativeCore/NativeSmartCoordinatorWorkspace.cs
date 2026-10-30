@@ -3,12 +3,22 @@ using ResourceManager.Ledger;
 
 namespace ResourceManager.App.Infrastructure.NativeCore;
 
+// A smart round holds three regions, each sized from that round's actual rows
+// and returned when its operation ends: facts from EnsureRows, the plan after
+// native measures the facts, feedback after the plan reports its actions.
 internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
 {
     private readonly NativeSmartCoordinatorSession session;
-    private readonly RowSizedComputeScratch scratch;
-    private NativeSmartScratchLayout layout;
+    private readonly RowSizedComputeScratch facts;
+    private readonly RowSizedComputeScratch plan;
+    private readonly RowSizedComputeScratch feedback;
+    private NativeSmartFactsLayout? factsLayout;
+    private NativeSmartPlanLayout? planLayout;
+    private NativeSmartFeedbackLayout? feedbackLayout;
+    // The operation's fact lease; plan and feedback leases exist only after Plan opens them.
     private ComputeScratchLease? activeLease;
+    private ComputeScratchLease? planLease;
+    private ComputeScratchLease? feedbackLease;
     private bool endUsePending;
     private bool retiring;
     private bool disposed;
@@ -22,18 +32,16 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
         ArgumentNullException.ThrowIfNull(createScratch);
         session = new NativeSmartCoordinatorSession(in configuration);
         Capacity = session.Capacity;
-        scratch = new RowSizedComputeScratch(createScratch, "smart-coordinator");
+        facts = new RowSizedComputeScratch(createScratch, "smart-coordinator");
+        plan = new RowSizedComputeScratch(createScratch, "smart-coordinator-plan");
+        feedback = new RowSizedComputeScratch(createScratch, "smart-coordinator-feedback");
         try
         {
-            var nativeScratch = session.ScratchRequirementsForRows(1);
-            layout = new(1, 1, 1,
-                nativeScratch.ByteCount, nativeScratch.Alignment);
-            scratch.Ensure(layout.Length, "inputs=1, actions=1, feedback=1");
-            scratch.DescribeNative(session.ReadWorkspaceCapacity, session.SetGrowthObserver);
+            facts.DescribeNative(session.ReadWorkspaceCapacity, session.SetGrowthObserver);
         }
         catch (Exception failure)
         {
-            try { scratch.Dispose(); }
+            try { facts.Dispose(); }
             catch (Exception cleanup) { throw new AggregateException(failure, cleanup); }
             finally { session.Dispose(); }
             throw;
@@ -44,25 +52,25 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
 
     public NativeSmartCoordinatorSnapshot Snapshot => snapshot;
 
-    internal NativeSmartScratchLayout ScratchLayout => layout;
+    // Each layout exists only while its region is open in the current round.
+    internal NativeSmartFactsLayout? FactsLayout => factsLayout;
 
+    internal NativeSmartPlanLayout? PlanLayout => planLayout;
+
+    internal NativeSmartFeedbackLayout? FeedbackLayout => feedbackLayout;
+
+    // Opens the fact region for this round's rows; the operation returns it.
     internal void EnsureRows(uint inputRows)
     {
         RequireNoOutstandingOperation();
         if (inputRows > Capacity.InputRowCapacity)
             throw new InvalidDataException("The smart coordinator fact count exceeds its configured input limit.");
-        var inputs = Math.Max((uint)layout.InputCapacity, Math.Max(1U, inputRows));
-        // Every retained or newly observed process/software can produce one candidate,
-        // even when this cycle permits fewer actual policy changes.
-        var actions = Math.Max((uint)layout.ActionCapacity, checked((uint)Math.Min(Capacity.ActionCapacity,
-            (ulong)snapshot.SnapshotRowCount + 2UL * inputRows)));
-        var feedback = Math.Max((uint)layout.FeedbackCapacity, Math.Min(Capacity.FeedbackCapacity, actions));
-        if (inputs == layout.InputCapacity && actions == layout.ActionCapacity && feedback == layout.FeedbackCapacity &&
-            scratch.Length == layout.Length) return;
-        var nativeScratch = session.ScratchRequirementsForRows(inputs);
-        var next = new NativeSmartScratchLayout(inputs, actions, feedback, nativeScratch.ByteCount, nativeScratch.Alignment);
-        scratch.Ensure(next.Length, $"inputs={inputs}, actions={actions}, feedback={feedback}");
-        layout = next;
+        var inputs = Math.Max(1U, inputRows);
+        var next = new NativeSmartFactsLayout(inputs, session.MeasureTableCount(inputs));
+        factsLayout = null;
+        if (facts.Length != next.Length) facts.Release();
+        facts.Ensure(next.Length, $"inputs={inputs}, measure={next.MeasureTableCount}");
+        factsLayout = next;
     }
 
     internal void RequireNoOutstandingOperation()
@@ -77,10 +85,16 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
 
     internal NativeSmartScratchView CreateScratchView()
     {
+        var lease = RequireOperation();
+        return new(lease, factsLayout!, planLease, planLayout, feedbackLease, feedbackLayout);
+    }
+
+    private ComputeScratchLease RequireOperation()
+    {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (activeLease is null || endUsePending)
             throw new InvalidOperationException("Smart buffers require the current operation lease.");
-        return new(activeLease, layout);
+        return activeLease;
     }
 
     internal sealed class Operation : IDisposable
@@ -93,8 +107,10 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
         internal Operation(NativeSmartCoordinatorWorkspace owner)
         {
             owner.RequireNoOutstandingOperation();
+            if (owner.factsLayout is null)
+                throw new InvalidOperationException("A smart operation needs EnsureRows for its round.");
             this.owner = owner;
-            lease = owner.scratch.Acquire();
+            lease = owner.facts.Acquire();
             owner.activeLease = lease;
         }
 
@@ -115,13 +131,47 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
                 if (!owner.endUsePending)
                 {
                     owner.endUsePending = true;
-                    if (complete) lease.Complete();
+                    if (complete)
+                    {
+                        owner.feedbackLease?.Complete();
+                        owner.planLease?.Complete();
+                        lease.Complete();
+                    }
                 }
-                lease.Dispose(); // Failure keeps the exact lease for explicit close.
+                owner.EndLeases(); // Failure keeps the exact leases for explicit close.
                 owner.activeLease = null;
                 owner.endUsePending = false;
+                owner.ReleaseRegions();
             }
         }
+    }
+
+    // Ends the round's leases from the last opened to the first; a lease whose
+    // end fails stays referenced for the explicit close in Dispose.
+    private void EndLeases()
+    {
+        if (feedbackLease is not null)
+        {
+            feedbackLease.Dispose();
+            feedbackLease = null;
+        }
+        if (planLease is not null)
+        {
+            planLease.Dispose();
+            planLease = null;
+        }
+        activeLease?.Dispose();
+    }
+
+    // A round keeps nothing: the next EnsureRows and Plan open exactly their rows.
+    private void ReleaseRegions()
+    {
+        feedbackLayout = null;
+        feedback.Release();
+        planLayout = null;
+        plan.Release();
+        factsLayout = null;
+        facts.Release();
     }
 
     public uint PlannedActionCount => snapshot.ActionCount;
@@ -162,29 +212,88 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
         return snapshotRows[checked((int)index)];
     }
 
+    // input.ActionCapacity is the caller's ceiling. Native first measures the
+    // facts; the plan region then holds only the candidate rows it reported,
+    // within that ceiling, and feedback holds only the actions the plan issued.
     public NativeSmartCoordinatorStatus Plan(in NativeSmartCoordinatorCycleInput input)
     {
-        using var view = CreateScratchView();
-        if (input.InputCount > layout.InputCapacity || input.ActionCapacity > layout.ActionCapacity)
+        RequireOperation();
+        snapshot = default;
+        if (input.InputCount > factsLayout!.InputCapacity || input.ActionCapacity > Capacity.ActionCapacity)
         {
-            snapshot = default;
+            OpenFeedbackRegion(0);
             return NativeSmartCoordinatorStatus.BufferTooSmall;
         }
 
-        snapshot = default;
-        return session.Plan(
-            in input,
-            view.Inputs[..checked((int)input.InputCount)],
-            view.Actions,
-            view.NativeScratchPointer,
-            view.NativeScratchLength,
-            ref snapshot);
+        var inputCount = checked((int)input.InputCount);
+        NativeSmartCoordinatorStatus status;
+        NativeSmartCoordinatorScratchRequirements staging;
+        uint actionRows;
+        using (var view = CreateScratchView())
+            status = session.MeasurePlan(in input, view.Inputs[..inputCount], view.MeasureTable, out staging, out actionRows);
+        if (status != NativeSmartCoordinatorStatus.Ok)
+        {
+            OpenFeedbackRegion(0); // A failed plan issued no actions to answer.
+            return status;
+        }
+
+        var rows = Math.Min(input.ActionCapacity, Math.Max(1U, actionRows));
+        OpenPlanRegion(rows, in staging);
+        var cycle = input;
+        cycle.ActionCapacity = rows;
+        using (var view = CreateScratchView())
+            status = session.Plan(in cycle, view.Inputs[..inputCount], view.Actions, view.NativeScratchPointer,
+                in staging, ref snapshot);
+        OpenFeedbackRegion(status == NativeSmartCoordinatorStatus.Ok
+            ? Math.Min(snapshot.ActionCount, Capacity.FeedbackCapacity)
+            : 0);
+        return status;
+    }
+
+    // A later plan in the same operation keeps the plan region only when its
+    // shape is exactly the one this plan measured; any other shape is returned
+    // and the measured one opened.
+    private void OpenPlanRegion(uint rows, in NativeSmartCoordinatorScratchRequirements staging)
+    {
+        if (planLayout is { } current && current.ActionCapacity == rows &&
+            current.NativeScratchByteCount == staging.ByteCount && current.NativeScratchAlignment == staging.Alignment)
+            return;
+        if (planLease is not null)
+        {
+            planLease.Dispose();
+            planLease = null;
+        }
+        planLayout = null;
+        plan.Release();
+        var next = new NativeSmartPlanLayout(rows, staging.ByteCount, staging.Alignment);
+        plan.Ensure(next.Length,
+            $"actions={rows}, processes={staging.ProcessCount}, software={staging.SoftwareCount}, gpus={staging.GpuCount}");
+        planLease = plan.Acquire();
+        planLayout = next;
+    }
+
+    // Feedback holds one row per issued action; a plan without actions holds none.
+    private void OpenFeedbackRegion(uint rows)
+    {
+        if ((uint)(feedbackLayout?.FeedbackCapacity ?? 0) == rows) return;
+        if (feedbackLease is not null)
+        {
+            feedbackLease.Dispose();
+            feedbackLease = null;
+        }
+        feedbackLayout = null;
+        feedback.Release();
+        if (rows == 0) return;
+        var next = new NativeSmartFeedbackLayout(rows);
+        feedback.Ensure(next.Length, $"feedback={rows}");
+        feedbackLease = feedback.Acquire();
+        feedbackLayout = next;
     }
 
     public NativeSmartCoordinatorStatus ApplyFeedback(uint feedbackCount)
     {
         using var view = CreateScratchView();
-        if (feedbackCount > layout.FeedbackCapacity)
+        if (feedbackCount > (feedbackLayout?.FeedbackCapacity ?? 0))
         {
             snapshot = default;
             return NativeSmartCoordinatorStatus.BufferTooSmall;
@@ -192,7 +301,7 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
 
         snapshot = default;
         return session.ApplyFeedback(
-            view.Feedback[..checked((int)feedbackCount)],
+            feedbackCount == 0 ? ReadOnlySpan<NativeSmartCoordinatorFeedback>.Empty : view.Feedback[..checked((int)feedbackCount)],
             ref snapshot);
     }
 
@@ -250,11 +359,13 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
         {
             if (!endUsePending)
                 throw new LedgerException(LedgerStatus.InUse, "close active smart operation");
-            activeLease.Dispose(); // Explicit close may retry an already ended call's endUse.
+            EndLeases(); // Explicit close may retry an already ended call's endUse.
             activeLease = null;
             endUsePending = false;
         }
-        scratch.Dispose(); // InUse/error retains the region handle and native session.
+        feedback.Dispose();
+        plan.Dispose();
+        facts.Dispose(); // InUse/error retains the region handle and native session.
         session.Dispose();
         disposed = true;
     }

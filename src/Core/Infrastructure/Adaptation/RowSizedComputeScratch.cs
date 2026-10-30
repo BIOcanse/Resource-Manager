@@ -4,11 +4,15 @@ namespace ResourceManager.App.Infrastructure.Adaptation;
 
 // The PDH high-water path: return/close the old region before creating the next
 // identity. Refill of a reclaimed region continues to use the same identity.
+// A per-round owner calls Release when its round ends; the next Ensure then
+// creates an identity of exactly that round's length.
 internal sealed class RowSizedComputeScratch(Func<ulong, IComputeScratch> factory, string workArea) : IComputeScratch
 {
     private IComputeScratch? scratch;
     private ulong capacity;
-    private string capacityRows = "0";
+    // The largest length created so far; growth is logged only above it.
+    private ulong peak;
+    private string peakRows = "0";
     private bool bound;
     private bool disposed;
     private IDisposable? nativeCapacityRegistration;
@@ -53,15 +57,39 @@ internal sealed class RowSizedComputeScratch(Func<ulong, IComputeScratch> factor
             scratch = null;
             throw mismatch;
         }
-        if (created is ResourceManagerLedgerOwner.ComputeScratch registered)
-            registered.DescribeGrowth(workArea, capacityRows, rows, capacity);
+        var registered = created as ResourceManagerLedgerOwner.ComputeScratch;
+        if (length <= peak)
+        {
+            // A round within the logged peak names its region without a growth event.
+            if (registered is not null)
+            {
+                registered.WorkArea = workArea;
+                registered.Rows = rows;
+            }
+        }
         else
-            System.Diagnostics.Trace.TraceInformation(
-                "Workspace {0} grew rows {1} -> {2}, bytes {3} -> {4}: actual row demand exceeded high water.",
-                workArea, capacityRows, rows, capacity, length);
+        {
+            if (registered is not null)
+                registered.DescribeGrowth(workArea, peakRows, rows, peak);
+            else
+                System.Diagnostics.Trace.TraceInformation(
+                    "Workspace {0} grew rows {1} -> {2}, bytes {3} -> {4}: actual row demand exceeded high water.",
+                    workArea, peakRows, rows, peak, length);
+            peak = length;
+            peakRows = rows;
+        }
         capacity = length;
-        capacityRows = rows;
         bound = true;
+    }
+
+    // Returns the region at the end of a round. A failed close keeps the
+    // reference so Ensure or Dispose closes it before any new identity.
+    internal void Release()
+    {
+        if (disposed) return; // Dispose already closed the region.
+        bound = false;
+        scratch?.Dispose();
+        scratch = null;
     }
 
     public ComputeScratchLease Acquire()

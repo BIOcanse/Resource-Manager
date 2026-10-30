@@ -4688,7 +4688,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         var exception = Record.Exception(() => validator.Invoke(
             null,
-            [cycle, observedAt, 0U, 0U, abiActionCapacity, plan, workspace]));
+            [cycle, observedAt, 0U, 0U, plan, workspace]));
 
         Assert.Null(exception);
         Assert.Equal(checked((uint)workspace.ActionCapacity), abiActionCapacity);

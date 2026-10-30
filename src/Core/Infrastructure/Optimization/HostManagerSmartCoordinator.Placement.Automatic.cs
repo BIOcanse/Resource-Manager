@@ -202,7 +202,7 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var observedAt = MonotonicMilliseconds();
-        var actionCapacity = checked((uint)workspace.ActionCapacity);
+        // The workspace sizes ActionCapacity from the actions native counts.
         var cycle = new NativePlacementCoordinatorCycleInput
         {
             AbiVersion = NativePlacementCoordinatorAbi.Version,
@@ -212,8 +212,7 @@ public sealed partial class HostManagerSmartCoordinator
             ObservedAtMilliseconds = observedAt,
             ValidMask = (ulong)NativePlacementCycleValidity.Required,
             DesiredCount = desiredProjection.RowCount,
-            AppliedCount = appliedProjection.RowCount,
-            ActionCapacity = actionCapacity
+            AppliedCount = appliedProjection.RowCount
         };
         RequirePlacementStatus(
             workspace.Plan(session, ref cycle),
@@ -224,7 +223,6 @@ public sealed partial class HostManagerSmartCoordinator
             observedAt,
             desiredProjection.RowCount,
             appliedProjection.RowCount,
-            actionCapacity,
             appliedPlan,
             workspace);
         ObservePlacementPlan(workspace, in cycle);

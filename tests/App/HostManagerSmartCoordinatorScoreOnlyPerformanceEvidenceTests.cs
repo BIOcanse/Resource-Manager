@@ -75,14 +75,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var nativeSessionBefore = ReadRequiredPrivateReference(
             nativeWorkspaceBefore,
             "session");
-        var nativeScratchOwnerBefore = Assert.IsType<ResourceManager.App.Infrastructure.Adaptation.RowSizedComputeScratch>(
-            ReadRequiredPrivateReference(nativeWorkspaceBefore, "scratch"));
-        var nativeScratchBefore = Assert.IsType<ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner.ComputeScratch>(
-            ReadRequiredPrivateReference(nativeScratchOwnerBefore, "scratch"));
-        var nativeScratchUidBefore = nativeScratchBefore.Uid;
-        var nativeLayoutBefore = Assert.IsType<NativeSmartScratchLayout>(
-            ReadRequiredPrivateReference(nativeWorkspaceBefore, "layout"));
-        Assert.Equal(nativeLayoutBefore.Length, nativeScratchBefore.Length);
+        // Each round opens its fact, plan and feedback regions and returns them at its
+        // end, so between rounds the workspace keeps only their owners.
+        var nativeScratchOwnersBefore = NativeSmartScratchOwners(nativeWorkspaceBefore);
+        AssertNativeSmartScratchReturned(nativeWorkspaceBefore, nativeScratchOwnersBefore);
         var nativeSnapshotRowsBefore = ReadRequiredPrivateReference(
             nativeWorkspaceBefore,
             "snapshotRows");
@@ -114,10 +110,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             placementWorkspaceBefore,
             ReadPrivateField<object>(fixture.Coordinator, "placementCoordinatorWorkspace"));
         Assert.Same(nativeSessionBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "session"));
-        Assert.Same(nativeScratchOwnerBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "scratch"));
-        Assert.Same(nativeScratchBefore, ReadRequiredPrivateReference(nativeScratchOwnerBefore, "scratch"));
-        Assert.Equal(nativeScratchUidBefore, nativeScratchBefore.Uid);
-        Assert.Same(nativeLayoutBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "layout"));
+        Assert.Equal(nativeScratchOwnersBefore, NativeSmartScratchOwners(nativeWorkspaceBefore));
+        AssertNativeSmartScratchReturned(nativeWorkspaceBefore, nativeScratchOwnersBefore);
         Assert.Same(nativeSnapshotRowsBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "snapshotRows"));
         Assert.Equal(nativeCapacityBefore, nativeCapacityAfter);
         Assert.Equal(recorderCapacityBefore, fixture.DebugLogWriter.Records.Capacity);
@@ -232,6 +226,23 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         GC.WaitForPendingFinalizers();
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
         return GC.GetTotalMemory(forceFullCollection: false);
+    }
+
+    private static ResourceManager.App.Infrastructure.Adaptation.RowSizedComputeScratch[] NativeSmartScratchOwners(
+        NativeSmartCoordinatorWorkspace workspace)
+        => new[] { "facts", "plan", "feedback" }.Select(field =>
+            Assert.IsType<ResourceManager.App.Infrastructure.Adaptation.RowSizedComputeScratch>(
+                ReadRequiredPrivateReference(workspace, field))).ToArray();
+
+    private static void AssertNativeSmartScratchReturned(
+        NativeSmartCoordinatorWorkspace workspace,
+        IEnumerable<ResourceManager.App.Infrastructure.Adaptation.RowSizedComputeScratch> owners)
+    {
+        Assert.Null(workspace.FactsLayout);
+        Assert.Null(workspace.PlanLayout);
+        Assert.Null(workspace.FeedbackLayout);
+        foreach (var owner in owners)
+            Assert.Null(owner.GetType().GetField("scratch", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner));
     }
 
     private static object ReadRequiredPrivateReference(object owner, string fieldName)

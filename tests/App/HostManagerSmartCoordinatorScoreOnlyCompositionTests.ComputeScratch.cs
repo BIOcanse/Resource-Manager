@@ -21,8 +21,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var saved = first.Cpu!.Scores.Select(value => value.Score).ToArray();
         var registered = ledger.ReadTable().RegisteredBytes;
 
+        // The smart round returned its fact, plan and feedback regions at its end.
         var smartScratch = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
-            ReadPrivateReference(fixture.Workspace, "scratch"));
+            ReadPrivateReference(fixture.Workspace, "facts"));
+        Assert.Equal(0UL, smartScratch.Length);
         var ownership = Assert.IsType<ResourceManager.App.Infrastructure.NativeCore.NativeAppliedOwnershipOwner>(
             ReadPrivateReference(fixture.NativeTransactions.AppliedOwnership, "owner"));
         // Scoring returns its region at the end of each round and ownership at the end of each operation.
@@ -54,7 +56,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         Assert.NotSame(oldWorkspace, ReadPrivateReference(fixture.Coordinator, "computeScoringWorkspace"));
         Assert.NotNull(fixture.Coordinator.SchedulingAuthority.Compute?.Cpu);
-        Assert.Equal(registered, ledger.ReadTable().RegisteredBytes); // Scoring replacement preserves the Smart identity.
+        Assert.Equal(registered, ledger.ReadTable().RegisteredBytes); // Scoring replacement leaves only the journal identity; smart and scoring hold nothing between rounds.
         await fixture.Coordinator.StopAsync(CancellationToken.None);
         Assert.Equal(ResourceManager.App.Infrastructure.NativeCore.NativeAppliedOwnershipOwnerState.Ready, ownership.State);
         await fixture.NativeTransactions.DisposeAsync();

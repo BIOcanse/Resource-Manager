@@ -276,7 +276,9 @@ public sealed class NativeSmartCoordinatorSessionTests
         using var operation = workspace.BeginOperation();
         using var buffers = workspace.CreateScratchView();
         Assert.Equal(configuration.MaximumInputRows, (uint)buffers.Inputs.Length);
-        Assert.Equal(Math.Min(configuration.MaximumReservations, configuration.MaximumActions), (uint)buffers.Feedback.Length);
+        // Feedback opens only for a plan's issued actions; its ceiling stays the native capacity.
+        Assert.Null(workspace.FeedbackLayout);
+        Assert.Equal(configuration.MaximumReservations, workspace.Capacity.FeedbackCapacity);
 
         var input = CreateEmptyCycleInput(
             configuration.Generation,
@@ -284,7 +286,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             cycleSequence: 1,
             authoritative: true);
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.PlanCurrent(in input));
-        Assert.Empty(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray());
+        Assert.Empty(workspace.PlannedActions());
         Assert.Equal(0u, workspace.Snapshot.ActionCount);
 
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.RefreshSnapshot());
@@ -384,7 +386,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             input.ObservedAtMilliseconds = checked((long)sequence * 1_000);
             Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.PlanCurrent(in input));
             _ = HostManagerSmartCoordinator.ValidateNativeActionBatch(workspace);
-            Assert.True(TryFindProcessAction(buffers.Actions[..checked((int)workspace.PlannedActionCount)], process.TargetKey, out var action));
+            Assert.True(TryFindProcessAction(workspace.PlannedActions(), process.TargetKey, out var action));
             if (sequence < 3)
             {
                 Assert.Equal(
@@ -408,7 +410,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         Assert.Equal(0U, appliedAction.GroupMemberIndex);
         Assert.Equal(0U, appliedAction.GroupMemberCount);
 
-        buffers.Feedback[0] = CreateSucceededFeedback(in appliedAction, completedAtMilliseconds: 3_100);
+        workspace.SetFeedback(0, CreateSucceededFeedback(in appliedAction, completedAtMilliseconds: 3_100));
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.ApplyFeedback(1));
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.RefreshSnapshot());
         HostManagerSmartCoordinator.ValidateNativeSnapshotRows(
@@ -450,7 +452,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         Assert.True(workspace.Snapshot.InvalidFactCount >= 2);
         Assert.Equal(1u, workspace.PlannedActionCount);
         Assert.Equal(NativeSmartCoordinatorActionFlags.None,
-            buffers.Actions[0].Flags & NativeSmartCoordinatorActionFlags.RequiresFeedback);
+            workspace.GetPlannedAction(0).Flags & NativeSmartCoordinatorActionFlags.RequiresFeedback);
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.RefreshSnapshot());
         Assert.True(TryFindProcessSnapshot(workspace.CurrentSnapshotRows, process.TargetKey, out var row));
         Assert.Equal(0, row.ProtectionLevel);
@@ -477,7 +479,7 @@ public sealed class NativeSmartCoordinatorSessionTests
 
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.PlanCurrent(in input));
         Assert.Equal(1u, HostManagerSmartCoordinator.ValidateNativeActionBatch(workspace));
-        Assert.True(TryFindProcessAction(buffers.Actions[..checked((int)workspace.PlannedActionCount)], process.TargetKey, out var action));
+        Assert.True(TryFindProcessAction(workspace.PlannedActions(), process.TargetKey, out var action));
         Assert.Equal((NativeSmartCoordinatorProcessGrade)expectedGrade, action.ToProcessGrade);
         Assert.Equal(protectionLevel == 1,
             action.ReasonMask.HasFlag(NativeSmartCoordinatorReason.ProtectionLevel1ClampsFreeze));
@@ -517,7 +519,7 @@ public sealed class NativeSmartCoordinatorSessionTests
                 process.TargetKey, out var row));
             if (sequence <= 3)
             {
-                Assert.Empty(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray());
+                Assert.Empty(workspace.PlannedActions());
                 Assert.Equal(0u, workspace.Snapshot.InflightCount);
                 Assert.Equal(explicitScoreOnly, workspace.Snapshot.Flags.HasFlag(
                     NativeSmartCoordinatorSnapshotFlags.ScoreOnly));
@@ -673,15 +675,23 @@ public sealed class NativeSmartCoordinatorSessionTests
     [Fact]
     public void SmartScratchLayoutUsesCheckedTypedExtentsWithoutAByteCountCap()
     {
-        var layout = new NativeSmartScratchLayout(64, 20_000_000, 6, 0, 1);
         Assert.Equal(104, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorInputRow>());
         Assert.Equal(120, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorAction>());
         Assert.Equal(96, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorFeedback>());
-        Assert.Equal(64UL * 104, layout.Actions);
-        Assert.Equal(64UL * 104 + 20_000_000UL * 120, layout.Feedback);
-        Assert.Equal(layout.Feedback + 6UL * 96, layout.Length);
-        Assert.True(layout.Length > int.MaxValue); // Layout proof only: no large allocation.
-        Assert.Throws<OverflowException>(() => new NativeSmartScratchLayout(uint.MaxValue, 1, 1, 0, 1));
+        // Facts, plan and feedback are three regions; each keeps its own typed columns.
+        var facts = new NativeSmartFactsLayout(64, 5);
+        Assert.Equal(0UL, facts.Inputs);
+        Assert.Equal(64UL * 104, facts.MeasureTable);
+        Assert.Equal(64UL * 104 + 24, facts.Length); // Five u32 slots end on the next 8-byte boundary.
+        var plan = new NativeSmartPlanLayout(20_000_000, 4096, 64);
+        Assert.Equal(0UL, plan.Actions);
+        Assert.Equal(20_000_000UL * 120, plan.NativeScratch);
+        Assert.Equal(NativeSmartColumns.Round(20_000_000UL * 120 + 63 + 4096), plan.Length);
+        Assert.True(plan.Length > int.MaxValue); // Layout proof only: no large allocation.
+        Assert.Equal(6UL * 96, new NativeSmartFeedbackLayout(6).Length);
+        Assert.Throws<OverflowException>(() => new NativeSmartFactsLayout(uint.MaxValue, 1));
+        Assert.Throws<OverflowException>(() => new NativeSmartPlanLayout(uint.MaxValue, 1, 1));
+        Assert.Throws<OverflowException>(() => new NativeSmartFeedbackLayout(uint.MaxValue));
     }
 
     [Fact]
@@ -708,25 +718,34 @@ public sealed class NativeSmartCoordinatorSessionTests
                 input.InputCount = 2;
                 input.ObservedAtMilliseconds = checked((long)sequence * 1_000);
                 Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.Plan(in input));
-                Assert.True(TryFindProcessAction(buffers.Actions[..checked((int)workspace.PlannedActionCount)], process.TargetKey, out action));
+                Assert.True(TryFindProcessAction(workspace.PlannedActions(), process.TargetKey, out action));
             }
             Assert.True(action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.RequiresFeedback));
-            var actualLease = SmartActiveLease(workspace);
-            var layout = workspace.ScratchLayout;
+            // Native writes actions into the plan region, which this plan opened.
+            var actualLease = SmartLease(workspace, "planLease");
+            var layout = workspace.PlanLayout!;
             var nativeOutput = System.Runtime.InteropServices.MemoryMarshal.Read<NativeSmartCoordinatorAction>(
                 actualLease.GetMemoryChunk(layout.Actions, 120).Span);
             Assert.Equal(action.ActionId, nativeOutput.ActionId);
-            Assert.True(actualLease.AllocationNumber != 0);
+            // 64 fact rows exceed a ledger page; the plan's few action rows and staging stay below one, so they are managed memory.
+            Assert.True(SmartActiveLease(workspace).AllocationNumber != 0);
+            Assert.True(layout.Length < 4096);
+            Assert.Equal(0UL, actualLease.AllocationNumber);
             workspace.SetFeedback(0, CreateSucceededFeedback(in action, 3_100));
             Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.ApplyFeedback(1));
             operation.Complete();
         }
+        // The round returned all three regions, so idle reclaim finds nothing left; only the native session's own
+        // state (its retained process) stays registered, outside the ledger.
+        var native = Assert.Single(owner.ReadWorkspaceCapacities());
+        Assert.Equal("smart-coordinator-native", native.WorkArea);
+        Assert.False(native.InLedger);
         owner.SetMode(ResourceManager.Ledger.LedgerTableMode.Optimize);
-        Assert.Equal(1UL, owner.Tick().Released);
+        Assert.Equal(0UL, owner.Tick().Released);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.RefreshSnapshot());
         Assert.Contains(workspace.CurrentSnapshotRows.ToArray(), row => row.ProcessId == process.ProcessId);
-        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes); // Snapshot reads do not reallocate the combined scratch region.
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes); // Snapshot reads do not open a scratch region.
     }
 
     [Fact]
@@ -736,17 +755,18 @@ public sealed class NativeSmartCoordinatorSessionTests
         var configuration = CreateConfiguration();
         configuration.MaximumInputRows = 64;
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, owner.CreateScratch);
+        workspace.EnsureRows(64); // A round opens its fact rows before its operation.
         var operation = workspace.BeginOperation();
-        workspace.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 47 });
+        WriteFirstFactKey(workspace, 47);
         var allocation = SmartActiveLease(workspace).AllocationNumber;
         await Task.Yield();
         owner.SetMode(ResourceManager.Ledger.LedgerTableMode.Optimize);
         Assert.Equal(0UL, owner.Tick().Released);
-        Assert.Equal(47UL, workspace.GetFeedback(0).ActionId);
+        Assert.Equal(47UL, ReadFirstFactKey(workspace));
         Assert.Equal(allocation, SmartActiveLease(workspace).AllocationNumber);
         Assert.Throws<ResourceManager.Ledger.LedgerException>(workspace.Dispose);
         Assert.Throws<ObjectDisposedException>(() => workspace.BeginOperation());
-        Assert.Equal(47UL, workspace.GetFeedback(0).ActionId); // The entered call may finish.
+        Assert.Equal(47UL, ReadFirstFactKey(workspace)); // The entered call may finish.
         operation.Complete();
         operation.Dispose();
         workspace.Dispose();
@@ -764,9 +784,10 @@ public sealed class NativeSmartCoordinatorSessionTests
         configuration.MaximumInputRows = 64;
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration,
             length => new SmartEndUseFault(owner.CreateScratch(length), throwAfterInnerReturn));
+        workspace.EnsureRows(64);
         var operation = workspace.BeginOperation();
         var lease = SmartActiveLease(workspace);
-        workspace.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 19 });
+        WriteFirstFactKey(workspace, 19);
         operation.Complete();
         Assert.Throws<InvalidOperationException>(operation.Dispose);
         Assert.Same(lease, SmartActiveLease(workspace));
@@ -779,39 +800,69 @@ public sealed class NativeSmartCoordinatorSessionTests
     }
 
     [Fact]
-    public void SmartIdleRebuildRetainsUidWithANewActualAllocation()
+    public void SmartRoundReturnsItsRegionAndTheNextRoundOpensExactRows()
     {
         using var owner = new ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner();
         var configuration = CreateConfiguration();
         configuration.MaximumInputRows = 64;
-        ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner.ComputeScratch? resource = null;
-        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration,
-            length => resource = owner.CreateScratch(length));
+        var regions = new List<ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner.ComputeScratch>();
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, length =>
+        {
+            var region = owner.CreateScratch(length);
+            regions.Add(region);
+            return region;
+        });
+        Assert.Empty(regions); // Nothing opens before a round.
         workspace.EnsureRows(64);
-        var uid = resource!.Uid;
-        ulong first;
+        var first = Assert.Single(regions);
+        Assert.Equal(workspace.FactsLayout!.Length, first.Length);
         using (var operation = workspace.BeginOperation())
         {
-            first = SmartActiveLease(workspace).AllocationNumber;
-            workspace.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 23 });
+            WriteFirstFactKey(workspace, 23);
             operation.Complete();
         }
+        Assert.True(first.Closed);
+        Assert.Null(workspace.FactsLayout);
+        Assert.Empty(owner.ReadWorkspaceCapacities());
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         owner.SetMode(ResourceManager.Ledger.LedgerTableMode.Optimize);
-        Assert.Equal(1UL, owner.Tick().Released);
+        Assert.Equal(0UL, owner.Tick().Released); // Nothing idle is left to reclaim.
+        workspace.EnsureRows(40);
+        Assert.Equal(2, regions.Count);
+        var second = regions[1];
+        Assert.NotEqual(first.Uid, second.Uid);
+        Assert.Equal(workspace.FactsLayout!.Length, second.Length);
+        Assert.True(second.Length < first.Length);
         using (var operation = workspace.BeginOperation())
         {
-            Assert.Equal(uid, resource.Uid);
-            Assert.NotEqual(first, SmartActiveLease(workspace).AllocationNumber);
-            workspace.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 29 });
-            Assert.Equal(29UL, workspace.GetFeedback(0).ActionId);
+            WriteFirstFactKey(workspace, 29);
+            Assert.Equal(29UL, ReadFirstFactKey(workspace));
             operation.Complete();
         }
+        Assert.True(second.Closed);
     }
 
     private static ResourceManager.App.Infrastructure.Adaptation.ComputeScratchLease SmartActiveLease(NativeSmartCoordinatorWorkspace workspace)
+        => SmartLease(workspace, "activeLease");
+
+    private static ResourceManager.App.Infrastructure.Adaptation.ComputeScratchLease SmartLease(
+        NativeSmartCoordinatorWorkspace workspace, string field)
         => Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.ComputeScratchLease>(
-            typeof(NativeSmartCoordinatorWorkspace).GetField("activeLease",
+            typeof(NativeSmartCoordinatorWorkspace).GetField(field,
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(workspace));
+
+    // A recorded marker in the operation's own fact region.
+    private static void WriteFirstFactKey(NativeSmartCoordinatorWorkspace workspace, ulong key)
+    {
+        using var view = workspace.CreateScratchView();
+        view.Inputs[0].TargetKey = key;
+    }
+
+    private static ulong ReadFirstFactKey(NativeSmartCoordinatorWorkspace workspace)
+    {
+        using var view = workspace.CreateScratchView();
+        return view.Inputs[0].TargetKey;
+    }
 
     // Recorded caller failures before/after the actual SDK return, using the real region throughout.
     private sealed class SmartEndUseFault(ResourceManager.App.Infrastructure.Adaptation.IComputeScratch inner, bool after)

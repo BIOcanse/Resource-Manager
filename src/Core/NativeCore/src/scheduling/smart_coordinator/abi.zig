@@ -82,18 +82,41 @@ pub export fn rm_smart_coordinator_query_scratch_layout(
     return code(coordinator.queryScratchLayout(session, requirements orelse return code(.invalid_argument)));
 }
 
-pub export fn rm_smart_coordinator_query_scratch_layout_for_rows(
+pub export fn rm_smart_coordinator_query_measure_table(
     handle: ?*anyopaque,
     rows: u32,
+    table_count: ?*u64,
+) callconv(.c) i32 {
+    const session: *coordinator.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    return code(coordinator.queryMeasureTable(session, rows, table_count orelse return code(.invalid_argument)));
+}
+
+pub export fn rm_smart_coordinator_measure_plan(
+    handle: ?*anyopaque,
+    input: ?*const protocol.CycleInput,
+    input_rows: ?[*]const protocol.InputRow,
+    input_row_capacity: u32,
+    table: ?[*]u32,
+    table_count: u64,
     requirements: ?*@import("scratch.zig").Requirements,
     output_size: u32,
+    action_rows: ?*u32,
 ) callconv(.c) i32 {
     if (output_size != @sizeOf(@import("scratch.zig").Requirements)) return code(.abi_mismatch);
     const session: *coordinator.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
-    return code(coordinator.queryScratchLayoutForRows(session, rows, requirements orelse return code(.invalid_argument)));
+    return code(coordinator.measurePlan(
+        session,
+        input orelse return code(.invalid_argument),
+        input_rows,
+        input_row_capacity,
+        table,
+        table_count,
+        requirements orelse return code(.invalid_argument),
+        action_rows orelse return code(.invalid_argument),
+    ));
 }
 
-pub export fn rm_smart_coordinator_plan_with_scratch(
+pub export fn rm_smart_coordinator_plan_measured(
     handle: ?*anyopaque,
     input: ?*const protocol.CycleInput,
     input_rows: ?[*]const protocol.InputRow,
@@ -102,6 +125,7 @@ pub export fn rm_smart_coordinator_plan_with_scratch(
     action_capacity: u32,
     scratch_pointer: ?*anyopaque,
     scratch_length: u64,
+    requirements: ?*const @import("scratch.zig").Requirements,
     snapshot: ?*protocol.Snapshot,
 ) callconv(.c) i32 {
     const session: *coordinator.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
@@ -114,6 +138,7 @@ pub export fn rm_smart_coordinator_plan_with_scratch(
         action_capacity,
         scratch_pointer,
         scratch_length,
+        requirements orelse return code(.invalid_argument),
         snapshot orelse return code(.invalid_argument),
     ));
 }

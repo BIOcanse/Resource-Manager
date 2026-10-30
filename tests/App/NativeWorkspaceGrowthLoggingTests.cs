@@ -110,7 +110,8 @@ public sealed class NativeWorkspaceGrowthLoggingTests
                 ObservedAtMilliseconds = 1_000, ValidMask = NativeSmartCoordinatorCycleValidity.Known,
                 Flags = NativeSmartCoordinatorCycleFlags.FullProcessSnapshot |
                     NativeSmartCoordinatorCycleFlags.AuthoritativeAppliedFacts | NativeSmartCoordinatorCycleFlags.ScoreOnly,
-                InputCount = 2, ActionCapacity = (uint)buffers.Actions.Length, RoundNumber = 1,
+                // The plan region opens inside Plan; the cycle names only the native ceiling.
+                InputCount = 2, ActionCapacity = workspace.Capacity.ActionCapacity, RoundNumber = 1,
                 MaximumActionsThisCycle = 0
             };
             Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.Plan(in input));

@@ -72,19 +72,17 @@ public sealed class NativePlacementCoordinatorAbiTests
         using var owner = new ResourceManagerLedgerOwner();
         using var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity, owner.CreateScratch);
         using var operation = workspace.BeginOperation();
-        using var view = workspace.CreateScratchView();
-        view.Desired[0] = CreateDesired(101, 201, 301);
-        var cycle = CreateCycle(configuration.Generation, 1, 1_000, 1, 0, checked((uint)workspace.ActionCapacity));
+        using (var view = workspace.CreateScratchView())
+            view.Desired[0] = CreateDesired(101, 201, 301);
+        var cycle = CreateCycle(configuration.Generation, 1, 1_000, 1, 0, 0);
 
-        var result = session.Plan(
-            ref cycle,
-            view.Desired.Slice(0, 1),
-            ReadOnlySpan<NativePlacementAppliedInput>.Empty,
-            view.Actions);
+        // The workspace counts the action first and plans again with exactly one row.
+        var result = workspace.Plan(session, ref cycle);
 
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, result);
         Assert.Equal(1U, cycle.ActionCount);
-        var action = view.Actions[0];
+        Assert.Equal(1U, cycle.ActionCapacity);
+        var action = workspace.GetAction(0);
         Assert.Equal(NativePlacementActionDisposition.Apply, (NativePlacementActionDisposition)action.Disposition);
         Assert.NotEqual(0UL, action.ActionId);
 
@@ -124,9 +122,8 @@ public sealed class NativePlacementCoordinatorAbiTests
         using var session = new NativePlacementCoordinatorSession(in configuration);
         using var owner = new ResourceManagerLedgerOwner();
         using var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity, owner.CreateScratch);
-        using var operation = workspace.BeginOperation();
-        using var view = workspace.CreateScratchView();
-        view.Applied[0] = new NativePlacementAppliedInput
+        using var operation = workspace.BeginOperation(0, 1);
+        var appliedRow = new NativePlacementAppliedInput
         {
             StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementAppliedInput>(),
             Flags = (uint)NativePlacementAppliedFlags.PayloadValid,
@@ -139,15 +136,14 @@ public sealed class NativePlacementCoordinatorAbiTests
             ObservationStatus = (uint)NativePlacementObservationStatus.Unchecked,
             ValidMask = (ulong)NativePlacementAppliedValidity.Required
         };
-        var cycle = CreateCycle(configuration.Generation, 1, 2_000, 0, 1, checked((uint)workspace.ActionCapacity));
+        using (var rows = workspace.CreateScratchView())
+            rows.Applied[0] = appliedRow;
+        var cycle = CreateCycle(configuration.Generation, 1, 2_000, 0, 1, 0);
 
-        var result = session.Plan(
-            ref cycle,
-            ReadOnlySpan<NativePlacementDesiredInput>.Empty,
-            view.Applied.Slice(0, 1),
-            view.Actions);
+        var result = workspace.Plan(session, ref cycle);
 
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, result);
+        using var view = workspace.CreateScratchView();
         var action = Assert.Single(view.Actions.Slice(0, checked((int)cycle.ActionCount)).ToArray());
         Assert.Equal(NativePlacementActionDisposition.Restore, (NativePlacementActionDisposition)action.Disposition);
         Assert.Equal(placementKind, action.PlacementKind);
@@ -188,12 +184,15 @@ public sealed class NativePlacementCoordinatorAbiTests
         using var owner = new ResourceManagerLedgerOwner();
         using var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity, owner.CreateScratch);
         using var operation = workspace.BeginOperation(3, 0);
-        using var view = workspace.CreateScratchView();
-        for (var index = 0; index < 3; index++)
-            view.Desired[index] = CreateDesired((ulong)(101 + index), (ulong)(201 + index), (ulong)(301 + index));
-        var cycle = CreateCycle(configuration.Generation, 1, 1000, 3, 0, checked((uint)workspace.ActionCapacity));
-        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.Plan(ref cycle, view.Desired.Slice(0, 3), [], view.Actions));
+        using (var rows = workspace.CreateScratchView())
+        {
+            for (var index = 0; index < 3; index++)
+                rows.Desired[index] = CreateDesired((ulong)(101 + index), (ulong)(201 + index), (ulong)(301 + index));
+        }
+        var cycle = CreateCycle(configuration.Generation, 1, 1000, 3, 0, 0);
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, workspace.Plan(session, ref cycle));
         Assert.Equal(3U, cycle.ActionCount);
+        using var view = workspace.CreateScratchView();
         for (var index = 0; index < count; index++)
         {
             var action = view.Actions[index];

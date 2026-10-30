@@ -235,9 +235,11 @@ comptime {
     _ = smart_coordinator_abi.rm_smart_coordinator_query_capacity;
     _ = smart_coordinator_abi.rm_smart_coordinator_query_workspace_capacity;
     _ = smart_coordinator_abi.rm_smart_coordinator_query_scratch_layout;
+    _ = smart_coordinator_abi.rm_smart_coordinator_query_measure_table;
     _ = smart_coordinator_abi.rm_smart_coordinator_reconfigure;
     _ = smart_coordinator_abi.rm_smart_coordinator_reset;
-    _ = smart_coordinator_abi.rm_smart_coordinator_plan_with_scratch;
+    _ = smart_coordinator_abi.rm_smart_coordinator_measure_plan;
+    _ = smart_coordinator_abi.rm_smart_coordinator_plan_measured;
     _ = smart_coordinator_abi.rm_smart_coordinator_feedback;
     _ = smart_coordinator_abi.rm_smart_coordinator_snapshot;
     _ = placement_coordinator_abi.rm_placement_coordinator_abi_version;

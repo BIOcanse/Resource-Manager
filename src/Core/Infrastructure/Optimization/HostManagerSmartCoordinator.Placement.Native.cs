@@ -202,7 +202,7 @@ public sealed partial class HostManagerSmartCoordinator
             projection = HostManagerPlacementCoordinatorProjection.ProjectApplied(selectedPlacements, view.Applied);
         }
         var observedAt = MonotonicMilliseconds();
-        var actionCapacity = checked((uint)workspace.ActionCapacity);
+        // The workspace sizes ActionCapacity from the actions native counts.
         var cycle = new NativePlacementCoordinatorCycleInput
         {
             AbiVersion = NativePlacementCoordinatorAbi.Version,
@@ -212,8 +212,7 @@ public sealed partial class HostManagerSmartCoordinator
             ObservedAtMilliseconds = observedAt,
             ValidMask = (ulong)NativePlacementCycleValidity.Required,
             DesiredCount = 0,
-            AppliedCount = projection.RowCount,
-            ActionCapacity = actionCapacity
+            AppliedCount = projection.RowCount
         };
         RequirePlacementStatus(
             workspace.Plan(session, ref cycle),
@@ -224,7 +223,6 @@ public sealed partial class HostManagerSmartCoordinator
             observedAt,
             expectedDesiredCount: 0,
             projection.RowCount,
-            actionCapacity,
             applied,
             workspace);
         ObservePlacementPlan(workspace, in cycle);
@@ -324,7 +322,6 @@ public sealed partial class HostManagerSmartCoordinator
         ulong observedAt,
         uint expectedDesiredCount,
         uint expectedAppliedCount,
-        uint expectedActionCapacity,
         PlacementCoordinatorRuntimePlan plan,
         NativePlacementCoordinatorWorkspace workspace)
     {
@@ -336,9 +333,7 @@ public sealed partial class HostManagerSmartCoordinator
             || cycle.ValidMask != (ulong)NativePlacementCycleValidity.Required
             || cycle.DesiredCount != expectedDesiredCount
             || cycle.AppliedCount != expectedAppliedCount
-            || expectedActionCapacity == 0
-            || expectedActionCapacity > checked((uint)workspace.ActionCapacity)
-            || cycle.ActionCapacity != expectedActionCapacity
+            || cycle.ActionCapacity != checked((uint)workspace.ActionCapacity)
             || cycle.ActionCount > cycle.ActionCapacity
             || cycle.StateRevision == 0)
         {

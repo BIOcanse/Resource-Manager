@@ -145,6 +145,98 @@ pub fn stage(
     return .ok;
 }
 
+pub const Measure = struct {
+    processes: u32 = 0,
+    softwares: u32 = 0,
+    gpus: u32 = 0,
+    actions: u32 = 0,
+};
+
+// Counts what stage() and the candidate pass will hold before any column exists,
+// so each column is opened at its own entity count. The predicates mirror
+// stage(): identities by (pid, start), keys of accepted software rows, devices of
+// accepted process GPU metrics. Rows stage() drops later (identity conflicts,
+// disagreeing keys) only make a count larger, never smaller. `actions` is exactly
+// requiredActionCapacity() after staging. `table` holds hashIndexCapacity(rows)
+// slots and is reused by each pass.
+pub fn measure(session: *const state.Session, rows: []const protocol.InputRow, table: []u32) Measure {
+    var result: Measure = .{};
+    var new_processes: usize = 0;
+    @memset(table, 0);
+    for (rows, 0..) |*row, index| {
+        if ((row.valid_mask & protocol.InputValidity.process_identity) == 0 or
+            row.target_key == 0 or row.process_id == 0 or row.process_start_key == 0) continue;
+        if (!insertDistinct(table, rows, @intCast(index), state.processHash(0, row.process_id, row.process_start_key), sameIdentity)) continue;
+        result.processes += 1;
+        // stage() keeps the first row's target key; requiredActionCapacity looks it up.
+        if (session.findProcess(row.target_key, row.process_id, row.process_start_key) == null) new_processes += 1;
+    }
+    @memset(table, 0);
+    for (rows, 0..) |*row, index| {
+        if ((row.valid_mask & protocol.InputValidity.software_identity) == 0 or !stageAccepts(row, index)) continue;
+        if (insertDistinct(table, rows, @intCast(index), state.softwareHash(row.software_key), sameSoftware)) result.softwares += 1;
+    }
+    @memset(table, 0);
+    for (rows, 0..) |*row, index| {
+        if (!isProcessGpuMetric(row) or !stageAccepts(row, index)) continue;
+        if (insertDistinct(table, rows, @intCast(index), state.gpuHash(0, row.process_id, row.process_start_key, row.device_index), sameGpu)) result.gpus += 1;
+    }
+    var retained: usize = 0;
+    for (session.processes) |process| if (process.occupied) {
+        retained += 1;
+    };
+    result.actions = @intCast(@min(retained + new_processes, session.config.max_processes));
+    return result;
+}
+
+fn stageAccepts(row: *const protocol.InputRow, index: usize) bool {
+    return protocol.validateInputRow(row, @intCast(index)) == .ok and validFlagOwnership(row);
+}
+
+fn isProcessGpuMetric(row: *const protocol.InputRow) bool {
+    return (row.valid_mask & protocol.InputValidity.process_identity) != 0 and
+        (row.valid_mask & protocol.InputValidity.metric) != 0 and
+        (row.metric_kind == @intFromEnum(protocol.MetricKind.gpu_usage_percent) or
+            row.metric_kind == @intFromEnum(protocol.MetricKind.vram_usage_percent));
+}
+
+// Returns true for the first row of its key. The table keeps at least half of
+// its slots empty, so an empty slot always ends the probe; a probe that found
+// none would only count the row again, which keeps the measure an upper bound.
+fn insertDistinct(
+    table: []u32,
+    rows: []const protocol.InputRow,
+    index: u32,
+    hash: u64,
+    comptime same: fn (*const protocol.InputRow, *const protocol.InputRow) bool,
+) bool {
+    const mask = table.len - 1;
+    var cursor: usize = @intCast(hash & @as(u64, @intCast(mask)));
+    var probes: usize = 0;
+    while (probes < table.len) : (probes += 1) {
+        const encoded = table[cursor];
+        if (encoded == 0) {
+            table[cursor] = index + 1;
+            return true;
+        }
+        if (same(&rows[encoded - 1], &rows[index])) return false;
+        cursor = (cursor + 1) & mask;
+    }
+    return true;
+}
+
+fn sameIdentity(left: *const protocol.InputRow, right: *const protocol.InputRow) bool {
+    return left.process_id == right.process_id and left.process_start_key == right.process_start_key;
+}
+
+fn sameSoftware(left: *const protocol.InputRow, right: *const protocol.InputRow) bool {
+    return left.software_key == right.software_key;
+}
+
+fn sameGpu(left: *const protocol.InputRow, right: *const protocol.InputRow) bool {
+    return sameIdentity(left, right) and left.device_index == right.device_index;
+}
+
 fn validFlagOwnership(row: *const protocol.InputRow) bool {
     const surface_flags = protocol.InputFlags.running | protocol.InputFlags.foreground_focused |
         protocol.InputFlags.has_visible_window | protocol.InputFlags.has_background_window |

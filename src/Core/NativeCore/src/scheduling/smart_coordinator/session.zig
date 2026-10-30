@@ -45,11 +45,50 @@ pub fn queryScratchLayout(session: *Session, requirements: *scratch.Requirements
     return .ok;
 }
 
-pub fn queryScratchLayoutForRows(session: *Session, rows: u32, requirements: *scratch.Requirements) protocol.Status {
+// The measure table belongs to the caller's fact region, so its slot count is
+// reported before the facts are projected.
+pub fn queryMeasureTable(session: *Session, rows: u32, table_count: *u64) protocol.Status {
     lock(&session.mutex);
     defer session.mutex.unlock();
     if (rows > session.config.max_input_rows) return .capacity_exceeded;
-    requirements.* = scratch.Layout.initForRows(&session.config, rows).requirements;
+    table_count.* = state.hashIndexCapacity(@max(1, rows)) catch return .out_of_memory;
+    return .ok;
+}
+
+// Native reports each plan column's row count before the caller opens it: one
+// staging column per entity kind and the candidate rows plan() writes into the
+// action buffer. Cycle validation stays in plan(), so its statuses are unchanged.
+pub fn measurePlan(
+    session: *Session,
+    input: *const protocol.CycleInput,
+    input_rows: ?[*]const protocol.InputRow,
+    input_row_capacity: u32,
+    table_pointer: ?[*]u32,
+    table_count: u64,
+    requirements: *scratch.Requirements,
+    action_rows: *u32,
+) protocol.Status {
+    lock(&session.mutex);
+    defer session.mutex.unlock();
+
+    if (input.input_count > session.config.max_input_rows) return .capacity_exceeded;
+    if (input_row_capacity < input.input_count) return .buffer_too_small;
+    const required_table = state.hashIndexCapacity(@max(1, input.input_count)) catch return .out_of_memory;
+    if (table_count < required_table) return .buffer_too_small;
+    if (!std.math.isPowerOfTwo(table_count) or table_count > std.math.maxInt(usize) / @sizeOf(u32)) return .invalid_argument;
+    const table_start = table_pointer orelse return .invalid_argument;
+    if (!disjoint(@ptrCast(table_start), table_count * @sizeOf(u32), input_rows, input_row_capacity, protocol.InputRow)) return .invalid_argument;
+    const rows: []const protocol.InputRow = if (input.input_count == 0)
+        &[_]protocol.InputRow{}
+    else
+        (input_rows orelse return .invalid_argument)[0..@intCast(input.input_count)];
+    const measured = ingest.measure(session, rows, table_start[0..@intCast(table_count)]);
+    requirements.* = scratch.Layout.initCounts(
+        @min(measured.processes, session.config.max_processes),
+        @min(measured.softwares, session.config.max_software_groups),
+        @min(measured.gpus, session.config.max_gpu_states),
+    ).requirements;
+    action_rows.* = measured.actions;
     return .ok;
 }
 
@@ -76,6 +115,7 @@ pub fn plan(
     action_capacity: u32,
     scratch_pointer: ?*anyopaque,
     scratch_length: u64,
+    requirements: *const scratch.Requirements,
     snapshot: *protocol.Snapshot,
 ) protocol.Status {
     lock(&session.mutex);
@@ -87,7 +127,8 @@ pub fn plan(
         !disjoint(pointer, scratch_length, @as(?[*]const protocol.CycleInput, @ptrCast(input)), 1, protocol.CycleInput) or
         !disjoint(pointer, scratch_length, @as(?[*]protocol.Snapshot, @ptrCast(snapshot)), 1, protocol.Snapshot)) return .invalid_argument;
     if (input.input_count > session.config.max_input_rows) return .capacity_exceeded;
-    if (!scratch.Layout.initForRows(&session.config, input.input_count).bind(session, pointer, scratch_length)) return .invalid_argument;
+    const layout = scratch.Layout.initMeasured(&session.config, requirements) orelse return .invalid_argument;
+    if (!layout.bind(session, pointer, scratch_length)) return .invalid_argument;
     defer scratch.unbind(session);
 
     if (input.action_capacity != action_capacity) {

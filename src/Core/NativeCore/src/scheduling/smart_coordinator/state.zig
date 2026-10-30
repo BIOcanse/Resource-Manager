@@ -270,10 +270,9 @@ fn BankGrowth(comptime T: type) type {
         fn prepare(allocator: std.mem.Allocator, old: []const T, demand: u32, limit: u32, empty: T) !@This() {
             if (demand > limit) return error.CapacityExceeded;
             if (demand <= old.len) return .{};
-            var count: u32 = @intCast(old.len);
-            while (count < demand) {
-                count = @intCast(@min(@as(u64, limit), try std.math.mul(u64, count, 2)));
-            }
+            // The bank grows to the retained/current demand itself, never to a
+            // rounded-up slack size; only the hash index keeps its load factor.
+            const count: u32 = demand;
             _ = try std.math.mul(usize, count, @sizeOf(T));
             const index_count = try hashIndexCapacity(count);
             _ = try std.math.mul(usize, index_count, @sizeOf(u32));
@@ -374,7 +373,7 @@ pub const Session = struct {
         errdefer allocator.destroy(self);
 
         // Configured dimensions are ceilings. One slot is the explicit initial
-        // allocation; later banks double only when retained/current content needs it.
+        // allocation; later banks grow to exactly the retained/current demand.
         const process_count: usize = 1;
         const software_count: usize = 1;
         const gpu_count: usize = 1;

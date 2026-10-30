@@ -79,20 +79,55 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
 
     public static uint GetAbiVersion() => NativeMethods.GetAbiVersion();
 
-    internal NativeSmartCoordinatorScratchRequirements ScratchRequirementsForRows(uint rows)
+    // Slot count of the measure table that the caller places in its fact region.
+    internal ulong MeasureTableCount(uint rows)
     {
         lock (sync)
         {
-            var status = (NativeSmartCoordinatorStatus)NativeMethods.QueryScratchLayoutForRows(RequireHandle(), rows,
-                out var result, SizeOf<NativeSmartCoordinatorScratchRequirements>());
-            if (status != NativeSmartCoordinatorStatus.Ok || result.AbiVersion != NativeSmartCoordinatorAbi.Version ||
-                result.StructSize != SizeOf<NativeSmartCoordinatorScratchRequirements>() || result.ByteCount == 0 ||
-                result.Alignment == 0 || (result.Alignment & (result.Alignment - 1)) != 0 ||
-                result.ProcessCount != Math.Min(capacity.ProcessCapacity, Math.Max(1U, rows)) ||
-                result.SoftwareCount != Math.Min(capacity.SoftwareCapacity, Math.Max(1U, rows)) ||
-                result.GpuCount != Math.Min(capacity.GpuStateCapacity, Math.Max(1U, rows)))
-                throw new InvalidOperationException("Native smart row-sized scratch layout contract mismatch.");
-            return result;
+            var status = (NativeSmartCoordinatorStatus)NativeMethods.QueryMeasureTable(RequireHandle(), rows, out var count);
+            if (status != NativeSmartCoordinatorStatus.Ok || count == 0 || (count & (count - 1)) != 0)
+                throw new InvalidOperationException("Native smart measure table contract mismatch.");
+            return count;
+        }
+    }
+
+    // Native counts this round's staging rows per entity kind and the candidate
+    // rows its plan writes, so the caller opens exactly those columns.
+    internal unsafe NativeSmartCoordinatorStatus MeasurePlan(
+        in NativeSmartCoordinatorCycleInput input,
+        ReadOnlySpan<NativeSmartCoordinatorInputRow> inputRows,
+        Span<uint> measureTable,
+        out NativeSmartCoordinatorScratchRequirements staging,
+        out uint actionRows)
+    {
+        lock (sync)
+        {
+            fixed (NativeSmartCoordinatorInputRow* inputPointer = inputRows)
+            fixed (uint* tablePointer = measureTable)
+            {
+                var status = (NativeSmartCoordinatorStatus)NativeMethods.MeasurePlan(
+                    RequireHandle(),
+                    in input,
+                    inputPointer,
+                    checked((uint)inputRows.Length),
+                    tablePointer,
+                    checked((ulong)measureTable.Length),
+                    out staging,
+                    SizeOf<NativeSmartCoordinatorScratchRequirements>(),
+                    out actionRows);
+                if (status != NativeSmartCoordinatorStatus.Ok) return status;
+                var full = ScratchRequirements;
+                if (staging.AbiVersion != full.AbiVersion || staging.StructSize != full.StructSize ||
+                    staging.ByteCount == 0 || staging.Alignment != full.Alignment ||
+                    staging.ProcessSize != full.ProcessSize || staging.SoftwareSize != full.SoftwareSize ||
+                    staging.GpuSize != full.GpuSize || staging.SoftwareGpuSize != full.SoftwareGpuSize ||
+                    staging.ProcessCount > full.ProcessCount || staging.SoftwareCount > full.SoftwareCount ||
+                    staging.GpuCount > full.GpuCount || staging.ByteCount > full.ByteCount ||
+                    staging.Reserved != 0 || staging.Reserved1 != 0 ||
+                    actionRows > capacity.ProcessCapacity)
+                    throw new InvalidOperationException("Native smart measured scratch contract mismatch.");
+                return status;
+            }
         }
     }
 
@@ -140,7 +175,7 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
         ReadOnlySpan<NativeSmartCoordinatorInputRow> inputRows,
         Span<NativeSmartCoordinatorAction> actions,
         IntPtr scratchPointer,
-        ulong scratchLength,
+        in NativeSmartCoordinatorScratchRequirements staging,
         ref NativeSmartCoordinatorSnapshot snapshot)
     {
         lock (sync)
@@ -158,7 +193,8 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
                         actionPointer,
                         checked((uint)actions.Length),
                         (void*)scratchPointer,
-                        scratchLength,
+                        staging.ByteCount,
+                        in staging,
                         ref snapshot);
                 }
                 finally
@@ -325,10 +361,22 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
         internal static partial int QueryScratchLayout(IntPtr handle,
             out NativeSmartCoordinatorScratchRequirements requirements, uint outputSize);
 
-        [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_query_scratch_layout_for_rows")]
+        [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_query_measure_table")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-        internal static partial int QueryScratchLayoutForRows(IntPtr handle, uint rows,
-            out NativeSmartCoordinatorScratchRequirements requirements, uint outputSize);
+        internal static partial int QueryMeasureTable(IntPtr handle, uint rows, out ulong tableCount);
+
+        [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_measure_plan")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static unsafe partial int MeasurePlan(
+            IntPtr handle,
+            in NativeSmartCoordinatorCycleInput input,
+            NativeSmartCoordinatorInputRow* inputRows,
+            uint inputRowCapacity,
+            uint* table,
+            ulong tableCount,
+            out NativeSmartCoordinatorScratchRequirements requirements,
+            uint outputSize,
+            out uint actionRows);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_reconfigure")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -340,7 +388,7 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial int Reset(IntPtr handle);
 
-        [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_plan_with_scratch")]
+        [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_plan_measured")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static unsafe partial int Plan(
             IntPtr handle,
@@ -351,6 +399,7 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
             uint actionCapacity,
             void* scratchPointer,
             ulong scratchLength,
+            in NativeSmartCoordinatorScratchRequirements requirements,
             ref NativeSmartCoordinatorSnapshot snapshot);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_feedback")]

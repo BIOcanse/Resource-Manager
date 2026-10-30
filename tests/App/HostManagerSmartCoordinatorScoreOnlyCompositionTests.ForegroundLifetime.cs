@@ -172,8 +172,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true);
         var workspace = fixture.Workspace;
+        // The warm round returned its regions; this operation opens one fact row and holds it.
+        workspace.EnsureRows(1);
         using var operation = workspace.BeginOperation();
-        workspace.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 53 });
+        using (var view = workspace.CreateScratchView()) view.Inputs[0].TargetKey = 53;
         try
         {
             var failure = await Assert.ThrowsAnyAsync<Exception>(() => directDispose
@@ -183,7 +185,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Same(workspace, ReadPrivateField<object>(fixture.Coordinator, "nativeWorkspace"));
             Assert.Equal(HostManagerSmartCoordinatorLifecycleState.Closing, fixture.Coordinator.LifecycleState);
             Assert.Equal(0, ReadPrivateValue<int>(fixture.Coordinator, "baseDisposeStarted"));
-            Assert.Equal(53UL, workspace.GetFeedback(0).ActionId);
+            using (var view = workspace.CreateScratchView()) Assert.Equal(53UL, view.Inputs[0].TargetKey);
             Assert.Throws<ObjectDisposedException>(() => workspace.BeginOperation());
             await Assert.ThrowsAsync<ObjectDisposedException>(() => fixture.Coordinator.RunOnceAsync(CancellationToken.None));
             operation.Complete();
@@ -212,7 +214,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         // ordinary small inputs remain on the compact scratch path.
         previous.EnsureRows(64);
         var scratch = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
-            ReadPrivateReference(previous, "scratch"));
+            ReadPrivateReference(previous, "facts"));
         using var use = scratch.Acquire();
         var ledger = fixture.OwnedComputeLedger!;
         ulong Registered(ResourceManager.App.Infrastructure.Adaptation.IComputeScratch area)
@@ -269,9 +271,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Null(ReadPrivateField<object>(fixture.Coordinator, "pendingNativeWorkspaceClose"));
         Assert.Same(current, ReadPrivateField<object>(fixture.Coordinator, "nativeWorkspace"));
         Assert.Equal(1, probe.Creates);
+        // The finished round returned its regions, so the facts owner holds none.
         var nextScratch = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
-            ReadPrivateReference(current!, "scratch"));
-        Assert.Equal(Registered(nextScratch) + journalBytes, ledger.ReadTable().RegisteredBytes);
+            ReadPrivateReference(current!, "facts"));
+        Assert.Equal(0UL, nextScratch.Length);
+        Assert.Equal(journalBytes, ledger.ReadTable().RegisteredBytes);
         await fixture.Coordinator.StopAsync(CancellationToken.None);
         Assert.Equal(journalBytes, ledger.ReadTable().RegisteredBytes);
         Assert.Equal(ResourceManager.App.Infrastructure.NativeCore.NativeAppliedOwnershipOwnerState.Ready, ownership.State);

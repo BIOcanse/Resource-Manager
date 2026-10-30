@@ -39,14 +39,20 @@ pub const Layout = struct {
         return initCounts(config.max_processes, config.max_software_groups, config.max_gpu_states);
     }
 
-    pub fn initForRows(config: *const protocol.Config, rows: u32) Layout {
-        const processes_count = @min(config.max_processes, @max(1, rows));
-        const software_count = @min(config.max_software_groups, @max(1, rows));
-        const gpu_count = @min(config.max_gpu_states, @max(1, rows));
-        return initCounts(processes_count, software_count, gpu_count);
+    // A plan binds exactly the layout its measure reported. Any other shape, or
+    // one beyond the configured ceilings, is a caller error rather than a resize.
+    pub fn initMeasured(config: *const protocol.Config, requirements: *const Requirements) ?Layout {
+        if (requirements.abi_version != protocol.abi_version or requirements.struct_size != @sizeOf(Requirements)) return null;
+        if (requirements.process_count > config.max_processes or requirements.software_count > config.max_software_groups or
+            requirements.gpu_count > config.max_gpu_states) return null;
+        const layout = initCounts(requirements.process_count, requirements.software_count, requirements.gpu_count);
+        if (!std.meta.eql(layout.requirements, requirements.*)) return null;
+        return layout;
     }
 
-    fn initCounts(processes_count: u32, software_count: u32, gpu_count: u32) Layout {
+    // Each staged entity kind has its own column count. Software/GPU aggregates
+    // are bounded by the process GPU rows they aggregate.
+    pub fn initCounts(processes_count: u32, software_count: u32, gpu_count: u32) Layout {
         const pi: u64 = @intCast(state.hashIndexCapacity(processes_count) catch unreachable);
         const si: u64 = @intCast(state.hashIndexCapacity(software_count) catch unreachable);
         const gi: u64 = @intCast(state.hashIndexCapacity(gpu_count) catch unreachable);

@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
@@ -25,12 +26,10 @@ pub fn plan(
     if (addTime(cycle.observed_at_milliseconds, session.config.action_timeout_milliseconds) == null or
         addTime(cycle.observed_at_milliseconds, session.config.retry_delay_milliseconds) == null)
         return .invalid_argument;
-    const input_rows = std.math.add(u32, cycle.desired_count, cycle.applied_count) catch return .invalid_argument;
-    const required_actions = @min(session.config.maximum_action_count, input_rows);
+    _ = std.math.add(u32, cycle.desired_count, cycle.applied_count) catch return .invalid_argument;
     if (desired_capacity < cycle.desired_count or
         applied_capacity < cycle.applied_count or
-        action_capacity < cycle.action_capacity or
-        cycle.action_capacity < required_actions)
+        action_capacity < cycle.action_capacity)
     {
         return .buffer_too_small;
     }
@@ -55,8 +54,16 @@ pub fn plan(
     ) orelse return .invalid_argument;
 
     if (!session.rebuildStateIndex()) return .invalid_argument;
-    const validation = validateInputs(session, desired_rows, applied_rows);
+    var required_actions: u32 = 0;
+    const validation = validateInputs(session, cycle, desired_rows, applied_rows, &required_actions);
     if (validation != .ok) return validation;
+    // The caller sizes actions by this cycle's real count. A short buffer is
+    // reported with that count before any slot changes, so the same cycle can
+    // run again with exactly that many rows.
+    if (required_actions > actions.len) {
+        cycle.action_count = required_actions;
+        return .buffer_too_small;
+    }
 
     // Validation leaves the current desired/applied identities in scratch.
     for (session.slots) |*slot| {
@@ -74,73 +81,7 @@ pub fn plan(
     for (applied_rows) |row| {
         const slot_index = session.findOrCreateSlot(row.target_key, row.record_key) orelse
             return .buffer_too_small;
-        var slot = &session.slots[slot_index];
-        populateIdentity(slot, row.resource_kind, row.placement_kind);
-        slot.applied_seen = true;
-        slot.applied_digest = row.receipt_digest;
-        slot.previous_digest = row.previous_digest;
-        slot.current_digest = row.current_digest;
-        slot.applied_process_id = row.process_id;
-        slot.applied_process_start_key = row.process_start_key;
-        slot.last_cycle_epoch = cycle.cycle_epoch;
-
-        if (row.flags & protocol.AppliedFlags.payload_valid == 0) {
-            slot.state = .blocked;
-            slot.pending_action_id = 0;
-            slot.pending_disposition = null;
-            slot.pending_reason_mask = protocol.ActionReason.invalid_receipt;
-            slot.retry_at_milliseconds = 0;
-            continue;
-        }
-
-        switch (@as(protocol.ObservationStatus, @enumFromInt(row.observation_status))) {
-            .unchecked => {
-                slot.state = .applied;
-                slot.pending_action_id = 0;
-                slot.pending_disposition = null;
-                slot.pending_reason_mask = 0;
-                slot.retry_at_milliseconds = 0;
-            },
-            .unavailable => {
-                slot.state = .blocked;
-                slot.pending_action_id = 0;
-                slot.pending_disposition = null;
-                slot.pending_reason_mask = protocol.ActionReason.observation_unavailable;
-                slot.retry_at_milliseconds = addTime(
-                    cycle.observed_at_milliseconds,
-                    session.config.retry_delay_milliseconds,
-                ) orelse return .invalid_argument;
-            },
-            .not_found_or_exited => {
-                slot.state = .blocked;
-                slot.pending_action_id = 0;
-                slot.pending_disposition = null;
-                slot.pending_reason_mask = protocol.ActionReason.ownership_lost;
-                slot.retry_at_milliseconds = 0;
-            },
-            .found => {
-                if (row.current_digest == row.receipt_digest) {
-                    slot.state = .applied;
-                    slot.pending_action_id = 0;
-                    slot.pending_disposition = null;
-                    slot.pending_reason_mask = 0;
-                    slot.retry_at_milliseconds = 0;
-                    slot.retry_count = 0;
-                } else if (row.current_digest == row.previous_digest) {
-                    slot.state = .blocked;
-                    slot.pending_action_id = 0;
-                    slot.pending_disposition = null;
-                    slot.pending_reason_mask = protocol.ActionReason.already_restored;
-                    slot.retry_at_milliseconds = 0;
-                } else {
-                    slot.state = .blocked;
-                    slot.pending_action_id = 0;
-                    slot.pending_disposition = null;
-                    slot.pending_reason_mask = protocol.ActionReason.ownership_lost;
-                    slot.retry_at_milliseconds = 0;
-                }
-            },
-        }
+        if (!ingestApplied(session, &session.slots[slot_index], row, cycle)) return .invalid_argument;
     }
 
     if (!session.rebuildStateIndex()) return .invalid_argument;
@@ -150,15 +91,7 @@ pub fn plan(
     for (desired_rows) |row| {
         const slot_index = session.findOrCreateSlot(row.target_key, row.record_key) orelse
             return .buffer_too_small;
-        var slot = &session.slots[slot_index];
-        populateIdentity(slot, row.resource_kind, row.placement_kind);
-        slot.desired_seen = true;
-        slot.override_external_state = row.flags & protocol.DesiredFlags.override_external_state != 0;
-        slot.desired_digest = row.desired_digest;
-        slot.desired_process_id = row.process_id;
-        slot.desired_process_start_key = row.process_start_key;
-        slot.desired_priority = row.priority;
-        slot.last_cycle_epoch = cycle.cycle_epoch;
+        ingestDesired(&session.slots[slot_index], row, cycle);
     }
 
     @memset(actions, std.mem.zeroes(protocol.ActionOutput));
@@ -246,6 +179,8 @@ pub fn plan(
         }
     }
 
+    // actionsFor mirrors the two passes above; every plan in the tests checks it.
+    if (builtin.mode == .Debug) std.debug.assert(action_count == required_actions);
     for (session.slots) |*slot| {
         if (slot.active and !slot.desired_seen and slot.state == .empty) slot.* = .{};
     }
@@ -261,8 +196,10 @@ pub fn plan(
 
 fn validateInputs(
     session: *state.Session,
+    cycle: *const protocol.CycleInput,
     desired_rows: []const protocol.DesiredInput,
     applied_rows: []const protocol.AppliedInput,
+    required_actions: *u32,
 ) ResultCode {
     session.beginScratch();
     for (desired_rows, 0..) |*row, row_index| {
@@ -279,10 +216,12 @@ fn validateInputs(
 
     for (applied_rows) |*row| {
         if (!protocol.validApplied(row)) return .abi_mismatch;
+        var desired_match: ?*const protocol.DesiredInput = null;
         if (session.findScratch(row.target_key, row.record_key)) |desired_index| {
             const desired = desired_rows[desired_index];
             if (desired.resource_kind != row.resource_kind or desired.placement_kind != row.placement_kind)
                 return .invalid_argument;
+            desired_match = &desired_rows[desired_index];
         }
         if (session.findSlot(row.target_key, row.record_key)) |slot_index| {
             const slot = session.slots[slot_index];
@@ -290,12 +229,17 @@ fn validateInputs(
                 (slot.resource_kind != row.resource_kind or slot.placement_kind != row.placement_kind)))
                 return .invalid_argument;
         }
+        required_actions.* += actionsFor(session, cycle, row, desired_match);
     }
 
     session.beginScratch();
     for (applied_rows, 0..) |*row, row_index| {
         if (!session.insertScratch(row.target_key, row.record_key, @intCast(row_index)))
             return .invalid_argument;
+    }
+    for (desired_rows) |*row| {
+        if (session.findScratch(row.target_key, row.record_key) == null)
+            required_actions.* += actionsFor(session, cycle, null, row);
     }
     session.beginScratch();
     var union_count: u32 = 0;
@@ -330,20 +274,162 @@ fn isSettledOwnershipLoss(slot: state.Slot) bool {
 fn clearAbsentAppliedState(session: *state.Session) void {
     for (session.slots) |*slot| {
         if (!slot.active or slot.applied_seen) continue;
-        switch (slot.state) {
-            .applied => slot.* = .{},
-            .blocked => {
-                if (slot.pending_reason_mask == protocol.ActionReason.observation_unavailable)
-                    slot.* = .{};
-            },
-            else => {},
-        }
+        if (clearsWhenAbsent(slot.*)) slot.* = .{};
     }
+}
+
+fn clearsWhenAbsent(slot: state.Slot) bool {
+    return switch (slot.state) {
+        .applied => true,
+        .blocked => slot.pending_reason_mask == protocol.ActionReason.observation_unavailable,
+        else => false,
+    };
+}
+
+// Whether this cycle issues an action for one identity. Its rows land on a copy
+// of its slot exactly as plan lands them on the live slot; at most one of the
+// two passes issues for a slot, because their states and conditions are disjoint.
+fn actionsFor(
+    session: *const state.Session,
+    cycle: *const protocol.CycleInput,
+    applied: ?*const protocol.AppliedInput,
+    desired: ?*const protocol.DesiredInput,
+) u32 {
+    const target_key = if (applied) |row| row.target_key else desired.?.target_key;
+    const record_key = if (applied) |row| row.record_key else desired.?.record_key;
+    const created: state.Slot = .{ .active = true, .target_key = target_key, .record_key = record_key };
+    var slot = if (session.findSlot(target_key, record_key)) |slot_index| session.slots[slot_index] else created;
+    slot.desired_seen = false;
+    slot.applied_seen = false;
+    slot.override_external_state = false;
+    if (applied) |row| {
+        if (!ingestApplied(session, &slot, row.*, cycle)) return 0;
+    } else if (clearsWhenAbsent(slot)) {
+        slot = created;
+    }
+    if (desired) |row| ingestDesired(&slot, row.*, cycle);
+    if (slot.applied_seen and issuesRestore(slot, cycle)) return 1;
+    if (slot.desired_seen and issuesApply(slot, cycle)) return 1;
+    return 0;
+}
+
+// The applied pass issues a restore for this slot.
+fn issuesRestore(slot: state.Slot, cycle: *const protocol.CycleInput) bool {
+    return switch (slot.state) {
+        .applied => !slot.desired_seen or slot.desired_digest != slot.applied_digest,
+        .pending_restore => retryIsDue(slot, cycle),
+        .retry_wait => slot.pending_disposition == .restore and retryIsDue(slot, cycle),
+        .blocked => slot.pending_reason_mask & (protocol.ActionReason.ownership_lost |
+            protocol.ActionReason.already_restored) != 0,
+        else => false,
+    };
+}
+
+// The desired pass issues an apply for this slot.
+fn issuesApply(slot: state.Slot, cycle: *const protocol.CycleInput) bool {
+    return switch (slot.state) {
+        .empty => true,
+        .blocked => !slot.applied_seen and slot.override_external_state,
+        .pending_apply => retryIsDue(slot, cycle),
+        .retry_wait => slot.pending_disposition == .apply and retryIsDue(slot, cycle),
+        else => false,
+    };
+}
+
+fn retryIsDue(slot: state.Slot, cycle: *const protocol.CycleInput) bool {
+    return cycle.observed_at_milliseconds >= slot.retry_at_milliseconds;
 }
 
 fn populateIdentity(slot: *state.Slot, resource_kind: u32, placement_kind: u32) void {
     slot.resource_kind = resource_kind;
     slot.placement_kind = placement_kind;
+}
+// One applied row's receipt and observation on its slot. plan applies it to
+// the live slot and actionsFor to a copy, so both see the same state.
+fn ingestApplied(
+    session: *const state.Session,
+    slot: *state.Slot,
+    row: protocol.AppliedInput,
+    cycle: *const protocol.CycleInput,
+) bool {
+    populateIdentity(slot, row.resource_kind, row.placement_kind);
+    slot.applied_seen = true;
+    slot.applied_digest = row.receipt_digest;
+    slot.previous_digest = row.previous_digest;
+    slot.current_digest = row.current_digest;
+    slot.applied_process_id = row.process_id;
+    slot.applied_process_start_key = row.process_start_key;
+    slot.last_cycle_epoch = cycle.cycle_epoch;
+
+    if (row.flags & protocol.AppliedFlags.payload_valid == 0) {
+        slot.state = .blocked;
+        slot.pending_action_id = 0;
+        slot.pending_disposition = null;
+        slot.pending_reason_mask = protocol.ActionReason.invalid_receipt;
+        slot.retry_at_milliseconds = 0;
+        return true;
+    }
+
+    switch (@as(protocol.ObservationStatus, @enumFromInt(row.observation_status))) {
+        .unchecked => {
+            slot.state = .applied;
+            slot.pending_action_id = 0;
+            slot.pending_disposition = null;
+            slot.pending_reason_mask = 0;
+            slot.retry_at_milliseconds = 0;
+        },
+        .unavailable => {
+            slot.state = .blocked;
+            slot.pending_action_id = 0;
+            slot.pending_disposition = null;
+            slot.pending_reason_mask = protocol.ActionReason.observation_unavailable;
+            slot.retry_at_milliseconds = addTime(
+                cycle.observed_at_milliseconds,
+                session.config.retry_delay_milliseconds,
+            ) orelse return false;
+        },
+        .not_found_or_exited => {
+            slot.state = .blocked;
+            slot.pending_action_id = 0;
+            slot.pending_disposition = null;
+            slot.pending_reason_mask = protocol.ActionReason.ownership_lost;
+            slot.retry_at_milliseconds = 0;
+        },
+        .found => {
+            if (row.current_digest == row.receipt_digest) {
+                slot.state = .applied;
+                slot.pending_action_id = 0;
+                slot.pending_disposition = null;
+                slot.pending_reason_mask = 0;
+                slot.retry_at_milliseconds = 0;
+                slot.retry_count = 0;
+            } else if (row.current_digest == row.previous_digest) {
+                slot.state = .blocked;
+                slot.pending_action_id = 0;
+                slot.pending_disposition = null;
+                slot.pending_reason_mask = protocol.ActionReason.already_restored;
+                slot.retry_at_milliseconds = 0;
+            } else {
+                slot.state = .blocked;
+                slot.pending_action_id = 0;
+                slot.pending_disposition = null;
+                slot.pending_reason_mask = protocol.ActionReason.ownership_lost;
+                slot.retry_at_milliseconds = 0;
+            }
+        },
+    }
+    return true;
+}
+
+fn ingestDesired(slot: *state.Slot, row: protocol.DesiredInput, cycle: *const protocol.CycleInput) void {
+    populateIdentity(slot, row.resource_kind, row.placement_kind);
+    slot.desired_seen = true;
+    slot.override_external_state = row.flags & protocol.DesiredFlags.override_external_state != 0;
+    slot.desired_digest = row.desired_digest;
+    slot.desired_process_id = row.process_id;
+    slot.desired_process_start_key = row.process_start_key;
+    slot.desired_priority = row.priority;
+    slot.last_cycle_epoch = cycle.cycle_epoch;
 }
 
 fn issueRetryIfDue(
@@ -354,7 +440,7 @@ fn issueRetryIfDue(
     actions: []protocol.ActionOutput,
     action_count: *usize,
 ) bool {
-    if (cycle.observed_at_milliseconds < slot.retry_at_milliseconds) {
+    if (!retryIsDue(slot.*, cycle)) {
         updateNextWake(session, slot.retry_at_milliseconds);
         return true;
     }

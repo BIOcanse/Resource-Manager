@@ -10,6 +10,14 @@ internal static class NativeSmartCoordinatorTestPlanning
         in NativeSmartCoordinatorCycleInput input)
         => workspace.Plan(in input);
 
+    // The plan region exists only after Plan, so callers read actions through a fresh view.
+    internal static NativeSmartCoordinatorAction[] PlannedActions(this NativeSmartCoordinatorWorkspace workspace)
+    {
+        if (workspace.PlannedActionCount == 0) return [];
+        using var view = workspace.CreateScratchView();
+        return view.Actions[..checked((int)workspace.PlannedActionCount)].ToArray();
+    }
+
     internal static unsafe NativeSmartCoordinatorStatus PlanCurrent(
         this NativeSmartCoordinatorSession session,
         in NativeSmartCoordinatorCycleInput input,
@@ -20,7 +28,7 @@ internal static class NativeSmartCoordinatorTestPlanning
         var requirements = session.ScratchRequirements;
         var memory = NativeMemory.AlignedAlloc(checked((nuint)requirements.ByteCount), requirements.Alignment);
         if (memory == null) throw new OutOfMemoryException();
-        try { return session.Plan(in input, rows, actions, (IntPtr)memory, requirements.ByteCount, ref snapshot); }
+        try { return session.Plan(in input, rows, actions, (IntPtr)memory, in requirements, ref snapshot); }
         finally { NativeMemory.AlignedFree(memory); }
     }
 }

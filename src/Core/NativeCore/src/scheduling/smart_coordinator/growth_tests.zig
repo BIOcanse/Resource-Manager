@@ -38,9 +38,10 @@ test "smart full shape byte calculations distinguish runtime maxima from build s
     try std.testing.expectEqual(expected_build, try shapeBytes(build_ceiling));
     try std.testing.expectEqual(expected_runtime, try shapeBytes(runtime_maxima));
     // Alternate 300-process/300-software/300-GPU retained content shape:
-    // each identity bank doubles to 512; no feedback actions/groups are present.
-    const with_gpu = state.BankDemand{ .processes = 512, .softwares = 512, .gpus = 512, .reservations = 1, .atomic_groups = 1 };
-    const expected_with_gpu: u64 = 976 + 512 * 192 + 512 * 144 + 512 * 64 + 264 + 40;
+    // each identity bank holds exactly 300 rows; only its hash index keeps the
+    // power-of-two load factor (1024 slots). No feedback actions/groups exist.
+    const with_gpu = state.BankDemand{ .processes = 300, .softwares = 300, .gpus = 300, .reservations = 1, .atomic_groups = 1 };
+    const expected_with_gpu: u64 = 976 + 300 * 184 + 300 * 136 + 300 * 56 + 3 * 1024 * 4 + 264 + 40;
     try std.testing.expectEqual(expected_with_gpu, try shapeBytes(with_gpu));
 }
 
@@ -107,7 +108,12 @@ test "smart canonical growth preserves every retained state and stable feedback 
         .reservations = 3,
         .atomic_groups = 3,
     }));
-    try std.testing.expectEqual(@as(usize, 4), session.processes.len);
+    // Every bank grows to the demand itself, not to the next power of two.
+    try std.testing.expectEqual(@as(usize, 3), session.processes.len);
+    try std.testing.expectEqual(@as(usize, 3), session.softwares.len);
+    try std.testing.expectEqual(@as(usize, 3), session.gpus.len);
+    try std.testing.expectEqual(@as(usize, 3), session.reservations.len);
+    try std.testing.expectEqual(@as(usize, 3), session.atomic_groups.len);
     try std.testing.expectEqualDeep(process, session.processes[0]);
     try std.testing.expectEqualDeep(software, session.softwares[0]);
     try std.testing.expectEqualDeep(gpu, session.gpus[0]);
@@ -120,6 +126,16 @@ test "smart canonical growth preserves every retained state and stable feedback 
     try std.testing.expectEqual(@as(?u32, 0), session.findAtomicGroup(102));
     try std.testing.expectEqual(revision, session.state_revision);
     try std.testing.expectEqual(@as(u32, 1), session.inflight_count);
+    try std.testing.expectEqual(protocol.Status.ok, session.ensureBankCapacity(.{
+        .processes = 5,
+        .softwares = 3,
+        .gpus = 3,
+        .reservations = 3,
+        .atomic_groups = 3,
+    }));
+    try std.testing.expectEqual(@as(usize, 5), session.processes.len);
+    try std.testing.expectEqual(@as(usize, 3), session.softwares.len);
+    try std.testing.expectEqual(@as(?u32, 0), session.findProcess(11, 12, 13));
 }
 
 test "smart failed allocation at each replacement leaves all old banks intact and retries" {
@@ -382,13 +398,13 @@ test "smart actual diagnostics count 300 owned processes as 300 states" {
     var actual: protocol.WorkspaceCapacity = undefined;
     try std.testing.expectEqual(protocol.Status.ok, coordinator.workspaceCapacity(session, &actual));
     try std.testing.expectEqual(@as(u32, 300), snapshot.process_count);
-    try std.testing.expectEqual(@as(u32, 512), actual.process_capacity);
-    try std.testing.expectEqual(@as(u32, 512), actual.software_capacity);
+    try std.testing.expectEqual(@as(u32, 300), actual.process_capacity);
+    try std.testing.expectEqual(@as(u32, 300), actual.software_capacity);
     try std.testing.expectEqual(@as(u32, 1), actual.gpu_state_capacity);
     try std.testing.expectEqual(@as(u32, 1), actual.reservation_capacity);
     try std.testing.expectEqual(@as(u32, 1), actual.atomic_group_capacity);
     try std.testing.expectEqual(@as(u32, 0), snapshot.inflight_count);
-    const expected_bytes = @sizeOf(state.Session) + 512 * (@sizeOf(state.ProcessState) + @sizeOf(state.SoftwareState)) +
+    const expected_bytes = @sizeOf(state.Session) + 300 * (@sizeOf(state.ProcessState) + @sizeOf(state.SoftwareState)) +
         2 * 1024 * @sizeOf(u32) + @sizeOf(state.GpuState) + @sizeOf(state.Reservation) + @sizeOf(state.AtomicGroup) + 3 * 2 * @sizeOf(u32);
     try std.testing.expectEqual(@as(u64, expected_bytes), actual.resident_bytes);
     std.debug.print("300-owned-process evidence process_size={d} software_size={d} gpu_size={d} reservation_size={d} group_size={d} session_size={d} initial_bytes={d} actual_bytes={d}\n", .{ @sizeOf(state.ProcessState), @sizeOf(state.SoftwareState), @sizeOf(state.GpuState), @sizeOf(state.Reservation), @sizeOf(state.AtomicGroup), @sizeOf(state.Session), before.resident_bytes, actual.resident_bytes });
@@ -417,7 +433,7 @@ test "smart diagnostics record each committed bank once and discard candidate gr
         try std.testing.expectEqual(@as(u32, @intCast(index + 8)), event.reason);
         try std.testing.expectEqual(@as(u32, 0), event.unit);
         try std.testing.expectEqual(@as(u64, 1), event.old_capacity);
-        try std.testing.expectEqual(@as(u64, 4), event.new_capacity);
+        try std.testing.expectEqual(@as(u64, 3), event.new_capacity);
     }
     var unchanged = try live.cloneBanks();
     live.commitBanks(&unchanged);
@@ -426,11 +442,11 @@ test "smart diagnostics record each committed bank once and discard candidate gr
     try std.testing.expectEqual(protocol.Status.ok, live.reconfigure(&config));
     try std.testing.expectEqual(@as(u64, 5), live.growth.count);
     var next = try live.cloneBanks();
-    try std.testing.expectEqual(protocol.Status.ok, next.ensureBankCapacity(.{ .processes = 5, .softwares = 4, .gpus = 4, .reservations = 4, .atomic_groups = 4 }));
+    try std.testing.expectEqual(protocol.Status.ok, next.ensureBankCapacity(.{ .processes = 5, .softwares = 3, .gpus = 3, .reservations = 3, .atomic_groups = 3 }));
     live.commitBanks(&next);
     try std.testing.expectEqual(@as(u64, 6), live.growth.count);
     try std.testing.expectEqual(@as(u64, 6), live.growth.events[5].sequence);
     try std.testing.expectEqual(@as(u32, 8), live.growth.events[5].reason);
-    try std.testing.expectEqual(@as(u64, 4), live.growth.events[5].old_capacity);
-    try std.testing.expectEqual(@as(u64, 8), live.growth.events[5].new_capacity);
+    try std.testing.expectEqual(@as(u64, 3), live.growth.events[5].old_capacity);
+    try std.testing.expectEqual(@as(u64, 5), live.growth.events[5].new_capacity);
 }

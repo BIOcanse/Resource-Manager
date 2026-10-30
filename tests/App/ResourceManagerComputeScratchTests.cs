@@ -230,10 +230,11 @@ public sealed class ResourceManagerComputeScratchTests
                             smartPlan.Build, smartPlan.Recreate, smartPlan.HotPublish, smartPlan.ConfigurationGeneration);
                         using var smart = new NativeSmartCoordinatorWorkspace(in smartConfiguration, owner.CreateScratch);
                         Assert.Equal(registered, owner.ReadTable().RegisteredBytes); // Identity-only construction.
+                        smart.EnsureRows(1); // A round opens only its fact rows before it plans.
                         using var smartOperation = smart.BeginOperation();
-                        smart.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 61 });
-                        Assert.Equal(61UL, smart.GetFeedback(0).ActionId);
-                        var smartLayout = smart.ScratchLayout;
+                        using (var smartView = smart.CreateScratchView()) smartView.Inputs[0].TargetKey = 61;
+                        using (var smartView = smart.CreateScratchView()) Assert.Equal(61UL, smartView.Inputs[0].TargetKey);
+                        var smartLayout = smart.FactsLayout!;
                         Assert.True(smartLayout.Length < owner.NativePageSize);
                         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                         Assert.All(readers, reader => Assert.Equal(81, reader.Tree.Count));

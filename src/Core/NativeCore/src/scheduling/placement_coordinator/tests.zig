@@ -534,3 +534,113 @@ fn emptySnapshotHeader() protocol.SnapshotHeader {
         .reserved = .{ 0, 0 },
     };
 }
+
+test "placement coordinator counts exact actions before any slot change and its retry plans as one full call" {
+    var config = corpus.config(7);
+    const exact = try session_module.Session.create(&config);
+    defer exact.destroy();
+    const full = try session_module.Session.create(&config);
+    defer full.destroy();
+
+    // Three new identities: three applies, reported before any slot exists.
+    const first_desired = [_]protocol.DesiredInput{
+        corpus.desired(101, 201, 301),
+        corpus.desired(102, 202, 302),
+        corpus.desired(103, 203, 303),
+    };
+    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    try std.testing.expectEqual(@as(u32, 3), try planExactAndFull(exact, full, 1, 1_000, &first_desired, &.{}, &actions));
+
+    // Two of them complete; the third stays pending past its deadline.
+    var feedback = [_]protocol.FeedbackInput{
+        corpus.feedback(actions[0], .applied, 1_010),
+        corpus.feedback(actions[1], .applied, 1_010),
+    };
+    try std.testing.expectEqual(ResultCode.ok, session_module.applyFeedback(exact, &feedback, 2));
+    try std.testing.expectEqual(ResultCode.ok, session_module.applyFeedback(full, &feedback, 2));
+
+    // A changed desire, a due retry and an ownership loss, each issued once.
+    const second_desired = [_]protocol.DesiredInput{
+        corpus.desired(101, 201, 301),
+        corpus.desired(102, 202, 312),
+        corpus.desired(103, 203, 303),
+    };
+    const second_applied = [_]protocol.AppliedInput{
+        corpus.applied(101, 201, 301, 401, 301),
+        corpus.applied(102, 202, 302, 402, 302),
+        corpus.applied(104, 204, 304, 404, 999),
+    };
+    try std.testing.expect(try planExactAndFull(exact, full, 2, 1_100, &second_desired, &second_applied, &actions) > 1);
+
+    // A receipt this cycle no longer reports is forgotten and applied again.
+    const third_desired = [_]protocol.DesiredInput{corpus.desired(101, 201, 301)};
+    try std.testing.expect(try planExactAndFull(exact, full, 3, 1_300, &third_desired, &.{}, &actions) > 0);
+
+    // A cycle without actions needs no action rows at all.
+    try std.testing.expectEqual(@as(u32, 0), try planExactAndFull(exact, full, 4, 1_301, &.{}, &.{}, &actions));
+}
+
+// Plans one cycle on `exact` with no action rows, then with the count it reports,
+// and on `full` with every configured row; both must leave the same session.
+fn planExactAndFull(
+    exact: *session_module.Session,
+    full: *session_module.Session,
+    epoch: u64,
+    now: u64,
+    desired: []const protocol.DesiredInput,
+    applied: []const protocol.AppliedInput,
+    actions: *[8]protocol.ActionOutput,
+) !u32 {
+    const desired_count: u32 = @intCast(desired.len);
+    const applied_count: u32 = @intCast(applied.len);
+    const cycle = corpus.cycle(7, epoch, now, desired_count, applied_count);
+    var probe = cycle;
+    probe.action_capacity = 0;
+    const revision = exact.state_revision;
+    const next_action = exact.next_action_id;
+    const first = session_module.plan(exact, &probe, desired.ptr, desired_count, applied.ptr, applied_count, null, 0);
+    var planned = probe;
+    var exact_actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    if (first == .buffer_too_small) {
+        try std.testing.expect(probe.action_count > 0);
+        try std.testing.expectEqual(revision, exact.state_revision);
+        try std.testing.expectEqual(next_action, exact.next_action_id);
+        try std.testing.expectEqual(epoch - 1, exact.last_cycle_epoch);
+        for (exact.slots, full.slots) |left, right| try std.testing.expectEqualDeep(right, left);
+        planned = cycle;
+        planned.action_capacity = probe.action_count;
+        try std.testing.expectEqual(ResultCode.ok, session_module.plan(
+            exact,
+            &planned,
+            desired.ptr,
+            desired_count,
+            applied.ptr,
+            applied_count,
+            &exact_actions,
+            planned.action_capacity,
+        ));
+        try std.testing.expectEqual(probe.action_count, planned.action_count);
+    } else {
+        try std.testing.expectEqual(ResultCode.ok, first);
+        try std.testing.expectEqual(@as(u32, 0), probe.action_count);
+    }
+
+    var whole = cycle;
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(
+        full,
+        &whole,
+        desired.ptr,
+        desired_count,
+        applied.ptr,
+        applied_count,
+        actions,
+        8,
+    ));
+    try std.testing.expectEqual(whole.action_count, planned.action_count);
+    try std.testing.expectEqual(whole.next_wake_milliseconds, planned.next_wake_milliseconds);
+    try std.testing.expectEqual(whole.state_revision, planned.state_revision);
+    try std.testing.expectEqualDeep(actions[0..whole.action_count], exact_actions[0..planned.action_count]);
+    for (exact.slots, full.slots) |left, right| try std.testing.expectEqualDeep(right, left);
+    try std.testing.expectEqual(full.next_action_id, exact.next_action_id);
+    return planned.action_count;
+}

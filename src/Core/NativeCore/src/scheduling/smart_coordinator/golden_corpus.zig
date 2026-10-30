@@ -85,7 +85,7 @@ pub fn plan(
     const requirements = scratch.Layout.init(&session.config).requirements;
     const bytes = std.heap.page_allocator.alloc(u8, @intCast(requirements.byte_count)) catch return .out_of_memory;
     defer std.heap.page_allocator.free(bytes);
-    return @import("session.zig").plan(session, input, input_rows, input_row_capacity, actions_pointer, action_capacity, bytes.ptr, bytes.len, snapshot);
+    return @import("session.zig").plan(session, input, input_rows, input_row_capacity, actions_pointer, action_capacity, bytes.ptr, bytes.len, &requirements, snapshot);
 }
 
 pub fn processFact(

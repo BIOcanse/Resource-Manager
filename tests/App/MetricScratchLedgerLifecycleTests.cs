@@ -97,11 +97,12 @@ public sealed class MetricScratchLedgerLifecycleTests
         var smartConfiguration = NativeSmartCoordinatorConfigurationWriter.Create(
             smartPlan.Build, smartPlan.Recreate, smartPlan.HotPublish, smartPlan.ConfigurationGeneration);
         using var smart = new NativeSmartCoordinatorWorkspace(in smartConfiguration, owner.CreateScratch);
+        smart.EnsureRows(1); // A round opens only its fact rows before it plans.
         using var smartOperation = smart.BeginOperation();
-        smart.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 67 });
-        Assert.Equal(67UL, smart.GetFeedback(0).ActionId);
-        var smartLayout = smart.ScratchLayout;
-        Assert.True(smartLayout.Length < owner.NativePageSize); // One feedback row uses compact storage.
+        using (var smartView = smart.CreateScratchView()) smartView.Inputs[0].TargetKey = 67;
+        using (var smartView = smart.CreateScratchView()) Assert.Equal(67UL, smartView.Inputs[0].TargetKey);
+        var smartLayout = smart.FactsLayout!;
+        Assert.True(smartLayout.Length < owner.NativePageSize); // One fact row uses compact storage.
         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
         var ownershipCapacity = new NativeAppliedOwnershipCapacity
         {
