@@ -103,6 +103,17 @@ public sealed class HostMemoryProtectionSource(IMetricSnapshotPushSource metrics
         if (facts?.TryGetCurrentFoundationDataset(SamplingDatasetIds.ProcessInventory, out _) != true) return null;
         var field = ProcessMetricFieldRegistry.Find(PrivateCommitField)!;
         var available = snapshot.ProcessFields?.Sources.Any(item => item.SourceId == field.SourceId && item.CapturedAt is not null) == true;
+        // One pass over the attribution facts per reading instead of two scans per inventory process. The first
+        // fact of an instance names its software, as before; any fact of it marking Resource Manager marks the process.
+        var attributions = new Dictionary<(int ProcessId, ulong ProcessStartKey), (string SoftwareId, bool IsResourceManager)>();
+        foreach (var attribution in facts.AttributionProcesses)
+        {
+            var self = attribution.SoftwareId == RuntimeAttributionIds.ResourceManagerSelf;
+            var instance = (attribution.ProcessId, attribution.ProcessStartKey);
+            attributions[instance] = attributions.TryGetValue(instance, out var first)
+                ? first with { IsResourceManager = first.IsResourceManager || self }
+                : (attribution.SoftwareId, self);
+        }
         return facts.InventoryProcesses.Select(item =>
         {
             var key = item.ProcessStartKey.ToString(CultureInfo.InvariantCulture);
@@ -110,16 +121,16 @@ public sealed class HostMemoryProtectionSource(IMetricSnapshotPushSource metrics
                 .FirstOrDefault(value => value.Field == PrivateCommitField) : null;
             var number = value?.IntegerValue?.ToBigInteger();
             ulong? bytes = number is { } integer && integer >= 0 && integer <= ulong.MaxValue ? (ulong)integer : null;
+            (string SoftwareId, bool IsResourceManager)? attributed
+                = attributions.TryGetValue((item.ProcessId, item.ProcessStartKey), out var found) ? found : null;
             return new HostMemoryProcess(item.ProcessId, key, item.ProcessName, bytes)
             {
                 ExecutablePath = item.ExecutablePath,
                 ParentProcessId = item.ParentProcessId,
-                SoftwareId = facts.AttributionProcesses.FirstOrDefault(attribution => attribution.ProcessId == item.ProcessId
-                    && attribution.ProcessStartKey == item.ProcessStartKey)?.SoftwareId,
+                SoftwareId = attributed?.SoftwareId,
                 IsResourceManager = item.ProcessId == Environment.ProcessId
                     || ResourceManagerSelfDescriptor.ProcessNames.Contains(item.ProcessName, StringComparer.OrdinalIgnoreCase)
-                    || facts.AttributionProcesses.Any(attribution => attribution.ProcessId == item.ProcessId
-                        && attribution.ProcessStartKey == item.ProcessStartKey && attribution.SoftwareId == RuntimeAttributionIds.ResourceManagerSelf)
+                    || attributed?.IsResourceManager == true
             };
         }).ToArray();
     }
