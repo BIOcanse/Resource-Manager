@@ -549,9 +549,9 @@ public sealed class TargetedRecordingEndpointTests
 
         public static readonly IReadOnlyList<TargetedRecordingCatalogItem> Catalog =
         [
-            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesItemId, "ms", [], null),
-            new(TargetedRecordingItemKinds.Software, "cpu.usage", "%", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null),
-            new(TargetedRecordingItemKinds.Metric, "cpu.usage", "%", ["load@cpu0"], null)
+            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesItemId, "ms", [], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Software, "cpu.usage", "%", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Metric, "cpu.usage", "%", ["load@cpu0"], null, TargetedRecordingItemUses.Both)
         ];
 
         private static readonly IReadOnlyList<SoftwareRecord> Records =

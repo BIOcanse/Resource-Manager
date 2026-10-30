@@ -43,6 +43,12 @@ public static class TargetedRecordingProfileDefaults
     public const string DefaultProfileId = "default";
     public const string DefaultProfileName = "默认";
     public const string FramesItemId = "frames.present";
+    // Overlay-only frame statistics over the overlay frame window, in FPS; a recording stores the frames themselves.
+    public const string FramesFpsItemId = "frames.fps";
+    public const string FramesOnePercentLowItemId = "frames.low1";
+    public const string FramesPointOnePercentLowItemId = "frames.low01";
+    public static readonly IReadOnlyList<string> FramesItemIds =
+        [FramesItemId, FramesFpsItemId, FramesOnePercentLowItemId, FramesPointOnePercentLowItemId];
     public const string AutoSource = "auto";
     public const int DefaultIntervalMs = 1000;
     public const int MinimumIntervalMs = 100;
@@ -127,7 +133,7 @@ public static class TargetedRecordingProfileShape
             return "targeted-recording-item-invalid-precision";
         if (item.Kind == TargetedRecordingItemKinds.Frames)
         {
-            if (!string.Equals(item.Id, TargetedRecordingProfileDefaults.FramesItemId, StringComparison.Ordinal))
+            if (!TargetedRecordingProfileDefaults.FramesItemIds.Contains(item.Id, StringComparer.Ordinal))
                 return "targeted-recording-item-unknown";
             if (!string.Equals(item.Source, TargetedRecordingProfileDefaults.AutoSource, StringComparison.Ordinal))
                 return "targeted-recording-item-source-invalid";

@@ -126,13 +126,23 @@ public sealed record TargetedRecordingJsonExport(
 /// <summary>A software with at least one running attributed process, as the start check sees it.</summary>
 public sealed record TargetedRecordingTarget(string SoftwareId, string Name, int ProcessCount);
 
-/// <summary>One recordable item with its unit and the concrete sources a profile may name.</summary>
+/// <summary>One recordable item with its unit, the concrete sources a profile may name, and where it can be
+/// used: a recording profile, the overlay, or both.</summary>
 public sealed record TargetedRecordingCatalogItem(
     string Kind,
     string Id,
     string Unit,
     IReadOnlyList<string> Sources,
-    int? NaturalIntervalMs);
+    int? NaturalIntervalMs,
+    IReadOnlyList<string> Uses);
+
+public static class TargetedRecordingItemUses
+{
+    public const string Recording = "recording";
+    public const string Overlay = "overlay";
+    public static readonly IReadOnlyList<string> Both = [Recording, Overlay];
+    public static readonly IReadOnlyList<string> OverlayOnly = [Overlay];
+}
 
 /// <summary>Start failures the endpoint maps to status codes; Code is the wire reason.</summary>
 public sealed class TargetedRecordingStartException(int statusCode, string code) : Exception(code)

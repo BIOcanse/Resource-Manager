@@ -351,6 +351,61 @@ public sealed class PerformanceOverlaySubscriptionTests
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public void OverlayFrameItemsCarryTheFourFrameStatisticsAndTheOverlayUnavailableReasons()
+    {
+        var statistics = FrameIntervalStatistics.Compute([10, 10, 10, 20, 40])!;
+        var frames = new FrameSource
+        {
+            Snapshot = new FrameTimingSnapshot(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(1), true,
+                [new(10, 100, [new(FramePresentSource.Dxgi, 1, DateTimeOffset.UtcNow, statistics) { PresentCount = 6 }])])
+        };
+        var catalog = TargetedRecordingItemCatalogRules.Build([], []);
+        Assert.Equal(new[] { "ms", "FPS", "FPS", "FPS" }, TargetedRecordingProfileDefaults.FramesItemIds
+            .Select(id => TargetedRecordingItemCatalogRules.Find(catalog, TargetedRecordingItemKinds.Frames, id)!.Unit));
+
+        var values = Update(frames);
+        Assert.Equal(new double?[]
+        {
+            statistics.DurationMs / statistics.IntervalCount, statistics.AverageFps,
+            statistics.OnePercentLowFps, statistics.PointOnePercentLowFps, null
+        }, values.Select(static value => value.Value));
+        Assert.Equal(new[] { "ms", "FPS", "FPS", "FPS" }, values.Take(4).Select(static value => value.Unit));
+        Assert.Equal("metric-unavailable", values[4].Reason);
+
+        frames.Snapshot = frames.Snapshot with { Complete = false };
+        Assert.All(Update(frames).Take(4), static value => Assert.Equal("frame-events-lost", value.Reason));
+        frames.Snapshot = frames.Snapshot with { Complete = true, Processes = [] };
+        Assert.All(Update(frames).Take(4), static value => Assert.Equal("no-frame-data", value.Reason));
+
+        IReadOnlyList<PerformanceOverlayItemValue> Update(FrameSource source)
+        {
+            var plans = TargetedRecordingProfileDefaults.FramesItemIds
+                .Select(id => new TargetedRecordingItem(TargetedRecordingItemKinds.Frames, id))
+                .Append(new TargetedRecordingItem(TargetedRecordingItemKinds.Metric, "gpu.9.usage"))
+                .Select(item => new ResourceManagerEndpointRouteBuilderExtensions.PerformanceOverlayItemPlan(item,
+                    TargetedRecordingItemCatalogRules.Find(catalog, item.Kind, item.Id), 1000, "profile-default"))
+                .ToArray();
+            var result = ResourceManagerEndpointRouteBuilderExtensions.UpdatePerformanceOverlayItems(plans, "overlay", ["game"],
+                [Process(10, 100)], new MetricSource(), new ResourceSource(), source, TimeSpan.FromSeconds(1),
+                DateTimeOffset.UtcNow, TimeSpan.FromMilliseconds(50), out _);
+            ResourceManagerEndpointRouteBuilderExtensions.ReleasePerformanceOverlayItems(plans);
+            return result;
+        }
+    }
+
+    [Fact]
+    public void OverlayOnlyFrameStatisticsAreRejectedForARecordingAndAcceptedForTheOverlay()
+    {
+        var catalog = TargetedRecordingItemCatalogRules.Build([], []);
+        IReadOnlyList<TargetedRecordingItem> items = [new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesFpsItemId)];
+        Assert.Equal("targeted-recording-item-unknown", TargetedRecordingItemReader.ValidateList(items, catalog));
+        Assert.Null(TargetedRecordingItemReader.ValidateList(items, catalog,
+            TargetedRecordingItemReader.MaximumOverlayItems, TargetedRecordingItemUses.Overlay));
+        Assert.Equal(TargetedRecordingItemUses.OverlayOnly,
+            TargetedRecordingItemCatalogRules.Find(catalog, TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesFpsItemId)!.Uses);
+    }
+
     private static async Task<JsonElement[]> ReadItemsAsync(StreamReader reader, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse((await reader.ReadLineAsync(cancellationToken))!);
@@ -433,9 +488,9 @@ public sealed class PerformanceOverlaySubscriptionTests
     {
         private static readonly IReadOnlyList<TargetedRecordingCatalogItem> Items =
         [
-            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesItemId, "ms", [], null),
-            new(TargetedRecordingItemKinds.Software, "cpu.usage", "%", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null),
-            new(TargetedRecordingItemKinds.Metric, "cpu.usage", "%", ["load@cpu0"], null)
+            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesItemId, "ms", [], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Software, "cpu.usage", "%", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Metric, "cpu.usage", "%", ["load@cpu0"], null, TargetedRecordingItemUses.Both)
         ];
         public Task<IReadOnlyList<TargetedRecordingCatalogItem>> ReadAsync(CancellationToken cancellationToken)
             => Task.FromResult(Items);
@@ -501,7 +556,8 @@ public sealed class PerformanceOverlaySubscriptionTests
             Interlocked.Increment(ref activeCount);
             return new Lease(() => Interlocked.Decrement(ref activeCount));
         }
-        public FrameTimingSnapshot? Read(TimeSpan window) => null;
+        public FrameTimingSnapshot? Snapshot { get; set; }
+        public FrameTimingSnapshot? Read(TimeSpan window) => Snapshot;
         public FrameIntervalBatch? ReadIntervals(DateTimeOffset after, DateTimeOffset through) => null;
     }
 

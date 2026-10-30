@@ -88,14 +88,15 @@ public static class TargetedRecordingItemReader
     /// <summary>Validates a request's own item list exactly like a saved profile's: shape, duplicates, count,
     /// then catalog membership and source ownership. Returns the reason code, or null.</summary>
     public static string? ValidateList(IReadOnlyList<TargetedRecordingItem> items,
-        IReadOnlyList<TargetedRecordingCatalogItem> catalog, int maximumItems = TargetedRecordingProfileDefaults.MaximumItems)
+        IReadOnlyList<TargetedRecordingCatalogItem> catalog, int maximumItems = TargetedRecordingProfileDefaults.MaximumItems,
+        string use = TargetedRecordingItemUses.Recording)
     {
         if (items.Count > maximumItems) return "targeted-recording-profile-items-too-many";
         var candidate = new TargetedRecordingProfile("request", "request", TargetedRecordingProfileDefaults.DefaultIntervalMs, items);
         if (TargetedRecordingProfileShape.ValidateProfile(candidate) is { } shape) return shape;
         foreach (var item in items)
         {
-            if (TargetedRecordingItemCatalogRules.Validate(item, catalog) is { } reason) return reason;
+            if (TargetedRecordingItemCatalogRules.Validate(item, catalog, use) is { } reason) return reason;
         }
         return null;
     }

@@ -17,6 +17,12 @@ namespace ResourceManager.App.Endpoints;
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     internal const string PerformanceOverlayTargetNotRunning = "target-not-running";
+    // The same unavailable reasons the id/field overlay reports (PerformanceOverlayProjection).
+    internal const string PerformanceOverlayFrameEventsLost = "frame-events-lost";
+    internal const string PerformanceOverlayNoFrameData = "no-frame-data";
+    internal const string PerformanceOverlayProcessCpuUnavailable = "process-cpu-unavailable";
+    internal const string PerformanceOverlayProcessMetricUnavailable = "process-metric-unavailable";
+    internal const string PerformanceOverlayMetricUnavailable = "metric-unavailable";
 
     internal sealed class PerformanceOverlayItemPlan(TargetedRecordingItem item, TargetedRecordingCatalogItem? entry,
         int intervalMs, string intervalOrigin)
@@ -62,7 +68,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             throw new ArgumentException("targeted-recording-item-invalid-kind");
         }
         var catalog = services.GetRequiredService<ITargetedRecordingItemCatalog>().ReadCurrent();
-        if (TargetedRecordingItemReader.ValidateList(items, catalog, TargetedRecordingItemReader.MaximumOverlayItems) is { } reason)
+        if (TargetedRecordingItemReader.ValidateList(items, catalog, TargetedRecordingItemReader.MaximumOverlayItems,
+                TargetedRecordingItemUses.Overlay) is { } reason)
             throw new ArgumentException(reason);
         var defaultMs = (int)Math.Round(interval.TotalMilliseconds);
         return items.Select(item =>
@@ -129,7 +136,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     if (reading.Unchanged && plan.Last is { Value: not null } previous) { values[index] = previous; continue; }
                     plan.LastObservedAt = reading.ObservedAt;
                     plan.Last = plan.Value(reading.Value, reading.ActualSource, reading.Unit, reading.ObservedAt,
-                        TargetedRecordingGapReasons.ValueUnavailable);
+                        PerformanceOverlayMetricUnavailable);
                     break;
                 }
                 case TargetedRecordingItemKinds.Software:
@@ -138,7 +145,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         breakdown.ReadLatest(TargetedRecordingItemReader.SoftwareRequest(item)), item, softwareIds,
                         (processId, startKey) => targetKeys.Contains((processId, startKey)));
                     plan.Last = plan.Value(reading.Value, reading.ActualSource, reading.Unit, reading.ObservedAt,
-                        TargetedRecordingGapReasons.ValueUnavailable);
+                        string.Equals(item.Id, ResourceBreakdownMetricIds.CpuUsage, StringComparison.OrdinalIgnoreCase)
+                            ? PerformanceOverlayProcessCpuUnavailable : PerformanceOverlayProcessMetricUnavailable);
                     break;
                 }
                 default:
@@ -152,10 +160,29 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         .ThenBy(static candidate => candidate.Source)
                         .ThenBy(static candidate => candidate.SwapChain)
                         .FirstOrDefault();
-                    plan.Last = stream is null
-                        ? plan.Value(null, null, null, null, TargetedRecordingGapReasons.ValueUnavailable)
-                        : plan.Value(stream.Statistics.DurationMs / stream.Statistics.IntervalCount, stream.Source.ToString(),
-                            TargetedRecordingItemCatalogRules.FramesUnit, frameSnapshot!.ObservedAt, null);
+                    var unit = item.Id == TargetedRecordingProfileDefaults.FramesItemId
+                        ? TargetedRecordingItemCatalogRules.FramesUnit : TargetedRecordingItemCatalogRules.FramesRateUnit;
+                    if (frameSnapshot is { Complete: false })
+                    {
+                        plan.Last = plan.Value(null, null, unit, null, PerformanceOverlayFrameEventsLost);
+                        break;
+                    }
+                    if (stream is null)
+                    {
+                        plan.Last = plan.Value(null, null, unit, null, PerformanceOverlayNoFrameData);
+                        break;
+                    }
+                    var statistics = stream.Statistics;
+                    var value = item.Id switch
+                    {
+                        TargetedRecordingProfileDefaults.FramesFpsItemId => statistics.AverageFps,
+                        TargetedRecordingProfileDefaults.FramesOnePercentLowItemId => statistics.OnePercentLowFps,
+                        TargetedRecordingProfileDefaults.FramesPointOnePercentLowItemId => statistics.PointOnePercentLowFps,
+                        _ => statistics.DurationMs / statistics.IntervalCount
+                    };
+                    plan.Last = double.IsFinite(value)
+                        ? plan.Value(value, stream.Source.ToString(), unit, frameSnapshot!.ObservedAt, null)
+                        : plan.Value(null, null, unit, null, PerformanceOverlayMetricUnavailable);
                     break;
                 }
             }

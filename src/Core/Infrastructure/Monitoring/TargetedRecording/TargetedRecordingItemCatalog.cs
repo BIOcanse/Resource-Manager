@@ -43,6 +43,7 @@ public static class TargetedRecordingItemCatalogRules
     /// <summary>The source name a breakdown metric (not a process field) reports.</summary>
     public const string ResourceBreakdownSource = "resource-breakdown";
     public const string FramesUnit = "ms";
+    public const string FramesRateUnit = "FPS";
 
     private static readonly (string Id, string Unit)[] BreakdownMetrics =
     [
@@ -68,7 +69,14 @@ public static class TargetedRecordingItemCatalogRules
     {
         var items = new List<TargetedRecordingCatalogItem>
         {
-            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesItemId, FramesUnit, [], null)
+            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesItemId, FramesUnit, [], null,
+                TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesFpsItemId, FramesRateUnit, [], null,
+                TargetedRecordingItemUses.OverlayOnly),
+            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesOnePercentLowItemId, FramesRateUnit, [],
+                null, TargetedRecordingItemUses.OverlayOnly),
+            new(TargetedRecordingItemKinds.Frames, TargetedRecordingProfileDefaults.FramesPointOnePercentLowItemId, FramesRateUnit,
+                [], null, TargetedRecordingItemUses.OverlayOnly)
         };
         var seen = new HashSet<(string, string)>();
         foreach (var metric in metrics)
@@ -76,7 +84,7 @@ public static class TargetedRecordingItemCatalogRules
             if (!seen.Add((TargetedRecordingItemKinds.Metric, metric.Id.ToLowerInvariant()))) continue;
             items.Add(new(TargetedRecordingItemKinds.Metric, metric.Id, metric.Unit,
                 metric.CandidateSources.Select(static source => $"{source.FieldName}@{source.DeviceIdentity}")
-                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(), null));
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(), null, TargetedRecordingItemUses.Both));
         }
         foreach (var (id, unit) in BreakdownMetrics)
             Add(items, seen, id, unit, ResourceBreakdownSource);
@@ -94,12 +102,13 @@ public static class TargetedRecordingItemCatalogRules
         return items;
     }
 
-    /// <summary>Shape, catalog membership and source ownership of one item.</summary>
-    public static string? Validate(TargetedRecordingItem item, IReadOnlyList<TargetedRecordingCatalogItem> catalog)
+    /// <summary>Shape, catalog membership for the given use (recording or overlay) and source ownership of one item.</summary>
+    public static string? Validate(TargetedRecordingItem item, IReadOnlyList<TargetedRecordingCatalogItem> catalog,
+        string use = TargetedRecordingItemUses.Recording)
     {
         if (TargetedRecordingProfileShape.ValidateItem(item) is { } shape) return shape;
         var entry = Find(catalog, item.Kind, item.Id);
-        if (entry is null) return "targeted-recording-item-unknown";
+        if (entry is null || !entry.Uses.Contains(use, StringComparer.Ordinal)) return "targeted-recording-item-unknown";
         return string.Equals(item.Source, TargetedRecordingProfileDefaults.AutoSource, StringComparison.Ordinal)
             || entry.Sources.Contains(item.Source, StringComparer.OrdinalIgnoreCase)
             ? null : "targeted-recording-item-source-invalid";
@@ -113,6 +122,6 @@ public static class TargetedRecordingItemCatalogRules
         string id, string unit, string source)
     {
         if (seen.Add((TargetedRecordingItemKinds.Software, id.ToLowerInvariant())))
-            items.Add(new(TargetedRecordingItemKinds.Software, id, unit, [source], null));
+            items.Add(new(TargetedRecordingItemKinds.Software, id, unit, [source], null, TargetedRecordingItemUses.Both));
     }
 }
