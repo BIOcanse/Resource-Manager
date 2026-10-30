@@ -45,7 +45,7 @@ public sealed partial class AmdSmuPawnIoSession
                 var error = Marshal.GetLastWin32Error();
                 handle.Dispose();
                 throw new AmdSmuProviderUnavailableException(
-                    $"无法打开 PawnIO 设备：0x{HResultFromWin32(error):X8} {global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(error)}");
+                    $"无法打开 PawnIO 设备：0x{HResultFromWin32(error):X8} {(global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(error))}");
             }
 
             var executor = new DirectPawnIoDeviceExecutor(handle);
@@ -63,7 +63,7 @@ public sealed partial class AmdSmuPawnIoSession
                 {
                     var error = Marshal.GetLastWin32Error();
                     throw new AmdSmuProviderUnavailableException(
-                        $"PawnIO 加载 RyzenSMU 模块失败：0x{HResultFromWin32(error):X8} {global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(error)}");
+                        $"PawnIO 加载 RyzenSMU 模块失败：0x{HResultFromWin32(error):X8} {(global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(error))}");
                 }
 
                 return executor;
@@ -98,7 +98,7 @@ public sealed partial class AmdSmuPawnIoSession
             {
                 var error = Marshal.GetLastWin32Error();
                 throw new AmdSmuProviderUnavailableException(
-                    $"{functionName} 执行失败：0x{HResultFromWin32(error):X8} {global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(error)}");
+                    $"{functionName} 执行失败：0x{HResultFromWin32(error):X8} {(global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(error))}");
             }
 
             var output = new ulong[bytesReturned / sizeof(ulong)];

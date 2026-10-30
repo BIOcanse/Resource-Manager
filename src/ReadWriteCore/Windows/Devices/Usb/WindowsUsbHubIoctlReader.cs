@@ -36,7 +36,7 @@ public static partial class WindowsUsbHubIoctlReader
             using var hub = OpenHub(hubPath);
             if (hub.IsInvalid)
             {
-                firstError ??= $"Opening the USB hub failed: {global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(Marshal.GetLastWin32Error())}";
+                firstError ??= $"Opening the USB hub failed: {(global::ResourceManager.ReadWrite.Native.Win32ErrorText.Get(Marshal.GetLastWin32Error()))}";
                 continue;
             }
 
