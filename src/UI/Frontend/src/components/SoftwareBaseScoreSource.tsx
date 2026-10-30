@@ -41,7 +41,7 @@ export function SoftwareBaseScoreSource(props: { resolution: BaseScoreResolution
   return (
     <div class="software-base-score-source">
       <p class="software-detail-hint software-base-score-effective">{effectiveLine()}</p>
-      <ul class="software-base-score-layers" aria-label={copy.chainLabel}>
+      <ul class="software-base-score-layers" role="list" aria-label={copy.chainLabel}>
         <For each={props.resolution.layers}>
           {(layer) => {
             const deciding = () => layer.source === props.resolution.source;

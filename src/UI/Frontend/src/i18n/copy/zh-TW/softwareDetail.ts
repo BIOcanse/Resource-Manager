@@ -1,3 +1,5 @@
+import { cjkText } from "../../cjkSpacing.ts";
+
 export const zhSoftwareDetailCopy = {
   performanceOverlay: {
     tab: "浮層與監控",
@@ -36,7 +38,7 @@ export const zhSoftwareDetailCopy = {
       hint: "保護就是不凍結：不會被凍結，其他排程照常進行。基礎分達到 81 以上的軟體不再被壓制。",
       failed: "無法讀取或儲存保護設定，請重新開啟軟體詳細資料。",
       sourceLine: (source: string, state: string) => `來源：${source}（${state}）`,
-      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `預設：${defaultSource}（${defaultState}）；已由你在${source}中改為${state}`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => cjkText`預設：${defaultSource}（${defaultState}）；已由你在${source}中改為${state}`,
       state: { protected: "保護", unprotected: "不保護" },
       sources: { software_detail: "軟體詳情", report: "報告", protection_list: "保護清單", software_catalog: "軟體目錄", system_default: "系統服務預設" },
     },
@@ -107,8 +109,8 @@ export const zhSoftwareDetailCopy = {
     runtimeSwitchWarning: "執行時切換顯示卡可能導致黑屏、畫面異常或軟體崩潰。出現相容問題時，請關閉此項並重啟該軟體。",
     baseScoreHint: "軟體基礎分會作為所屬程序的預設評分。核心獨佔會讓其他軟體避開所選核心；固定後，此軟體只會使用所選核心。",
     baseScoreSource: {
-      effective: (value: string, source: string, key: string) => `目前生效：${value}，來自${source}（${key}）`,
-      effectiveProcess: (value: string, source: string) => `目前生效：${value}，來自${source}`,
+      effective: (value: string, source: string, key: string) => cjkText`目前生效：${value}，來自${source}（${key}）`,
+      effectiveProcess: (value: string, source: string) => cjkText`目前生效：${value}，來自${source}`,
       chainLabel: "基礎分來源",
       layer: (name: string, value: string) => `${name}：${value}`,
       layerWithKey: (name: string, value: string, key: string) => `${name}：${value}（${key}）`,

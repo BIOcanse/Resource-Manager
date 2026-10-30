@@ -1,3 +1,5 @@
+import { cjkText } from "../../cjkSpacing.ts";
+
 export const zhSoftwareDetailCopy = {
   performanceOverlay: {
     tab: "浮层与监控",
@@ -36,7 +38,7 @@ export const zhSoftwareDetailCopy = {
       hint: "保护就是不冻结：不会被冻结，其他调度照常进行。基础分达到 81 及以上的软件不再被压制。",
       failed: "无法读取或保存保护设置，请重新打开软件详情。",
       sourceLine: (source: string, state: string) => `来源：${source}（${state}）`,
-      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `默认：${defaultSource}（${defaultState}）；已由你在${source}中改为${state}`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => cjkText`默认：${defaultSource}（${defaultState}）；已由你在${source}中改为${state}`,
       state: { protected: "保护", unprotected: "不保护" },
       sources: { software_detail: "软件详情", report: "报告", protection_list: "保护列表", software_catalog: "软件目录", system_default: "系统服务默认" },
     },
@@ -107,8 +109,8 @@ export const zhSoftwareDetailCopy = {
     runtimeSwitchWarning: "运行时切换显卡可能导致黑屏、画面异常或软件崩溃。出现兼容问题时，请关闭此项并重启该软件。",
     baseScoreHint: "软件基础分会作为所属进程的默认评分。核心独占会让其他软件避开所选核心；固定后，此软件只会使用所选核心。",
     baseScoreSource: {
-      effective: (value: string, source: string, key: string) => `当前生效：${value}，来自${source}（${key}）`,
-      effectiveProcess: (value: string, source: string) => `当前生效：${value}，来自${source}`,
+      effective: (value: string, source: string, key: string) => cjkText`当前生效：${value}，来自${source}（${key}）`,
+      effectiveProcess: (value: string, source: string) => cjkText`当前生效：${value}，来自${source}`,
       chainLabel: "基础分来源",
       layer: (name: string, value: string) => `${name}：${value}`,
       layerWithKey: (name: string, value: string, key: string) => `${name}：${value}（${key}）`,

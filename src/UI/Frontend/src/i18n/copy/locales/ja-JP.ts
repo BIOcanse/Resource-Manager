@@ -1934,7 +1934,7 @@ const jaJpAppCopy: AppCopy = {
       hint: "保護とは凍結しないことです。このソフトウェアは凍結されず、その他のスケジューリングは通常どおり行われます。基礎スコアが 81 以上のソフトウェアは抑制されなくなります。",
       failed: "保護設定を読み取るか保存できませんでした。ソフトウェアの詳細を開き直してください。",
       sourceLine: (source: string, state: string) => `設定元：${source}（${state}）`,
-      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => `既定：${defaultSource}（${defaultState}）；${source}で「${state}」に変更済み`,
+      replacedSourceLine: (defaultSource: string, defaultState: string, source: string, state: string) => cjkText`既定：${defaultSource}（${defaultState}）；${source}で「${state}」に変更済み`,
       state: { protected: "保護", unprotected: "保護なし" },
       sources: { software_detail: "ソフトウェアの詳細", report: "レポート", protection_list: "保護リスト", software_catalog: "ソフトウェアカタログ", system_default: "システムサービスの既定" },
     },
