@@ -561,7 +561,9 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
                 resources.Publish(CreateSoftwareMemorySnapshot(41, start.AddSeconds(sample), 18));
                 Assert.Empty((await owner.RefreshReportsAsync(timeout.Token)).Reports);
             }
-            var sourceBefore = Assert.Single(await persistence.LoadAsync(timeout.Token), row =>
+            // The first sample created the source row and stored it at once; the
+            // second only moved its cursor, which waits for the counter checkpoint.
+            var sourceFirst = Assert.Single(await persistence.LoadAsync(timeout.Token), row =>
                 row.OperationKind == (uint)NativeReportPersistenceKind.Source && row.SourceHandle == firstRule.SourceHandle);
             provider.Publish(CompiledRuntimePlan.Default with { Version = 2, HostManager = nextPlan });
             for (var refresh = 0; refresh < 2; refresh++)
@@ -571,11 +573,14 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
                 Assert.Equal(start.AddSeconds(2).ToUnixTimeMilliseconds(),
                     current.Status.LastObservedAt?.ToUnixTimeMilliseconds());
             }
+            // The reload wrote the counters before importing, so storage now holds the
+            // state just before the reload: the second sample consumed once. Anything
+            // the reload consumed again would wait for the checkpoint; Stop below checks it.
             var rows = await persistence.LoadAsync(timeout.Token);
-            var sourceAfter = Assert.Single(rows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Source
+            var sourceAtReload = Assert.Single(rows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Source
                 && row.SourceHandle == firstRule.SourceHandle);
-            Assert.Equal(sourceBefore.SourceGeneration, sourceAfter.SourceGeneration);
-            Assert.Equal(sourceBefore.SourceSnapshotEpoch, sourceAfter.SourceSnapshotEpoch);
+            Assert.Equal(sourceFirst.SourceGeneration, sourceAtReload.SourceGeneration);
+            Assert.Equal(sourceFirst.SourceSnapshotEpoch + 1, sourceAtReload.SourceSnapshotEpoch);
             var observations = rows.Where(row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation
                 && row.RuleHandle == nextRule.RuleHandle && row.RuleGeneration == nextRule.RuleGeneration).ToArray();
             if (changeRule)
@@ -595,6 +600,13 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             }
             Assert.Equal("software:editor", Assert.Single(owner.ReadSoftwareIssueSnapshot().Signals).SoftwareId);
             Assert.Equal(2UL, deployment.Snapshot.ReportCoordinator.AppliedPlanEpoch);
+            // Stopping releases the last hold, which writes the counters. One epoch per
+            // fresh sample and none for the reload: the cached sample was not consumed again.
+            await owner.StopAsync(CancellationToken.None);
+            var sourceStopped = Assert.Single(await persistence.LoadAsync(timeout.Token), row =>
+                row.OperationKind == (uint)NativeReportPersistenceKind.Source && row.SourceHandle == firstRule.SourceHandle);
+            Assert.Equal(sourceAtReload.SourceGeneration, sourceStopped.SourceGeneration);
+            Assert.Equal(sourceAtReload.SourceSnapshotEpoch + (ulong)freshSamples, sourceStopped.SourceSnapshotEpoch);
         }
         finally
         {
@@ -742,6 +754,14 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             pausedSource.Release();
             await Task.WhenAll(older, newer).WaitAsync(timeout.Token);
 
+            // While the run holds the workspace, the second sample only grew the
+            // counters, so storage still has the first sample's row (count 1) until
+            // the counter checkpoint. Stopping releases the last hold, which writes
+            // the counters first; storage then holds exactly the two consumed samples.
+            Assert.Equal(1UL, Assert.Single(await persistence.LoadAsync(timeout.Token),
+                row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation
+                    && row.RuleHandle == 1037).SampleCount);
+            await owner.StopAsync(CancellationToken.None);
             // 内存两条规则各有一行观测，这里只看百分比那条的采样计数。
             var observation = Assert.Single(await persistence.LoadAsync(timeout.Token),
                 row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation
@@ -781,10 +801,13 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         }
     }
 
-    private ResourceManagerDatabase CreateDatabase()
+    // The default "...-APP" root resolves to testRoot, so every default call in a
+    // test shares one database. Another name (not ending in -APP) is its own package
+    // root and gives an independent database.
+    private ResourceManagerDatabase CreateDatabase(string application = "Resource Manager-APP")
     {
         var contentRoot = Directory.CreateDirectory(
-            Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+            Path.Combine(testRoot, application)).FullName;
         return new ResourceManagerDatabase(new TestHostEnvironment(contentRoot));
     }
 

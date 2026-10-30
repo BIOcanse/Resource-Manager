@@ -63,7 +63,13 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             Assert.Equal(0, lifetime.Active);
             Assert.Throws<ObjectDisposedException>(() => active.Session.Capacity);
             Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
-            Assert.Equal(committed.Status, owner.GetStatus());
+            // The direct call's release was the last one: it wrote the deferred
+            // counters and republished the same status before closing. The record
+            // compares UnavailableRules by reference, so compare that list by content.
+            var status = owner.GetStatus();
+            Assert.Equal(committed.Status.UnavailableRules, status.UnavailableRules);
+            Assert.Equal(committed.Status with { UnavailableRules = Array.Empty<string>() },
+                status with { UnavailableRules = Array.Empty<string>() });
             await Assert.ThrowsAsync<ObjectDisposedException>(() => owner.RefreshReportsAsync(CancellationToken.None));
         }
         finally { persistence.Release.TrySetResult(); }
@@ -603,19 +609,27 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             Assert.False(retained.Trusted);
             persistence.FailTrustedReportBatchOnce = true;
 
-            var failure = await Assert.ThrowsAsync<IOException>(() => owner.TrustReportAsync(retained.Id, CancellationToken.None));
+            // Hold the workspace, so the failed derived batch stays pending after the call.
+            await using (HoldReportWorkspace(owner))
+            {
+                var failure = await Assert.ThrowsAsync<IOException>(() => owner.TrustReportAsync(retained.Id, CancellationToken.None));
 
-            Assert.Equal("recorded-derived-report-failure", failure.Message);
-            Assert.False(persistence.FailTrustedReportBatchOnce);
-            var rows = await inner.LoadAsync(CancellationToken.None);
-            Assert.Single(rows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Trust);
-            untrustedRow = Assert.Single(rows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Report);
-            Assert.Equal(0U, untrustedRow.Flags & (uint)NativeReportPersistenceFlags.Trusted);
-            Assert.Equal(history ? 0U : (uint)NativeReportPersistenceFlags.Active,
-                untrustedRow.Flags & (uint)NativeReportPersistenceFlags.Active);
+                Assert.Equal("recorded-derived-report-failure", failure.Message);
+                Assert.False(persistence.FailTrustedReportBatchOnce);
+                var rows = await inner.LoadAsync(CancellationToken.None);
+                Assert.Single(rows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Trust);
+                untrustedRow = Assert.Single(rows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Report);
+                Assert.Equal(0U, untrustedRow.Flags & (uint)NativeReportPersistenceFlags.Trusted);
+                Assert.Equal(history ? 0U : (uint)NativeReportPersistenceFlags.Active,
+                    untrustedRow.Flags & (uint)NativeReportPersistenceFlags.Active);
+                Assert.False((await owner.GetReportAsync(retained.Id, CancellationToken.None))!.Trusted);
+                // The last release writes before closing and would replay the pending
+                // derived batch. Fail that write too, so storage keeps only the committed
+                // trust and the untrusted report, as after a crash: no same-process recovery.
+                persistence.FailNext = true;
+            }
+            Assert.False(persistence.FailNext);
             Assert.Null(ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace"));
-            Assert.False((await owner.GetReportAsync(retained.Id, CancellationToken.None))!.Trusted);
-            // Dispose with the failed derived batch pending: no same-process Refresh recovery.
         }
         Assert.Equal(untrustedRow, Assert.Single(await inner.LoadAsync(CancellationToken.None),
             row => row.OperationKind == (uint)NativeReportPersistenceKind.Report));

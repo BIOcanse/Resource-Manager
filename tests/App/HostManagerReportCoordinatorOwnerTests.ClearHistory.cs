@@ -121,7 +121,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         string trustId;
         await using (var owner = ClearHistoryOwner(persistence, resources, processes))
         {
-            await using var hold = HoldClearHistoryWorkspace(owner);
+            await using var hold = HoldReportWorkspace(owner);
             var (history, active) = await PrepareClearHistoryReports(owner, resources, processes);
             trustId = (await owner.TrustReportAsync(history.Id, CancellationToken.None))!.Id;
             var before = ReportOwnerField<HostManagerReportReadModel>(owner, "readModel")!;
@@ -172,15 +172,21 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         var processes = new StrayProcessSource();
         await using (var owner = ClearHistoryOwner(persistence, resources, processes))
         {
-            await using var hold = HoldClearHistoryWorkspace(owner);
-            var (history, active) = await PrepareClearHistoryReports(owner, resources, processes);
-            activeId = active.Id;
-            historyId = history.Id;
-            trustId = (await owner.TrustReportAsync(history.Id, CancellationToken.None))!.Id;
-            persistence.FailNext = !committedBeforeFailure;
-            persistence.FailAfterCommitNext = committedBeforeFailure;
-            await Assert.ThrowsAsync<IOException>(() => owner.ClearHistoryAsync(CancellationToken.None));
-            // Dispose without settling the pending delete, as if the service restarted here.
+            await using (HoldReportWorkspace(owner))
+            {
+                var (history, active) = await PrepareClearHistoryReports(owner, resources, processes);
+                activeId = active.Id;
+                historyId = history.Id;
+                trustId = (await owner.TrustReportAsync(history.Id, CancellationToken.None))!.Id;
+                persistence.FailNext = !committedBeforeFailure;
+                persistence.FailAfterCommitNext = committedBeforeFailure;
+                await Assert.ThrowsAsync<IOException>(() => owner.ClearHistoryAsync(CancellationToken.None));
+                // The last release writes before closing and would replay the pending
+                // delete, like the next Refresh does. Fail that write too, so the delete
+                // stays unsettled, as if the service restarted here.
+                persistence.FailNext = true;
+            }
+            Assert.False(persistence.FailNext);
         }
 
         await using var restarted = ClearHistoryOwner(persistence, new CachedResourceSource(), UnavailableClearHistoryProcesses());
@@ -195,7 +201,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
     }
 
     // Holds the workspace as a running report block does, so a failed batch stays pending in it.
-    private static IAsyncDisposable HoldClearHistoryWorkspace(HostManagerReportCoordinatorOwner owner)
+    private static IAsyncDisposable HoldReportWorkspace(HostManagerReportCoordinatorOwner owner)
         => (IAsyncDisposable)typeof(HostManagerReportCoordinatorOwner)
             .GetMethod("AcquireWorkspaceHold", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(owner, [CancellationToken.None])!;

@@ -57,9 +57,10 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
     public async Task CounterOnlyRowsWaitForTheCheckpointAndTheLastReleaseWritesThemForRestart()
     {
         var observedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
-        // Interval 0 is the write-every-plan reference for the same samples.
-        var immediate = await RunCounterSamplesAsync(observedAt, observationCheckpointIntervalMilliseconds: 0);
-        var deferred = await RunCounterSamplesAsync(observedAt, observationCheckpointIntervalMilliseconds: null);
+        // Interval 0 is the write-every-plan reference for the same samples. Each
+        // run has its own database: the second run must not import the first's rows.
+        var immediate = await RunCounterSamplesAsync(observedAt, observationCheckpointIntervalMilliseconds: 0, "immediate");
+        var deferred = await RunCounterSamplesAsync(observedAt, observationCheckpointIntervalMilliseconds: null, "deferred");
 
         Assert.Contains(immediate.HeldRows, static row => IsCounterRow(row));
         // While the run is held, cursors and growing counters wait for the checkpoint.
@@ -67,7 +68,10 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         // Releasing the last hold closes the workspace and writes them first.
         Assert.Contains(deferred.ReleaseRows, static row => row.OperationKind == (uint)NativeReportPersistenceKind.Source);
         Assert.Contains(deferred.ReleaseRows, static row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation);
-        Assert.Equal(CounterFields(immediate.Stored), CounterFields(deferred.Stored));
+        // After the release both runs store the same rows with the same counters.
+        // The two runs plan at different wall-clock times, so their command-time
+        // fields (last complete, last observed) are left out of this comparison.
+        Assert.Equal(CounterFields(immediate.Stored, commandTimes: false), CounterFields(deferred.Stored, commandTimes: false));
         // The next call imports exactly these rows and observes the same publication again.
         Assert.Equal(CounterFields(deferred.Stored), CounterFields(deferred.Restarted));
         Assert.Equal(deferred.Reports, deferred.RestartedReports);
@@ -75,9 +79,10 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
 
     private async Task<CounterSampleRun> RunCounterSamplesAsync(
         DateTimeOffset observedAt,
-        long? observationCheckpointIntervalMilliseconds)
+        long? observationCheckpointIntervalMilliseconds,
+        string database)
     {
-        var persistence = new RecordingReportStore(new NativeReportCoordinatorPersistenceStore(CreateDatabase()));
+        var persistence = new RecordingReportStore(new NativeReportCoordinatorPersistenceStore(CreateDatabase(database)));
         var resources = new CachedResourceSource();
         await using var owner = ScratchOwner(persistence, OperationScratchFixture.Create, resources, out var provider);
         Assert.Equal(600_000, provider.Current.HostManager.ReportCoordinator.HotPublish.ObservationCheckpointIntervalMilliseconds);
@@ -117,12 +122,13 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         => row.OperationKind is (uint)NativeReportPersistenceKind.Source
             or (uint)NativeReportPersistenceKind.Observation;
 
-    private static string[] CounterFields(IEnumerable<NativeReportPersistenceOperation> rows)
+    private static string[] CounterFields(IEnumerable<NativeReportPersistenceOperation> rows, bool commandTimes = true)
         => rows.Where(IsCounterRow)
-            .Select(static row => string.Join(',',
+            .Select(row => string.Join(',',
                 row.OperationKind, row.SourceHandle, row.RuleHandle, row.TargetHandle,
-                row.SourceGeneration, row.SourceSnapshotEpoch, row.SourceLastCompleteAtUtcMilliseconds, row.SourceStatus,
-                row.LastObservedAtUtcMilliseconds, row.CurrentValue, row.ValueSum, row.SampleDurationMilliseconds,
+                row.SourceGeneration, row.SourceSnapshotEpoch,
+                commandTimes ? row.SourceLastCompleteAtUtcMilliseconds : 0, row.SourceStatus,
+                commandTimes ? row.LastObservedAtUtcMilliseconds : 0, row.CurrentValue, row.ValueSum, row.SampleDurationMilliseconds,
                 row.SampleCount, row.ActiveSampleCount, row.ConsecutiveHits, row.ConsecutiveMisses, row.FactSequence))
             .Order(StringComparer.Ordinal)
             .ToArray();
