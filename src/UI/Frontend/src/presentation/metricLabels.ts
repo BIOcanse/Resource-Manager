@@ -62,7 +62,7 @@ export function resourceTableColumnLabel(id: string | null | undefined): string 
       : uiText.resourceTable.gpuUsageLabel(gpu[1]);
   }
 
-  return uiText.resourceTable.processFieldNames[normalized] ?? localizedMetricLabel(normalized);
+  return localizedMetricLabel(normalized);
 }
 
 /** 指标的量纲，以及设备总量与软件/进程分项的含义。 */
@@ -342,20 +342,9 @@ export function resourceTableCellText(
   cell: ResourceTableValue | null | undefined,
   metricId?: string | null
 ): string {
-  const current = resourceTableCurrentCellText(cell, metricId);
-  return cell?.limit !== undefined && cell.limit !== null
-    ? `${current}/${resourceTableCurrentCellText({ value: cell.limit, unit: cell.unit }, metricId)}` : current;
-}
-
-function resourceTableCurrentCellText(
-  cell: ResourceTableValue | null | undefined,
-  metricId?: string | null
-): string {
   if (!cell) {
     return "--";
   }
-  if (cell.displayValue != null && (cell.displayValue !== "" || cell.unit === "text")) return cell.displayValue;
-  if (cell.integerValue != null && (cell.unit === "count" || cell.unit === "pid")) return cell.integerValue;
   if (!cell.unit) {
     if (cell.displayValue) return cell.displayValue;
     return typeof cell.value === "number" && Number.isFinite(cell.value)

@@ -164,10 +164,7 @@ const workingSetBasis = resourceTableColumnText({ id: "memory", source: "process
 assert.ok(workingSetBasis.includes(text.nonAdditiveBasis));
 assert.ok(workingSetBasis.includes(text.memorySourceBasis.working_set_including_shared), "The additivity note does not replace the quantity description");
 assert.ok(!resourceTableColumnText({ id: "memory", source: "process_all_private_working_set_actual" }, authority).basis!.includes(text.nonAdditiveBasis));
-assert.equal(authority.find(field => field.name === "process_all_handle_count_actual")!.additiveAcrossProcesses, true,
-  "Handle counts use the backend's additive declaration for software columns");
-assert.equal(authority.find(field => field.name === "process_all_image_path_actual")!.additiveAcrossProcesses, null,
-  "An undeclared field stays undeclared");
+assert.equal(authority.find(field => field.name === "process_all_handle_count_actual")!.additiveAcrossProcesses, null, "An undeclared field stays undeclared");
 assert.deepEqual(authority.find(field => field.reading?.quantity === "engine_busy_percent" && field.engineClass === "Compute")!.gpuEngine,
   { physicalIndex: 0, engineIndex: 1 });
 // Every catalog key is written by System.Text.Json; a missing one is a changed wire, not a default.

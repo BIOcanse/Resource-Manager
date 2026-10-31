@@ -393,10 +393,11 @@ public sealed partial class ResourceMonitorDetailsSubscriptionTests
         var source = new ResourceMonitorSource(CreateSnapshot(DateTimeOffset.UnixEpoch));
         await using var app = await StartAsync(source);
         using var client = Client(app);
-        // All published fields now have table capability, including peak/text/counter fields
-        // without a machine total. Similar-looking but undeclared items must still reject atomically.
-        string[] unsupported = ["unknown.fact", "process_all_unknown_actual", "process_all_handle_count_unknown"];
-        Assert.All(unsupported, item => Assert.Null(ProcessMetricFieldRegistry.Find(item)));
+        var unsupported = ProcessMetricFieldRegistry.Definitions.Select(static field => field.Name)
+            .Where(static name => ProcessMemoryFactFields.TotalMetricId(name) is null)
+            .Append("unknown.fact")
+            .ToArray();
+        Assert.Contains("process_all_peak_private_commit_actual", unsupported);
         foreach (var item in unsupported)
         {
             foreach (var items in new[] { item, "memory.usage," + item })

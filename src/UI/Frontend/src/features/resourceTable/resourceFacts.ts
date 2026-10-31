@@ -9,7 +9,6 @@ import { resourceProcessDisplayName, resourceTableCellText } from "../../present
 import { uiText } from "../../text.ts";
 import { isResourceTableMetricColumn, resourceTableMetricId } from "./resourceTableSources.ts";
 import { resourceTableColumnsEqual } from "./resourceTableColumnIdentity.ts";
-import { decodeResourceFieldFacts, type ResourceFieldFacts } from "./resourceFieldFacts.ts";
 
 type IdentityProcess = Omit<ResourceProcessSegment, "value" | "systemPercent" | "softwarePercent">;
 type IdentitySoftware = Omit<ResourceSoftwareSegment, "value" | "systemPercent" | "processes" | "baseScore"> & { processes: IdentityProcess[] };
@@ -32,7 +31,6 @@ function isProcess(process: Pick<ResourceProcessSegment, "processId">): boolean 
 export type ResourceFactsMetric = ResourceBreakdownBar;
 
 export interface ResourceFacts {
-  fields?: ResourceFieldFacts[];
   identities?: IdentitySoftware[];
   capturedAt?: string;
   metrics: ResourceFactsMetric[];
@@ -78,7 +76,7 @@ export function decodeResourceFacts(value: unknown): ResourceFactsMonitorSnapsho
         const child = requireRecord(value, childPath);
         const identity = software.get(requireString(child.softwareId, `${childPath}.softwareId`));
         if (!identity) throw new ResponseDecodeError(`${childPath}.softwareId`, "known software identity");
-        return { ...identity, limit: child.limit === undefined ? null : nullableNumber(child, "limit", childPath), value: requireFiniteNumber(child.value, `${childPath}.value`), systemPercent: requireFiniteNumber(child.systemPercent, `${childPath}.systemPercent`),
+        return { ...identity, value: requireFiniteNumber(child.value, `${childPath}.value`), systemPercent: requireFiniteNumber(child.systemPercent, `${childPath}.systemPercent`),
           processCount: requireSafeInteger(child.processCount, `${childPath}.processCount`), baseScore: requireFiniteNumber(child.baseScore, `${childPath}.baseScore`),
           sharedValue: nullableNumber(child, "sharedValue", childPath),
           processes: requireArray(child.processes, `${childPath}.processes`).map((value, index) => {
@@ -86,7 +84,7 @@ export function decodeResourceFacts(value: unknown): ResourceFactsMonitorSnapsho
             const process = requireRecord(value, processPath);
             const identity = processes[requireSafeInteger(process.processIndex, `${processPath}.processIndex`)];
             if (!identity) throw new ResponseDecodeError(`${processPath}.processIndex`, "known process identity");
-            return { ...identity, limit: process.limit === undefined ? null : nullableNumber(process, "limit", processPath), value: requireFiniteNumber(process.value, `${processPath}.value`), systemPercent: requireFiniteNumber(process.systemPercent, `${processPath}.systemPercent`),
+            return { ...identity, value: requireFiniteNumber(process.value, `${processPath}.value`), systemPercent: requireFiniteNumber(process.systemPercent, `${processPath}.systemPercent`),
               softwarePercent: requireFiniteNumber(process.softwarePercent, `${processPath}.softwarePercent`), baseScore: requireFiniteNumber(process.baseScore, `${processPath}.baseScore`), sharedValue: nullableNumber(process, "sharedValue", processPath) };
           }) };
       }) };
@@ -104,8 +102,7 @@ export function decodeResourceFacts(value: unknown): ResourceFactsMonitorSnapsho
     group.processes.push({ ...process, baseScore: requireFiniteNumber(item.baseScore, `${path}.baseScore`) });
     if (isProcess(process)) group.processCount++;
   }
-  const facts = { capturedAt, metrics, identities: [...groups.values()],
-    fields: decodeResourceFieldFacts(frame.fields, processes, new Set(software.keys())) };
+  const facts = { capturedAt, metrics, identities: [...groups.values()] };
   return { scope: "table", capturedAt, facts };
 }
 
@@ -132,7 +129,7 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
   const attributionRows = new Map<string, ResourceTableRow>();
   const children = new Map<string, ResourceTableRow[]>();
   const metadata = new Map<string, { ids: Set<number>; names: Set<string>; paths: Set<string> }>();
-  const summary = row("summary:total", "summary", "", facts.metrics.length > 0 || (facts.fields?.length ?? 0) > 0 ? "ready" : "empty");
+  const summary = row("summary:total", "summary", "", facts.metrics.length > 0 ? "ready" : "empty");
   const cell = (value: number | null, percent: number | null, unit: string, sharedValue?: number | null): ResourceTableValue => ({ value, percent, unit, displayValue: "", sharedValue });
   for (const column of columns) if (isResourceTableMetricColumn(column.id)) {
     summary.values[column.id] = { ...cell(null, null, column.unit), displayValue: uiText.dashboard.noReading, availability: "Unavailable" };
@@ -206,11 +203,11 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
       : { ...cell(null, null, metric.unit), availability: "Unavailable", unavailableReason: metric.unavailableReason };
     for (const software of metric.software) {
       const group = ensureSoftware(software);
-      if (columnId) group.values[columnId] = { ...cell(software.value, software.systemPercent, metric.unit, software.sharedValue), limit: software.limit };
+      if (columnId) group.values[columnId] = cell(software.value, software.systemPercent, metric.unit, software.sharedValue);
       for (const process of software.processes) {
         if (isProcess(process)) {
           const child = ensureProcess(software, process);
-          if (columnId) child.values[columnId] = { ...cell(process.value, process.systemPercent, metric.unit, process.sharedValue), limit: process.limit };
+          if (columnId) child.values[columnId] = cell(process.value, process.systemPercent, metric.unit, process.sharedValue);
         } else if (mode === "process") {
           const leaf = ensureAttribution(software, process, metric);
           if (columnId) leaf.values[columnId] = cell(process.value, process.systemPercent, metric.unit, process.sharedValue);
@@ -218,33 +215,10 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
       }
     }
   }
-  const rowsByProcess = new Map<string, ResourceTableRow[]>();
-  for (const child of processRows.values()) {
-    const key = `${child.processId}:${child.processStartKey}`;
-    const rows = rowsByProcess.get(key) ?? [];
-    rows.push(child); rowsByProcess.set(key, rows);
-  }
-  for (const field of facts.fields ?? []) {
-    for (const column of columns.filter(column => column.id.startsWith("process_") && resourceTableMetricId(column) === field.field)) {
-      column.unit = field.unit;
-      column.processFieldName = field.field;
-      column.additiveAcrossProcesses = field.additiveAcrossProcesses;
-      for (const value of field.software) {
-        const group = softwareRows.get(value.softwareId);
-        if (group) group.values[column.id] = value.value;
-      }
-      for (const value of field.processes) {
-        const identity = value.identity;
-        for (const child of rowsByProcess.get(`${identity.processId}:${identity.processStartKey}`) ?? []) {
-          child.values[column.id] = value.value;
-        }
-      }
-    }
-  }
   const weights: Record<string, number> = { cpu: 1, memory: .9, disk: .45, network: .25 };
   const visibleIds = new Set(columns.map(column => column.id));
   for (const item of [summary, ...softwareRows.values(), ...processRows.values(), ...attributionRows.values()]) {
-    for (const column of columns) if ((column.source || column.id.startsWith("process_")) && !item.values[column.id]) {
+    for (const column of columns) if (column.source && !item.values[column.id]) {
       item.values[column.id] = { ...cell(null, null, column.unit), displayValue: uiText.dashboard.noReading, availability: "Unavailable" };
     }
     item.impactScore = Object.entries(item.values).reduce((sum, [key, value]) => sum + (value.percent ?? 0) * (weights[key] ?? (key.startsWith("gpu.") ? 1 : 0)), 0);
@@ -255,14 +229,7 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
   // Digit runs compare by value, as Explorer orders names: "App 2" comes before "App 10".
   const textOrder = new Intl.Collator(collationLocale, { sensitivity: "accent", numeric: true });
   const compare = (textKeys: boolean) => (left: ResourceTableRow, right: ResourceTableRow) => {
-    const key = (item: ResourceTableRow): string | number | bigint => {
-      if (textKeys && sortColumnId === "name") return item.name;
-      if (textKeys && sortColumnId === "status") return item.status;
-      if (sortColumnId === "impact") return item.impactScore;
-      const cell = item.values[sortColumnId];
-      if (cell?.integerValue != null) return BigInt(cell.integerValue);
-      return cell?.value ?? cell?.displayValue ?? -Number.MAX_VALUE;
-    };
+    const key = (item: ResourceTableRow): string | number => textKeys && sortColumnId === "name" ? item.name : textKeys && sortColumnId === "status" ? item.status : sortColumnId === "impact" ? item.impactScore : textKeys && ["user", "architecture"].includes(sortColumnId) ? item.values[sortColumnId]?.displayValue ?? "" : item.values[sortColumnId]?.value ?? -Number.MAX_VALUE;
     const a = key(left), b = key(right);
     const result = typeof a === "string" && typeof b === "string" ? textOrder.compare(a, b) : a === b ? 0 : a < b ? -1 : 1;
     return result * (direction === "asc" ? 1 : -1) || textOrder.compare(left.name, right.name);

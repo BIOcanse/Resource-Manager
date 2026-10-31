@@ -43,6 +43,17 @@ try {
     (error: unknown) => error instanceof AppSettingsRevisionConflictError
       && error.result.revision === "revision-b");
 
+  // Persisted settings with pending runtime publication must reach the store, including its new revision.
+  for (const status of [200, 202]) {
+    const pending = { ...settingsResult("revision-pending"), runtimeApplicationDisposition: "savedNotApplied",
+      runtimePlanVersion: null, runtimePublicationSequence: null, runtimeFailureCode: "runtime-plan-publication-failed" };
+    globalThis.fetch = (async () => jsonResponse(pending, status)) as typeof fetch;
+    const receipt = await saveAppSettingsPatch(client, "revision-a", { debug: { debugLogEnabled: true } });
+    assert.equal(receipt.revision, "revision-pending");
+    assert.equal(receipt.runtimeApplicationDisposition, "savedNotApplied");
+    assert.equal(receipt.runtimeFailureCode, "runtime-plan-publication-failed");
+  }
+
   globalThis.fetch = (async () => jsonResponse({
     settings: { version: "" },
     revision: "revision-c"

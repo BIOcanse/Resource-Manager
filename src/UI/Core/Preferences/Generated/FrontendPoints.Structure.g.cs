@@ -55,18 +55,10 @@ public static class @FrontendPoints
     public static readonly string @AutoForegroundPreset = @FrontendPointsValues.@__fpValue_AutoForegroundPreset;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200410007UL)]
     public static readonly ImmutableArray<string> @KeptPages = @FrontendPointsValues.@__fpValue_KeptPages;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200480000UL)]
-    public const int @TableColumnResizeKeyStep = @FrontendPointsValues.@__fpValue_TableColumnResizeKeyStep;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200480001UL)]
-    public const int @TableColumnFitPadding = @FrontendPointsValues.@__fpValue_TableColumnFitPadding;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200490000UL)]
     public static readonly global::System.Text.Json.JsonElement @DashboardLayoutDefaults = @FrontendPointsValues.@__fpValue_DashboardLayoutDefaults;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200490001UL)]
     public static readonly PointDashboardLayoutLimits @DashboardLayoutLimits = @FrontendPointsValues.@__fpValue_DashboardLayoutLimits;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200490002UL)]
-    public static readonly string @TableColumnNewVisible = @FrontendPointsValues.@__fpValue_TableColumnNewVisible;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200490003UL)]
-    public static readonly string @TableColumnSourceSelection = @FrontendPointsValues.@__fpValue_TableColumnSourceSelection;
     [global::FreedomPoint.FreedomPointBinding(0x00010002004D0000UL)]
     public static readonly string @UpdateInApp = @FrontendPointsValues.@__fpValue_UpdateInApp;
     [global::FreedomPoint.FreedomPointBinding(0x00010002004D0001UL)]

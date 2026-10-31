@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
-using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
@@ -171,11 +170,10 @@ public sealed partial class ProcessNetworkFieldCollectorTests
     {
         internal HostManagerSamplingSubscriptionTestFixture Subscriptions { get; } = new();
         internal WindowsResourceBreakdownSampler Sampler { get; }
-        internal Fixture(NetworkReader reader, Func<Process[]>? inventory = null, WindowsProcessBasicMetricReader? basic = null,
-            IRuntimeProcessAttributionCatalogProvider? attribution = null)
+        internal Fixture(NetworkReader reader, Func<Process[]>? inventory = null, WindowsProcessBasicMetricReader? basic = null)
         {
-            // Null dependencies reject accidental hardware/catalog reads unless the test owns attribution.
-            Sampler = new(null!, attribution!, new StaticResourceResidualBreakdownProvider(), null!, reader,
+            // Null dependencies make any accidental hardware or software catalog call fail this test.
+            Sampler = new(null!, null!, new StaticResourceResidualBreakdownProvider(), null!, reader,
                 Subscriptions.Provider, Subscriptions.Owner, new PdhProcessGpuReader(),
                 new InventoryReader(inventory ?? (() => [Process.GetCurrentProcess()])), basic);
         }

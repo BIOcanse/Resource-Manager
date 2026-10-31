@@ -27,10 +27,6 @@ public sealed record ProcessMetricFieldDefinition(
 {
     public string Resource => "process";
     public string Vendor => "all";
-    // Capability of this published reading, independent of any frontend view.
-    public ProcessFieldTableCapability Table => new(
-        AdditiveAcrossProcesses == true ? ["process", "software"] : ["process"],
-        [new(Name, SourceId)]);
     public bool SupportsResourceFacts => ResourceFactTotalMetricId is not null;
     [JsonIgnore] public string? ResourceFactMetricId { get; init; }
     [JsonIgnore] public bool? ResourceFactAdditive { get; init; }
@@ -46,14 +42,7 @@ public sealed record ProcessMetricFieldDefinition(
             or ProcessMetricFieldCode.PrivateCommit or ProcessMetricFieldCode.PhysicalDiskReadBytes
             or ProcessMetricFieldCode.PhysicalDiskWriteBytes or ProcessMetricFieldCode.NetworkReceiveBytes
             or ProcessMetricFieldCode.NetworkSendBytes or ProcessMetricFieldCode.NetworkReceiveRate
-            or ProcessMetricFieldCode.NetworkSendRate or ProcessMetricFieldCode.HandleCount
-            or ProcessMetricFieldCode.ThreadCount or ProcessMetricFieldCode.IoReadBytes
-            or ProcessMetricFieldCode.IoWriteBytes or ProcessMetricFieldCode.IoOtherBytes
-            or ProcessMetricFieldCode.IoOperations or ProcessMetricFieldCode.IoReadOperations
-            or ProcessMetricFieldCode.IoWriteOperations or ProcessMetricFieldCode.IoOtherOperations
-            or ProcessMetricFieldCode.IoReadOperationsRate or ProcessMetricFieldCode.IoWriteOperationsRate
-            or ProcessMetricFieldCode.IoOtherOperationsRate or ProcessMetricFieldCode.IoReadBytesRate
-            or ProcessMetricFieldCode.IoWriteBytesRate or ProcessMetricFieldCode.IoOtherBytesRate => true,
+            or ProcessMetricFieldCode.NetworkSendRate => true,
         _ => (bool?)null
     });
     public string? ResourceFactTotalMetricId => ResourceFactMetricId ?? (Code switch
@@ -82,8 +71,6 @@ public sealed record ProcessMetricFieldDefinition(
 }
 
 public sealed record ProcessMetricReading(string Resource, string Quantity);
-public sealed record ProcessFieldTableCapability(IReadOnlyList<string> Scopes, IReadOnlyList<ProcessFieldTableSource> Sources);
-public sealed record ProcessFieldTableSource(string FieldName, string SourceId);
 
 public static class ProcessMetricFieldRegistry
 {

@@ -141,7 +141,7 @@ try {
   assert.deepEqual(overview.map((entry) => [entry.softwareId, entry.enabled, entry.injectionModules]), [["game-1", true, "none"]]);
 
   // A 200 status does not turn a conflicting or uncommitted write into a successful save. Never retry the stale draft.
-  for (const disposition of ["revisionConflict", "rejectedBeforeCommit", "savedNotApplied", "notRequested", undefined]) {
+  for (const disposition of ["revisionConflict", "rejectedBeforeCommit", "notRequested", undefined]) {
     calls.length = 0;
     nextPatchReply = { status: 200, disposition };
     await assert.rejects(resetPerformanceOverlayPresentation(client, reset), disposition === "revisionConflict"
@@ -153,8 +153,8 @@ try {
   nextPatchReply = { status: 409, disposition: "rejectedBeforeCommit" };
   await assert.rejects(resetPerformanceOverlayPresentation(client, reset),
     (error: unknown) => error instanceof Error && !(error instanceof AppSettingsRevisionConflictError));
-  // Both committed partial-application dispositions are durable saves; use the backend's returned values.
-  for (const disposition of ["committedWithCapabilityConstraints", "committedWithDeliveryFailures"]) {
+  // All durable partial-application dispositions retain saved values, including pending runtime publication.
+  for (const disposition of ["committedWithCapabilityConstraints", "committedWithDeliveryFailures", "savedNotApplied"]) {
     nextPatchReply = { status: 200, disposition };
     assert.equal((await resetPerformanceOverlayPresentation(client, reset)).revision, `r${revision}`);
   }

@@ -39,8 +39,6 @@ export type ResourceFactTotalMetricId = string;
 export type ProcessMetricFieldReading = { readonly resource: string; readonly quantity: string };
 
 export interface ProcessMetricField {
-  readonly table?: { readonly scopes: readonly ("process" | "software")[];
-    readonly sources: readonly { readonly fieldName: string; readonly sourceId: string }[] };
   readonly name: string;
   readonly unit: string;
   readonly valueKind: string;
@@ -66,18 +64,6 @@ export const processFieldCatalogDecoder = defineResponseDecoder<readonly Process
     const record = requireRecord(item, path);
     if (requireString(record.resource, `${path}.resource`) !== "process") throw new ResponseDecodeError(`${path}.resource`, "process");
     return {
-      table: (() => {
-        const table = requireRecord(record.table, `${path}.table`);
-        return { scopes: requireArray(table.scopes, `${path}.table.scopes`).map((scope, index) => {
-          if (scope !== "process" && scope !== "software") throw new ResponseDecodeError(`${path}.table.scopes[${index}]`, "process or software");
-          return scope;
-        }), sources: requireArray(table.sources, `${path}.table.sources`).map((source, index) => {
-          const sourcePath = `${path}.table.sources[${index}]`;
-          const item = requireRecord(source, sourcePath);
-          return { fieldName: requireNonEmptyString(item.fieldName, `${sourcePath}.fieldName`),
-            sourceId: requireNonEmptyString(item.sourceId, `${sourcePath}.sourceId`) };
-        }) };
-      })(),
       name: requireNonEmptyString(record.name, `${path}.name`),
       unit: requireString(record.unit, `${path}.unit`),
       valueKind: requireNonEmptyString(record.valueKind, `${path}.valueKind`),

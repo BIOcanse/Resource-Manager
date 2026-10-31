@@ -30,7 +30,6 @@ interface FunctionCase<T> {
   requiresTranslation: boolean;
 }
 const appCases: FunctionCase<AppCopy>[] = [
-  { path: "resourceTableView.removeColumn", render: copy => copy.resourceTableView.removeColumn("GPU usage"), parameters: ["GPU usage"], requiresTranslation: true },
   // 插值是拉丁字母开头时，中文和日文在边界上空一格（"正在加载 GPU 调度数据"）。
   { path: "observationNotice.loading", render: copy => copy.observationNotice.loading("GPU scheduling"), parameters: ["GPU scheduling"], requiresTranslation: true },
   { path: "resourceBreakdown.etwResidualProcess", render: copy => copy.resourceBreakdown.etwResidualProcess("worker.exe"), parameters: ["worker.exe", "DXGKrnl/VidMm"], requiresTranslation: true },

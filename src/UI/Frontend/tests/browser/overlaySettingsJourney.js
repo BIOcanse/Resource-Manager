@@ -71,7 +71,7 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   await page.getByRole("dialog", { name: copy.performanceOverlay.pickerTitle }).waitFor({ state: "visible" });
   const pickerDialog = page.getByRole("dialog", { name: copy.performanceOverlay.pickerTitle });
   const count = pickerDialog.locator(".item-picker-count");
-  assert(await count.textContent() === copy.targetedReport.itemPicker.count(await pickerDialog.locator(".item-picker-row").count(), constraints.maximumItems),
+  assert(await count.textContent() === copy.performanceOverlay.picker.count(await pickerDialog.locator(".item-picker-row").count(), constraints.maximumItems),
     "The picker did not receive the backend's nondefault item limit");
   await page.getByRole("button", { name: copy.metricPicker.confirm, exact: true }).click();
   const before = await editor.locator(".overlay-settings-metrics li span").allTextContents();

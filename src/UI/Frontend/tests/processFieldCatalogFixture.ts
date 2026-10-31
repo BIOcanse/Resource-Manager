@@ -11,7 +11,6 @@ export function catalogField(name: string, valueKind: string, unit: string, sour
 } = {}) {
   const total = facts.total ?? null;
   return { name, valueKind, unit, sourceId, resource: "process", vendor: "all", supportsResourceFacts: total !== null,
-    table: { scopes: facts.additive === true ? ["process", "software"] : ["process"], sources: [{ fieldName: name, sourceId }] },
     gpuEngine: facts.gpuEngine ?? null, engineClass: facts.engineClass ?? null, sourceFieldName: facts.sourceFieldName ?? null,
     additiveAcrossProcesses: facts.additive ?? null, resourceFactTotalMetricId: total, reading: facts.reading ?? null };
 }
@@ -51,9 +50,7 @@ export function staticProcessFieldCatalog() {
       { reading: { resource: "memory", quantity: "private_commit" }, total: "virtualMemory.usage", additive: true }),
     catalogField("process_all_peak_private_commit_actual", "unsigned64", "B", "windows.process.query",
       { reading: { resource: "memory", quantity: "peak_private_commit" }, additive: false }),
-    catalogField("process_all_handle_count_actual", "unsigned64", "count", "windows.process.query", { additive: true }),
-    catalogField("process_all_thread_count_actual", "unsigned64", "count", "windows.process.query", { additive: true }),
-    catalogField("process_all_image_path_actual", "string", "text", "windows.process.query"),
+    catalogField("process_all_handle_count_actual", "unsigned64", "count", "windows.process.query"),
     catalogField("process_all_cpu_usage_actual", "float64", "%", "windows.process.cpu-interval", { total: "cpu.usage", additive: true })
   ];
 }

@@ -118,7 +118,6 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IResourceBreakdownSampler>(fixture.Sampler);
         builder.Services.AddSingleton<IResourceBreakdownPushSource>(fixture.Sampler);
-        builder.Services.AddSingleton<ISchedulingProcessFactObservationSource>(fixture.Sampler);
         builder.Services.AddSingleton<IRuntimePlanProvider>(fixture.Subscriptions.Provider);
         builder.Services.AddHostedService(_ => fixture.Sampler);
         var app = TrustedAccessEndpointTestAuthentication.Build(builder);

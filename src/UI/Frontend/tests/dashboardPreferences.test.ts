@@ -67,16 +67,3 @@ assert.equal(bound.cards.find(card => card.id === "gpu0")?.slots[0].metricId, "g
 assert.equal(dashboardMetricAvailable("gpu.0.usage", { scopeKind: "gpu", scopeKey: "gpu-a" }, moved), false);
 assert.equal(dashboardMetricAvailable("gpu.4.usage", { scopeKind: "gpu", scopeKey: "gpu-a" }, moved), true);
 console.log("Dashboard HEAD defaults, cache loss/restart/reset/scopes and stable bindings passed");
-
-// Existing widths/order/visibility/source survive adding arbitrary process columns.
-const oldColumns = [{ id: "memory", visible: false, source: "process_all_private_commit_actual" },
-  { id: "process_all_handle_count_actual", visible: true, width: 180, source: null }];
-await saveDashboardPreferences({ ...dashboardPointValues(), resourceTableColumns: oldColumns,
-  resourceTableProcessColumns: [] }, client);
-const migrated = (await readDashboardPreferences([], client)).settings;
-assert.deepEqual(migrated.resourceTableColumns.map(({ id, visible, source }) => ({ id, visible, source })),
-  oldColumns.map(({ id, visible, source }) => ({ id, visible, source })));
-assert.equal(migrated.resourceTableColumns[0].width, 110);
-assert.equal(migrated.resourceTableColumns[1].width, 180);
-assert.deepEqual(migrated.resourceTableProcessColumns, [], "An explicitly empty view is not reset");
-await resetDashboardPreferences(client);

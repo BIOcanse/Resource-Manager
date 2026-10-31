@@ -64,10 +64,6 @@
       ]
     }},
     {"group":3,"name":"dashboard-layout_limits","symbol":"DashboardLayoutLimits","type":"dashboardLimits","value":{"smallMetricLimit":6,"cardUnits":6,"minimumColumnWidth":56,"maximumColumnWidth":520,"defaultColumnWidth":100}},
-    {"group":3,"name":"table-column_resize_key_step","symbol":"TableColumnResizeKeyStep","type":"integer","min":1,"max":520,"value":12},
-    {"group":3,"name":"table-column_fit_padding","symbol":"TableColumnFitPadding","type":"integer","min":0,"max":520,"value":56},
-    {"group":3,"name":"table-column_new_visible","symbol":"TableColumnNewVisible","type":"choice","options":["on","off"],"value":"on"},
-    {"group":3,"name":"table-column_source_selection","symbol":"TableColumnSourceSelection","type":"choice","options":["automatic","first-source"],"value":"automatic"},
     {"group":4,"name":"notification-update_in_app","symbol":"UpdateInApp","type":"choice","options":["on","off"],"value":"on"},
     {"group":4,"name":"notification-update_system","symbol":"UpdateSystem","type":"choice","options":["on","off"],"value":"on"},
     {"group":4,"name":"notification-access_request_system","symbol":"AccessRequestSystem","type":"choice","options":["on","off"],"value":"on"},

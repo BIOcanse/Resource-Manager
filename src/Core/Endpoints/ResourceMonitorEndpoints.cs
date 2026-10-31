@@ -177,8 +177,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
 
     private static bool IsResourceFactsItemSupported(string item)
-        => ProcessMetricFieldRegistry.Find(item) is not null
-            || ProcessMemoryFactFields.TotalMetricId(item) is not null
+        => ProcessMemoryFactFields.TotalMetricId(item) is not null
             || ResourceBreakdownScaleModes.SupportsCapacity(item)
             || item.ToLowerInvariant() is ResourceBreakdownMetricIds.DiskIo
                 or ResourceBreakdownMetricIds.DiskRead or ResourceBreakdownMetricIds.DiskWrite

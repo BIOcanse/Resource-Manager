@@ -35,8 +35,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(global::ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks.NativeBusinessBlockDebugSnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks.BusinessBlockMetricFacts))]
     [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot))]
-    [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.ResourceFieldFacts[]))]
-    [JsonSerializable(typeof(global::ResourceManager.ReadWrite.ProcessFields.ProcessFieldTableCapability))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot>))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Domain.Control.ControlActualState>))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Infrastructure.Updates.ProductUpdateState>))]
