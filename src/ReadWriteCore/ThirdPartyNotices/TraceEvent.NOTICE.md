@@ -1,7 +1,7 @@
 # TraceEvent
 
-The ETW implementation uses Microsoft.Diagnostics.Tracing.TraceEvent 3.2.4 by
-Microsoft, through a NuGet dependency. The selected PerfView v3.2.4 project
+The ETW implementation uses Microsoft.Diagnostics.Tracing.TraceEvent 4.0.0 by
+Microsoft, through a NuGet dependency. The selected PerfView v4.0.0 project
 license is included verbatim as TraceEvent.LICENSE.txt; it carries the
 .NET Foundation and Contributors copyright. Microsoft.MIT.txt preserves the
 existing Microsoft component notice and does not replace that selected license.
@@ -9,8 +9,8 @@ existing Microsoft component notice and does not replace that selected license.
 Project and selected release:
 
 - https://github.com/microsoft/perfview
-- https://github.com/microsoft/perfview/releases/tag/v3.2.4
-- https://raw.githubusercontent.com/microsoft/perfview/v3.2.4/LICENSE.TXT
+- https://github.com/microsoft/perfview/releases/tag/v4.0.0
+- https://raw.githubusercontent.com/microsoft/perfview/v4.0.0/LICENSE.TXT
 
 The dependency package also contains native ETW and symbol helpers. Its NuGet
 build assets control which helpers are copied into a consuming application;
@@ -25,8 +25,8 @@ No per-file license exception or EULA is included in that original package.
 SupportFiles source and selected build configuration:
 
 - https://pkgs.dev.azure.com/dnceng/public/_packaging/perfview-build/nuget/v3/index.json
-- https://raw.githubusercontent.com/microsoft/perfview/v3.2.4/Nuget.config
-- https://raw.githubusercontent.com/microsoft/perfview/v3.2.4/src/Directory.Packages.props
+- https://raw.githubusercontent.com/microsoft/perfview/v4.0.0/Nuget.config
+- https://raw.githubusercontent.com/microsoft/perfview/v4.0.0/src/Directory.Packages.props
 
 The final distribution review must retain these notices alongside the actual
 dependency assets. This records the original package's license declaration;

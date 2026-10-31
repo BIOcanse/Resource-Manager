@@ -38,10 +38,10 @@ unmodified .NET/WebView2 notices, are part of this acknowledgement too.
 
 | Component | Version | License and accompanying text |
 | --- | --- | --- |
-| solid-js | 1.9.13 | MIT; `SolidJS.LICENSE.txt`; Copyright (c) 2016-2025 Ryan Carniato |
-| lucide-solid | 1.24.0 | ISC plus Feather-derived MIT notices; retain all of `Lucide.LICENSE.txt`; Lucide Icons and Contributors, Cole Bemis |
-| seroval | 1.5.4 | MIT; `Seroval.LICENSE.txt`; Copyright (c) 2025 Alexis Munsayac |
-| seroval-plugins | 1.5.4 | MIT; `SerovalPlugins.LICENSE.txt`; Copyright (c) 2025 Alexis Munsayac |
+| solid-js | 1.9.18 | MIT; `SolidJS.LICENSE.txt`; Copyright (c) 2016-2025 Ryan Carniato |
+| lucide-solid | 1.65.0 | ISC plus Feather-derived MIT notices; retain all of `Lucide.LICENSE.txt`; Lucide Icons and Contributors, Cole Bemis |
+| seroval | 1.6.12 | MIT; `Seroval.LICENSE.txt`; Copyright (c) 2025 Alexis Munsayac |
+| seroval-plugins | 1.6.12 | MIT; `SerovalPlugins.LICENSE.txt`; Copyright (c) 2025 Alexis Munsayac |
 | uplot | 1.6.32 | MIT; `uPlot.LICENSE.txt`; Copyright (c) 2022 Leon Sorokin |
 | csstype | 3.2.3 | MIT; `CSSType.LICENSE.txt`; Copyright (c) 2017-2018 Fredrik Nicol; type-only dependency |
 
@@ -61,27 +61,27 @@ the runtime MIT text are additionally retained in `DotNet.LICENSE.txt`.
 
 | Package | Version | License / material |
 | --- | --- | --- |
-| Microsoft.Data.Sqlite | 10.0.9 | MIT; dependency metapackage |
-| Microsoft.Data.Sqlite.Core | 10.0.9 | MIT; Microsoft.Data.Sqlite.dll |
-| Microsoft.Diagnostics.NETCore.Client | 0.2.510501 | MIT; diagnostics client |
-| Microsoft.Diagnostics.Tracing.TraceEvent | 3.2.4 | MIT package; managed ETW library; see native-helper review below |
-| Microsoft.Extensions.Hosting.WindowsServices | 10.0.11 | MIT; Windows service hosting |
-| System.ServiceProcess.ServiceController | 10.0.11 | MIT; service controller |
-| System.Management | 10.0.2 | MIT; Windows management |
-| System.CodeDom | 10.0.2 | MIT; CodeDom runtime dependency |
+| Microsoft.Data.Sqlite | 10.0.14 | MIT; dependency metapackage |
+| Microsoft.Data.Sqlite.Core | 10.0.14 | MIT; Microsoft.Data.Sqlite.dll |
+| Microsoft.Diagnostics.NETCore.Client | 0.2.661903 | MIT; diagnostics client |
+| Microsoft.Diagnostics.Tracing.TraceEvent | 4.0.0 | MIT package; managed ETW library; see native-helper review below |
+| Microsoft.Extensions.Hosting.WindowsServices | 10.0.14 | MIT; Windows service hosting |
+| System.ServiceProcess.ServiceController | 10.0.14 | MIT; service controller |
+| System.Management | 10.0.14 | MIT; Windows management |
+| System.CodeDom | 10.0.14 | MIT; CodeDom runtime dependency |
 | System.Reflection.TypeExtensions | 4.7.0 | MIT; resolved placeholder-only package for the current net10 target, not a separate shipped DLL |
-| SQLitePCLRaw.bundle_e_sqlite3 | 3.0.3 | Apache-2.0; dependency metapackage |
-| SQLitePCLRaw.config.e_sqlite3 | 3.0.3 | Apache-2.0; native-provider configuration |
-| SQLitePCLRaw.core | 3.0.3 | Apache-2.0; low-level SQLite bindings |
-| SQLitePCLRaw.provider.e_sqlite3 | 3.0.3 | Apache-2.0; native SQLite provider |
-| SourceGear.sqlite3 | 3.50.4.5 | Native SQLite; public-domain declaration in `SQLite.LICENSE.txt` |
-| Microsoft.Web.WebView2 | 1.0.2792.45 | SDK: BSD-3-Clause; `WebView2.LICENSE.txt` and unmodified `WebView2.NOTICE.txt` |
+| SQLitePCLRaw.bundle_e_sqlite3 | 3.0.5 | Apache-2.0; dependency metapackage |
+| SQLitePCLRaw.config.e_sqlite3 | 3.0.5 | Apache-2.0; native-provider configuration |
+| SQLitePCLRaw.core | 3.0.5 | Apache-2.0; low-level SQLite bindings |
+| SQLitePCLRaw.provider.e_sqlite3 | 3.0.5 | Apache-2.0; native SQLite provider |
+| SQLite | 3.53.4 | Native SQLite 3.53.4 (package formerly SourceGear.sqlite3); public-domain declaration in `SQLite.LICENSE.txt` |
+| Microsoft.Web.WebView2 | 1.0.4314.35 | SDK: BSD-3-Clause; `WebView2.LICENSE.txt` and unmodified `WebView2.NOTICE.txt` |
 
 SQLitePCLRaw core/provider: Copyright 2014-2025 SourceGear, LLC.
 SQLitePCLRaw bundle/config: Copyright 2014-2026 SourceGear, LLC.
 The full license is in `Apache-2.0.txt`. These are unmodified NuGet dependencies;
 no separate NOTICE file was present in the inspected SQLitePCLRaw packages.
-SourceGear.sqlite3 package attribution: Copyright 2014-2025 SourceGear, LLC;
+SQLite package attribution: Copyright 2014-2026 SourceGear, LLC;
 the packaged license separately states that SQLite itself is public domain.
 
 `DotNet.THIRD-PARTY-NOTICES.txt` is the unmodified, byte-identical notice supplied

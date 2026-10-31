@@ -15,11 +15,11 @@
   <ItemGroup>
     <Compile Include="../../sdk/csharp/ResourceManager.Adapter.SharedMemory/SharedMemoryRegion.cs" Link="Helpers/SharedMemoryRegion.cs" />
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
-    <PackageReference Include="System.Management" Version="10.0.2" />
-    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.4" />
+    <PackageReference Include="System.Management" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="4.0.0" />
     <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.48" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <EmbeddedResource Include="Windows/Metrics/Configuration/default.metric-snapshot.json"
                       LogicalName="ResourceManager.ReadWrite.Windows.Metrics.Configuration.Default" />
     <None Include="README.md" Pack="true" PackagePath="/" />

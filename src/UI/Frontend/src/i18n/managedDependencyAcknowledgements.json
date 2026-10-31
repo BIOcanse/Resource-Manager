@@ -8,7 +8,7 @@
   },
   {
     "name": "coverlet.collector",
-    "version": "6.0.4",
+    "version": "10.1.0",
     "license": "MIT",
     "authors": "tonerdo",
     "kind": "test dependency"
@@ -64,238 +64,238 @@
   },
   {
     "name": "Microsoft.Bcl.AsyncInterfaces",
-    "version": "10.0.0",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "adapter build dependency"
   },
   {
     "name": "Microsoft.CodeCoverage",
-    "version": "17.14.1",
+    "version": "18.11.0",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Data.Sqlite.Core",
-    "version": "10.0.9",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
   },
   {
     "name": "Microsoft.Data.Sqlite",
-    "version": "10.0.9",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
   },
   {
     "name": "Microsoft.Diagnostics.NETCore.Client",
-    "version": "0.2.510501",
+    "version": "0.2.661903",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
   },
   {
     "name": "Microsoft.Diagnostics.Tracing.TraceEvent",
-    "version": "3.2.4",
+    "version": "4.0.0",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
   },
   {
     "name": "Microsoft.Extensions.Configuration.Abstractions",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Configuration.Binder",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Configuration.CommandLine",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Configuration.EnvironmentVariables",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Configuration.FileExtensions",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Configuration.Json",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Configuration.UserSecrets",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Configuration",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.DependencyInjection.Abstractions",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.DependencyInjection",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Diagnostics.Abstractions",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Diagnostics",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.FileProviders.Abstractions",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.FileProviders.Physical",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.FileSystemGlobbing",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Hosting.Abstractions",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Hosting.WindowsServices",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
   },
   {
     "name": "Microsoft.Extensions.Hosting",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Logging.Abstractions",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Logging.Configuration",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Logging.Console",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Logging.Debug",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Logging.EventLog",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Logging.EventSource",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Logging",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Options.ConfigurationExtensions",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Options",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Extensions.Primitives",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
@@ -309,7 +309,7 @@
   },
   {
     "name": "Microsoft.NET.Test.Sdk",
-    "version": "17.14.1",
+    "version": "18.11.0",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
@@ -330,21 +330,21 @@
   },
   {
     "name": "Microsoft.TestPlatform.ObjectModel",
-    "version": "17.14.1",
+    "version": "18.11.0",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.TestPlatform.TestHost",
-    "version": "17.14.1",
+    "version": "18.11.0",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
   },
   {
     "name": "Microsoft.Web.WebView2",
-    "version": "1.0.2792.45",
+    "version": "1.0.4314.35",
     "license": "LICENSE.txt",
     "authors": "Microsoft",
     "kind": "managed dependency"
@@ -365,7 +365,7 @@
   },
   {
     "name": "Microsoft.Windows.SDK.BuildTools",
-    "version": "10.0.26100.9169",
+    "version": "10.0.28000.2957",
     "authors": "Microsoft",
     "license": "https://aka.ms/WinSDKLicenseURL",
     "kind": "managed dependency"
@@ -379,28 +379,28 @@
   },
   {
     "name": "Microsoft.WindowsAppSDK.Base",
-    "version": "2.0.4",
+    "version": "2.6.4",
     "authors": "Microsoft",
     "license": "file: license.txt",
     "kind": "managed dependency"
   },
   {
     "name": "Microsoft.WindowsAppSDK.Foundation",
-    "version": "2.3.12",
+    "version": "2.6.4",
     "authors": "Microsoft",
     "license": "file: license.txt",
     "kind": "managed dependency"
   },
   {
     "name": "Microsoft.WindowsAppSDK.InteractiveExperiences",
-    "version": "2.1.9",
+    "version": "2.6.4",
     "authors": "Microsoft",
     "license": "file: license.txt",
     "kind": "managed dependency"
   },
   {
     "name": "Microsoft.WindowsAppSDK.WinUI",
-    "version": "2.3.9",
+    "version": "2.6.4",
     "authors": "Microsoft",
     "license": "file: license.txt",
     "kind": "managed dependency"
@@ -425,13 +425,6 @@
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "adapter reference pack"
-  },
-  {
-    "name": "Newtonsoft.Json",
-    "version": "13.0.3",
-    "license": "MIT",
-    "authors": "James Newton-King",
-    "kind": "test dependency"
   },
   {
     "name": "RAMSPDToolkit-NDD",
@@ -567,36 +560,36 @@
     "kind": "managed dependency"
   },
   {
-    "name": "SourceGear.sqlite3",
-    "version": "3.50.4.5",
-    "license": "LICENSE.txt",
+    "name": "SQLite",
+    "version": "3.53.4",
     "authors": "Eric Sink",
+    "license": "LICENSE.txt",
     "kind": "managed dependency"
   },
   {
     "name": "SQLitePCLRaw.bundle_e_sqlite3",
-    "version": "3.0.3",
+    "version": "3.0.5",
     "license": "Apache-2.0",
     "authors": "Eric Sink",
     "kind": "managed dependency"
   },
   {
     "name": "SQLitePCLRaw.config.e_sqlite3",
-    "version": "3.0.3",
+    "version": "3.0.5",
     "license": "Apache-2.0",
     "authors": "Eric Sink",
     "kind": "managed dependency"
   },
   {
     "name": "SQLitePCLRaw.core",
-    "version": "3.0.3",
+    "version": "3.0.5",
     "license": "Apache-2.0",
     "authors": "Eric Sink",
     "kind": "managed dependency"
   },
   {
     "name": "SQLitePCLRaw.provider.e_sqlite3",
-    "version": "3.0.3",
+    "version": "3.0.5",
     "license": "Apache-2.0",
     "authors": "Eric Sink",
     "kind": "managed dependency"
@@ -610,14 +603,14 @@
   },
   {
     "name": "System.CodeDom",
-    "version": "10.0.2",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
   },
   {
     "name": "System.Diagnostics.EventLog",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
@@ -631,7 +624,7 @@
   },
   {
     "name": "System.IO.Pipelines",
-    "version": "10.0.0",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "adapter build dependency"
@@ -645,7 +638,7 @@
   },
   {
     "name": "System.Management",
-    "version": "10.0.2",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
@@ -673,21 +666,21 @@
   },
   {
     "name": "System.ServiceProcess.ServiceController",
-    "version": "10.0.11",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
   },
   {
     "name": "System.Text.Encodings.Web",
-    "version": "10.0.0",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "adapter build dependency"
   },
   {
     "name": "System.Text.Json",
-    "version": "10.0.0",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "adapter build dependency"
@@ -743,7 +736,7 @@
   },
   {
     "name": "xunit.runner.visualstudio",
-    "version": "3.1.4",
+    "version": "4.0.1",
     "license": "Apache-2.0",
     "authors": "jnewkirk,bradwilson",
     "kind": "test dependency"

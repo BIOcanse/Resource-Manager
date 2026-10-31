@@ -1,4 +1,6 @@
-import ts from "typescript";
+// typescript-api is the 6.x compiler under an alias: TypeScript 7.x ships no JavaScript compiler API (its package exports
+// only the version). Remove the alias when 7.x ships a stable compiler API: port this file to it and drop typescript-api.
+import ts from "typescript-api";
 import { realpathSync, existsSync, writeFileSync } from "node:fs";
 import { resolve, dirname, relative, join } from "node:path";
 import { createRequire } from "node:module";
@@ -57,7 +59,7 @@ for (const source of program.getSourceFiles()) {
 const require = createRequire(import.meta.url);
 writeFileSync(resolve(process.argv[2]), JSON.stringify({
   nodeExecutable: process.execPath, nodeVersion: process.version,
-  typeScriptModule: require.resolve("typescript"), typeScriptVersion: ts.version,
+  typeScriptModule: require.resolve("typescript-api"), typeScriptVersion: ts.version,
   dependencyRoot, contextFiles: [...files].sort()
 }, null, 2));
 console.log(`Captured ${files.size} real TypeScript dependency/context files.`);

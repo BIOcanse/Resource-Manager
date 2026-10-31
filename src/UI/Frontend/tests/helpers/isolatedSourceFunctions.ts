@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import ts from "typescript";
+// typescript-api is the 6.x compiler under an alias: TypeScript 7.x ships no JavaScript compiler API (its package exports
+// only the version). Remove the alias when 7.x ships a stable compiler API: port this file to it and drop typescript-api.
+import ts from "typescript-api";
 
 // Exercise pure functions embedded in TSX without loading the page or its UI runtime.
 export function isolatedSourceFunctions(

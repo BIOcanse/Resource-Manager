@@ -8,6 +8,6 @@
     <RootNamespace>ResourceManager.Adapter</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.Text.Json" Version="10.0.0" />
+    <PackageReference Include="System.Text.Json" Version="10.0.14" />
   </ItemGroup>
 </Project>

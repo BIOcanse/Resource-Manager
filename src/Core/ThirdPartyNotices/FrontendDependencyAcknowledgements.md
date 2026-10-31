@@ -2,7 +2,7 @@
 
 Thank you to every author, contributor and maintainer in the resolved frontend dependency graph. This includes build tools, optional platform packages, type definitions and dependencies whose licenses do not require attribution. In particular, permissive and 0BSD terms are not a reason to omit thanks.
 
-Source: `src/UI/Frontend/package-lock.json`. This list records all 110 non-root package paths, including nested copies and optional packages. A listing does not imply that all code is in the shipped JavaScript. Required original license texts remain separate and unmodified.
+Source: `src/UI/Frontend/package-lock.json`. This list records all 125 non-root package paths, including nested copies and optional packages. A listing does not imply that all code is in the shipped JavaScript. Required original license texts remain separate and unmodified.
 
 | Package | Version | Declared license | Role |
 | --- | --- | --- | --- |
@@ -24,39 +24,53 @@ Source: `src/UI/Frontend/package-lock.json`. This list records all 110 non-root 
 | @babel/template | 7.29.7 | MIT | Build dependency |
 | @babel/traverse | 7.29.7 | MIT | Build dependency |
 | @babel/types | 7.29.7 | MIT | Build dependency |
-| @emnapi/wasi-threads | 1.2.3 | MIT | Optional build dependency |
 | @jridgewell/gen-mapping | 0.3.13 | MIT | Build dependency |
 | @jridgewell/remapping | 2.3.5 | MIT | Build dependency |
 | @jridgewell/resolve-uri | 3.1.2 | MIT | Build dependency |
 | @jridgewell/sourcemap-codec | 1.5.5 | MIT | Build dependency |
 | @jridgewell/trace-mapping | 0.3.31 | MIT | Build dependency |
-| @napi-rs/wasm-runtime | 1.1.6 | MIT | Optional build dependency |
-| @oxc-project/types | 0.137.0 | MIT | Build dependency |
-| @rolldown/binding-android-arm64 | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-darwin-arm64 | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-darwin-x64 | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-freebsd-x64 | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-linux-arm-gnueabihf | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-linux-arm64-gnu | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-linux-arm64-musl | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-linux-ppc64-gnu | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-linux-s390x-gnu | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-linux-x64-gnu | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-linux-x64-musl | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-openharmony-arm64 | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-wasm32-wasi | 1.1.3 | MIT | Optional build dependency |
-| @emnapi/core | 1.11.1 | MIT | Optional build dependency |
-| @emnapi/runtime | 1.11.1 | MIT | Optional build dependency |
-| @emnapi/wasi-threads | 1.2.2 | MIT | Optional build dependency |
-| @rolldown/binding-win32-arm64-msvc | 1.1.3 | MIT | Optional build dependency |
-| @rolldown/binding-win32-x64-msvc | 1.1.3 | MIT | Optional build dependency |
+| @oxc-project/types | 0.156.0 | MIT | Build dependency |
+| @rolldown/binding-android-arm-eabi | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-android-arm64 | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-darwin-arm64 | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-darwin-x64 | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-freebsd-x64 | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-linux-arm-gnueabihf | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-linux-arm64-gnu | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-linux-arm64-musl | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-linux-ppc64-gnu | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-linux-s390x-gnu | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-linux-x64-gnu | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-linux-x64-musl | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-openharmony-arm64 | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-win32-arm64-msvc | 1.2.16 | MIT | Optional build dependency |
+| @rolldown/binding-win32-x64-msvc | 1.2.16 | MIT | Optional build dependency |
 | @rolldown/pluginutils | 1.0.1 | MIT | Build dependency |
-| @tybys/wasm-util | 0.10.3 | MIT | Optional build dependency |
 | @types/babel__core | 7.20.5 | MIT | Build dependency |
 | @types/babel__generator | 7.27.0 | MIT | Build dependency |
 | @types/babel__template | 7.4.4 | MIT | Build dependency |
 | @types/babel__traverse | 7.28.0 | MIT | Build dependency |
-| @types/node | 24.10.1 | MIT | Build dependency |
+| @types/node | 25.2.3 | MIT | Build dependency |
+| @typescript/typescript-aix-ppc64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-darwin-arm64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-darwin-x64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-freebsd-arm64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-freebsd-x64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-linux-arm | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-linux-arm64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-linux-loong64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-linux-mips64el | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-linux-ppc64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-linux-riscv64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-linux-s390x | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-linux-x64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-netbsd-arm64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-netbsd-x64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-openbsd-arm64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-openbsd-x64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-sunos-x64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-win32-arm64 | 7.0.2 | Apache-2.0 | Optional build dependency |
+| @typescript/typescript-win32-x64 | 7.0.2 | Apache-2.0 | Optional build dependency |
 | babel-plugin-jsx-dom-expressions | 0.40.7 | MIT | Build dependency |
 | @babel/helper-module-imports | 7.18.6 | MIT | Build dependency |
 | babel-preset-solid | 1.9.12 | MIT | Build dependency |
@@ -78,42 +92,42 @@ Source: `src/UI/Frontend/package-lock.json`. This list records all 110 non-root 
 | js-tokens | 4.0.0 | MIT | Build dependency |
 | jsesc | 3.1.0 | MIT | Build dependency |
 | json5 | 2.2.3 | MIT | Build dependency |
-| lightningcss | 1.32.0 | MPL-2.0 | Build dependency |
-| lightningcss-android-arm64 | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-darwin-arm64 | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-darwin-x64 | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-freebsd-x64 | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-linux-arm-gnueabihf | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-linux-arm64-gnu | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-linux-arm64-musl | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-linux-x64-gnu | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-linux-x64-musl | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-win32-arm64-msvc | 1.32.0 | MPL-2.0 | Optional build dependency |
-| lightningcss-win32-x64-msvc | 1.32.0 | MPL-2.0 | Optional build dependency |
+| lightningcss | 1.33.0 | MPL-2.0 | Build dependency |
+| lightningcss-android-arm64 | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-darwin-arm64 | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-darwin-x64 | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-freebsd-x64 | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-linux-arm-gnueabihf | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-linux-arm64-gnu | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-linux-arm64-musl | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-linux-x64-gnu | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-linux-x64-musl | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-win32-arm64-msvc | 1.33.0 | MPL-2.0 | Optional build dependency |
+| lightningcss-win32-x64-msvc | 1.33.0 | MPL-2.0 | Optional build dependency |
 | lru-cache | 5.1.1 | ISC | Build dependency |
-| lucide-solid | 1.24.0 | ISC | Frontend dependency |
+| lucide-solid | 1.65.0 | ISC | Frontend dependency |
 | merge-anything | 5.1.7 | MIT | Build dependency |
 | ms | 2.1.3 | MIT | Build dependency |
-| nanoid | 3.3.15 | MIT | Build dependency |
+| nanoid | 3.3.20 | MIT | Build dependency |
 | node-releases | 2.0.50 | MIT | Build dependency |
 | parse5 | 7.3.0 | MIT | Build dependency |
 | picocolors | 1.1.1 | ISC | Build dependency |
-| picomatch | 4.0.4 | MIT | Build dependency |
-| postcss | 8.5.16 | MIT | Build dependency |
-| rolldown | 1.1.3 | MIT | Build dependency |
+| picomatch | 4.0.7 | MIT | Build dependency |
+| postcss | 8.5.32 | MIT | Build dependency |
+| rolldown | 1.2.16 | MIT | Build dependency |
 | semver | 6.3.1 | ISC | Build dependency |
-| seroval | 1.5.4 | MIT | Frontend dependency |
-| seroval-plugins | 1.5.4 | MIT | Frontend dependency |
-| solid-js | 1.9.13 | MIT | Frontend dependency |
+| seroval | 1.6.12 | MIT | Frontend dependency |
+| seroval-plugins | 1.6.12 | MIT | Frontend dependency |
+| solid-js | 1.9.18 | MIT | Frontend dependency |
 | solid-refresh | 0.6.3 | MIT | Build dependency |
-| source-map-js | 1.2.1 | BSD-3-Clause | Build dependency |
+| source-map-js | 1.2.2 | BSD-3-Clause | Build dependency |
 | tinyglobby | 0.2.17 | MIT | Build dependency |
-| tslib | 2.8.1 | 0BSD | Optional build dependency |
-| typescript | 6.0.3 | Apache-2.0 | Build dependency |
+| typescript | 7.0.2 | Apache-2.0 | Build dependency |
+| typescript-api | 6.0.3 | Apache-2.0 | Build dependency |
 | undici-types | 7.16.0 | MIT | Build dependency |
 | update-browserslist-db | 1.2.3 | MIT | Build dependency |
 | uplot | 1.6.32 | MIT | Frontend dependency |
-| vite | 8.1.0 | MIT | Build dependency |
-| vite-plugin-solid | 2.11.12 | MIT | Build dependency |
+| vite | 8.3.5 | MIT | Build dependency |
+| vite-plugin-solid | 2.11.15 | MIT | Build dependency |
 | vitefu | 1.1.3 | MIT | Build dependency |
 | yallist | 3.1.1 | ISC | Build dependency |

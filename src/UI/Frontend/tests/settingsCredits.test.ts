@@ -108,7 +108,7 @@ const lucide = readFileSync(new URL("Lucide.LICENSE.txt", notices), "utf8");
 assert.match(lucide, /ISC License/);
 assert.match(lucide, /MIT License/);
 assert.match(lucide, /Cole Bemis/);
-assert.match(inventory, /SQLitePCLRaw\.core \| 3\.0\.3 \| Apache-2\.0/);
+assert.match(inventory, /SQLitePCLRaw\.core \| 3\.0\.5 \| Apache-2\.0/);
 
 for (const language of ["zh-CN", "en-US"] as const) {
   const copy = createSettingsLocale(language);

@@ -66,14 +66,15 @@
     "test:core-lease": "node --experimental-transform-types --conditions=browser tests/runtimePolicySaveResultDecoder.test.ts && node --experimental-transform-types --conditions=browser tests/cpuSourcesApi.test.ts && node --experimental-transform-types --conditions=browser tests/coreLeaseCopy.test.ts && node --experimental-transform-types --conditions=browser tests/coreLeaseApi.test.ts"
   },
   "dependencies": {
-    "lucide-solid": "^1.24.0",
-    "solid-js": "1.9.13",
+    "lucide-solid": "^1.65.0",
+    "solid-js": "1.9.18",
     "uplot": "1.6.32"
   },
   "devDependencies": {
-    "@types/node": "24.10.1",
-    "typescript": "6.0.3",
-    "vite": "8.1.0",
-    "vite-plugin-solid": "2.11.12"
+    "@types/node": "25.2.3",
+    "typescript": "7.0.2",
+    "typescript-api": "npm:typescript@6.0.3",
+    "vite": "8.3.5",
+    "vite-plugin-solid": "2.11.15"
   }
 }

@@ -1,4 +1,6 @@
-import ts from "typescript";
+// typescript-api is the 6.x compiler under an alias: TypeScript 7.x ships no JavaScript compiler API (its package exports
+// only the version). Remove the alias when 7.x ships a stable compiler API: port this file to it and drop typescript-api.
+import ts from "typescript-api";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

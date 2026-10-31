@@ -2,9 +2,9 @@
 # Tray-state disk I/O of the RM processes: a real-time Kernel-File session filtered to their PIDs (no ETL on disk),
 # aggregated by process, operation and file, plus per-process IO counter deltas. Run elevated.
 # A whole-system kernel file trace is not used: 120 s of it was 8.5 GB on this machine.
-# -TraceEventLib defaults to TraceEvent 3.2.4 in the NuGet package cache (NUGET_PACKAGES, else ~/.nuget/packages).
+# -TraceEventLib defaults to TraceEvent 4.0.0 in the NuGet package cache (NUGET_PACKAGES, else ~/.nuget/packages).
 param([Parameter(Mandatory)][string]$OutDir, [int]$Seconds = 120, [int]$Top = 40,
-    [string]$TraceEventLib = (Join-Path ($env:NUGET_PACKAGES ? $env:NUGET_PACKAGES : (Join-Path $HOME '.nuget\packages')) 'microsoft.diagnostics.tracing.traceevent\3.2.4\lib\netstandard2.0'))
+    [string]$TraceEventLib = (Join-Path ($env:NUGET_PACKAGES ? $env:NUGET_PACKAGES : (Join-Path $HOME '.nuget\packages')) 'microsoft.diagnostics.tracing.traceevent\4.0.0\lib\netstandard2.0'))
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Run elevated (Start-Process -Verb RunAs): a kernel provider session needs it.'
 }

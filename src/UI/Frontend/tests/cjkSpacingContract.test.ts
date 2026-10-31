@@ -1,7 +1,9 @@
 // 中文（简、繁）和日文文案的中西文间距：一条规则，见 src/i18n/cjkSpacing.ts。
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import ts from "typescript";
+// typescript-api is the 6.x compiler under an alias: TypeScript 7.x ships no JavaScript compiler API (its package exports
+// only the version). Remove the alias when 7.x ships a stable compiler API: port this file to it and drop typescript-api.
+import ts from "typescript-api";
 import { cjkLatinGaps, cjkText } from "../src/i18n/cjkSpacing.ts";
 
 // 标签只在插值紧贴汉字或假名的边界上补空格。

@@ -239,7 +239,7 @@ Use `using var query = owner.CreateInformationQuery(text, limit, canReadPath);` 
 
 `DeviceTopologyCaptureOwner.CreateDriverInformation()` uses the original present-device SetupAPI/CM inventory and capture owner. Its backend exposes current bound INF provider and DriverVer date declarations per exact PNP instance. The date is not installation time. Empty, retired and unavailable declarations remain distinct. `BorrowSubscriptionCapture()` uses this same owner and publication, without a second inventory or current cache.
 
-SQLite dependencies use the product's original Microsoft.Data.Sqlite 10.0.9 and SQLitePCLRaw bundle 3.0.3 graph; the package includes their managed and native license materials in `third-party/sqlite`.
+SQLite dependencies use the product's original Microsoft.Data.Sqlite 10.0.14 and SQLitePCLRaw bundle 3.0.5 graph; the package includes their managed and native license materials in `third-party/sqlite`.
 
 ## OS declarations, DiskIO and explicit MFT results
 
