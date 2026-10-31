@@ -10,6 +10,8 @@ $ErrorActionPreference = 'Stop'
 $contract = 'resource-manager-final-image-v1'
 $manifestFileName = 'resource-manager-final-image.manifest.json'
 $root = [System.IO.Path]::GetFullPath($RootDirectory)
+. (Join-Path $PSScriptRoot '../ResourceManager.DesktopLayout.ps1')
+$desktopLayout = Get-ResourceManagerDesktopLayout
 $manifestPath = Join-Path $root $manifestFileName
 
 function Get-TreeFiles {
@@ -165,6 +167,7 @@ foreach ($entry in $manifestEntries) {
 }
 
 $requiredPaths = @(
+    ($desktopLayout.DirectoryName + '/' + $desktopLayout.ResidentExecutableName)
     'ResourceManager/ResourceManager.exe'
     'ResourceManager/wwwroot/index.html'
     'ResourceManager/GpuPlacementShim/ResourceManager.GpuWindowAction.exe'
@@ -177,6 +180,9 @@ $requiredPaths = @(
     'ResourceManagerSessionAgent/ResourceManager.SessionAgent.exe'
     'runtime-modules.json'
 )
+if ([string]$manifest.layout.desktopExecutable -cne ($desktopLayout.DirectoryName + '/' + $desktopLayout.ResidentExecutableName)) {
+    throw 'Final image resident layout is invalid.'
+}
 foreach ($requiredPath in $requiredPaths) {
     if (-not $manifestByPath.ContainsKey($requiredPath)) {
         throw "Final image is missing a required payload: $requiredPath"

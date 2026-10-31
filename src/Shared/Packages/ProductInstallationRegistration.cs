@@ -42,7 +42,8 @@ public static class ProductInstallationRegistration
         {
             SetOwned(key, root);
             key.SetValue("BackendPath", Path.Combine(root, "Bin", "ResourceManager", "ResourceManager.exe"));
-            key.SetValue("NativeUiPath", Path.Combine(root, "Bin", "ResourceManagerNativeUi", "ResourceManager.NativeUi.exe"));
+            key.SetValue("NativeUiPath", ProductDesktopLayout.WindowFor(root));
+            key.SetValue("DesktopPath", ProductDesktopLayout.ResidentFor(root));
             key.SetValue("LauncherPath", Path.Combine(root, "Bin", "ResourceManagerLauncher", "ResourceManager.Launcher.exe"));
             key.SetValue("StartPath", Path.Combine(UpdateManagerPaths.InstalledDirectory(root), "Start.exe"));
             key.SetValue("UpdateManagerPath", UpdateManagerPaths.InstalledExecutable(root));

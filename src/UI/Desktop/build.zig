@@ -1,4 +1,5 @@
 const std = @import("std");
+const product_layout = @import("src/generated/product_layout.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -17,11 +18,11 @@ pub fn build(b: *std.Build) void {
     const structure = b.createModule(.{ .root_source_file = b.path("src/generated/points.structure.zig"), .target = target, .optimize = optimize });
     values.addImport("desktop_points_structure", structure);
     const ledger = if (b.option([]const u8, "ledger-root", "Generate-DesktopLedger.ps1 WorkRoot")) |root| ledgerModules(b, root, target, optimize) else null;
-    const module = b.createModule(.{ .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize });
+    const module = b.createModule(.{ .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize, .strip = optimize != .debug });
     const states = stateItems(b, control, target, optimize, state_names);
     module.addImport("desktop_state_items", states);
     configure(module, control, win32_c, values, ledger);
-    const executable = b.addExecutable(.{ .name = "ResourceManager.Desktop", .root_module = module });
+    const executable = b.addExecutable(.{ .name = std.fs.path.stem(product_layout.ResidentExecutableName), .root_module = module, .win32_manifest = b.path("../Core/app.manifest") });
     if (ledger) |inputs| executable.step.dependOn(&inputs.verify.step);
     executable.subsystem = .windows;
     b.installArtifact(executable);

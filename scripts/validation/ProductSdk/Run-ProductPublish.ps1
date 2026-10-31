@@ -251,6 +251,10 @@ if($Stage -eq 'ProductBackend') {
     Save-Json @(Get-TreeManifest (Join-Path $artifacts 'freedom-point-generated')) (Join-Path $RunDirectory 'freedom-point-generated-output.json')
     Save-Json @{accepted=$true;backendRun=$RunDirectory;artifacts=$artifacts;candidate=$candidate;backendDirectory=$backend;nativeContext=$nativeContextPath;frontendContext=(Join-Path $TaskRoot 'frontend-product-context.json')} (Join-Path $TaskRoot 'product-publish-context.json')
 } elseif($Stage -eq 'ProductShell') {
+    $desktopWork=Join-Path $ScratchRoot 'desktop-work'
+    $desktop=Join-Path $desktopWork 'publish'
+    & (Join-Path $repo 'scripts/build/Publish-DesktopResident.ps1') -WorkRoot $desktopWork -OutputDirectory $desktop *> (Join-Path $RunDirectory 'desktop-publish.log')
+    Save-Json @(Get-TreeManifest (Join-Path $desktop 'bin')) (Join-Path $RunDirectory 'desktop-output.json')
     $nativeUi=Invoke-Publish 'src/UI/Core/ResourceManager.NativeUi.csproj' 'native-ui' @('-p:PublishSingleFile=false')
     $launcher=Invoke-Publish 'src/UI/Launcher/ResourceManager.Launcher.csproj' 'launcher' @('-p:PublishSingleFile=true')
     $sessionAgent=Invoke-Publish 'src/SessionAgent/ResourceManager.SessionAgent.csproj' 'session-agent' @('-p:PublishSingleFile=true')
@@ -259,6 +263,7 @@ if($Stage -eq 'ProductBackend') {
     $product|Add-Member -NotePropertyName nativeUiDirectory -NotePropertyValue $nativeUi -Force
     $product|Add-Member -NotePropertyName launcherDirectory -NotePropertyValue $launcher -Force
     $product|Add-Member -NotePropertyName sessionAgentDirectory -NotePropertyValue $sessionAgent -Force
+    $product|Add-Member -NotePropertyName desktopDirectory -NotePropertyValue (Join-Path $desktop 'bin') -Force
     Save-Json $product (Join-Path $TaskRoot 'product-publish-context.json')
 } else {
     $shellReceipt=Get-Content (Join-Path $product.shellRun 'bounded-result.json') -Raw|ConvertFrom-Json
@@ -268,8 +273,11 @@ if($Stage -eq 'ProductBackend') {
         $current=@(Get-TreeManifest (Join-Path $candidate $entry.name))
         if(@(Compare-Object $before $current -Property relativePath,length,sha256).Count){throw 'Published candidate changed before composition.'}
     }
+    $desktopBefore=Get-Content (Join-Path $product.shellRun 'desktop-output.json') -Raw|ConvertFrom-Json
+    $desktopCurrent=@(Get-TreeManifest $product.desktopDirectory)
+    if(@(Compare-Object $desktopBefore $desktopCurrent -Property relativePath,length,sha256).Count){throw 'Published resident changed before composition.'}
     $image=Join-Path $ScratchRoot 'final-image'
-    & (Join-Path $repo 'scripts/release/New-ResourceManagerFinalImage.ps1') -BackendDirectory $product.backendDirectory -NativeUiDirectory $product.nativeUiDirectory -LauncherDirectory $product.launcherDirectory -SessionAgentDirectory $product.sessionAgentDirectory -FrontendNativeRoot $native.properties.PerformanceOverlayRoot -OutputDirectory $image *> (Join-Path $RunDirectory 'final-image-build.log')
+    & (Join-Path $repo 'scripts/release/New-ResourceManagerFinalImage.ps1') -BackendDirectory $product.backendDirectory -NativeUiDirectory $product.nativeUiDirectory -DesktopDirectory $product.desktopDirectory -LauncherDirectory $product.launcherDirectory -SessionAgentDirectory $product.sessionAgentDirectory -FrontendNativeRoot $native.properties.PerformanceOverlayRoot -OutputDirectory $image *> (Join-Path $RunDirectory 'final-image-build.log')
     $imageFiles = @(Get-TreeManifest $image)
     foreach ($item in @($native.outputs | Where-Object { $_.path -match '[\\/]PerformanceOverlay[\\/]' })) {
         $copies = @($imageFiles | Where-Object { $_.relativePath.StartsWith('ResourceManagerNativeUi/Modules/', [StringComparison]::Ordinal) -and [IO.Path]::GetFileName($_.path) -ieq [IO.Path]::GetFileName($item.path) })

@@ -301,6 +301,7 @@ public sealed class PackageSwitchTransactionTests
             "Install.exe", "Start.exe", "UninstallResourceManager.exe", "Bin/ResourceManager/ResourceManager.exe",
             "Bin/ResourceManager/wwwroot/index.html",
             "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
+            "Bin/" + ProductDesktopLayout.DirectoryName + "/" + ProductDesktopLayout.ResidentExecutableName,
             "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe",
             "Bin/ResourceManagerSessionAgent/ResourceManager.SessionAgent.exe", "runtime-modules.json",
             "Internal/UpdateManager/ResourceManager.UpdateManager.exe"

@@ -2,6 +2,7 @@ const std = @import("std");
 const w = @import("win32.zig");
 const c = w.c;
 const instance = @import("shell/instance.zig");
+const layout = @import("generated/product_layout.zig");
 pub const Options = struct {
     package_root: []const u8 = "",
     window_executable: []const u8 = "",
@@ -24,6 +25,11 @@ pub const Options = struct {
         var index: usize = 1;
         while (index < @as(usize, @intCast(count))) : (index += 1) {
             const argument = try self.copyWide(std.mem.span(@as([*:0]const u16, @ptrCast(args[index]))));
+            // IFEO appends taskmgr.exe and its arguments after the owned marker.
+            if (std.mem.eql(u8, argument, layout.TaskManagerCommandMarker)) {
+                self.command = .show;
+                break;
+            }
             if (std.mem.eql(u8, argument, "--background-startup")) {
                 self.command = .ensure_running;
                 continue;
@@ -54,11 +60,10 @@ pub const Options = struct {
         if (length == 0 or length >= image.len) return error.ExecutablePath;
         const executable = try self.copyWide(image[0..length]);
         const directory = std.fs.path.dirname(executable) orelse return error.ExecutablePath;
-        // Packaging step 6 supplies the product paths. Development uses explicit
-        // arguments; the sole default layout is siblings beside this executable.
-        if (self.package_root.len == 0) self.package_root = directory;
-        if (self.window_executable.len == 0) self.window_executable = try self.format("{s}\\ResourceManager.NativeUi.exe", .{directory});
-        if (self.backend_path.len == 0) self.backend_path = try self.format("{s}\\ResourceManager.exe", .{directory});
+        // The installed image is <package>/Bin/<UI directory>; development passes explicit paths.
+        if (self.package_root.len == 0) self.package_root = std.fs.path.dirname(std.fs.path.dirname(directory) orelse return error.ExecutablePath) orelse return error.ExecutablePath;
+        if (self.window_executable.len == 0) self.window_executable = try self.format("{s}\\{s}", .{ directory, layout.WindowExecutableName });
+        if (self.backend_path.len == 0) self.backend_path = try self.format("{s}\\Bin\\{s}\\{s}", .{ self.package_root, layout.BackendDirectoryName, layout.BackendExecutableName });
         if (self.backend_port == 0) return error.InvalidPort;
     }
     pub fn format(self: *Options, comptime pattern: []const u8, args: anytype) ![]const u8 {

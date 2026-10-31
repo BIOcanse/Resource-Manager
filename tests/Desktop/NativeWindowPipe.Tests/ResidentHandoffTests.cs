@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.IO.Pipes;
 using System.Text;
 using ResourceManager.NativeUi;
+using ResourceManager.Shared.Localization;
 
 namespace ResourceManager.NativeWindow.Tests;
 
@@ -9,6 +10,25 @@ namespace ResourceManager.NativeWindow.Tests;
 // Every test uses its own pipe and mutex name and a fixture executable, never the installed resident.
 public sealed class ResidentHandoffTests
 {
+    [Fact]
+    public void MissingResidentAndUnansweredPipeShowTheExistingLocalizedLaunchFailure()
+    {
+        foreach (var language in AppLanguage.SupportedIds)
+        {
+            var text = ToolText.For(language);
+            var shown = new List<string>();
+            var missing = new ResidentHandoff(TestPipeName(), Path.Combine(FixtureRoot(), "missing", ResidentHandoff.ResidentExecutableName));
+            Assert.Equal(2, ResidentHandoffRunner.Run(() => missing.Run("show"), text, shown.Add));
+            Assert.False(string.IsNullOrWhiteSpace(Assert.Single(shown)));
+            shown.Clear();
+            Assert.Equal(2, ResidentHandoffRunner.Run(() => ResidentHandoffOutcome.Unanswered, text, shown.Add));
+            Assert.Equal(text.Format(text.LauncherFailedFormat, text.LauncherUiStartFailed), Assert.Single(shown));
+            shown.Clear();
+            Assert.Equal(0, ResidentHandoffRunner.Run(() => ResidentHandoffOutcome.Signaled, text, shown.Add));
+            Assert.Empty(shown);
+        }
+    }
+
     [Fact]
     public async Task RunningResidentReceivesExactlyTheCommandOnItsPipe()
     {

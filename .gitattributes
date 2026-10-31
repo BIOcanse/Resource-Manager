@@ -34,6 +34,8 @@ src/Shared/StateItems/state-items.json text eol=lf
 /artifacts/sdk/** -text
 /artifacts/disk-sdk/** -text
 /sdk/freedom-point/** -text
+# Cross-language projection is compared byte-for-byte by its generator.
+src/UI/Desktop/src/generated/product_layout.zig text eol=lf
 
 # Preserve the upstream npm license text used by the acknowledgement check.
 /src/Core/ThirdPartyNotices/Picocolors.LICENSE.txt text eol=lf

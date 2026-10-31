@@ -14,9 +14,12 @@ function New-ResourceManagerDirectoryRegistration {
     }
     $backend = Join-Path $root 'Bin\ResourceManager\ResourceManager.exe'
     $ui = Join-Path $root 'Bin\ResourceManagerNativeUi\ResourceManager.NativeUi.exe'
+    . (Join-Path $PSScriptRoot 'ResourceManager.DesktopLayout.ps1')
+    $desktopLayout = Get-ResourceManagerDesktopLayout
+    $resident = Join-Path $root ('Bin/' + $desktopLayout.DirectoryName + '/' + $desktopLayout.ResidentExecutableName)
     $launcher = Join-Path $root 'Bin\ResourceManagerLauncher\ResourceManager.Launcher.exe'
     if (-not $Unregister) {
-        foreach ($path in @($backend, $ui, $launcher, $scriptPath,
+        foreach ($path in @($backend, $ui, $resident, $launcher, $scriptPath,
                 (Join-Path $root 'Bin\ResourceManager\wwwroot\index.html'))) {
             if (-not [IO.File]::Exists($path)) { throw "Required package file is missing: $path" }
         }
@@ -34,7 +37,7 @@ function New-ResourceManagerDirectoryRegistration {
         [pscustomobject]@{
             Key = 'Software\ResourceManager'
             Values = [ordered]@{
-                BackendPath = $backend; NativeUiPath = $ui
+                BackendPath = $backend; NativeUiPath = $ui; DesktopPath = $resident
                 LauncherPath = $launcher
                 ServiceName = 'ResourceManager.Service'; AppUserModelId = 'ResourceManager.Desktop'
             }

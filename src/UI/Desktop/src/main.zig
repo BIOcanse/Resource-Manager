@@ -965,6 +965,22 @@ const Host = struct {
             return;
         }
         if (self.options.command == .exit) return;
+        // Match NativeUi's process-scoped PackageUseGuard. Maintenance keeps this file outside the
+        // switched payload. A custom instance pipe is the explicit isolated development/test entry.
+        var package_use: c.HANDLE = null;
+        defer {
+            if (package_use != null) _ = c.CloseHandle(package_use);
+        }
+        if (std.mem.eql(u8, self.options.pipe_name, @import("shell/instance.zig").default_pipe)) {
+            const guard_text = try self.options.format("{s}\\Internal\\Management\\package-use.guard", .{self.options.package_root});
+            const guard_len = try std.unicode.utf8ToUtf16Le(&self.package_wide, guard_text);
+            self.package_wide[guard_len] = 0;
+            package_use = c.CreateFileW(&self.package_wide, c.GENERIC_READ, c.FILE_SHARE_READ, null, c.OPEN_EXISTING, c.FILE_ATTRIBUTE_NORMAL, null);
+            if (package_use == c.INVALID_HANDLE_VALUE) {
+                package_use = null;
+                return error.PackageMaintenanceOrMissingGuard;
+            }
+        }
         self.package_len = try std.unicode.utf8ToUtf16Le(&self.package_wide, self.options.package_root);
         self.package_wide[self.package_len] = 0;
         self.backend_len = try std.unicode.utf8ToUtf16Le(&self.backend_wide, self.options.backend_path);
@@ -1020,6 +1036,7 @@ const Host = struct {
             .reader_capacity = 16,
             .reader_bytes = 2048,
             .worker_arena_bytes = points.worker_arena_bytes,
+            .reason_text_capacity = points.reason_text_capacity,
             .shutdown_item = I.ProgramShuttingDown,
             .host_blocks = &topology.host_blocks,
         }, .{ .context = self, .start = startCallback, .stop = stopCallback, .complete = completeCallback, .log = logCallback, .item_changed = itemCallback });

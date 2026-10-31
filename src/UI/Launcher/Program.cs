@@ -31,6 +31,17 @@ internal static class Program
             if ((resultIndex >= 0 && (!serviceOnly || resultPipe is null))
                 || ordinaryArguments.Any(arg => !AllowedArguments.Contains(arg, StringComparer.OrdinalIgnoreCase)))
                 throw new ArgumentException(text.LauncherInvalidArguments);
+            if (registration is null && !serviceOnly)
+            {
+                // Portable first run registers this verified directory through the same installer lifecycle.
+                var package = ReleasePackageLayout.Verify(ProductDesktopLayout.PackageRootFromUiDirectory(AppContext.BaseDirectory));
+                using var setup = Process.Start(new ProcessStartInfo(package.Installer)
+                {
+                    UseShellExecute = true, Verb = "runas", Arguments = "--register-directory", WorkingDirectory = package.Root
+                }) ?? throw new InvalidOperationException(text.InstallerChildFailed);
+                setup.WaitForExit();
+                if (setup.ExitCode != 0) throw new InvalidOperationException(text.LauncherServiceStartFailed);
+            }
             if (!serviceOnly && registration?.GetValue("InstallRoot") is string root
                 && UpdateManagerCommand.GetPendingRecoveryDescriptions(root).Count > 0)
             {
@@ -59,12 +70,8 @@ internal static class Program
                 () =>
                 {
                     // requireAdministrator: unelevated, ShellExecute asks for UAC consent; elevated, it inherits this token.
-                    using var frontend = Process.Start(new ProcessStartInfo(installation.NativeUi)
-                    {
-                        UseShellExecute = true,
-                        Arguments = background ? "--background-startup" : "--show-existing",
-                        WorkingDirectory = Path.GetDirectoryName(installation.NativeUi)!
-                    }) ?? throw new InvalidOperationException(text.LauncherUiStartFailed);
+                    using var frontend = Process.Start(installation.ResidentStartInfo(background))
+                        ?? throw new InvalidOperationException(text.LauncherUiStartFailed);
                 }, text.LauncherServiceStartFailed);
             return 0;
         }

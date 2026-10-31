@@ -7,6 +7,9 @@ param(
     [string]$NativeUiDirectory,
 
     [Parameter(Mandatory = $true)]
+    [string]$DesktopDirectory,
+
+    [Parameter(Mandatory = $true)]
     [string]$LauncherDirectory,
 
     [Parameter(Mandatory = $true)]
@@ -27,6 +30,9 @@ $contract = 'resource-manager-final-image-v1'
 $manifestFileName = 'resource-manager-final-image.manifest.json'
 $backend = [System.IO.Path]::GetFullPath($BackendDirectory)
 $nativeUi = [System.IO.Path]::GetFullPath($NativeUiDirectory)
+$desktop = [System.IO.Path]::GetFullPath($DesktopDirectory)
+. (Join-Path $PSScriptRoot '../ResourceManager.DesktopLayout.ps1')
+$desktopLayout = Get-ResourceManagerDesktopLayout
 $launcher = [System.IO.Path]::GetFullPath($LauncherDirectory)
 $sessionAgent = [System.IO.Path]::GetFullPath($SessionAgentDirectory)
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
@@ -188,6 +194,7 @@ if (-not [System.IO.Directory]::Exists($backend)) {
 if (-not [System.IO.Directory]::Exists($nativeUi)) {
     throw "Native UI publish directory does not exist: $nativeUi"
 }
+if (-not [System.IO.Directory]::Exists($desktop)) { throw "Desktop publish directory does not exist: $desktop" }
 if (-not [System.IO.Directory]::Exists($launcher)) {
     throw "Launcher publish directory does not exist: $launcher"
 }
@@ -200,6 +207,8 @@ if ([string]::IsNullOrWhiteSpace($outputParent) -or
     throw "Final image output path is unsafe: $output"
 }
 if ((Test-IsSameOrDescendant -Candidate $output -Ancestor $backend) -or
+    (Test-IsSameOrDescendant -Candidate $output -Ancestor $desktop) -or
+    (Test-IsSameOrDescendant -Candidate $desktop -Ancestor $output) -or
     (Test-IsSameOrDescendant -Candidate $output -Ancestor $nativeUi) -or
     (Test-IsSameOrDescendant -Candidate $output -Ancestor $launcher) -or
     (Test-IsSameOrDescendant -Candidate $output -Ancestor $sessionAgent) -or
@@ -218,6 +227,7 @@ $requiredInputs = @(
     (Join-Path $backend 'GpuPlacementShim\ResourceManager.GpuPlacementExternal.exe')
     (Join-Path $backend 'GpuPlacementShim\ResourceManager.GpuRendererExternal.exe')
     (Join-Path $nativeUi 'ResourceManager.NativeUi.exe')
+    (Join-Path $desktop $desktopLayout.ResidentExecutableName)
     (Join-Path $nativeUi 'InstallWebView2Runtime.ps1')
     (Join-Path $launcher 'ResourceManager.Launcher.exe')
     (Join-Path $sessionAgent 'ResourceManager.SessionAgent.exe')
@@ -244,6 +254,10 @@ try {
     [void][System.IO.Directory]::CreateDirectory($staging)
     Copy-DirectoryTree -Source $backend -Destination (Join-Path $staging 'ResourceManager')
     Copy-DirectoryTree -Source $nativeUi -Destination (Join-Path $staging 'ResourceManagerNativeUi')
+    # Only the executable is a product payload; Zig caches, tests and debug artifacts stay in the workset.
+    $resident = Join-Path $desktop $desktopLayout.ResidentExecutableName
+    if (([IO.File]::GetAttributes($resident) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Desktop input is a reparse point.' }
+    [IO.File]::Copy($resident, (Join-Path $staging ($desktopLayout.DirectoryName + '/' + $desktopLayout.ResidentExecutableName)))
     Copy-DirectoryTree -Source $launcher -Destination (Join-Path $staging 'ResourceManagerLauncher')
     Copy-DirectoryTree -Source $sessionAgent -Destination (Join-Path $staging 'ResourceManagerSessionAgent')
     & (Join-Path $PSScriptRoot 'Write-ResourceManagerRuntimeModules.ps1') -ImageRoot $staging -SourceRoot $FrontendModuleSourceRoot -FrontendNativeRoot $FrontendNativeRoot
@@ -273,6 +287,7 @@ try {
         layout = [ordered]@{
             backendDirectory = 'ResourceManager'
             nativeUiDirectory = 'ResourceManagerNativeUi'
+            desktopExecutable = $desktopLayout.DirectoryName + '/' + $desktopLayout.ResidentExecutableName
             launcherDirectory = 'ResourceManagerLauncher'
             sessionAgentDirectory = 'ResourceManagerSessionAgent'
         }

@@ -6,6 +6,21 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class LauncherWorkflowTests
 {
+    [Theory]
+    [InlineData(false, "--show-existing")]
+    [InlineData(true, "--background-startup")]
+    public void InstalledUiEntryStartsTheResidentWithTheManifestEnforced(bool background, string flag)
+    {
+        var root = Path.GetFullPath("fixture installation");
+        var layout = ResourceManager.Shared.Packages.ReleasePackageLayout.ForRoot(root, "fixture");
+        var installation = new DesktopInstallation(root, layout.Backend, layout.NativeUi, layout.InternalLauncher);
+        var start = installation.ResidentStartInfo(background);
+        Assert.Equal(layout.Resident, start.FileName);
+        Assert.NotEqual(layout.NativeUi, start.FileName);
+        Assert.Equal(flag, start.Arguments);
+        Assert.True(start.UseShellExecute);
+        Assert.Equal(Path.GetDirectoryName(layout.Resident), start.WorkingDirectory);
+    }
     private static readonly string Backend = Path.GetFullPath("owned-backend.exe");
 
     [Theory]

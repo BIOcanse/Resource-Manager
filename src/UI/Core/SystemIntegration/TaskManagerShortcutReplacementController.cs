@@ -2,9 +2,9 @@ namespace ResourceManager.NativeUi.SystemIntegration;
 
 /// <summary>
 /// The IFEO half of the Task Manager replacement: when the page switches the replacement on or off, the window
-/// process (it runs elevated) registers or removes this program as taskmgr.exe's Debugger, so a cold Task Manager
+/// process (it runs elevated) registers or removes the resident as taskmgr.exe's Debugger, so a cold Task Manager
 /// launch opens Resource Manager. The Ctrl+Shift+Esc hook is the resident's TaskManagerReplacement block.
-/// The Debugger command still names this program with <c>--show-existing</c>; started that way it hands <c>show</c>
+/// The Debugger command names the resident with <c>--show-existing</c>; old NativeUi entries still hand off
 /// to the resident (<see cref="ResidentHandoff"/>). Deletion condition of that compatibility: see
 /// <see cref="LoginStartupRegistration"/>.
 /// </summary>
@@ -25,7 +25,7 @@ internal sealed class TaskManagerShortcutReplacementController
 
     private static string CreateDebuggerCommand()
     {
-        var executablePath = Environment.ProcessPath ?? Application.ExecutablePath;
+        var executablePath = ResourceManager.Shared.Packages.ProductDesktopLayout.ResidentBesideWindow(AppContext.BaseDirectory);
         return $"\"{executablePath}\" --show-existing {TaskManagerLaunchReplacementRegistry.OwnedCommandMarker}";
     }
 }

@@ -107,5 +107,6 @@ pub fn Bind(comptime values: anytype) type {
         pub const @"overlay_font_family": []const u8 = values.@"overlay_font_family";
         pub const @"overlay_pixel_capacity_bytes": i32 = values.@"overlay_pixel_capacity_bytes";
         pub const @"ledger_tick_interval_ms": i32 = values.@"ledger_tick_interval_ms";
+        pub const @"reason_text_capacity": i32 = values.@"reason_text_capacity";
     };
 }

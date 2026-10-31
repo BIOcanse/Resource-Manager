@@ -62,7 +62,7 @@ public sealed record ReleasePackageLayout(string Root, string Version, string Ba
             throw new InvalidDataException("A release package must not contain the installed management directory.");
         var layout = ForRoot(root, version);
         _ = PackageRuntimeCatalog.Load(root);
-        foreach (var path in new[] { layout.Backend, layout.NativeUi, layout.InternalLauncher,
+        foreach (var path in new[] { layout.Backend, layout.NativeUi, layout.Resident, layout.InternalLauncher,
                      layout.SessionAgent, layout.Start, layout.Installer, Path.Combine(root, PackageRuntimeCatalog.ModuleManifestName), Path.Combine(root, UninstallationPlan.ExecutableName), UpdateManagerPaths.PackagedExecutable(root),
                      Path.Combine(root, "Bin", "ResourceManager", "wwwroot", "index.html") })
             if (!File.Exists(path)) throw new InvalidDataException($"发行包缺少程序：{path}");
@@ -70,10 +70,11 @@ public sealed record ReleasePackageLayout(string Root, string Version, string Ba
     }
 
     public string SessionAgent => Path.Combine(Root, "Bin", "ResourceManagerSessionAgent", "ResourceManager.SessionAgent.exe");
+    public string Resident => ProductDesktopLayout.ResidentFor(Root);
 
     public static ReleasePackageLayout ForRoot(string root, string version) => new(root, version,
         Path.Combine(root, "Bin", "ResourceManager", "ResourceManager.exe"),
-        Path.Combine(root, "Bin", "ResourceManagerNativeUi", "ResourceManager.NativeUi.exe"),
+        ProductDesktopLayout.WindowFor(root),
         Path.Combine(root, "Bin", "ResourceManagerLauncher", "ResourceManager.Launcher.exe"),
         Path.Combine(root, "Start.exe"), Path.Combine(root, "Install.exe"));
 

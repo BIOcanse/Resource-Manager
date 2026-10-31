@@ -18,6 +18,7 @@ public sealed class FinalImagePackagingContractTests
         var launcher = Path.Combine(root, "launcher");
         var image = Path.Combine(root, "image");
         var sessionAgent = Path.Combine(root, "session-agent");
+        var desktop = Path.Combine(root, "desktop");
         try
         {
             foreach (var relative in new[]
@@ -30,6 +31,7 @@ public sealed class FinalImagePackagingContractTests
                      })
                 WriteFixtureFile(backend, relative);
             WriteFixtureFile(ui, "ResourceManager.NativeUi.exe");
+            WriteFixtureFile(desktop, ResourceManager.Shared.Packages.ProductDesktopLayout.ResidentExecutableName);
             WriteFixtureFile(ui, "InstallWebView2Runtime.ps1");
             WriteFixtureFile(launcher, "ResourceManager.Launcher.exe");
             WriteFixtureFile(sessionAgent, "ResourceManager.SessionAgent.exe");
@@ -40,7 +42,7 @@ public sealed class FinalImagePackagingContractTests
             File.WriteAllText(layerPath, "{\"layer\":{\"name\":\"VK_LAYER_RESOURCE_MANAGER_performance_overlay\",\"library_path\":\"ResourceManager.VulkanPerformanceOverlayLayer.dll\"}}");
 
             var built = await RunScriptAsync(builder, "-BackendDirectory", backend,
-                "-NativeUiDirectory", ui, "-LauncherDirectory", launcher, "-SessionAgentDirectory", sessionAgent,
+                "-NativeUiDirectory", ui, "-DesktopDirectory", desktop, "-LauncherDirectory", launcher, "-SessionAgentDirectory", sessionAgent,
                 "-FrontendModuleSourceRoot", root, "-OutputDirectory", image);
             Assert.True(built.ExitCode == 0, built.Error + built.Output);
             var validated = await RunScriptAsync(validator, "-RootDirectory", image);
@@ -48,7 +50,7 @@ public sealed class FinalImagePackagingContractTests
             using (var result = JsonDocument.Parse(validated.Output))
             {
                 Assert.True(result.RootElement.GetProperty("Valid").GetBoolean());
-                Assert.Equal(14, result.RootElement.GetProperty("PayloadFileCount").GetInt32());
+                Assert.Equal(15, result.RootElement.GetProperty("PayloadFileCount").GetInt32());
             }
 
             using (var catalog = JsonDocument.Parse(File.ReadAllText(Path.Combine(image, "runtime-modules.json"))))
@@ -150,7 +152,7 @@ public sealed class FinalImagePackagingContractTests
                 try
                 {
                     var rejected = await RunScriptAsync(builder, "-BackendDirectory", backend,
-                        "-NativeUiDirectory", ui, "-LauncherDirectory", launcher, "-SessionAgentDirectory", sessionAgent,
+                        "-NativeUiDirectory", ui, "-DesktopDirectory", desktop, "-LauncherDirectory", launcher, "-SessionAgentDirectory", sessionAgent,
                         "-FrontendModuleSourceRoot", root,
                         "-OutputDirectory", Path.Combine(root, $"rejected-{Guid.NewGuid():N}"));
                     Assert.NotEqual(0, rejected.ExitCode);

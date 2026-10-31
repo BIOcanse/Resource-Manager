@@ -48,9 +48,17 @@ internal static class InstallerWorkflow
         finally { if (Directory.Exists(stage)) RemoveOwnTree(stage, parent, "ResourceManager.installing-"); }
     }
 
-    private static void InstallStaged(string stage, PackageLayout target)
+    internal static void RegisterDirectory(PackageLayout package)
     {
-        InstallationRegistry.RequireVacant(target);
+        _ = PackageLayout.Verify(package.Root);
+        InstallationRegistry.RequireVacant(package, verifiedExistingDirectory: true);
+        PackageUserDirectoryAccess.Prepare(package.Root);
+        InstallStaged(package.Root, package, existingDirectory: true);
+    }
+
+    private static void InstallStaged(string stage, PackageLayout target, bool existingDirectory = false)
+    {
+        InstallationRegistry.RequireVacant(target, existingDirectory);
         var parent = Path.GetDirectoryName(target.Root)!;
         var managerRoot = UpdateManagerPaths.InstalledDirectory(target.Root);
         var managerExecutable = UpdateManagerPaths.InstalledExecutable(target.Root);
@@ -60,19 +68,18 @@ internal static class InstallerWorkflow
         var registryStarted = false;
         var shortcutStarted = false;
         var managerShortcutStarted = false;
-        var retainedArchive = UserDataArchive.RetainedArchiveAt(target.Root);
+        var retainedArchive = existingDirectory ? null : UserDataArchive.RetainedArchiveAt(target.Root);
         var retainedFolder = Path.Combine(parent, "ResourceManager.installing-retained-" + Guid.NewGuid().ToString("N"));
         var retainedMoved = false;
         try
         {
-            InstallationRegistry.RequireVacant(target);
+            InstallationRegistry.RequireVacant(target, existingDirectory);
             if (retainedArchive is not null)
             {
                 Directory.Move(target.Root, retainedFolder);
                 retainedMoved = true;
             }
-            Directory.Move(stage, target.Root);
-            promoted = true;
+            if (!existingDirectory) { Directory.Move(stage, target.Root); promoted = true; }
             if (retainedArchive is not null)
             {
                 var archived = Path.Combine(retainedFolder, Path.GetFileName(retainedArchive));
@@ -116,7 +123,7 @@ internal static class InstallerWorkflow
                 if (serviceAttempted) WindowsServiceRegistration.DeleteOwned(WindowsServiceRegistration.ProductServiceName, target.Backend);
                 if (managerCreated) RemoveOwnTree(managerRoot, Path.Combine(target.Root, "Internal"), "Management");
                 if (promoted) RemoveOwnTree(target.Root, parent, "ResourceManager");
-                else RemoveOwnTree(stage, parent, "ResourceManager.installing-");
+                else if (!existingDirectory) RemoveOwnTree(stage, parent, "ResourceManager.installing-");
                 if (retainedMoved && Directory.Exists(retainedFolder)) Directory.Move(retainedFolder, target.Root);
             }
             catch (Exception rollbackFailure)

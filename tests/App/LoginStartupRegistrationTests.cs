@@ -7,6 +7,30 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class LoginStartupRegistrationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OwnedWindowLogonTaskMigratesToResidentWithoutChangingDisabledState(bool enabled)
+    {
+        var tasks = new FakeTaskFolder();
+        var root = Path.GetFullPath("fixture-product");
+        var resident = ResourceManager.Shared.Packages.ProductDesktopLayout.ResidentFor(root);
+        var window = ResourceManager.Shared.Packages.ProductDesktopLayout.WindowFor(root);
+        var name = FrontendLogonTask.NameFor(UserSid);
+        var old = XDocument.Parse(FrontendLogonTask.BuildDefinition(window, UserSid));
+        old.Root!.Element(TaskNs + "Settings")!.SetElementValue(TaskNs + "Enabled", enabled ? "true" : "false");
+        tasks.Tasks[name] = old.ToString();
+        var registration = new LoginStartupRegistration(resident, UserSid, tasks);
+        Assert.Equal(enabled, registration.Read());
+        Assert.Equal(enabled ? FrontendLogonTaskState.Active : FrontendLogonTaskState.Inactive,
+            FrontendLogonTask.Inspect(tasks.Tasks[name], resident));
+        var rewritten = XDocument.Parse(tasks.Tasks[name]);
+        Assert.Equal(old.Root.Element(TaskNs + "Principals")!.ToString(), rewritten.Root!.Element(TaskNs + "Principals")!.ToString());
+        var writes = tasks.Calls.Count;
+        Assert.Equal(enabled, registration.Read());
+        Assert.Equal(writes, tasks.Calls.Count);
+    }
+
     private const string UserSid = "S-1-5-21-100-200-300-1001";
     private const string OtherUserSid = "S-1-5-21-100-200-300-1002";
     private static readonly XNamespace TaskNs = "http://schemas.microsoft.com/windows/2004/02/mit/task";

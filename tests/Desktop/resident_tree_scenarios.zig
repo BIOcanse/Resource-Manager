@@ -90,6 +90,7 @@ const Host = struct {
             .reader_capacity = 8,
             .reader_bytes = 1024,
             .worker_arena_bytes = 128 * 1024,
+            .reason_text_capacity = 256,
             .shutdown_item = I.ProgramShuttingDown,
             .host_blocks = &topology.host_blocks,
         }, .{ .context = self, .start = startCallback, .stop = stopCallback, .complete = complete, .log = log, .item_changed = changed });

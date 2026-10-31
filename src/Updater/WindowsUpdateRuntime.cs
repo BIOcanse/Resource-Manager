@@ -29,7 +29,10 @@ internal sealed partial class WindowsUpdateRuntime : IUpdateRuntime
     }
 
     public Task<IDisposable> AcquirePackageMaintenanceAsync(string installRoot, CancellationToken cancellationToken)
-        => ResourceManager.Shared.Packages.PackageUseGuard.AcquireMaintenanceAsync(installRoot, cancellationToken);
+    {
+        ResourceManager.Shared.Packages.ProductDesktopLifetime.Stop(installRoot, new());
+        return ResourceManager.Shared.Packages.PackageUseGuard.AcquireMaintenanceAsync(installRoot, cancellationToken);
+    }
 
     public async Task WaitForHealthAsync(CancellationToken cancellationToken)
     {

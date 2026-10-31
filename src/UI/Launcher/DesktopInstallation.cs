@@ -1,11 +1,19 @@
 using Microsoft.Win32;
 using ResourceManager.Shared.ServiceHosting;
 using ResourceManager.Shared.Localization;
+using ResourceManager.Shared.Packages;
 
 namespace ResourceManager.Launcher;
 
 public sealed record DesktopInstallation(string Root, string Backend, string NativeUi, string Launcher)
 {
+    public string Resident => ProductDesktopLayout.ResidentFor(Root);
+    public System.Diagnostics.ProcessStartInfo ResidentStartInfo(bool background) => new(Resident)
+    {
+        UseShellExecute = true,
+        Arguments = background ? "--background-startup" : "--show-existing",
+        WorkingDirectory = Path.GetDirectoryName(Resident)!
+    };
     public static DesktopInstallation Read(RegistryKey root, ToolText? text = null)
     {
         text ??= ToolText.For(AppLanguage.System);
@@ -17,7 +25,11 @@ public sealed record DesktopInstallation(string Root, string Backend, string Nat
         var backend = Required(key, "BackendPath", text);
         var ui = Required(key, "NativeUiPath", text);
         var launcher = Required(key, "LauncherPath", text);
-        foreach (var path in new[] { backend, ui, launcher })
+        var resident = ProductDesktopLayout.ResidentFor(folder);
+        if (key.GetValue("DesktopPath") is string registeredResident
+            && !string.Equals(Path.GetFullPath(registeredResident), resident, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(text.LauncherRegistrationInvalid);
+        foreach (var path in new[] { backend, ui, resident, launcher })
         {
             var relative = Path.GetRelativePath(folder, path);
             if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith(@"..\", StringComparison.Ordinal)

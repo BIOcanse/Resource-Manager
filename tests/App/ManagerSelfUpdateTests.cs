@@ -82,7 +82,12 @@ public sealed class ManagerSelfUpdateTests
         var executable = UpdateManagerPaths.PackagedExecutable(fixture.Download);
         if (failure == "other-path") executable = Path.Combine(fixture.Download, "ResourceManager.UpdateManager.exe");
         else File.AppendAllText(executable, "changed-after-preflight");
-        Assert.ThrowsAny<Exception>(() => UpdateManagerCommand.RequireApplyManager(executable, plan, ToolText.For("en-US")));
+        var text = ToolText.For("en-US");
+        Action apply = () => UpdateManagerCommand.RequireApplyManager(executable, plan, text);
+        if (failure == "other-path")
+            Assert.Equal(text.ExternalManagerRequired, Assert.Throws<InvalidOperationException>(apply).Message);
+        else
+            Assert.Equal(text.ManagerPayloadInvalid, Assert.Throws<InvalidDataException>(apply).Message);
         Assert.Equal("old-manager", File.ReadAllText(fixture.OldManager));
     }
 
@@ -256,6 +261,7 @@ public sealed class ManagerSelfUpdateTests
             File.WriteAllText(OldManager, "old-manager");
             var paths = new[] { "Install.exe", "Start.exe", "UninstallResourceManager.exe", "Bin/ResourceManager/ResourceManager.exe",
                 "Bin/ResourceManager/wwwroot/index.html", "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
+                "Bin/" + ProductDesktopLayout.DirectoryName + "/" + ProductDesktopLayout.ResidentExecutableName,
                 "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe", "Bin/ResourceManagerSessionAgent/ResourceManager.SessionAgent.exe",
                 "runtime-modules.json", "Internal/UpdateManager/ResourceManager.UpdateManager.exe" };
             var files = paths.Select(path =>

@@ -5,7 +5,7 @@ namespace ResourceManager.NativeUi.SystemIntegration;
 
 internal sealed class TaskManagerLaunchReplacementRegistry
 {
-    public const string OwnedCommandMarker = "--resource-manager-task-manager-replacement";
+    public const string OwnedCommandMarker = ResourceManager.Shared.Packages.ProductDesktopLayout.TaskManagerCommandMarker;
 
     private const string TaskManagerIfeoKeyPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\taskmgr.exe";
     private const string DebuggerValueName = "Debugger";

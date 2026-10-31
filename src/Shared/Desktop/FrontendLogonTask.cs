@@ -105,6 +105,32 @@ public static class FrontendLogonTask
             : FrontendLogonTaskState.Inactive;
     }
 
+    /// <summary>Move only an owned action to the resident; keep user, disabled state and all task settings.</summary>
+    public static string RewriteExecutable(string definitionXml, string oldExecutable, string newExecutable)
+    {
+        if (Inspect(definitionXml, oldExecutable) == FrontendLogonTaskState.Foreign)
+            throw new InvalidDataException("The frontend logon task belongs to another executable.");
+        var path = RequireExecutable(newExecutable);
+        var document = XDocument.Parse(definitionXml);
+        var exec = document.Root!.Element(TaskNs + "Actions")!.Element(TaskNs + "Exec")!;
+        exec.SetElementValue(TaskNs + "Command", path);
+        exec.SetElementValue(TaskNs + "WorkingDirectory", Path.GetDirectoryName(path)!);
+        return document.ToString(SaveOptions.DisableFormatting);
+    }
+
+    public static void MigrateAllFor(ITaskSchedulerRootFolder tasks, string oldExecutable, string newExecutable)
+    {
+        foreach (var name in tasks.ListTaskNames())
+        {
+            if (!name.StartsWith(NamePrefix, StringComparison.OrdinalIgnoreCase)) continue;
+            var definition = tasks.ReadDefinition(name);
+            if (definition is null || Inspect(definition, oldExecutable) == FrontendLogonTaskState.Foreign) continue;
+            tasks.Register(name, RewriteExecutable(definition, oldExecutable, newExecutable));
+            if (tasks.ReadDefinition(name) is not { } saved || Inspect(saved, newExecutable) == FrontendLogonTaskState.Foreign)
+                throw new IOException("The migrated frontend logon task was not retained: " + name);
+        }
+    }
+
     /// <summary>
     /// Uninstall: deletes every user's logon task that starts this frontend executable. Tasks under the prefix
     /// that start anything else (another installation) and all other tasks are left untouched.

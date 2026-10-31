@@ -9,6 +9,27 @@ namespace Resource_Manager_APP.Tests;
 public sealed class InstallerEntryTests
 {
     [Fact]
+    public void PackageCannotOmitTheResidentEvenWhenTheFileListOmitsItToo()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rm-missing-resident-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            PackageSwitchTransactionTests.CreatePackage(root, "0.3.7");
+            var resident = ResourceManager.Shared.Packages.ProductDesktopLayout.ResidentFor(root);
+            File.Delete(resident);
+            var manifestPath = Path.Combine(root, "release-manifest.json");
+            var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(manifestPath))!;
+            var relative = Path.GetRelativePath(root, resident).Replace('\\', '/');
+            var files = manifest["files"]!.AsArray();
+            files.Remove(files.Single(file => file!["path"]!.GetValue<string>() == relative));
+            File.WriteAllText(manifestPath, manifest.ToJsonString());
+            Assert.Contains(ResourceManager.Shared.Packages.ProductDesktopLayout.ResidentExecutableName,
+                Assert.Throws<InvalidDataException>(() => PackageLayout.Verify(root)).Message);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void PackagePreflightChecksEveryMemberAndRejectsUnexpectedScripts()
     {
         var root = Path.Combine(Path.GetTempPath(), "rm-install-fixture-" + Guid.NewGuid().ToString("N"));
@@ -21,6 +42,7 @@ public sealed class InstallerEntryTests
                 "Install.exe", "Start.exe", "UninstallResourceManager.exe", "Bin/ResourceManager/ResourceManager.exe",
                 "Bin/ResourceManager/wwwroot/index.html",
                 "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
+                "Bin/" + ResourceManager.Shared.Packages.ProductDesktopLayout.DirectoryName + "/" + ResourceManager.Shared.Packages.ProductDesktopLayout.ResidentExecutableName,
                 "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe",
                 "Internal/UpdateManager/ResourceManager.UpdateManager.exe",
                 "Bin/ResourceManagerSessionAgent/ResourceManager.SessionAgent.exe", "runtime-modules.json"

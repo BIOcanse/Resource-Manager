@@ -470,6 +470,13 @@
       "default": 1000,
       "min": 1,
       "max": 60000
+    },
+    {
+      "id": 65,
+      "symbol": "reason_text_capacity",
+      "default": 256,
+      "min": 1,
+      "max": 65536
     }
   ]
 }

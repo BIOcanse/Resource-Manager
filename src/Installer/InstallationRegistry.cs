@@ -14,11 +14,11 @@ internal static class InstallationRegistry
     private const string Uninstall = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ResourceManager";
     private static readonly string[] OwnedKeys = [Product, AppPath, ManagerAppPath, Uninstall];
 
-    public static void RequireVacant(PackageLayout target)
+    public static void RequireVacant(PackageLayout target, bool verifiedExistingDirectory = false)
     {
         if (File.Exists(target.Root))
             throw new InvalidOperationException($"安装目录已存在，不会覆盖或升级：{target.Root}");
-        _ = UserDataArchive.RetainedArchiveAt(target.Root);
+        if (!verifiedExistingDirectory) _ = UserDataArchive.RetainedArchiveAt(target.Root);
         var managerRoot = UpdateManagerPaths.InstalledDirectory(target.Root);
         if (Directory.Exists(managerRoot) || File.Exists(managerRoot))
             throw new InvalidOperationException($"更新管理器目录已存在，不会覆盖：{managerRoot}");

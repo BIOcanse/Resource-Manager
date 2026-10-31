@@ -23,6 +23,8 @@ public static class ResourceManagerReleaseErrorMode {
 # workspace; the caller's build root is one.
 $ledgerWorkRoot = Join-Path $OutputRoot 'ledger'
 $callerLedgerWorkRoot = $env:RM_LEDGER_WORK_ROOT
+# Generate and build the resident before composing the image. It is a native sibling of the window process.
+& (Join-Path $scriptsRoot 'build/Publish-DesktopResident.ps1') -WorkRoot (Join-Path $OutputRoot 'desktop-work') -OutputDirectory (Join-Path $OutputRoot 'desktop-work/publish')
 Push-Location $clientApp
 try {
     if (-not (Test-Path -LiteralPath 'node_modules' -PathType Container)) {
@@ -43,7 +45,7 @@ finally {
 # copy of each assembly beside the mapped bundle. The short-lived programs stay single-file.
 Push-Location (Join-Path $app 'Native/PerformanceOverlay')
 try {
-    & cmd.exe /d /c build.cmd
+    & cmd.exe /d /c .\build.cmd
     if ($LASTEXITCODE -ne 0) { throw "Frontend native module build failed: $LASTEXITCODE" }
 } finally { Pop-Location }
 $projects = @(
@@ -64,7 +66,8 @@ foreach ($project in $projects) {
         }
         else { '-p:PublishSingleFile=false' })
     # MSBuild owns incremental native compilation; no deployment or IFEO cleanup runs here.
-    & dotnet publish $project.Project -c Release -r win-x64 --self-contained true @layout -p:PublishReadyToRun=true `
+    & dotnet publish $project.Project -c Release -r win-x64 --self-contained true --disable-build-servers -m:1 `
+        -p:BuildInParallel=false -p:UseSharedCompilation=false -p:ResourceManagerZigJobs=1 @layout -p:PublishReadyToRun=true `
         -p:ResourceManagerStateNames=false `
         -p:SkipClientAppBuild=true "-p:ResourceManagerLedgerWorkRoot=$ledgerWorkRoot" `
         -p:DebugType=none -p:DebugSymbols=false "-p:Version=$Version" -o $destination
@@ -89,6 +92,10 @@ if ($LASTEXITCODE -ne 0) { throw "Native start entry publication failed: $LASTEX
     -LauncherPublishRoot (Join-Path $OutputRoot 'launcher') -SessionAgentPublishRoot (Join-Path $OutputRoot 'session-agent') | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
     -ExecutablePath (Join-Path $OutputRoot 'ui\ResourceManager.NativeUi.exe') -ExpectedExecutionLevel requireAdministrator | Out-Null
+. (Join-Path $scriptsRoot 'ResourceManager.DesktopLayout.ps1')
+$desktopLayout = Get-ResourceManagerDesktopLayout
+& (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
+    -ExecutablePath (Join-Path $OutputRoot ('desktop-work/publish/bin/' + $desktopLayout.ResidentExecutableName)) -ExpectedExecutionLevel requireAdministrator | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
     -ExecutablePath (Join-Path $OutputRoot 'session-agent\ResourceManager.SessionAgent.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
@@ -97,4 +104,5 @@ if ($LASTEXITCODE -ne 0) { throw "Native start entry publication failed: $LASTEX
     -ExecutablePath (Join-Path $OutputRoot 'update-manager\ResourceManager.UpdateManager.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $PSScriptRoot 'New-ResourceManagerFinalImage.ps1') `
     -BackendDirectory (Join-Path $OutputRoot 'backend') -NativeUiDirectory (Join-Path $OutputRoot 'ui') `
+    -DesktopDirectory (Join-Path $OutputRoot 'desktop-work/publish/bin') `
     -LauncherDirectory (Join-Path $OutputRoot 'launcher') -SessionAgentDirectory (Join-Path $OutputRoot 'session-agent') -OutputDirectory (Join-Path $OutputRoot 'image')

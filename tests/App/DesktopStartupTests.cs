@@ -9,6 +9,7 @@ using ResourceManager.Shared.ServiceHosting;
 using ResourceManager.Shared.Localization;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.Shared.Runtime;
+using ResourceManager.Shared.Packages;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -29,6 +30,7 @@ public sealed class DesktopStartupTests
         using var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
         try
         {
+            CreateResidentFixture(folder);
             using var root = hive.CreateSubKey(keyPath);
             Assert.Equal(text.NotInstalled,
                 Assert.Throws<InvalidOperationException>(() => DesktopInstallation.Read(root, text)).Message);
@@ -59,6 +61,7 @@ public sealed class DesktopStartupTests
         finally
         {
             hive.DeleteSubKeyTree(keyPath, false);
+            DeleteResidentFixture(folder);
             foreach (var file in Directory.EnumerateFiles(folder)) File.Delete(file);
             Directory.Delete(folder);
         }
@@ -86,6 +89,7 @@ public sealed class DesktopStartupTests
         using var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
         try
         {
+            CreateResidentFixture(folder);
             using var root = hive.CreateSubKey(keyPath);
             using var product = root.CreateSubKey(@"Software\ResourceManager");
             product.SetValue("InstallRoot", folder);
@@ -99,12 +103,14 @@ public sealed class DesktopStartupTests
             var installation = DesktopInstallation.Read(root);
             Assert.Equal(folder, installation.Root);
             Assert.Equal(Path.Combine(folder, "LauncherPath.exe"), installation.Launcher);
+            Assert.Equal(ProductDesktopLayout.ResidentFor(folder), installation.Resident);
             product.DeleteValue("LauncherPath");
             Assert.Throws<InvalidOperationException>(() => DesktopInstallation.Read(root));
         }
         finally
         {
             hive.DeleteSubKeyTree(keyPath, false);
+            DeleteResidentFixture(folder);
             foreach (var file in Directory.EnumerateFiles(folder)) File.Delete(file);
             Directory.Delete(folder);
         }
@@ -118,6 +124,19 @@ public sealed class DesktopStartupTests
         Assert.Throws<InvalidOperationException>(() => WindowsServiceRegistration.RequireExpectedBinary(new(1, 3, binary + ".other", "LocalSystem"), binary));
         Assert.Throws<InvalidOperationException>(() => WindowsServiceRegistration.RequireExpectedBinary(new(1, 3, binary, "LocalService"), binary));
         Assert.Null(WindowsServiceRegistration.Read("ResourceManager.AbsentTest." + Guid.NewGuid().ToString("N")));
+    }
+
+    private static void CreateResidentFixture(string root)
+    {
+        Directory.CreateDirectory(ProductDesktopLayout.DirectoryFor(root));
+        File.WriteAllText(ProductDesktopLayout.ResidentFor(root), "non-executable resident fixture");
+    }
+
+    private static void DeleteResidentFixture(string root)
+    {
+        File.Delete(ProductDesktopLayout.ResidentFor(root));
+        Directory.Delete(ProductDesktopLayout.DirectoryFor(root));
+        Directory.Delete(Path.Combine(root, "Bin"));
     }
 
     private static CompiledRuntimePlan Plan(long version, bool autoStart) => CompiledRuntimePlan.Default with

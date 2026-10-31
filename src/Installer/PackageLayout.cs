@@ -12,10 +12,11 @@ internal sealed record PackageLayout(string Root, string Version, string Backend
     }
 
     public string SessionAgent => Path.Combine(Root, "Bin", "ResourceManagerSessionAgent", "ResourceManager.SessionAgent.exe");
+    public string Resident => ProductDesktopLayout.ResidentFor(Root);
 
     public static PackageLayout ForRoot(string root, string version) => new(root, version,
         Path.Combine(root, "Bin", "ResourceManager", "ResourceManager.exe"),
-        Path.Combine(root, "Bin", "ResourceManagerNativeUi", "ResourceManager.NativeUi.exe"),
+        ProductDesktopLayout.WindowFor(root),
         Path.Combine(root, "Bin", "ResourceManagerLauncher", "ResourceManager.Launcher.exe"),
         Path.Combine(root, "Start.exe"), Path.Combine(root, "Install.exe"));
 

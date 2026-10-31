@@ -34,6 +34,7 @@ $work = '<workset-root>\desktop-resident'
 & scripts/build/Generate-DesktopLedger.ps1 -WorkRoot "$work/desktop-ledger"
 & scripts/build/Generate-DesktopText.ps1
 & scripts/build/Generate-DesktopFrontendDefaults.ps1
+& scripts/build/Generate-DesktopLayout.ps1
 $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 & <tools>\JobQueue\JobQueue.ps1 -Action Run -Label 'desktop Debug' `
   -FilePath <tools>\Zig\zig-0.17.0\zig.exe `
@@ -51,7 +52,9 @@ $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 
 可调值在 `src/Development/DesktopBuild/desktop.points.json` 声明，通过 FreedomPoint SDK 投影；浮窗的软件条目、默认值和编辑约束由后端设置拥有。窗口停止期限和超期策略归窗口包装块；策略为 `terminate` 或 `wait`。浮窗容量、缓冲区、字号拟合范围、字体、颜色、格式精度和订阅间隔也有声明，耗尽时明确失败。Windows ABI、协议布局和数学单位定义是格式事实。
 
-部署路径在打包步骤 6 接入前通过 `--package-root`、`--window-executable`、`--backend-path` 指定；未指定时只采用可执行文件所在目录与同级程序的布局。`--background-startup` 不启动窗口。已有单实例协议和默认管道名保持不变；测试必须显式传入 `--instance-pipe ResourceManager.Desktop.Test.<unique>`，并指定独立 `--backend-port`、不存在的 `--backend-service`，不得使用安装产品端口或服务。
+共享控制树的原因文本容量由 Desktop 自由点 `reason_text_capacity`（id 65）提供，默认 256 字节（owner 与 cause 合计），可在声明中选择 1–65536；不依赖共享库的隐式默认值。
+
+发行构建由 `scripts/build/Publish-DesktopResident.ps1` 先生成输入、再用 ReleaseSafe/-j1 发布，复用现有窗口进程的 requireAdministrator 清单；发行脚本把常驻程序放在 `Bin/ResourceManagerNativeUi`，与窗口程序同目录。路径身份来自 `ProductDesktopLayout.cs`，经 `Generate-DesktopLayout.ps1` 投影；默认包根是该目录的上两层，后端位于包根的 `Bin/ResourceManager`。开发可通过 `--package-root`、`--window-executable`、`--backend-path` 指定路径。`--background-startup` 不启动窗口。已有单实例协议和默认管道名保持不变；测试必须显式传入 `--instance-pipe ResourceManager.Desktop.Test.<unique>`，并指定独立 `--backend-port`、不存在的 `--backend-service`，不得使用安装产品端口或服务。
 
 `--preferences-path` 可显式指定缓存，否则读取包根下当前用户 SID 的前端缓存；只在初始化及 `preferences-changed` 时重读。常驻进程不写前端偏好。管道消息与行为见最终报告。
 
@@ -63,4 +66,4 @@ $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 
 窗口包装块通过 `JOB_LIST` 在创建子进程时直接指定非继承 Job，并设置 `KILL_ON_JOB_CLOSE`。普通窗口块停止时先发送 stop/关闭管道，在已声明期限内汇合。超期按选择强制结束或继续等待；程序结束的独立 stop 会取消等待并关闭 Job 收尾。三种停止结果均回报宿主日志；没有 detach，崩溃仍先撤回开窗意愿。
 
-热键、任务管理器键盘替换、桌面观察上传流、托盘通知和 Zig 覆盖层均有实际入口；持久启动入口和安装打包仍由后续批次接入。验证结果以本轮工作账本的 report.md 为准。真实托盘、CPU/内存、安装包和游戏验收由维护会话执行，定向构建与测试不接触已安装产品。
+热键、任务管理器键盘替换、桌面观察上传流、托盘通知和 Zig 覆盖层均有实际入口；发行包、Launcher、登录任务和 Task Manager IFEO 入口均指向常驻程序。解包检查由 `scripts/validation/Test-DesktopResidentPackage.ps1` 执行；维护会话安装后运行 `scripts/dev/Test-InstalledDesktopStart.ps1 -InstallRoot <目录> -TimeoutSeconds 30`，确认实际 Start.exe 能启动常驻和窗口进程并输出 PID。验证结果以本轮工作账本的 report.md 为准；工人不安装或触碰已安装产品。

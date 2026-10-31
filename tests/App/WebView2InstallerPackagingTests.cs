@@ -26,6 +26,7 @@ public sealed class WebView2InstallerPackagingTests
                 "src/Core/Native/PerformanceOverlay/bin/win-x64/ResourceManager.PerformanceOverlay.dll",
                 "src/Core/Native/PerformanceOverlay/bin/win-x64/ResourceManager.VulkanPerformanceOverlayLayer.dll" };
             if (includeInstaller) paths.Add("native/InstallWebView2Runtime.ps1");
+            paths.Add("desktop/" + ResourceManager.Shared.Packages.ProductDesktopLayout.ResidentExecutableName);
             if (includeDevelopmentScript) paths.Add("native/Development.ps1");
             foreach (var relative in paths)
             {
@@ -41,6 +42,7 @@ public sealed class WebView2InstallerPackagingTests
             foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
                 Path.Combine(RepositoryRoot(), "scripts", "release", "New-ResourceManagerFinalImage.ps1"),
                 "-BackendDirectory", Path.Combine(root, "backend"), "-NativeUiDirectory", Path.Combine(root, "native"),
+                "-DesktopDirectory", Path.Combine(root, "desktop"),
                 "-LauncherDirectory", Path.Combine(root, "launcher"),
                 "-SessionAgentDirectory", Path.Combine(root, "session-agent"), "-FrontendModuleSourceRoot", root,
                 "-OutputDirectory", Path.Combine(root, "image") })

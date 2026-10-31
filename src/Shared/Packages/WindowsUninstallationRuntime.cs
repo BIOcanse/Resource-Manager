@@ -32,16 +32,7 @@ public sealed class WindowsUninstallationRuntime : IUninstallationRuntime
             using (manager)
                 if (SameExecutable(manager, Path.Combine(plan.ManagerDirectory, UpdateManagerPaths.ExecutableName))) manager.CloseMainWindow();
         }
-        var ui = ReleasePackageLayout.ForRoot(plan.Root, "").NativeUi;
-        foreach (var process in Process.GetProcessesByName("ResourceManager.NativeUi"))
-        {
-            using (process)
-            {
-                if (!SameExecutable(process, ui)) continue;
-                process.CloseMainWindow();
-                if (!process.WaitForExit(5000)) { process.Kill(); if (!process.WaitForExit(10_000)) throw new TimeoutException("The product interface did not exit."); }
-            }
-        }
+        ProductDesktopLifetime.Stop(plan.Root, new ProductDesktopShutdownSettings());
         if (WindowsServiceRegistration.Read(WindowsServiceRegistration.ProductServiceName) is not null)
             WindowsServiceRegistration.StopExisting(WindowsServiceRegistration.ProductServiceName, plan.Backend);
         foreach (var process in Process.GetProcesses())
@@ -69,6 +60,7 @@ public sealed class WindowsUninstallationRuntime : IUninstallationRuntime
 
     public void RemoveLaunchInterception(UninstallationPlan plan)
     {
+        DesktopEntryRegistration.RemoveResidentLaunchReplacement(plan.Root);
         var broker = Path.Combine(Path.GetDirectoryName(plan.Backend)!, "ResourceManager.GpuLaunchBroker.exe");
         var start = new ProcessStartInfo(broker) { UseShellExecute = false, CreateNoWindow = true };
         start.ArgumentList.Add("--remove-all-resource-manager-ifeo");
@@ -79,7 +71,11 @@ public sealed class WindowsUninstallationRuntime : IUninstallationRuntime
     }
 
     public void RemoveFrontendLogonTasks(UninstallationPlan plan)
-        => _ = FrontendLogonTask.RemoveAllFor(new WindowsTaskSchedulerRootFolder(), ReleasePackageLayout.ForRoot(plan.Root, "").NativeUi);
+    {
+        var tasks = new WindowsTaskSchedulerRootFolder();
+        _ = FrontendLogonTask.RemoveAllFor(tasks, ProductDesktopLayout.ResidentFor(plan.Root));
+        _ = FrontendLogonTask.RemoveAllFor(tasks, ProductDesktopLayout.WindowFor(plan.Root));
+    }
 
     public void RemoveRegistration(UninstallationPlan plan)
     {

@@ -1,4 +1,5 @@
 using ResourceManager.Shared.Desktop;
+using ResourceManager.Shared.Packages;
 
 namespace ResourceManager.NativeUi.SystemIntegration;
 
@@ -8,9 +9,8 @@ namespace ResourceManager.NativeUi.SystemIntegration;
 //
 // Persistent-entry compatibility (docs/frontend_block_trees_2026-10-26.md, 安装与持久入口): the logon task this
 // class writes, the Task Manager IFEO Debugger value (TaskManagerShortcutReplacementController) and old shortcuts
-// still start ResourceManager.NativeUi.exe directly. Started without the resident's pipe it only hands its
-// single-instance command to ResourceManager.Desktop.exe (ResidentHandoff) and exits. Layout step 6 points these
-// entries at the resident and rewrites existing ones on read. Delete ResidentHandoff, NativeUiLaunchOptions and this
+// from older versions may start NativeUi directly. New entries start the resident; owned old tasks are
+// rewritten on read, preserving disabled state. Delete ResidentHandoff, NativeUiLaunchOptions and this
 // note, and make Program reject a start without the pipe, once a released version has rewritten the entries and
 // every installation before that version has upgraded.
 internal sealed class LoginStartupRegistration
@@ -34,8 +34,7 @@ internal sealed class LoginStartupRegistration
     internal static LoginStartupRegistration ForCurrentProcess()
     {
         using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
-        return new(Environment.ProcessPath
-                ?? throw new InvalidOperationException("The frontend executable path is unavailable."),
+        return new(ProductDesktopLayout.ResidentBesideWindow(AppContext.BaseDirectory),
             identity.User?.Value ?? throw new InvalidOperationException("The frontend user has no SID."),
             new WindowsTaskSchedulerRootFolder());
     }
@@ -57,6 +56,15 @@ internal sealed class LoginStartupRegistration
         var definition = tasks.ReadDefinition(TaskName);
         if (definition is null) return null;
         var state = FrontendLogonTask.Inspect(definition, executablePath);
+        var legacy = Path.Combine(Path.GetDirectoryName(executablePath)!, ProductDesktopLayout.WindowExecutableName);
+        if (state == FrontendLogonTaskState.Foreign
+            && string.Equals(Path.GetFileName(executablePath), ProductDesktopLayout.ResidentExecutableName, StringComparison.OrdinalIgnoreCase)
+            && FrontendLogonTask.Inspect(definition, legacy) != FrontendLogonTaskState.Foreign)
+        {
+            tasks.Register(TaskName, FrontendLogonTask.RewriteExecutable(definition, legacy, executablePath));
+            var saved = tasks.ReadDefinition(TaskName) ?? throw new IOException("The migrated frontend logon task was not retained.");
+            state = FrontendLogonTask.Inspect(saved, executablePath);
+        }
         return state == FrontendLogonTaskState.Foreign
             ? throw new InvalidDataException("The frontend logon task belongs to another executable.")
             : state;

@@ -35,18 +35,10 @@ internal static class Program
 
     private static int HandOffToResident(string command)
     {
-        try
-        {
-            var outcome = ResidentHandoff.ForCurrentProcess().Run(command);
-            System.Diagnostics.Trace.TraceInformation("Window process started without the resident pipe: {0} ({1}).", outcome, command);
-            return outcome == ResidentHandoffOutcome.Unanswered ? 2 : 0;
-        }
-        catch (Exception failure) when (failure is System.ComponentModel.Win32Exception or InvalidOperationException
-            or IOException or UnauthorizedAccessException)
-        {
-            System.Diagnostics.Trace.TraceWarning("The resident could not be started ({0}).", failure.GetType().Name);
-            return 2;
-        }
+        var text = ResourceManager.Shared.Localization.ToolText.FromInstallRoot(
+            ResourceManager.Shared.Packages.ProductDesktopLayout.PackageRootFromUiDirectory(AppContext.BaseDirectory));
+        return ResidentHandoffRunner.Run(() => ResidentHandoff.ForCurrentProcess().Run(command), text,
+            message => MessageBox.Show(message, "Resource Manager", MessageBoxButtons.OK, MessageBoxIcon.Error));
     }
 
     private static class NativeAppIdentity

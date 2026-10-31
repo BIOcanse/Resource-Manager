@@ -2,6 +2,8 @@
 param(
     [Parameter(Mandatory = $true)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$')][string]$Version,
     [string]$OutputRoot,
+    # Worker/validation builds belong to this existing running parent; never create or close a nested lifecycle.
+    [string]$WorkRoot,
     [switch]$Quiet,
     [switch]$ReviewBuild
 )
@@ -13,7 +15,7 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $reposi
 Import-Module (Join-Path $PSScriptRoot 'ReleaseBuildWorkspace.psm1') -Force -DisableNameChecking
 # JOBQUEUE_RESTART_COUNT above 0 means the queue stopped or killed this job's previous attempt, so the build
 # directory that attempt left registered as running has no producer; it is retired before the targets are checked.
-if ([int]$env:JOBQUEUE_RESTART_COUNT -gt 0) {
+if ([int]$env:JOBQUEUE_RESTART_COUNT -gt 0 -and -not $WorkRoot) {
     $null = Close-AbandonedReleaseBuildWorkspace -OutputRoot $OutputRoot -Version $Version `
         -Reason "JobQueue attempt $([int]$env:JOBQUEUE_RESTART_COUNT - 1) stopped before finishing"
 }
@@ -60,7 +62,13 @@ function Write-Step([string]$Message) {
 }
 $sourceIdentity = Get-SourceIdentity
 $sourceCommit = $sourceIdentity.Commit
-$buildWorkspace = New-ReleaseBuildWorkspace -OutputRoot $OutputRoot -Version $Version
+$buildWorkspace = $null
+if ($WorkRoot) {
+    Import-Module (Join-Path $scriptsRoot 'dev/MachineRoots.psm1') -DisableNameChecking
+    Assert-RmRunningWorkspace -Path $WorkRoot
+    $ownerRoot = [IO.Path]::GetFullPath($WorkRoot).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+    if (-not $buildRoot.StartsWith($ownerRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Release build outputs must remain within WorkRoot.' }
+} else { $buildWorkspace = New-ReleaseBuildWorkspace -OutputRoot $OutputRoot -Version $Version }
 $buildOutcome = 'failed'
 $publicationFailure = $null
 try {
@@ -156,6 +164,7 @@ catch {
     throw
 }
 finally {
+    if ($null -ne $buildWorkspace) {
     try {
         $failureMessage = if ($null -eq $publicationFailure) { '' } else { $publicationFailure.Exception.Message }
         $buildCleanup = Complete-ReleaseBuildWorkspace -Context $buildWorkspace -Outcome $buildOutcome -FailureMessage $failureMessage
@@ -167,6 +176,7 @@ finally {
         if ($null -ne $publicationFailure) {
             Write-Warning "Release build cleanup also failed: $($_.Exception.Message)"
         } else { throw }
+    }
     }
 }
 $packageResult

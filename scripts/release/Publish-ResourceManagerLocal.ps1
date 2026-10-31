@@ -3,6 +3,7 @@ param(
     [string]$Target = "All",
     [switch]$SkipFrontend,
     [switch]$SkipStop,
+    [string]$WorkRoot = $env:RM_LEDGER_WORK_ROOT,
     [switch]$Quiet
 )
 
@@ -241,6 +242,17 @@ if ($publishBackend) {
 if ($publishNativeUi -and -not (Test-Path -LiteralPath $NativeUiExe)) {
     throw "Native UI 发布完成但入口不存在：$NativeUiExe"
 }
+if ($publishNativeUi) {
+    if ([string]::IsNullOrWhiteSpace($WorkRoot)) { throw 'Native frontend publication requires a running registered -WorkRoot for the resident generators.' }
+    . (Join-Path $RepositoryRoot 'scripts/ResourceManager.DesktopLayout.ps1')
+    $desktopLayout = Get-ResourceManagerDesktopLayout
+    $desktopWork = Join-Path $WorkRoot 'desktop-local'
+    $desktopOutput = Join-Path $desktopWork 'publish'
+    Invoke-CheckedCommand 'pwsh' @('-NoProfile', '-NonInteractive', '-File',
+        (Join-Path $RepositoryRoot 'scripts/build/Publish-DesktopResident.ps1'),
+        '-WorkRoot', $desktopWork, '-OutputDirectory', $desktopOutput) $RepositoryRoot
+    Copy-Item -LiteralPath (Join-Path $desktopOutput ('bin/' + $desktopLayout.ResidentExecutableName)) -Destination (Join-Path $NativeUiOutput $desktopLayout.ResidentExecutableName)
+}
 
 if ($Target -eq "All") {
     if (-not (Test-Path -LiteralPath $FinalImageBuilder)) {
@@ -260,6 +272,7 @@ if ($Target -eq "All") {
             "-File", $FinalImageBuilder,
             "-BackendDirectory", $BackendOutput,
             "-NativeUiDirectory", $NativeUiOutput,
+            "-DesktopDirectory", $NativeUiOutput,
             "-LauncherDirectory", $LauncherOutput,
             "-SessionAgentDirectory", $SessionAgentOutput,
             "-OutputDirectory", $FinalOutput

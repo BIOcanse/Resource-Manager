@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text;
+using ResourceManager.Shared.Packages;
 
 namespace ResourceManager.NativeUi;
 
@@ -28,7 +29,7 @@ internal enum ResidentHandoffOutcome
 internal sealed class ResidentHandoff
 {
     internal const string DefaultPipeName = "ResourceManager.NativeUi.Instance";
-    internal const string ResidentExecutableName = "ResourceManager.Desktop.exe";
+    internal const string ResidentExecutableName = ProductDesktopLayout.ResidentExecutableName;
     private const string DefaultMutexName = @"Local\ResourceManager.NativeUi";
     // Matches the resident's own client: the primary may be between two pipe instances.
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromMilliseconds(1500);
@@ -47,7 +48,7 @@ internal sealed class ResidentHandoff
 
     /// <summary>The product layout: the resident is the sibling of this program (the resident's own default layout).</summary>
     internal static ResidentHandoff ForCurrentProcess()
-        => new(DefaultPipeName, Path.Combine(AppContext.BaseDirectory, ResidentExecutableName));
+        => new(DefaultPipeName, ProductDesktopLayout.ResidentBesideWindow(AppContext.BaseDirectory));
 
     /// <summary>The resident names its mutex after a test pipe name, and keeps the product name for the default pipe.</summary>
     internal string MutexName => pipeName == DefaultPipeName ? DefaultMutexName : @"Local\" + pipeName;
@@ -59,7 +60,7 @@ internal sealed class ResidentHandoff
         if (command == "exit") return ResidentHandoffOutcome.NothingToExit;
         var start = new ProcessStartInfo(residentExecutable)
         {
-            UseShellExecute = false,
+            UseShellExecute = true,
             WorkingDirectory = Path.GetDirectoryName(residentExecutable)!
         };
         foreach (var argument in ResidentArguments(command)) start.ArgumentList.Add(argument);

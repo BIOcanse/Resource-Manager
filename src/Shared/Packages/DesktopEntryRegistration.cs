@@ -34,6 +34,7 @@ public static class DesktopEntryRegistration
         using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
         using var product = machine.OpenSubKey(UninstallationPlan.RegistrationKeys[0], writable: true)!;
         product.SetValue("LauncherPath", ReleasePackageLayout.ForRoot(plan.Root, "").InternalLauncher);
+        product.SetValue("DesktopPath", ProductDesktopLayout.ResidentFor(plan.Root));
         product.SetValue("StartPath", stableStart);
         using var appPath = machine.OpenSubKey(UninstallationPlan.RegistrationKeys[1], writable: true)!;
         appPath.SetValue("", stableStart);
@@ -42,5 +43,36 @@ public static class DesktopEntryRegistration
         ProductInstallationRegistration.WriteUninstallCommand(uninstall, plan.ManagerDirectory);
         uninstall.SetValue("DisplayIcon", stableStart);
         StartMenuShortcut.Create(stableStart);
+        MigrateResidentEntries(plan.Root);
+    }
+
+    private static void MigrateResidentEntries(string root)
+    {
+        var legacy = ProductDesktopLayout.WindowFor(root);
+        var resident = ProductDesktopLayout.ResidentFor(root);
+        FrontendLogonTask.MigrateAllFor(new WindowsTaskSchedulerRootFolder(), legacy, resident);
+        UpdateResidentLaunchReplacement(root, remove: false);
+    }
+
+    public static void RemoveResidentLaunchReplacement(string root) => UpdateResidentLaunchReplacement(root, remove: true);
+
+    // Read the current owned IFEO command once per installation/update/uninstall transaction.
+    [System.ComponentModel.Description("RuntimeRead: Sampled")]
+    private static void UpdateResidentLaunchReplacement(string root, bool remove)
+    {
+        var legacy = ProductDesktopLayout.WindowFor(root);
+        var resident = ProductDesktopLayout.ResidentFor(root);
+        const string ifeo = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\taskmgr.exe";
+        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var key = machine.OpenSubKey(ifeo, writable: true);
+        if (key?.GetValue("Debugger") is not string command) return;
+        var oldCommand = $"\"{legacy}\" --show-existing {ProductDesktopLayout.TaskManagerCommandMarker}";
+        var newCommand = $"\"{resident}\" --show-existing {ProductDesktopLayout.TaskManagerCommandMarker}";
+        if (string.Equals(command, oldCommand, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(command, newCommand, StringComparison.OrdinalIgnoreCase))
+        {
+            if (remove) key.DeleteValue("Debugger", throwOnMissingValue: false);
+            else key.SetValue("Debugger", newCommand);
+        }
     }
 }

@@ -20,6 +20,14 @@ internal static class Program
                 _ = PackageLayout.Verify(AppContext.BaseDirectory);
                 return 0;
             }
+            if (args.Length == 1 && args[0] == "--register-directory")
+            {
+                using var caller = WindowsIdentity.GetCurrent();
+                if (!new WindowsPrincipal(caller).IsInRole(WindowsBuiltInRole.Administrator))
+                    throw new UnauthorizedAccessException(text.LauncherServicePermission);
+                InstallerWorkflow.RegisterDirectory(PackageLayout.Verify(AppContext.BaseDirectory));
+                return 0;
+            }
             var confirmed = args.Length == 8 && args[0] == "--confirmed" && args[2] == "--caller-sid"
                 && args[4] == "--target-root" && args[6] == "--previous-root";
             if (!confirmed && args.Length != 0) throw new ArgumentException("Unknown installer argument.");
