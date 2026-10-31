@@ -1,6 +1,7 @@
 using System.Text;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -38,8 +39,17 @@ public sealed class ControlInstanceMigrationTests
             var id = old.GetProperty("id").GetString();
             var current = Assert.Single(newItems, item => item.GetProperty("id").GetString() == id);
             Assert.False(current.TryGetProperty("displayName", out _));
-            foreach (var property in new[] { "id", "kind", "platform", "gpuAttachment", "identityIsUnique", "defaultSettings" })
+            foreach (var property in new[] { "id", "kind", "platform", "gpuAttachment", "identityIsUnique" })
                 Assert.Equal(JsonSerializer.Serialize(old.GetProperty(property)), JsonSerializer.Serialize(current.GetProperty(property)));
+            // GPU V/F adds gpuVfCurvePresetId and gpuVfCurveExecution as typed nulls to legacy settings.
+            var expectedSettings = JsonNode.Parse(old.GetProperty("defaultSettings").GetRawText())!.AsArray();
+            foreach (var node in expectedSettings)
+            {
+                var setting = node!.AsObject();
+                setting["gpuVfCurvePresetId"] = null;
+                setting["gpuVfCurveExecution"] = null;
+            }
+            Assert.Equal(JsonSerializer.Serialize(expectedSettings), JsonSerializer.Serialize(current.GetProperty("defaultSettings")));
             foreach (var property in new[] { "firstSeenAt", "lastSeenAt" })
                 Assert.Equal(old.GetProperty(property).GetDateTimeOffset(), current.GetProperty(property).GetDateTimeOffset());
             if (old.GetProperty("kind").GetString() != "fan")
