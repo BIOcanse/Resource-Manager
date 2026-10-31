@@ -55,8 +55,9 @@ public sealed class HostManagerFreedomPointPlanTests
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();
         var points = plan.FreedomPoints.EnumeratePoints().ToArray();
-        Assert.Equal(84, points.Length);
-        Assert.Equal(78, points.Count(point => point.Status == "active"));
+        // Includes both the slim overlay frame-window point and the GPU V/F editor rules.
+        Assert.Equal(85, points.Length);
+        Assert.Equal(79, points.Count(point => point.Status == "active"));
         Assert.Equal(6, points.Count(point => point.Status == "pending"));
         var kernelLimits = Assert.Single(points, point => point.Address == BackendFreedomPointPaths.KernelEtwLimits);
         Assert.Equal("active", kernelLimits.Status);
