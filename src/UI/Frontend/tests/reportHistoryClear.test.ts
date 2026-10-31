@@ -18,7 +18,9 @@ import { BackendSessionOwner } from "../src/frontendRuntime/session/BackendSessi
 const endpointsDirectory = new URL("../../../Core/Endpoints/", import.meta.url);
 const endpointSources = readdirSync(endpointsDirectory).filter((name) => name.endsWith(".cs"))
   .map((name) => readFileSync(new URL(name, endpointsDirectory), "utf8")).join("\n");
-const policy = readFileSync(new URL("../../../Core/Infrastructure/Security/TrustedAccessHttpPolicy.cs", import.meta.url), "utf8");
+// 注释可能含分号，先去掉行注释再按分号截取 Session 组。
+const policy = readFileSync(new URL("../../../Core/Infrastructure/Security/TrustedAccessHttpPolicy.cs", import.meta.url), "utf8")
+  .replace(/\/\/.*/g, "");
 const sessionGroup = /Add\(Protected\(AccessKeyScopes\.Session\),([^;]*);/.exec(policy)?.[1] ?? "";
 for (const kind of ["optimizationReports", "kernelLeaks", "targetedRecordings"] as const) {
   const path = reportHistoryClearPaths[kind];
