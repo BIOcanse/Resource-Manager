@@ -36,6 +36,8 @@ export const enMonitorViewsCopy: Pick<
     }
   },
   resourceTableView: {
+    addColumn: "Add column",
+    removeColumn: (column: string) => "Remove the {column} column".replace("{column}", column),
     cancelEditLabel: "Cancel resource list column editing",
     cancel: "Cancel",
     saveLabel: "Save resource list columns",

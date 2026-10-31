@@ -25,10 +25,11 @@ export function processResourceSources(totalMetricIds: readonly string[], fields
 /** 一个进程字段作来源时的名称；目录里没有这个字段或它没有名字时为字段名。 */
 export function processSourceName(fieldName: string, fields: readonly ProcessMetricField[]): string {
   const field = fields.find((candidate) => candidate.name === fieldName);
+  if (!field) return fieldName;
   const text = uiText.resourceTable;
   if (field?.reading?.resource === "memory") {
     const quantity = processMemoryQuantity(fieldName, fields);
-    return (quantity && quantityNames()[quantity]) || fieldName;
+    return (quantity && quantityNames()[quantity]) || text.processFieldNames[fieldName] || fieldName;
   }
   if (field?.reading?.resource === "gpu") {
     if (field.reading.quantity === "engine_busy_percent" && field.gpuEngine) {

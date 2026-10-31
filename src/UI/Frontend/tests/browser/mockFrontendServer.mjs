@@ -2256,6 +2256,7 @@ function readingSourceAddress() {
 // additiveAcrossProcesses 是后端的声明（没有声明为 null）；GPU 字段按适配器和引擎展开，带 gpuEngine / engineClass。
 function catalogField(name, valueKind, unit, sourceId, { reading = null, total = null, additive = null, gpuEngine = null, engineClass = null, sourceFieldName = null } = {}) {
   return { name, valueKind, unit, sourceId, resource: "process", vendor: "all", supportsResourceFacts: total !== null,
+    table: { scopes: additive === true ? ["process", "software"] : ["process"], sources: [{ fieldName: name, sourceId }] },
     gpuEngine, engineClass, sourceFieldName, additiveAcrossProcesses: additive, resourceFactTotalMetricId: total, reading };
 }
 const fixtureGpuLuid = 0x17;
@@ -2279,7 +2280,9 @@ const processFieldCatalog = [
     { reading: { resource: "memory", quantity: "private_commit" }, total: "virtualMemory.usage", additive: true }),
   catalogField("process_all_peak_private_commit_actual", "unsigned64", "B", "windows.process.query",
     { reading: { resource: "memory", quantity: "peak_private_commit" }, additive: false }),
-  catalogField("process_all_handle_count_actual", "unsigned64", "count", "windows.process.query"),
+  catalogField("process_all_handle_count_actual", "unsigned64", "count", "windows.process.query", { additive: true }),
+  catalogField("process_all_thread_count_actual", "unsigned64", "count", "windows.process.query", { additive: true }),
+  catalogField("process_all_image_path_actual", "string", "text", "windows.process.query"),
   catalogField("process_all_cpu_usage_actual", "float64", "%", "windows.process.cpu-interval", { total: "cpu.usage", additive: true }),
   ...[[0, null], [1, "Compute"]].map(([engine, engineClass]) => catalogField(gpuEngineFieldName(engine), "float64", "%", "windows.pdh.gpu-engine", {
     reading: { resource: "gpu", quantity: "engine_busy_percent" }, total: "gpu.0.usage", additive: true,
@@ -2388,7 +2391,7 @@ function residualDetailsRejected(response, url) {
 
 function resourceFactItemsKnown(url) {
   return url.searchParams.getAll("items").every(id => ["process.inventory", "process.attribution", "cpu.usage", "memory.usage", "disk.io", "network.traffic"].includes(id)
-    || Object.hasOwn(processMemoryFacts, id) || /^gpu\.\d+\.(usage|vram)$/.test(id));
+    || catalogFieldByName.has(id) || Object.hasOwn(processMemoryFacts, id) || /^gpu\.\d+\.(usage|vram)$/.test(id));
 }
 
 function metricSnapshot(requestedIds) {
@@ -3103,7 +3106,8 @@ function resourceFacts(url, capturedAt = now()) {
       unavailableReason: total === null ? "system-total-unavailable" : null };
   }
 
-  const metrics = [...items].filter(id => id !== "process.inventory" && id !== "process.attribution").map(metricId => {
+  const metrics = [...items].filter(id => id !== "process.inventory" && id !== "process.attribution"
+    && (!catalogFieldByName.has(id) || Object.hasOwn(processMemoryFacts, id))).map(metricId => {
     const fact = processMemoryFacts[metricId];
     if (fact) return balance({ metricId, unit: fact.unit ?? "B", totalMetricId: fact.totalMetricId, processFieldName: metricId, totalValue: count > 0 ? fact.totalValue : 0,
       capacityValue: fact.capacityValue, processSum: fact.processSum, additive: fact.additive, quantity: fact.quantity,
@@ -3134,7 +3138,17 @@ function resourceFacts(url, capturedAt = now()) {
       quantity: metricId.endsWith(".vram") ? "dedicated_memory_used" : null,
       sharedValue: memory ? 134217728 : null, residualRows });
   });
-  return { version: 2, capturedAt, software, processes, metrics, attributions };
+  const fields = [...items].filter(id => catalogFieldByName.has(id)).map(field => {
+    const definition = catalogFieldByName.get(field);
+    const values = processes.flatMap((process, processIndex) => process.processId > 0 ? [{ processIndex,
+      value: { field, integerValue: definition.valueKind.startsWith("unsigned") ? String(42 + processIndex) : null,
+        numericValue: definition.valueKind === "float64" ? 12 : null,
+        stringValue: definition.valueKind === "string" ? process.executablePath : null }, limit: null, scopes: [] }] : []);
+    return { field, unit: definition.unit, sourceId: definition.sourceId, capturedAt, additiveAcrossProcesses: definition.additiveAcrossProcesses, processes: values,
+      software: definition.additiveAcrossProcesses === true ? values.map((value, index) => ({ softwareId: software[index].softwareId,
+        value: value.value, limit: null })) : [] };
+  });
+  return { version: 2, capturedAt, software, processes, metrics, attributions, fields };
 }
 
 // 后端 PhysicalMemoryResidualBreakdownProvider 的形状：残差软件 processCount 0，每个计数器叶子一个 PID -1 的进程段，

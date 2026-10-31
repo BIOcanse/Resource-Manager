@@ -8,11 +8,12 @@ using ResourceManager.ReadWrite.ProcessFields;
 namespace ResourceManager.App.Endpoints.Transport;
 
 // Resource attribution facts have no row, column, sort or view identity.
-internal sealed record ResourceFactsSnapshot(
+internal sealed partial record ResourceFactsSnapshot(
     int Version, DateTimeOffset? CapturedAt, IReadOnlyList<ResourceSoftwareIdentity> Software,
     IReadOnlyList<ResourceProcessIdentity> Processes, IReadOnlyList<ResourceMetricFacts> Metrics,
     IReadOnlyList<ResourceProcessAttribution> Attributions)
 {
+    public IReadOnlyList<ResourceFieldFacts> Fields { get; init; } = [];
     internal static ResourceFactsSnapshot Empty { get; } = new(2, null, [], [], [], []);
 
     internal static ResourceFactsSnapshot Create(ResourceBreakdownSnapshot source, IReadOnlyList<string> items,
@@ -224,7 +225,8 @@ internal sealed record ResourceFactsSnapshot(
             capturedAt = new DateTimeOffset(foundations.ObservedAtUtcTicks, TimeSpan.Zero);
         var byMetric = metrics.ToDictionary(static metric => metric.MetricId, StringComparer.OrdinalIgnoreCase);
         var ordered = items.Distinct(StringComparer.OrdinalIgnoreCase).Where(byMetric.ContainsKey).Select(id => byMetric[id]).ToArray();
-        return new(2, capturedAt, software.Values.ToArray(), processes, ordered, attributions);
+        var fields = ProjectFields(source, items, processes, attributions);
+        return new(2, capturedAt, software.Values.ToArray(), processes, ordered, attributions) { Fields = fields };
     }
 
     private static double Percent(double value, double? capacity) => capacity is > 0 ? value * 100 / capacity.Value : 0;
@@ -251,7 +253,13 @@ internal sealed record ResourceProcessIdentity(int ProcessId, string? ProcessSta
     string? ExecutablePath, string? UserName, string? Architecture, string AttributionKind);
 internal sealed record ResourceSoftwareFacts(string SoftwareId,
     double Value, double SystemPercent, int ProcessCount, double BaseScore, double? SharedValue,
-    IReadOnlyList<ResourceProcessFacts> Processes);
+    IReadOnlyList<ResourceProcessFacts> Processes)
+{
+    public double? Limit { get; init; }
+}
 internal sealed record ResourceProcessFacts(int ProcessIndex,
-    double Value, double SystemPercent, double SoftwarePercent, double BaseScore, double? SharedValue);
+    double Value, double SystemPercent, double SoftwarePercent, double BaseScore, double? SharedValue)
+{
+    public double? Limit { get; init; }
+}
 internal sealed record ResourceProcessAttribution(int ProcessIndex, string SoftwareId, double BaseScore);

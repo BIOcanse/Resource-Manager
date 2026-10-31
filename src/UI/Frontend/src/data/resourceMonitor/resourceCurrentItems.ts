@@ -47,13 +47,20 @@ export const resourceMonitorCurrentItems: PushValueItemPolicy<ResourceMonitorQue
     if (query.scope === "table") {
       if (value.scope !== "table") return [];
       const facts = value.facts;
+      const fields = new Map((facts.fields ?? []).map(field => [field.field, field]));
       const items: PushValueItem<ResourceMonitorSnapshot>[] = facts.metrics.map(metric => ({
         key: "facts:" + metric.metricId, capturedAt: metric.capturedAt ?? facts.capturedAt ?? null,
-        value: { ...value, facts: { capturedAt: facts.capturedAt, metrics: [metric] } }
+        value: { ...value, facts: { capturedAt: facts.capturedAt, metrics: [metric],
+          fields: fields.has(metric.metricId) ? [fields.get(metric.metricId)!] : [] } }
       }));
+      const metricIds = new Set(facts.metrics.map(metric => metric.metricId));
+      for (const field of fields.values()) if (!metricIds.has(field.field)) {
+        items.push({ key: "facts:" + field.field, capturedAt: field.capturedAt ?? facts.capturedAt ?? null,
+          value: { ...value, facts: { capturedAt: facts.capturedAt, metrics: [], fields: [field] } } });
+      }
       if (needsIdentities(query)) {
         items.push({ key: identityKey(query), capturedAt: facts.capturedAt ?? null,
-          value: { ...value, facts: { ...facts, metrics: [] } } });
+          value: { ...value, facts: { capturedAt: facts.capturedAt, identities: facts.identities, metrics: [] } } });
       }
       return items;
     }
@@ -68,6 +75,7 @@ export const resourceMonitorCurrentItems: PushValueItemPolicy<ResourceMonitorQue
   combine: (_query, values, latest) => latest.scope === "table"
     ? { ...latest, facts: { capturedAt: latest.facts.capturedAt,
       metrics: values.flatMap(value => value.scope === "table" ? value.facts.metrics : []),
+      fields: values.flatMap(value => value.scope === "table" ? value.facts.fields ?? [] : []),
       identities: values.find((value): value is ResourceFactsMonitorSnapshot => value.scope === "table"
         && value.facts.identities !== undefined)?.facts.identities ?? [] } }
     : { ...latest, breakdown: { ...latest.breakdown,

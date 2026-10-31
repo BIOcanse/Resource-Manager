@@ -634,6 +634,7 @@ export interface AppSettingsResult {
 }
 
 export interface ResourceProcessSegment {
+  limit?: number | null;
   sharedValue?: number | null;
   processId: number;
   processStartKey?: string | null;
@@ -678,6 +679,7 @@ export interface AiGatewayCredentialCreatedView {
 }
 
 export interface ResourceSoftwareSegment {
+  limit?: number | null;
   sharedValue?: number | null;
   softwareId: string;
   name: string;
@@ -786,6 +788,9 @@ export interface ResourceTableColumn {
 }
 
 export interface ResourceTableValue {
+  /** Same-unit limit published for this exact process instance or software; zero is a value. */
+  limit?: number | null;
+  integerValue?: string | null;
   value?: number | null;
   percent?: number | null;
   /** Text produced by the frontend table projection; never read from the facts wire. */
