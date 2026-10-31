@@ -57,7 +57,7 @@
   },
   {
     "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-    "version": "10.0.8",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "runtime pack"
@@ -302,7 +302,7 @@
   },
   {
     "name": "Microsoft.NET.ILLink.Tasks",
-    "version": "10.0.8",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "publish tool"
@@ -316,14 +316,14 @@
   },
   {
     "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
-    "version": "10.0.8",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "publish tool"
   },
   {
     "name": "Microsoft.NETCore.App.Runtime.win-x64",
-    "version": "10.0.8",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "runtime pack"
@@ -407,7 +407,7 @@
   },
   {
     "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
-    "version": "10.0.8",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "runtime pack"
@@ -750,14 +750,14 @@
   },
   {
     "name": "Microsoft.NET.ILLink.Tasks",
-    "version": "10.0.8",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "publish tool"
   },
   {
     "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
-    "version": "10.0.8",
+    "version": "10.0.14",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "publish tool"

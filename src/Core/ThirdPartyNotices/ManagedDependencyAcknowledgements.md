@@ -14,7 +14,7 @@ This inventory covers the resolved product, desktop, installer, uninstaller, ext
 | FreedomPoint.Core/0.1.0-dev.48 | BIOcanse | Apache-2.0 | src/Core, src/UI/Core, tests/App |
 | HidSharp/2.6.4 | James F. Bellinger | LICENSE.txt | src/Core, tests/App |
 | LibreHardwareMonitorLib/0.9.6 | LibreHardwareMonitorLib | MPL-2.0 | src/Core, tests/App |
-| Microsoft.AspNetCore.App.Runtime.win-x64/10.0.8 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
+| Microsoft.AspNetCore.App.Runtime.win-x64/10.0.14 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
 | Microsoft.Bcl.AsyncInterfaces/10.0.14 | Microsoft | MIT | sdk/csharp/ResourceManager.Adapter.Abstractions |
 | Microsoft.CodeCoverage/18.11.0 | Microsoft | MIT | tests/App |
 | Microsoft.Data.Sqlite.Core/10.0.14 | Microsoft | MIT | src/Core, src/Installer, src/UI/Launcher, src/Updater, src/Updater/WinUI, tests/App |
@@ -49,10 +49,10 @@ This inventory covers the resolved product, desktop, installer, uninstaller, ext
 | Microsoft.Extensions.Options.ConfigurationExtensions/10.0.14 | Microsoft | MIT | tests/App |
 | Microsoft.Extensions.Options/10.0.14 | Microsoft | MIT | tests/App |
 | Microsoft.Extensions.Primitives/10.0.14 | Microsoft | MIT | tests/App |
-| Microsoft.NET.ILLink.Tasks/10.0.8 | Microsoft | MIT | src/Uninstaller, src/Updater/WinUI |
+| Microsoft.NET.ILLink.Tasks/10.0.14 | Microsoft | MIT | src/Uninstaller, src/Updater/WinUI |
 | Microsoft.NET.Test.Sdk/18.11.0 | Microsoft | MIT | tests/App |
-| Microsoft.NETCore.App.Crossgen2.win-x64/10.0.8 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
-| Microsoft.NETCore.App.Runtime.win-x64/10.0.8 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
+| Microsoft.NETCore.App.Crossgen2.win-x64/10.0.14 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
+| Microsoft.NETCore.App.Runtime.win-x64/10.0.14 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
 | Microsoft.TestPlatform.ObjectModel/18.11.0 | Microsoft | MIT | tests/App |
 | Microsoft.TestPlatform.TestHost/18.11.0 | Microsoft | MIT | tests/App |
 | Microsoft.Web.WebView2/1.0.4314.35 | Microsoft | LICENSE.txt | src/UI/Core, tests/App |
@@ -64,7 +64,7 @@ This inventory covers the resolved product, desktop, installer, uninstaller, ext
 | Microsoft.WindowsAppSDK.Foundation/2.6.4 | Microsoft | file: license.txt | src/Updater/WinUI |
 | Microsoft.WindowsAppSDK.InteractiveExperiences/2.6.4 | Microsoft | file: license.txt | src/Updater/WinUI |
 | Microsoft.WindowsAppSDK.WinUI/2.6.4 | Microsoft | file: license.txt | src/Updater/WinUI |
-| Microsoft.WindowsDesktop.App.Runtime.win-x64/10.0.8 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
+| Microsoft.WindowsDesktop.App.Runtime.win-x64/10.0.14 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
 | Mono.Posix.NETStandard/1.0.0 | Microsoft | See package license URL | src/Core, tests/App |
 | NETStandard.Library.Ref/2.1.0 | Microsoft | MIT | sdk/csharp/ResourceManager.Adapter.Abstractions runtime/reference pack |
 | RAMSPDToolkit-NDD/1.4.2 | RAMSPDToolkit-NDD | MPL-2.0 | src/Core, tests/App |
@@ -113,5 +113,5 @@ This inventory covers the resolved product, desktop, installer, uninstaller, ext
 | xunit.extensibility.execution/2.9.3 | jnewkirk,bradwilson | Apache-2.0 | tests/App |
 | xunit.runner.visualstudio/4.0.1 | jnewkirk,bradwilson | Apache-2.0 | tests/App |
 | xunit/2.9.3 | jnewkirk,bradwilson | Apache-2.0 | tests/App |
-| Microsoft.NET.ILLink.Tasks/10.0.8 | Microsoft | MIT | src/Uninstaller, src/Updater/WinUI |
-| Microsoft.NETCore.App.Crossgen2.win-x64/10.0.8 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
+| Microsoft.NET.ILLink.Tasks/10.0.14 | Microsoft | MIT | src/Uninstaller, src/Updater/WinUI |
+| Microsoft.NETCore.App.Crossgen2.win-x64/10.0.14 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |
