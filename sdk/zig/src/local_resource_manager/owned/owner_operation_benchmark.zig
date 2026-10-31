@@ -1472,7 +1472,7 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     var options = try parseOptions(args);
-    if (options.mode == .timing and builtin.mode != .ReleaseFast) return error.TimingRequiresReleaseFast;
+    if (options.mode == .timing and builtin.mode != .fast) return error.TimingRequiresReleaseFast;
     if (options.mode == .work and !instrumented_build) return error.WorkModeRequiresInstrumentedBuild;
     if (options.mode == .timing and instrumented_build) return error.TimingRequiresCleanBuild;
     if (options.mode == .timing and compiled_candidate == .both) return error.TimingRequiresSingleCandidateBuild;

@@ -75,11 +75,11 @@ pub fn TestHost(comptime C: type) type {
     return struct {
         const Self = @This();
         controller: ?*C = null,
-        runs: [16]std.atomic.Value(u64) = [_]std.atomic.Value(u64){std.atomic.Value(u64).init(0)} ** 16,
-        starts: [16]std.atomic.Value(u32) = [_]std.atomic.Value(u32){std.atomic.Value(u32).init(0)} ** 16,
-        stops: [16]std.atomic.Value(u32) = [_]std.atomic.Value(u32){std.atomic.Value(u32).init(0)} ** 16,
-        auto_running: [16]std.atomic.Value(bool) = [_]std.atomic.Value(bool){std.atomic.Value(bool).init(true)} ** 16,
-        auto_return: [16]std.atomic.Value(bool) = [_]std.atomic.Value(bool){std.atomic.Value(bool).init(true)} ** 16,
+        runs: [16]std.atomic.Value(u64) = @as([16]std.atomic.Value(u64), @splat(std.atomic.Value(u64).init(0))),
+        starts: [16]std.atomic.Value(u32) = @as([16]std.atomic.Value(u32), @splat(std.atomic.Value(u32).init(0))),
+        stops: [16]std.atomic.Value(u32) = @as([16]std.atomic.Value(u32), @splat(std.atomic.Value(u32).init(0))),
+        auto_running: [16]std.atomic.Value(bool) = @as([16]std.atomic.Value(bool), @splat(std.atomic.Value(bool).init(true))),
+        auto_return: [16]std.atomic.Value(bool) = @as([16]std.atomic.Value(bool), @splat(std.atomic.Value(bool).init(true))),
         completed: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
         complete_calls: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
         logs: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),

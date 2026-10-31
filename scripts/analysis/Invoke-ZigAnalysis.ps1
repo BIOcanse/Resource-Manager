@@ -8,7 +8,7 @@ $output = [IO.Path]::GetFullPath($OutputRoot)
 Set-Location -LiteralPath $repo
                 $zig = (Get-Command zig -CommandType Application).Source
                 $version = & $zig version
-                if ($LASTEXITCODE -ne 0 -or $version -ne '0.16.0') { throw 'Expected Zig 0.16.0 on launcher PATH' }
+                if ($LASTEXITCODE -ne 0 -or $version -ne '0.17.0') { throw 'Expected Zig 0.17.0 on launcher PATH' }
                 $pending = [Collections.Generic.Queue[string]]::new()
                 foreach ($root in @('src/Core/NativeCore','sdk/zig')) { $pending.Enqueue((Join-Path $repo $root)) }
                 $zigFiles = [Collections.Generic.List[string]]::new()

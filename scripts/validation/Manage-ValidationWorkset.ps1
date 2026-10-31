@@ -1769,7 +1769,7 @@ function Get-IndependentSourceEvidence {
     $toolsRoot = Get-MachineRoot -Name ToolsRoot
     $inputRoots = @(
         $repositoryRoot, $validationRootFull,
-        (Join-Path $toolsRoot 'Zig\zig-0.16.0'),
+        (Join-Path $toolsRoot 'Zig\zig-0.17.0'),
         $FreedomPointSdkFeed,
         'C:\Program Files\dotnet',
         [System.IO.Path]::GetDirectoryName([string]$jobManifest.executable)
@@ -1964,7 +1964,7 @@ function Get-IndependentSourceEvidence {
     }
     if ($commands.Count -ne 30) { throw 'IndependentSource commands.jsonl must contain exactly thirty logged processes.' }
     $commandNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-    $zigPath = Join-Path $toolsRoot 'Zig\zig-0.16.0\zig.exe'
+    $zigPath = Join-Path $toolsRoot 'Zig\zig-0.17.0\zig.exe'
     $zigLib = Join-Path (Split-Path $zigPath -Parent) 'lib'
     $rootModule = Join-Path $repositoryRoot '.local\ledger-owner-implementation\independent-source-probe\ProbeMain.zig'
     $structureModule = Join-Path $repositoryRoot 'sdk\zig\src\local_resource_manager\generated\ledger_structure.zig'

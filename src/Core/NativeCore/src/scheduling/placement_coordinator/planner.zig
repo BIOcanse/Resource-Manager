@@ -180,7 +180,7 @@ pub fn plan(
     }
 
     // actionsFor mirrors the two passes above; every plan in the tests checks it.
-    if (builtin.mode == .Debug) std.debug.assert(action_count == required_actions);
+    if (builtin.mode == .debug) std.debug.assert(action_count == required_actions);
     for (session.slots) |*slot| {
         if (slot.active and !slot.desired_seen and slot.state == .empty) slot.* = .{};
     }

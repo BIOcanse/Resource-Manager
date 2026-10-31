@@ -16,7 +16,7 @@ const Target = enum { roots_running, window_running, window_stopped, desktop_run
 const Host = struct {
     const Slot = struct { host: *Host = undefined, run: Run = undefined, stop: w.HANDLE = undefined, worker: ?std.Thread = null, starts: usize = 0 };
     engine: *topology.Engine = undefined,
-    slots: [topology.host_blocks.len]Slot = [_]Slot{.{}} ** topology.host_blocks.len,
+    slots: [topology.host_blocks.len]Slot = @as([topology.host_blocks.len]Slot, @splat(.{})),
     client: wp.Client = .{},
     mutex: w.Mutex = .{},
     wake: w.HANDLE = undefined,

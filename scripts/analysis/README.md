@@ -51,7 +51,7 @@ pwsh -NoProfile -File scripts/analysis/Invoke-WebNativeStaticAnalysis.ps1
   - CodeQL for JavaScript and C/C++;
   - Cppcheck;
   - PSScriptAnalyzer with default rules;
-  - Zig syntax checks only (Zig 0.16.0 has nothing deeper).
+  - Zig syntax checks only (Zig 0.17.0 has nothing deeper).
 - `-Tools <name>` runs one tool.
 - Analysis packages restore only under `node/`, with exact pins and their own lockfile. Restore the frontend from its own lockfile first.
 - `-KeepOpen` leaves the result task running for triage. Complete it afterwards.

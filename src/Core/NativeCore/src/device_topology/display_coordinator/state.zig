@@ -186,7 +186,7 @@ pub const Session = struct {
             .text_index_capacity = self.config.text_index_capacity,
             .reserved_u32 = 0,
             .resident_byte_count = self.actualResidentByteCount(),
-            .reserved = [_]u64{0} ** 8,
+            .reserved = @as([8]u64, @splat(0)),
         };
     }
 
@@ -1338,9 +1338,9 @@ const ComponentState = struct {
     source_device_identity: protocol.Handle128 = .{ .high = 0, .low = 0 },
     edid_identity: protocol.Handle128 = .{ .high = 0, .low = 0 },
     source_object_identity: [protocol.source_count]protocol.Handle128 =
-        [_]protocol.Handle128{.{ .high = 0, .low = 0 }} ** protocol.source_count,
+        @as([protocol.source_count]protocol.Handle128, @splat(.{ .high = 0, .low = 0 })),
     canonical_by_source: [protocol.source_count]protocol.Handle128 =
-        [_]protocol.Handle128{.{ .high = 0, .low = 0 }} ** protocol.source_count,
+        @as([protocol.source_count]protocol.Handle128, @splat(.{ .high = 0, .low = 0 })),
     aggregate: Aggregate = .{},
 };
 

@@ -46,7 +46,7 @@ test "continuous bitmap matches an independent epoch reference at every width" {
     inline for (.{ 8, 16, 32, 64 }) |width| {
         const W = window.Window(width);
         var history = W.History{};
-        var reference = [_]bool{false} ** 161;
+        var reference = @as([161]bool, @splat(false));
         var epoch: u64 = 1;
         while (epoch <= 160) : (epoch += 1) {
             if (epoch == 1 or epoch % 17 == 0) {

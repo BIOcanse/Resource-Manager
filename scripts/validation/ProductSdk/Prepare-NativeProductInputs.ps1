@@ -200,7 +200,7 @@ try {
             gccFullVersion = $gccFullVersion; gxxFullVersion = $gxxFullVersion
             gccVersion = Read-ToolIdentity $gcc @('--version'); gxxVersion = Read-ToolIdentity $gxx @('--version')
             zigVersion = Read-ToolIdentity $zig @('version'); zigEnvironment = Read-ToolIdentity $zig @('env') }
-        if ($toolIdentities.zigVersion -cne '0.16.0') { throw 'Product Native build requires Zig 0.16.0.' }
+        if ($toolIdentities.zigVersion -cne '0.17.0') { throw 'Product Native build requires Zig 0.17.0.' }
         Write-Json (Join-Path $work 'tool-identities.json') $toolIdentities
     }
     foreach ($component in @($components) + @('GpuMigrationProbe')) {

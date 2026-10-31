@@ -176,6 +176,6 @@ test "calibration CLI rejects ambiguous and unsafe arguments" {
 }
 
 test "calibration CLI bounds malformed newline-dense sample allocation" {
-    try std.testing.expectEqual(@as(usize, 0), maximumPossibleSamples("\n" ** 24));
-    try std.testing.expectEqual(@as(usize, 1), maximumPossibleSamples("\n" ** 25));
+    try std.testing.expectEqual(@as(usize, 0), maximumPossibleSamples("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"));
+    try std.testing.expectEqual(@as(usize, 1), maximumPossibleSamples("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"));
 }

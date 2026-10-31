@@ -198,7 +198,7 @@ pub const Session = struct {
             return .stale_frame;
         }
 
-        var aggregates = [_]SourceAggregate{.{}} ** protocol.maximum_source_count;
+        var aggregates = @as([protocol.maximum_source_count]SourceAggregate, @splat(.{}));
         const validation = validateObservations(
             &self.active,
             self.config.required_source_mask,

@@ -63,7 +63,7 @@ pub const Bank = struct {
     unresolved_count: u32 = 0,
     diff_count: u32 = 0,
     source_generations: [protocol.source_count]u64 =
-        [_]u64{0} ** protocol.source_count,
+        @as([protocol.source_count]u64, @splat(0)),
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -142,7 +142,7 @@ pub const Bank = struct {
         self.capability_count = 0;
         self.unresolved_count = 0;
         self.diff_count = 0;
-        self.source_generations = [_]u64{0} ** protocol.source_count;
+        self.source_generations = @as([protocol.source_count]u64, @splat(0));
     }
 
     pub fn text(self: *const Bank, index: u32) []const u8 {

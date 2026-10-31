@@ -13,7 +13,7 @@ pub const ItemKey = types.ItemKey;
 pub const Reason = types.Reason;
 pub const Controller = @import("controller.zig").Controller;
 comptime {
-    if (@import("builtin").mode != .ReleaseSafe) @compileError("rm_control must compile in ReleaseSafe mode");
+    if (@import("builtin").mode != .safe) @compileError("rm_control must compile in ReleaseSafe mode");
 }
 pub const json = @import("json.zig");
 pub const export_tree = @import("export_tree.zig");

@@ -65,7 +65,7 @@ test "placement coordinator preserves ideal processor kind through apply and own
     var config = corpus.config(7);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var desired = [_]protocol.DesiredInput{corpus.desired(101, 201, 301)};
     desired[0].placement_kind = @intFromEnum(protocol.PlacementKind.thread_ideal_processor);
     var cycle = corpus.cycle(7, 1, 1000, 1, 0);
@@ -87,7 +87,7 @@ test "placement coordinator applies retains restores and clears exact receipt" {
     var config = corpus.config(7);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var desired = [_]protocol.DesiredInput{corpus.desired(101, 201, 301)};
     var cycle = corpus.cycle(7, 1, 1_000, 1, 0);
     try std.testing.expectEqual(
@@ -134,7 +134,7 @@ test "placement coordinator applies retains restores and clears exact receipt" {
         session_module.applyFeedback(session, &restore_feedback, 1),
     );
     var snapshot_header = emptySnapshotHeader();
-    var states = [_]protocol.StateOutput{std.mem.zeroes(protocol.StateOutput)} ** 8;
+    var states = @as([8]protocol.StateOutput, @splat(std.mem.zeroes(protocol.StateOutput)));
     try std.testing.expectEqual(
         ResultCode.ok,
         session_module.snapshot(session, &snapshot_header, &states, 8),
@@ -146,7 +146,7 @@ test "placement coordinator orders restore before apply" {
     var config = corpus.config(9);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var old_applied = [_]protocol.AppliedInput{corpus.applied(1, 2, 10, 9, 10)};
     var old_desired = [_]protocol.DesiredInput{corpus.desired(1, 2, 10)};
     var cycle = corpus.cycle(9, 1, 2_000, 1, 1);
@@ -170,7 +170,7 @@ test "placement coordinator owns apply priority and identity ordering" {
     var config = corpus.config(10);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var desired = [_]protocol.DesiredInput{
         corpus.desired(50, 2, 10),
         corpus.desired(40, 4, 20),
@@ -197,7 +197,7 @@ test "placement coordinator rejects duplicate desired rows without advancing epo
     var config = corpus.config(11);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     const row = corpus.desired(1, 2, 3);
     var desired = [_]protocol.DesiredInput{ row, row };
     var cycle = corpus.cycle(11, 1, 3_000, 2, 0);
@@ -212,7 +212,7 @@ test "placement coordinator retry feedback schedules exact next wake" {
     var config = corpus.config(13);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var desired = [_]protocol.DesiredInput{corpus.desired(5, 6, 7)};
     var cycle = corpus.cycle(13, 1, 4_000, 1, 0);
     try std.testing.expectEqual(
@@ -227,7 +227,7 @@ test "placement coordinator retry feedback schedules exact next wake" {
         session_module.applyFeedback(session, &retry_feedback, 1),
     );
     var snapshot_header = emptySnapshotHeader();
-    var states = [_]protocol.StateOutput{std.mem.zeroes(protocol.StateOutput)} ** 8;
+    var states = @as([8]protocol.StateOutput, @splat(std.mem.zeroes(protocol.StateOutput)));
     try std.testing.expectEqual(
         ResultCode.ok,
         session_module.snapshot(session, &snapshot_header, &states, 8),
@@ -248,7 +248,7 @@ fn expectOmittedRestoreUnchanged(retry_feedback: bool) !void {
     var config = corpus.config(14);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var old_applied = [_]protocol.AppliedInput{corpus.applied(1, 2, 10, 9, 10)};
     var cycle = corpus.cycle(14, 1, 1_000, 0, 1);
     try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, null, 0, &old_applied, 1, &actions, 8));
@@ -285,7 +285,7 @@ test "placement coordinator rejects late feedback without consuming pending acti
     var config = corpus.config(15);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var desired = [_]protocol.DesiredInput{corpus.desired(8, 9, 10)};
     var cycle = corpus.cycle(15, 1, 5_000, 1, 0);
     try std.testing.expectEqual(
@@ -308,7 +308,7 @@ test "placement coordinator retains invalid and unavailable receipts as explicit
     var config = corpus.config(17);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var invalid = corpus.applied(12, 13, 14, 15, 14);
     invalid.flags = 0;
     invalid.receipt_digest = 0;
@@ -328,7 +328,7 @@ test "placement coordinator retains invalid and unavailable receipts as explicit
     );
     try std.testing.expectEqual(@as(u32, 0), cycle.action_count);
     var snapshot_header = emptySnapshotHeader();
-    var states = [_]protocol.StateOutput{std.mem.zeroes(protocol.StateOutput)} ** 8;
+    var states = @as([8]protocol.StateOutput, @splat(std.mem.zeroes(protocol.StateOutput)));
     try std.testing.expectEqual(
         ResultCode.ok,
         session_module.snapshot(session, &snapshot_header, &states, 8),
@@ -351,7 +351,7 @@ test "placement coordinator can defer receipt observation to the conditional exe
     var config = corpus.config(18);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var applied = corpus.applied(31, 32, 33, 34, 33);
     applied.observation_status = @intFromEnum(protocol.ObservationStatus.unchecked);
     applied.current_digest = 0;
@@ -373,7 +373,7 @@ test "placement coordinator requires explicit override after ownership loss" {
     var config = corpus.config(19);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var desired = [_]protocol.DesiredInput{corpus.desired(21, 22, 23)};
     var ownership_lost = [_]protocol.AppliedInput{corpus.applied(21, 22, 24, 25, 26)};
     var cycle = corpus.cycle(19, 1, 7_000, 1, 1);
@@ -412,7 +412,7 @@ test "placement coordinator reclaims unreferenced ownership loss before union ca
     var config = corpus.config(20);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var desired: [8]protocol.DesiredInput = undefined;
     var applied: [8]protocol.AppliedInput = undefined;
     for (0..8) |index| {
@@ -456,7 +456,7 @@ test "placement coordinator golden corpus produces exact action and state vector
     const session = try session_module.Session.create(&config);
     defer session.destroy();
     var desired = [_]protocol.DesiredInput{corpus.desired(41, 42, 43)};
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     var cycle = corpus.cycle(23, 1, 8_000, 1, 0);
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -485,7 +485,7 @@ test "placement coordinator golden corpus produces exact action and state vector
     try std.testing.expectEqual(@as(u64, 2), cycle.state_revision);
 
     var header = emptySnapshotHeader();
-    var states = [_]protocol.StateOutput{std.mem.zeroes(protocol.StateOutput)} ** 8;
+    var states = @as([8]protocol.StateOutput, @splat(std.mem.zeroes(protocol.StateOutput)));
     try std.testing.expectEqual(
         ResultCode.ok,
         session_module.snapshot(session, &header, &states, 8),
@@ -548,7 +548,7 @@ test "placement coordinator counts exact actions before any slot change and its 
         corpus.desired(102, 202, 302),
         corpus.desired(103, 203, 303),
     };
-    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     try std.testing.expectEqual(@as(u32, 3), try planExactAndFull(exact, full, 1, 1_000, &first_desired, &.{}, &actions));
 
     // Two of them complete; the third stays pending past its deadline.
@@ -600,7 +600,7 @@ fn planExactAndFull(
     const next_action = exact.next_action_id;
     const first = session_module.plan(exact, &probe, desired.ptr, desired_count, applied.ptr, applied_count, null, 0);
     var planned = probe;
-    var exact_actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var exact_actions = @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
     if (first == .buffer_too_small) {
         try std.testing.expect(probe.action_count > 0);
         try std.testing.expectEqual(revision, exact.state_revision);

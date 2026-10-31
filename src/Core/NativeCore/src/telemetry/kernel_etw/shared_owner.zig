@@ -193,7 +193,7 @@ const CpuBank = struct { arena: std.heap.ArenaAllocator, view: p.View = .{}, ref
 const Bank = struct {
     arena: std.heap.ArenaAllocator,
     component_arenas: [9]std.heap.ArenaAllocator = undefined,
-    component_references: [9]u32 = [_]u32{0} ** 9,
+    component_references: [9]u32 = @as([9]u32, @splat(0)),
     view: View = .{},
     references: u32 = 0,
     cpu_index: ?usize = null,
@@ -2272,7 +2272,7 @@ test "shared working pins stay below growing retained publication storage" {
     cfg.residency.max_processors = 1;
     const self = try Owner.createExternal(backing, cfg, absent_identity);
     defer self.destroy() catch unreachable;
-    const name = [_]u8{'p'} ** 512;
+    const name = @as([512]u8, @splat('p'));
     try self.readers.apply(&.{ .kind = 1, .pid = 1, .flags = 1, .start = 10, .name = &name, .name_len = name.len });
     for (0..256) |index| try self.readers.apply(&.{ .kind = 2, .pid = 1, .tid = @intCast(index + 1) });
     for (0..256) |index| try self.readers.apply(&.{ .kind = 7, .pid = 1, .tid = @intCast(index + 1), .old_pid = if (index == 0) 0 else 1, .old_tid = @intCast(index), .processor = 0, .qpc = @intCast(index * 3), .time_ticks = @intCast(1000000 + index * 3) });
@@ -2284,7 +2284,7 @@ test "shared working pins stay below growing retained publication storage" {
     defer for (pins[0..pin_count]) |pin| cpu_allocator.free(pin);
     var held: ?Lease = null;
     defer if (held) |lease| self.release(lease.token) catch unreachable;
-    const path = [_]u16{'x'} ** 64;
+    const path = @as([64]u16, @splat('x'));
     var roles_separated = true;
     for (0..pins.len) |iteration| {
         // Bank output grows while one earlier bank remains leased. These

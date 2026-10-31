@@ -198,12 +198,12 @@ fn verifySecurity(security: *Security, directory: bool) !void {
 }
 
 test "key wire format and bounded length" {
-    const valid = "rm_sk_" ++ "0123456789abcdef" ** 4;
+    const valid = "rm_sk_" ++ "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     var key = try decode(valid ++ "\r\n");
     defer key.clear();
     try std.testing.expectEqualStrings(valid, key.value());
     try std.testing.expectError(error.KeyTooLong, decode(valid ++ "\r\n\n"));
-    try std.testing.expectError(error.InvalidKey, decode("rm_sk_" ++ "g" ** 64));
+    try std.testing.expectError(error.InvalidKey, decode("rm_sk_" ++ "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"));
     try std.testing.expectError(error.InvalidKey, decode(valid ++ " "));
     try std.testing.expectEqual(@as(usize, 0), (try decode("\r\n")).len);
 }

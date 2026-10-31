@@ -447,7 +447,7 @@ fn testCaller(host_instance_id: u64, connection_id: u64, attested_at: u64) Calle
         .windows_session_id = 12,
         .integrity_level_rid = 0x2000,
         .is_elevated = 0,
-        .reserved0 = [_]u8{0} ** 7,
+        .reserved0 = @as([7]u8, @splat(0)),
     };
 }
 

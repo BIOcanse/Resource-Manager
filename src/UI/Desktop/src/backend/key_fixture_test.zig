@@ -12,7 +12,7 @@ test "prepared trusted and untrusted key storage are validated on every read" {
     if (options.work_root.len == 0) return error.SkipZigTest;
     const root = wide(options.work_root ++ "\\backend-key-fixture");
     const untrusted = wide(options.work_root ++ "\\backend-key-fixture\\untrusted");
-    const valid = "rm_sk_" ++ "abcdef0123456789" ** 4;
+    const valid = "rm_sk_" ++ "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     const stop = c.CreateEventW(null, 1, 0, null) orelse return error.EventUnavailable;
     defer _ = c.CloseHandle(stop);
     const memory = c.VirtualAlloc(null, @sizeOf(Reader), c.MEM_RESERVE | c.MEM_COMMIT, c.PAGE_READWRITE) orelse return error.OutOfMemory;

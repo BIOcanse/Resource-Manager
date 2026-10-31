@@ -287,15 +287,15 @@ fn assertType(
     comptime name: []const u8,
 ) void {
     if (@sizeOf(T) != size) @compileError("operation coordinator ABI size drift: " ++ name);
-    const fields = @typeInfo(T).@"struct".fields;
-    if (fields.len != offsets.len) {
+    const info = @typeInfo(T).@"struct";
+    if (info.field_names.len != offsets.len) {
         @compileError("operation coordinator ABI field-count drift: " ++ name);
     }
     if (fieldNameHash(T) != expected_name_hash) {
         @compileError("operation coordinator ABI field-name/order drift: " ++ name);
     }
-    inline for (fields, 0..) |field, index| {
-        if (@offsetOf(T, field.name) != offsets[index]) {
+    inline for (info.field_names, 0..) |field_name, index| {
+        if (@offsetOf(T, field_name) != offsets[index]) {
             @compileError("operation coordinator ABI field-offset drift: " ++ name);
         }
     }
@@ -308,18 +308,18 @@ fn expectType(
     expected_name_hash: u64,
 ) !void {
     try std.testing.expectEqual(expected_size, @sizeOf(T));
-    const fields = @typeInfo(T).@"struct".fields;
-    try std.testing.expectEqual(offsets.len, fields.len);
+    const info = @typeInfo(T).@"struct";
+    try std.testing.expectEqual(offsets.len, info.field_names.len);
     try std.testing.expectEqual(expected_name_hash, fieldNameHash(T));
-    inline for (fields, 0..) |field, index| {
-        try std.testing.expectEqual(offsets[index], @offsetOf(T, field.name));
+    inline for (info.field_names, 0..) |field_name, index| {
+        try std.testing.expectEqual(offsets[index], @offsetOf(T, field_name));
     }
 }
 
 fn fieldNameHash(comptime T: type) u64 {
     var hash: u64 = 0xcbf2_9ce4_8422_2325;
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        inline for (field.name) |byte| {
+    inline for (@typeInfo(T).@"struct".field_names) |field_name| {
+        inline for (field_name) |byte| {
             hash = (hash ^ byte) *% 0x0000_0100_0000_01b3;
         }
         hash *%= 0x0000_0100_0000_01b3;
@@ -329,10 +329,10 @@ fn fieldNameHash(comptime T: type) u64 {
 
 fn fieldTypeHash(comptime T: type) u64 {
     var hash: u64 = 0xcbf2_9ce4_8422_2325;
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        mixType(&hash, field.type);
-        mixInteger(&hash, @sizeOf(field.type));
-        mixInteger(&hash, @alignOf(field.type));
+    inline for (@typeInfo(T).@"struct".field_types) |field_type| {
+        mixType(&hash, field_type);
+        mixInteger(&hash, @sizeOf(field_type));
+        mixInteger(&hash, @alignOf(field_type));
     }
     return hash;
 }
@@ -367,10 +367,10 @@ fn mixType(hash: *u64, comptime T: type) void {
             mixByte(hash, 3);
             mixInteger(hash, @sizeOf(T));
             mixInteger(hash, @alignOf(T));
-            inline for (structure.fields) |field| {
-                inline for (field.name) |byte| mixByte(hash, byte);
+            inline for (structure.field_names, structure.field_types) |field_name, field_type| {
+                inline for (field_name) |byte| mixByte(hash, byte);
                 mixByte(hash, 0);
-                mixType(hash, field.type);
+                mixType(hash, field_type);
             }
         },
         else => @compileError("unsupported operation coordinator ABI field type"),
@@ -400,10 +400,10 @@ fn assertValue(
 }
 
 fn expectEnum(comptime E: type, comptime expected: []const u32) !void {
-    const fields = @typeInfo(E).@"enum".fields;
-    try std.testing.expectEqual(expected.len, fields.len);
-    inline for (fields, 0..) |field, index| {
-        try std.testing.expectEqual(expected[index], field.value);
+    const info = @typeInfo(E).@"enum";
+    try std.testing.expectEqual(expected.len, info.field_names.len);
+    inline for (info.field_values, 0..) |field_value, index| {
+        try std.testing.expectEqual(expected[index], field_value);
     }
 }
 

@@ -162,17 +162,17 @@ pub fn fingerprint() u64 {
 }
 
 fn mixStruct(initial: u64, comptime T: type) u64 {
-    const fields = @typeInfo(T).@"struct".fields;
+    const info = @typeInfo(T).@"struct";
     var hash = mix(initial, @sizeOf(T));
     hash = mix(hash, @alignOf(T));
-    hash = mix(hash, fields.len);
-    inline for (fields) |field| {
-        hash = mixBytes(hash, field.name);
+    hash = mix(hash, info.field_names.len);
+    inline for (info.field_names, info.field_types) |field_name, field_type| {
+        hash = mixBytes(hash, field_name);
         hash = mixByte(hash, 0xff);
-        hash = mix(hash, @offsetOf(T, field.name));
-        hash = mix(hash, @sizeOf(field.type));
-        hash = mix(hash, @alignOf(field.type));
-        hash = mixType(hash, field.type);
+        hash = mix(hash, @offsetOf(T, field_name));
+        hash = mix(hash, @sizeOf(field_type));
+        hash = mix(hash, @alignOf(field_type));
+        hash = mixType(hash, field_type);
     }
     return hash;
 }

@@ -16,7 +16,7 @@ pub fn Configured(comptime config: Configuration) type {
     return struct {
         const Self = @This();
         pub const width = config.width;
-        pub const Bitmap = std.meta.Int(.unsigned, width);
+        pub const Bitmap = @Int(.unsigned, width);
         const Shift = std.math.Log2Int(Bitmap);
         pub const Policy = struct {
             score_epochs: u8 = config.score_epochs,
@@ -100,7 +100,7 @@ test "all configured integer widths preserve reference counts and expire the ent
     inline for (.{ 8, 16, 32, 64 }) |width| {
         const W = Window(width);
         try std.testing.expectEqual(@as(usize, width / 8), @sizeOf(W.Bitmap));
-        var seen = [_]bool{false} ** 130;
+        var seen = @as([130]bool, @splat(false));
         var history = W.History{};
         var epoch: u64 = 1;
         while (epoch <= 128) : (epoch += 1) {
@@ -176,7 +176,7 @@ test "fixed window defaults and exact inclusive boundaries have no truncation" {
 test "all window widths match independent access-round reference over sparse and burst history" {
     const TestWindow = Window(64);
 
-    var seen = [_]bool{false} ** 129;
+    var seen = @as([129]bool, @splat(false));
     var history = TestWindow.History{};
     var epoch: u64 = 1;
     while (epoch <= 128) : (epoch += 1) {

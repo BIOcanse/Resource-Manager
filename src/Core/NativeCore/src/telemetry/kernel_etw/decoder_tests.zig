@@ -21,7 +21,7 @@ fn rejectPrefixes(record: d.RawEvent) !void {
 }
 
 test "CSwitch uses payload IDs and retains processor index and raw QPC" {
-    var bytes = [_]u8{0} ** 24;
+    var bytes = @as([24]u8, @splat(0));
     put(u32, &bytes, 0, 42);
     put(u32, &bytes, 4, 57);
     for ([_]u8{ 4, 8 }) |p| {
@@ -34,9 +34,9 @@ test "CSwitch uses payload IDs and retains processor index and raw QPC" {
         try rejectPrefixes(record);
     }
     try std.testing.expectError(error.UnsupportedVersion, d.decode(raw(d.thread_provider, 36, 3, 8, &bytes)));
-    var too_long = [_]u8{0} ** 25;
+    var too_long = @as([25]u8, @splat(0));
     try std.testing.expectError(error.InvalidPayload, d.decode(raw(d.thread_provider, 36, 2, 8, &too_long)));
-    var current = [_]u8{0} ** 28;
+    var current = @as([28]u8, @splat(0));
     put(u32, &current, 0, 420);
     put(u32, &current, 4, 570);
     for ([_]u8{ 4, 8 }) |p| {
@@ -49,7 +49,7 @@ test "CSwitch uses payload IDs and retains processor index and raw QPC" {
 }
 
 test "thread lifecycles decode x86 x64 v0 v2 v3 without fabricated header identity" {
-    var bytes = [_]u8{0} ** 80;
+    var bytes = @as([80]u8, @splat(0));
     put(u32, &bytes, 0, 123);
     put(u32, &bytes, 4, 456);
     const v0 = (try d.decode(raw(d.thread_provider, 1, 0, 4, bytes[0..8]))).?;
@@ -81,7 +81,7 @@ test "thread lifecycles decode x86 x64 v0 v2 v3 without fabricated header identi
 test "process v2 through v5 validates variable SID and unaligned Unicode tails" {
     for ([_]u8{ 4, 8 }) |p| {
         for ([_]u8{ 2, 3, 4, 5 }) |version| {
-            var bytes = [_]u8{0} ** 160;
+            var bytes = @as([160]u8, @splat(0));
             putPointer(&bytes, 0, p, 0x123456);
             put(u32, &bytes, p, 321);
             put(u32, &bytes, p + 4, 123);
@@ -121,7 +121,7 @@ test "process v2 through v5 validates variable SID and unaligned Unicode tails" 
 }
 
 test "process v0 v1 null SID and unsupported versions" {
-    var bytes = [_]u8{0} ** 64;
+    var bytes = @as([64]u8, @splat(0));
     put(u32, &bytes, 0, 51);
     put(u32, &bytes, 4, 52);
     const v0 = (try d.decode(raw(d.process_provider, 2, 0, 4, bytes[0..13]))).?;
@@ -135,7 +135,7 @@ test "process v0 v1 null SID and unsupported versions" {
 test "ISR DPC threaded and timer preserve raw duration and pointer widths" {
     for ([_]u8{ 4, 8 }) |p| {
         for ([_]u8{ 50, 66, 67, 68, 69 }) |op| {
-            var bytes = [_]u8{0} ** 24;
+            var bytes = @as([24]u8, @splat(0));
             const end: i64 = 9_007_199_254_740_999;
             put(u64, &bytes, 0, @intCast(end - 3));
             putPointer(&bytes, 8, p, 0x12345678);
@@ -166,7 +166,7 @@ test "image load rundown unload strict terminated UTF16 and range overflow" {
     for ([_]u8{ 4, 8 }) |p| {
         for ([_]u8{ 0, 1, 2, 3 }) |version| {
             for ([_]u8{ 10, 2, 3, 4 }) |op| {
-                var bytes = [_]u8{0} ** 100;
+                var bytes = @as([100]u8, @splat(0));
                 putPointer(&bytes, 0, p, 0x10000000);
                 if (version == 0) put(u32, &bytes, p, 0x1234) else putPointer(&bytes, p, p, 0x1234);
                 if (version > 0) put(u32, &bytes, p * 2, 5);
@@ -190,7 +190,7 @@ test "image load rundown unload strict terminated UTF16 and range overflow" {
             }
         }
     }
-    var bytes = [_]u8{0} ** 58;
+    var bytes = @as([58]u8, @splat(0));
     put(u64, &bytes, 0, std.math.maxInt(u64) - 1);
     put(u64, &bytes, 8, 3);
     try std.testing.expectError(error.InvalidPayload, d.decode(raw(d.image_provider, 10, 2, 8, &bytes)));
@@ -225,7 +225,7 @@ test "SDK callback conversion uses processor-index and pointer-header flags" {
     var capture: Capture = .{};
     var consumer = c.Consumer.init(.{ .context = &capture, .on_notice = Capture.onNotice });
     consumer.metadata.pointer_size = 8;
-    var bytes = [_]u8{0} ** 24;
+    var bytes = @as([24]u8, @splat(0));
     put(u32, &bytes, 0, 12);
     put(u32, &bytes, 4, 13);
     var record: c.EventRecord = std.mem.zeroes(c.EventRecord);

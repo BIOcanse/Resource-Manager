@@ -23,7 +23,7 @@ fn raw(provider: @TypeOf(decode.disk_io_task_guid), opcode: u8, version: u8, poi
 }
 
 test "classic disk TaskGuid decodes unsigned bytes and repaired issue thread id" {
-    var payload: [52]u8 = .{0} ** 52;
+    var payload: [52]u8 = @splat(0);
     put(u32, &payload, 0, 2);
     put(u32, &payload, 8, std.math.maxInt(u32));
     put(u32, &payload, 48, 77);
@@ -39,7 +39,7 @@ test "classic disk TaskGuid decodes unsigned bytes and repaired issue thread id"
 }
 
 test "classic disk read retains unknown disk and header thread identity" {
-    var payload: [48]u8 = .{0} ** 48;
+    var payload: [48]u8 = @splat(0);
     put(u32, &payload, 0, @bitCast(@as(i32, -1)));
     put(u32, &payload, 8, 4096);
     var event_raw = raw(decode.disk_io_task_guid, 10, 0, 8, &payload);
@@ -54,7 +54,7 @@ test "classic disk read retains unknown disk and header thread identity" {
 }
 
 test "UDPv0 preserves a missing PID and the header TID for native history resolution" {
-    var payload: [24]u8 = .{0} ** 24;
+    var payload: [24]u8 = @splat(0);
     put(i16, &payload, 14, 16);
     payload[16..20].* = .{ 127, 0, 0, 1 };
     var event_raw = raw(decode.udp_ip_task_guid, 10, 0, 8, &payload);
@@ -66,7 +66,7 @@ test "UDPv0 preserves a missing PID and the header TID for native history resolu
 }
 
 test "network decoder accepts the eight classic TCP and UDP TaskGuid variants" {
-    var v4_send: [36]u8 = .{0} ** 36;
+    var v4_send: [36]u8 = @splat(0);
     put(u32, &v4_send, 0, 7);
     put(u32, &v4_send, 4, std.math.maxInt(u32));
     v4_send[8..12].* = .{ 127, 0, 0, 1 };
@@ -81,7 +81,7 @@ test "network decoder accepts the eight classic TCP and UDP TaskGuid variants" {
     const little_endian_ipv4 = try decode.decode(raw(decode.tcp_ip_task_guid, 10, 2, 8, &v4_send), 90);
     try std.testing.expectEqual([4]u8{ 1, 0, 0, 0 }, little_endian_ipv4.?.network.remote_address.ipv4);
 
-    var v4_receive: [28]u8 = .{0} ** 28;
+    var v4_receive: [28]u8 = @splat(0);
     put(u32, &v4_receive, 0, 8);
     put(u32, &v4_receive, 4, 123);
     v4_receive[8..12].* = .{ 10, 0, 0, 1 };
@@ -90,7 +90,7 @@ test "network decoder accepts the eight classic TCP and UDP TaskGuid variants" {
     try std.testing.expectEqual(decode.Direction.receive, tcp_receive.?.network.direction);
     try std.testing.expectEqual([4]u8{ 203, 0, 113, 9 }, tcp_receive.?.network.remote_address.ipv4);
 
-    var v6_send: [64]u8 = .{0} ** 64;
+    var v6_send: [64]u8 = @splat(0);
     put(u32, &v6_send, 0, 9);
     put(u32, &v6_send, 4, 321);
     v6_send[8..24].* = .{ 0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
@@ -98,7 +98,7 @@ test "network decoder accepts the eight classic TCP and UDP TaskGuid variants" {
     try std.testing.expectEqual(decode.Protocol.tcp, tcp_v6_send.?.network.protocol);
     try std.testing.expectEqual(v6_send[8..24].*, tcp_v6_send.?.network.remote_address.ipv6);
 
-    var v6_receive: [56]u8 = .{0} ** 56;
+    var v6_receive: [56]u8 = @splat(0);
     put(u32, &v6_receive, 0, 10);
     put(u32, &v6_receive, 4, 654);
     v6_receive[24..40].* = .{ 0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2 };
@@ -106,7 +106,7 @@ test "network decoder accepts the eight classic TCP and UDP TaskGuid variants" {
     try std.testing.expectEqual(decode.Direction.receive, tcp_v6_receive.?.network.direction);
     try std.testing.expectEqual(v6_receive[24..40].*, tcp_v6_receive.?.network.remote_address.ipv6);
 
-    var udp_v4_send: [24]u8 = .{0} ** 24;
+    var udp_v4_send: [24]u8 = @splat(0);
     put(u32, &udp_v4_send, 0, 11);
     put(u32, &udp_v4_send, 4, 1000);
     udp_v4_send[8..12].* = .{ 198, 51, 100, 2 };
@@ -116,7 +116,7 @@ test "network decoder accepts the eight classic TCP and UDP TaskGuid variants" {
     try std.testing.expectEqual(decode.Direction.send, udp_send.?.network.direction);
     try std.testing.expectEqual([4]u8{ 198, 51, 100, 2 }, udp_send.?.network.remote_address.ipv4);
 
-    var udp_v4_receive: [24]u8 = .{0} ** 24;
+    var udp_v4_receive: [24]u8 = @splat(0);
     put(u32, &udp_v4_receive, 0, 12);
     put(u32, &udp_v4_receive, 4, 1001);
     udp_v4_receive[8..12].* = .{ 10, 0, 0, 3 };
@@ -125,7 +125,7 @@ test "network decoder accepts the eight classic TCP and UDP TaskGuid variants" {
     try std.testing.expectEqual(decode.Direction.receive, udp_receive.?.network.direction);
     try std.testing.expectEqual([4]u8{ 192, 0, 2, 9 }, udp_receive.?.network.remote_address.ipv4);
 
-    var udp_v6_send: [56]u8 = .{0} ** 56;
+    var udp_v6_send: [56]u8 = @splat(0);
     put(u32, &udp_v6_send, 0, 13);
     put(u32, &udp_v6_send, 4, 2000);
     udp_v6_send[8..24].* = v6_send[8..24].*;
@@ -133,7 +133,7 @@ test "network decoder accepts the eight classic TCP and UDP TaskGuid variants" {
     try std.testing.expectEqual(decode.Protocol.udp, udp_send6.?.network.protocol);
     try std.testing.expectEqual(v6_send[8..24].*, udp_send6.?.network.remote_address.ipv6);
 
-    var udp_v6_receive: [56]u8 = .{0} ** 56;
+    var udp_v6_receive: [56]u8 = @splat(0);
     put(u32, &udp_v6_receive, 0, 14);
     put(u32, &udp_v6_receive, 4, 2001);
     udp_v6_receive[24..40].* = v6_receive[24..40].*;
@@ -148,7 +148,7 @@ test "IPv4 and IPv6 leaves-host policy matches the managed owner" {
     try std.testing.expect(!decode.leavesHost(.{ .ipv4 = .{ 0, 0, 0, 0 } }));
     try std.testing.expect(!decode.leavesHost(.{ .ipv4 = .{ 255, 255, 255, 255 } }));
     try std.testing.expect(decode.leavesHost(.{ .ipv4 = .{ 192, 0, 2, 1 } }));
-    try std.testing.expect(!decode.leavesHost(.{ .ipv6 = .{0} ** 16 }));
+    try std.testing.expect(!decode.leavesHost(.{ .ipv6 = @splat(0) }));
     try std.testing.expect(!decode.leavesHost(.{ .ipv6 = .{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 } }));
     try std.testing.expect(decode.leavesHost(.{ .ipv6 = .{ 0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 } }));
     try std.testing.expect(!decode.leavesHost(.{ .ipv6 = .{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 127, 0, 0, 1 } }));
@@ -163,7 +163,7 @@ test "IPv4 and IPv6 leaves-host policy matches the managed owner" {
 
 test "recognized malformed records fail and non-TaskGuid providers stay unhandled" {
     try std.testing.expectError(error.TruncatedPayload, decode.decode(raw(decode.tcp_ip_task_guid, 27, 2, 8, &.{ 0, 1 }), null));
-    var bad_disk: [47]u8 = .{0} ** 47;
+    var bad_disk: [47]u8 = @splat(0);
     try std.testing.expectError(error.TruncatedPayload, decode.decode(raw(decode.disk_io_task_guid, 10, 0, 8, &bad_disk), null));
     const logical_provider = std.mem.zeroes(@TypeOf(decode.tcp_ip_task_guid));
     try std.testing.expect((try decode.decode(raw(logical_provider, 10, 1, 8, &.{}), null)) == null);

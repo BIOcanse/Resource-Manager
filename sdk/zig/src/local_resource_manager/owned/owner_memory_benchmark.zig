@@ -261,8 +261,8 @@ fn TransactionBuffers(comptime Index: type) type {
         }
 
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
-            inline for (std.meta.fields(Storage)) |field| {
-                const slice = @field(self.storage, field.name);
+            inline for (@typeInfo(Storage).@"struct".field_names) |field_name| {
+                const slice = @field(self.storage, field_name);
                 if (slice.len != 0) allocator.free(slice);
             }
             self.* = .{};
@@ -663,7 +663,7 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     var options = try parseOptions(args);
-    if (options.mode == .timing and builtin.mode != .ReleaseFast) return error.TimingRequiresReleaseFast;
+    if (options.mode == .timing and builtin.mode != .fast) return error.TimingRequiresReleaseFast;
     if (options.affinity_mask) |mask| options.placement = try benchmark_affinity.apply(mask);
     try dispatch(options, allocator, init.io);
 }

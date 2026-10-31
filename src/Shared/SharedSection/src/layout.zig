@@ -66,7 +66,7 @@ pub const SourceIdentity = extern struct {
     /// Windows); zero for an in-process owner. Not interpreted here.
     process_start_time: u64 = 0,
     owner_name_length: u32 = 0,
-    owner_name: [owner_name_capacity]u8 = [_]u8{0} ** owner_name_capacity,
+    owner_name: [owner_name_capacity]u8 = @as([owner_name_capacity]u8, @splat(0)),
 
     pub fn init(name: []const u8, kind: u32, process_id: u32, process_start_time: u64) Error!SourceIdentity {
         if (name.len > owner_name_capacity) return error.OwnerName;

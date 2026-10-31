@@ -314,7 +314,7 @@ test "large pressure grid preserves count summaries and score ordering" {
         const restricted = snapshot.optimize_count + snapshot.strongest_count;
         try std.testing.expect(restricted >= previous_restricted);
         try std.testing.expect(restricted <= count);
-        var seen: [count]bool = [_]bool{false} ** count;
+        var seen: [count]bool = @as([count]bool, @splat(false));
         for (outputs) |output| {
             try std.testing.expect(output.rank < count);
             try std.testing.expect(!seen[output.rank]);

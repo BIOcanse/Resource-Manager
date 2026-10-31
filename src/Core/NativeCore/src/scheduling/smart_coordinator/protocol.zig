@@ -667,7 +667,7 @@ pub fn fillCapacity(config: *const Config, capacity: *Capacity) void {
         .software_capacity = config.max_software_groups,
         .gpu_state_capacity = config.max_gpu_states,
         .atomic_group_capacity = config.max_atomic_groups,
-        .reserved = [_]u64{0} ** 2,
+        .reserved = @as([2]u64, @splat(0)),
     };
 }
 

@@ -27,7 +27,7 @@ pub const View = extern struct {
     notifications: u64 = 0,
     path_units: u64 = 0,
     region: RegionStats = .{},
-    phases: [phase_count]PhaseStats = .{PhaseStats{}} ** phase_count,
+    phases: [phase_count]PhaseStats = @splat(PhaseStats{}),
 };
 pub const CpuDetail = extern struct {
     enabled: u32 = 0,

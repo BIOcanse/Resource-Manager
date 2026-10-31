@@ -137,7 +137,7 @@ test "SystemIntegration owns exactly the two system integration blocks" {
 test "resident conditions require ready sessions, explicit switches and valid keys" {
     const std = @import("std");
     const Fixture = struct {
-        values: [registry.items.len]control.types.Read = [_]control.types.Read{.not_published} ** registry.items.len,
+        values: [registry.items.len]control.types.Read = @as([registry.items.len]control.types.Read, @splat(.not_published)),
         fn set(self: *@This(), uid: u32, value: control.types.Read) void {
             self.values[control.tree.itemIndex(registry, uid).?] = value;
         }

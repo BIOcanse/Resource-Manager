@@ -44,11 +44,11 @@ const Event = union(enum) {
     backend_item_changed: u64,
 };
 const Run = struct { block: u32, number: u64 };
-const Language = struct { bytes: [32]u8 = .{0} ** 32, len: usize = 0 };
+const Language = struct { bytes: [32]u8 = @splat(0), len: usize = 0 };
 const Session = struct {
     ready: bool = false,
     generation: u64 = 0,
-    bytes: [256]u8 = .{0} ** 256,
+    bytes: [256]u8 = @splat(0),
     len: usize = 0,
     fn reason(self: *const Session) []const u8 {
         return self.bytes[0..self.len];
@@ -76,7 +76,7 @@ const Host = struct {
     queue: [512]Event = undefined,
     head: usize = 0,
     count: usize = 0,
-    slots: [topology.host_blocks.len]Slot = [_]Slot{.{}} ** topology.host_blocks.len,
+    slots: [topology.host_blocks.len]Slot = @as([topology.host_blocks.len]Slot, @splat(.{})),
     started: Claim = undefined,
     wanted: Claim = undefined,
     ready: Claim = undefined,
@@ -216,7 +216,7 @@ const Host = struct {
         self.runEntry(slot) catch |failure| {
             if (slot.run.block == B.WindowProcess) self.engine.publish(self.wanted, .{ .value = false }, reason("window-start-or-run-failed"), null) catch @panic("failure publication");
             var buffer: [256:0]u8 = undefined;
-            const text = std.fmt.bufPrintZ(&buffer, "desktop block {d}: {s}\n", .{ slot.run.block, @errorName(failure) }) catch unreachable;
+            const text = std.mem.printSentinel(&buffer, "desktop block {d}: {s}\n", .{ slot.run.block, @errorName(failure) }, 0) catch unreachable;
             var message: Log = .{};
             message.length = text.len;
             @memcpy(message.bytes[0..text.len], text);
@@ -539,13 +539,18 @@ const Host = struct {
             _ = c.CloseHandle(self.log_file);
             self.log_file = null;
         };
-        var version_log: [128:0]u8 = undefined;
-        errdefer |failure| {
+        self.runResident() catch |failure| {
             var failure_log: [256:0]u8 = undefined;
-            const message = std.fmt.bufPrintZ(&failure_log, "Resident failed: {s}", .{@errorName(failure)}) catch unreachable;
+            const message = std.mem.printSentinel(&failure_log, "Resident failed: {s}", .{@errorName(failure)}, 0) catch unreachable;
             self.writeLog(message);
-        }
-        self.writeLog(try std.fmt.bufPrintZ(&version_log, "State registry version {s}", .{topology.registry.version}));
+            return failure;
+        };
+    }
+    /// The resident part of `runProcess`, after the wake events and the log are open;
+    /// `runProcess` logs its failure before closing them.
+    fn runResident(self: *Host) !void {
+        var version_log: [128:0]u8 = undefined;
+        self.writeLog(try std.mem.printSentinel(&version_log, "State registry version {s}", .{topology.registry.version}, 0));
         var allocator = std.heap.FixedBufferAllocator.init(&self.arena_buffer);
         self.engine = try topology.Engine.create(allocator.allocator(), .{
             .worker_count = points.controller_workers,
@@ -592,7 +597,7 @@ var host: Host = .{};
 pub fn main() void {
     host.runProcess() catch |failure| {
         var buffer: [256:0]u8 = undefined;
-        const text = std.fmt.bufPrintZ(&buffer, "ResourceManager.Desktop: {s}", .{@errorName(failure)}) catch unreachable;
+        const text = std.mem.printSentinel(&buffer, "ResourceManager.Desktop: {s}", .{@errorName(failure)}, 0) catch unreachable;
         c.OutputDebugStringA(text);
         c.ExitProcess(1);
     };

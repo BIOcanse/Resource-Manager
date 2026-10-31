@@ -8,12 +8,12 @@ pub fn build(b: *std.Build) void {
     const control_module = b.createModule(.{
         .root_source_file = b.path("../../Shared/Control/src/root.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     });
     const shared_section_module = b.createModule(.{
         .root_source_file = b.path("../../Shared/SharedSection/src/root.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     });
 
     const powershell = b.option([]const u8, "powershell", "PowerShell executable used to generate state-item declarations") orelse "pwsh";
@@ -31,7 +31,7 @@ pub fn build(b: *std.Build) void {
     const backend_declarations_module = b.createModule(.{
         .root_source_file = backend_declarations_file,
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     });
     backend_declarations_module.addImport("rm_control", control_module);
 
@@ -55,13 +55,13 @@ pub fn build(b: *std.Build) void {
     const export_declarations = b.createModule(.{
         .root_source_file = export_declarations_file,
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{.{ .name = "rm_control", .module = control_module }},
     });
     const export_backend_tree = b.createModule(.{
         .root_source_file = b.path("src/control/backend_tree.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{
             .{ .name = "rm_control", .module = control_module },
             .{ .name = "backend_declarations", .module = export_declarations },
@@ -70,7 +70,7 @@ pub fn build(b: *std.Build) void {
     const process_tree = b.createModule(.{
         .root_source_file = b.path("src/control/export_tree.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{
             .{ .name = "rm_control", .module = control_module },
             .{ .name = "backend_tree", .module = export_backend_tree },
@@ -82,7 +82,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("../../Shared/Control/src/export_tree_main.zig"),
             .target = target,
-            .optimize = .ReleaseSafe,
+            .optimize = .safe,
             .imports = &.{
                 .{ .name = "rm_control", .module = control_module },
                 .{ .name = "process_tree", .module = process_tree },
@@ -170,7 +170,7 @@ pub fn build(b: *std.Build) void {
     const control_abi_test_module = b.createModule(.{
         .root_source_file = b.path("src/control_abi_test_root.zig"),
         .target = target,
-        .optimize = .ReleaseFast,
+        .optimize = .fast,
     });
     control_abi_test_module.addImport("rm_control", control_module);
     control_abi_test_module.addImport("backend_tree", backend_tree_module);
@@ -216,7 +216,7 @@ pub fn build(b: *std.Build) void {
         .root_module = calibration_tool_module,
     });
     const run_calibration_tool = b.addRunArtifact(calibration_tool);
-    if (b.args) |args| run_calibration_tool.addArgs(args);
+    run_calibration_tool.addPassthruArgs();
 
     const calibration_step = b.step(
         "calibrate",
@@ -234,7 +234,7 @@ pub fn build(b: *std.Build) void {
         .root_module = assembly_tool_module,
     });
     const run_assembly_tool = b.addRunArtifact(assembly_tool);
-    if (b.args) |args| run_assembly_tool.addArgs(args);
+    run_assembly_tool.addPassthruArgs();
 
     const assembly_step = b.step(
         "assemble-calibration-corpus",

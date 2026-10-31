@@ -265,7 +265,7 @@ test "residency bank stores only final rows and one name per process instance" {
     defer interrupt_owner.destroy();
     var state = try State.init(std.testing.allocator, owner, interrupt_owner, &.{0});
     defer state.deinit();
-    const name = [_]u8{'p'} ** 512;
+    const name = @as([512]u8, @splat('p'));
     try state.apply(&.{ .kind = 1, .pid = 1, .flags = 1, .start = 10, .name = &name, .name_len = name.len });
     for (0..256) |index| try state.apply(&.{ .kind = 2, .pid = 1, .tid = @intCast(index + 1) });
     for (0..256) |index| try state.apply(&.{ .kind = 7, .pid = 1, .tid = @intCast(index + 1), .old_pid = if (index == 0) 0 else 1, .old_tid = @intCast(index), .processor = 0, .qpc = @intCast(index * 3), .time_ticks = @intCast(1000000 + index * 3) });
@@ -305,7 +305,7 @@ test "residency publication reuses fragmented region islands with retained banks
     defer interrupt_owner.destroy();
     var state = try State.init(std.testing.allocator, owner, interrupt_owner, &.{0});
     defer state.deinit();
-    const name = [_]u8{'p'} ** 512;
+    const name = @as([512]u8, @splat('p'));
     try state.apply(&.{ .kind = 1, .pid = 1, .flags = 1, .start = 10, .name = &name, .name_len = name.len });
     for (0..256) |index| try state.apply(&.{ .kind = 2, .pid = 1, .tid = @intCast(index + 1) });
     for (0..256) |index| try state.apply(&.{ .kind = 7, .pid = 1, .tid = @intCast(index + 1), .old_pid = if (index == 0) 0 else 1, .old_tid = @intCast(index), .processor = 0, .qpc = @intCast(index * 3), .time_ticks = @intCast(1000000 + index * 3) });

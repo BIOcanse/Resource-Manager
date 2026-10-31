@@ -49,7 +49,7 @@ Include the managed identity used to pair the Native descriptor as usual.
 The owner shape also projects use_window_cache, use_window_cache_slots and
 development_lease_analysis_write_watch_pages directly from selected values.
 The enabled window-cache candidate requires x86_64+cx16; compile it with
--mcpu=baseline+cx16 on Zig 0.16. Unsupported enabled targets fail compilation
+-mcpu=baseline+cx16 on Zig 0.17. Unsupported enabled targets fail compilation
 instead of silently using a process-global atomic lock fallback. The default
 disabled path keeps prior target support. No C#/use syntax changes are needed.
 The Native command only generates source. It does not build a library, resolve configuration or publish a package. The delivered C2/ABI v1 passed compiled layout and installed-package consumer acceptance at UID128 and UID256 on Windows x64. Build-time module wiring must supply the same values file named in the manifest.

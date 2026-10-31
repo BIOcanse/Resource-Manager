@@ -803,7 +803,7 @@ test "action batch must be read completely before another plan can replace it" {
         .observed_monotonic_milliseconds = 103,
         .action_capacity = 8,
         .flags = 0,
-        .reserved = [_]u64{0} ** 4,
+        .reserved = @as([4]u64, @splat(0)),
     };
     var blocked_output = std.mem.zeroes(protocol.PlanOutput);
     try std.testing.expectEqual(
@@ -947,7 +947,7 @@ test "action identity exhaustion fails before operation state mutation" {
         .observed_monotonic_milliseconds = 101,
         .action_capacity = 8,
         .flags = 0,
-        .reserved = [_]u64{0} ** 4,
+        .reserved = @as([4]u64, @splat(0)),
     };
     var plan_output = std.mem.zeroes(protocol.PlanOutput);
     try std.testing.expectEqual(ResultCode.out_of_memory, session.plan(&input, &plan_output));
@@ -2372,7 +2372,7 @@ fn testConfig() protocol.Config {
             8 * @sizeOf(protocol.PersistenceRecord),
         .resident_byte_budget = 1024 * 1024,
         .flags = 0,
-        .reserved = [_]u64{0} ** 5,
+        .reserved = @as([5]u64, @splat(0)),
     };
 }
 
@@ -2405,7 +2405,7 @@ fn submitInput(
         .observed_monotonic_milliseconds = monotonic,
         .valid_mask = protocol.SubmitValid.domain,
         .flags = 0,
-        .reserved = [_]u64{0} ** 4,
+        .reserved = @as([4]u64, @splat(0)),
     };
 }
 
@@ -2424,7 +2424,7 @@ fn cancelInput(
         .observed_utc_milliseconds = utc,
         .observed_monotonic_milliseconds = monotonic,
         .flags = 0,
-        .reserved = [_]u64{0} ** 4,
+        .reserved = @as([4]u64, @splat(0)),
     };
 }
 
@@ -2444,7 +2444,7 @@ fn runPlan(
         .observed_monotonic_milliseconds = monotonic,
         .action_capacity = capacity,
         .flags = 0,
-        .reserved = [_]u64{0} ** 4,
+        .reserved = @as([4]u64, @splat(0)),
     };
     var output = std.mem.zeroes(protocol.PlanOutput);
     try std.testing.expectEqual(ResultCode.ok, session.plan(&input, &output));
@@ -2475,7 +2475,7 @@ fn feedbackInput(
         .error_handle = zeroHandle(),
         .valid_mask = 0,
         .flags = 0,
-        .reserved = [_]u64{0} ** 3,
+        .reserved = @as([3]u64, @splat(0)),
     };
 }
 
@@ -2501,7 +2501,7 @@ fn completionInput(
         .error_handle = zeroHandle(),
         .valid_mask = 0,
         .flags = 0,
-        .reserved = [_]u64{0} ** 3,
+        .reserved = @as([3]u64, @splat(0)),
     };
 }
 
@@ -2530,7 +2530,7 @@ fn progressInput(
         .checkpoint_handle = zeroHandle(),
         .valid_mask = 0,
         .flags = 0,
-        .reserved = [_]u64{0} ** 3,
+        .reserved = @as([3]u64, @splat(0)),
     };
 }
 
@@ -2541,7 +2541,7 @@ fn persistenceInput(epoch: u64) protocol.PersistenceInput {
         .configuration_generation = 1,
         .operation_epoch = epoch,
         .flags = 0,
-        .reserved = [_]u64{0} ** 4,
+        .reserved = @as([4]u64, @splat(0)),
     };
 }
 
@@ -2560,7 +2560,7 @@ fn persistenceImportInput(
         .observed_monotonic_milliseconds = monotonic,
         .clock_instance_id = clock_instance_id,
         .flags = 0,
-        .reserved = [_]u64{0} ** 4,
+        .reserved = @as([4]u64, @splat(0)),
     };
 }
 
@@ -2572,7 +2572,7 @@ fn readInput(state_revision: u64, plan_epoch: u64) protocol.ReadInput {
         .state_revision = state_revision,
         .plan_epoch = plan_epoch,
         .flags = 0,
-        .reserved = [_]u64{0} ** 3,
+        .reserved = @as([3]u64, @splat(0)),
     };
 }
 
@@ -2587,11 +2587,11 @@ fn readCurrentActions(
 }
 
 fn zeroActions() [8]protocol.ActionOutput {
-    return [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    return @as([8]protocol.ActionOutput, @splat(std.mem.zeroes(protocol.ActionOutput)));
 }
 
 fn zeroOperations() [8]protocol.OperationOutput {
-    return [_]protocol.OperationOutput{std.mem.zeroes(protocol.OperationOutput)} ** 8;
+    return @as([8]protocol.OperationOutput, @splat(std.mem.zeroes(protocol.OperationOutput)));
 }
 
 fn handle(value: u64) protocol.Handle128 {

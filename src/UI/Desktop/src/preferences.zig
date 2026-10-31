@@ -9,7 +9,7 @@ pub const Config = struct {
     preferences_path: ?[]const u8 = null,
 };
 pub const Snapshot = struct {
-    language: [32]u8 = .{0} ** 32,
+    language: [32]u8 = @splat(0),
     language_len: usize = 0,
     overlay_enabled: ?bool = null,
     notifications_enabled: ?bool = null,

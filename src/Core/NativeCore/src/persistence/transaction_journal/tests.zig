@@ -381,7 +381,7 @@ test "full identity controls lookup mutation and canonical tie break" {
     var second = corpus.processPrepare(7, 2, 2, 100, .none_required);
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &second));
     var snapshot = corpus.emptySnapshot();
-    var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 4;
+    var records = @as([4]protocol.Record, @splat(std.mem.zeroes(protocol.Record)));
     try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(journal, &snapshot, &records));
     try std.testing.expect(records[0].identity.target_id < records[1].identity.target_id);
 }
@@ -1112,7 +1112,7 @@ test "decode isolates invalid rows while preserving image structure checks" {
     try std.testing.expectEqual(@intFromEnum(protocol.PayloadKind.durable), record.payload_kind);
     try std.testing.expectEqual(first.payload_slot, record.payload_slot);
     var snapshot = corpus.emptySnapshot();
-    var snapshot_records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 4;
+    var snapshot_records = @as([4]protocol.Record, @splat(std.mem.zeroes(protocol.Record)));
     try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(journal, &snapshot, &snapshot_records));
     try std.testing.expectEqual(@as(u32, 1), snapshot.recovery_blocked_count);
     try std.testing.expectEqual(@as(u32, 3), snapshot.entry_count);
@@ -1207,7 +1207,7 @@ test "hot mutation snapshot encode decode paths do not allocate" {
     var feedback = corpus.processFeedback(identity, 3, 2, 120, .durable);
     try std.testing.expectEqual(protocol.Status.ok, session_module.stageFeedback(journal, &feedback));
     var snapshot = corpus.emptySnapshot();
-    var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 2;
+    var records = @as([2]protocol.Record, @splat(std.mem.zeroes(protocol.Record)));
     try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(journal, &snapshot, &records));
     var image: [@sizeOf(protocol.ImageHeader) + 4 * @sizeOf(protocol.Record)]u8 = undefined;
     var written: u64 = 0;

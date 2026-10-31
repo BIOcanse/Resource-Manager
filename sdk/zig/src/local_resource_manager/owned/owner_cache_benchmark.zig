@@ -547,7 +547,7 @@ fn runProfile(comptime bits: u16, comptime capacity: usize, allocator: std.mem.A
 }
 pub fn main(init: std.process.Init) !void {
     if (builtin.os.tag != .windows) return error.WindowsNativeFixtureRequired;
-    if (builtin.mode != .ReleaseFast) return error.TimingRequiresReleaseFast;
+    if (builtin.mode != .fast) return error.TimingRequiresReleaseFast;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     const options = try parse(args);
     if (options.uid_bits == 128) {

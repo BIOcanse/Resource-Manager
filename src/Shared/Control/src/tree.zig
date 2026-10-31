@@ -92,7 +92,7 @@ pub fn validate(comptime registry: d.Registry, comptime tree: Tree) void {
     }
     if (roots != 1 or treeBlockIndex(tree, tree.program) == null)
         @compileError("control tree must have exactly one program root");
-    var reached = [_]bool{false} ** tree.blocks.len;
+    var reached = @as([tree.blocks.len]bool, @splat(false));
     reached[treeBlockIndex(tree, tree.program).?] = true;
     var reached_count: usize = 1;
     for (0..tree.blocks.len) |_| {
@@ -198,7 +198,7 @@ pub fn validate(comptime registry: d.Registry, comptime tree: Tree) void {
         }
         // Fixed lower conditions are the only possible cycle participants:
         // per-block instances are always tops and cannot be read as lowers.
-        var ordered = [_]bool{false} ** registry.conditions.len;
+        var ordered = @as([registry.conditions.len]bool, @splat(false));
         var own_count: usize = 0;
         var ordered_count: usize = 0;
         for (registry.conditions) |condition| if (!condition.per_block and condition.node == node.uid) {

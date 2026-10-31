@@ -4,7 +4,7 @@ Builds a consumer-specific Ledger Native DLL from the packaged source archive.
 
 .DESCRIPTION
 Verifies the source archive and the generated ledger-native-build.json before
-invoking Zig 0.16 with the module graph and release flags used by the ledger
+invoking Zig 0.17 with the module graph and release flags used by the ledger
 Native validation route. All output must be inside an explicit existing
 WorkRoot. This public script does not depend on Resource Manager workspace
 registration and does not generate shape or policy inputs.
@@ -22,7 +22,7 @@ Directory containing the generated owner shape and Native entry files.
 Extracted root of ResourceManager.Ledger.NativeSources.<version>.zip.
 
 .PARAMETER ZigPath
-Path to zig.exe; the command must report version 0.16.0.
+Path to zig.exe; the command must report version 0.17.0.
 
 .PARAMETER StructurePath
 Selected ledger_structure.zig for this consumer.
@@ -350,8 +350,8 @@ $moduleInputRows = @(
 )
 
 $zigVersion = (& $zigPath version | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $zigVersion -cne '0.16.0') {
-    throw "Zig 0.16.0 is required; compiler reported '$zigVersion'."
+if ($LASTEXITCODE -ne 0 -or $zigVersion -cne '0.17.0') {
+    throw "Zig 0.17.0 is required; compiler reported '$zigVersion'."
 }
 
 $zigLibrary = Join-Path (Split-Path -Parent $zigPath) 'lib'

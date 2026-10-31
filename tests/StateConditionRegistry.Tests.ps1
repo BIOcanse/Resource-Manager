@@ -57,7 +57,7 @@ if (-not (Test-Path -LiteralPath $marker) -or (Get-Content $marker -Raw | Conver
     throw 'WorkRoot must be a running registered task.'
 }
 $zigVersion = & $Zig version
-if ($LASTEXITCODE -ne 0 -or $zigVersion -cne '0.16.0') { throw 'These contract tests require Zig 0.16.0.' }
+if ($LASTEXITCODE -ne 0 -or $zigVersion -cne '0.17.0') { throw 'These contract tests require Zig 0.17.0.' }
 $scratch = Join-Path ([IO.Path]::GetFullPath($WorkRoot)) ('conditions-' + [guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($scratch)
 $path = Join-Path $scratch 'registry.json'
@@ -301,4 +301,4 @@ foreach ($process in @(if ($CSharpBaselineDirectory) { 'backend','ui' })) {
     $baseline=Join-Path $CSharpBaselineDirectory "$process.before.cs"
     Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($output)) -ceq [Convert]::ToBase64String([IO.File]::ReadAllBytes($baseline))) "Production C# $process bytes unchanged from before implementation."
 }
-"Passed $script:count assertions; 9 Zig 0.16.0 compile/value tests. Fixtures: $scratch"
+"Passed $script:count assertions; 9 Zig 0.17.0 compile/value tests. Fixtures: $scratch"

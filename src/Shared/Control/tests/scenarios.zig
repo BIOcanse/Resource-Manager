@@ -592,7 +592,7 @@ test "concurrent transitions retain the newest bounded history" {
     const Parallel = control.Controller(flat.registry, flat.tree);
     const Host = struct {
         controller: ?*Parallel = null,
-        runs: [34]std.atomic.Value(u64) = [_]std.atomic.Value(u64){std.atomic.Value(u64).init(0)} ** 34,
+        runs: [34]std.atomic.Value(u64) = @as([34]std.atomic.Value(u64), @splat(std.atomic.Value(u64).init(0))),
         fn start(context: ?*anyopaque, uid: u32, run: u64) callconv(.c) void {
             const self: *@This() = @ptrCast(@alignCast(context.?));
             self.runs[uid].store(run, .release);

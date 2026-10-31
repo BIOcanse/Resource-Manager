@@ -7,12 +7,12 @@ pub fn build(b: *std.Build) void {
     const shared_section = b.addModule("rm_shared_section", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/root.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{.{ .name = "rm_shared_section", .module = shared_section }},
     }) });
     const run_tests = b.addRunArtifact(tests);

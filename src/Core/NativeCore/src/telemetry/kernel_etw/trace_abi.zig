@@ -384,7 +384,7 @@ pub export fn rm_kernel_etw_trace_open(owner_handle: ?*anyopaque, name: ?[*]cons
     defer owner.mutex.unlock();
     const a = owner.budget.allocator();
     const self = a.create(Trace) catch |err| return owner.fail(err);
-    const copied = a.dupeZ(u16, text[0..length]) catch |err| {
+    const copied = a.dupeSentinel(u16, text[0..length], 0) catch |err| {
         a.destroy(self);
         return owner.fail(err);
     };

@@ -745,7 +745,7 @@ fn Driver(comptime bits: u16, comptime capacity: usize, comptime candidate: Cand
 
         pub fn run(allocator: std.mem.Allocator, io: std.Io, options: Options, placement: ?ProcessMaskReadback) !void {
             const scenario = options.scenario;
-            if (options.mode == .timing and builtin.mode != .ReleaseFast) return error.TimingRequiresReleaseFast;
+            if (options.mode == .timing and builtin.mode != .fast) return error.TimingRequiresReleaseFast;
             if (capacity < 1024 or bucket_count != capacity * 2) return error.InvalidProfile;
 
             const rows = try allocator.alloc(Ledger.Row, capacity);
@@ -1537,8 +1537,8 @@ fn parseOptions(args: []const [:0]const u8) !Options {
         if (std.mem.eql(u8, name, "--candidate")) {
             if (std.mem.eql(u8, value, "c2")) candidate = .c2 else if (std.mem.eql(u8, value, "b2")) candidate = .b2 else return error.InvalidCandidate;
         } else if (std.mem.eql(u8, name, "--scenario")) {
-            inline for (@typeInfo(Scenario).@"enum".fields) |field| {
-                if (std.mem.eql(u8, value, field.name)) scenario = @enumFromInt(field.value);
+            inline for (@typeInfo(Scenario).@"enum".field_names, @typeInfo(Scenario).@"enum".field_values) |field_name, field_value| {
+                if (std.mem.eql(u8, value, field_name)) scenario = @enumFromInt(field_value);
             }
             if (scenario == null) return error.InvalidScenario;
         } else if (std.mem.eql(u8, name, "--uid-bits")) {
@@ -1623,7 +1623,7 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     const options = try parseOptions(args);
-    if (options.mode == .timing and builtin.mode != .ReleaseFast) return error.TimingRequiresReleaseFast;
+    if (options.mode == .timing and builtin.mode != .fast) return error.TimingRequiresReleaseFast;
     const placement = if (options.mode == .timing)
         try applyProcessMask(allocator, options.affinity_mask.?)
     else

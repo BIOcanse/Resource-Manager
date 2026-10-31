@@ -93,7 +93,7 @@ pub const Session = struct {
             .clock_instance_id = self.config.clock_instance_id,
             .maximum_persistence_byte_count = self.config.maximum_persistence_byte_count,
             .resident_byte_count = self.resident_byte_count,
-            .reserved = [_]u64{0} ** 4,
+            .reserved = @as([4]u64, @splat(0)),
         };
     }
 
@@ -181,7 +181,7 @@ pub const Session = struct {
                 .submit_sequence = existing.submit_sequence,
                 .state = @intFromEnum(existing.state),
                 .reserved_u32 = 0,
-                .reserved = [_]u64{0} ** 3,
+                .reserved = @as([3]u64, @splat(0)),
             };
             return .ok;
         }
@@ -202,7 +202,7 @@ pub const Session = struct {
                     .submit_sequence = existing.submit_sequence,
                     .state = @intFromEnum(existing.state),
                     .reserved_u32 = 0,
-                    .reserved = [_]u64{0} ** 3,
+                    .reserved = @as([3]u64, @splat(0)),
                 };
                 return .ok;
             }
@@ -295,7 +295,7 @@ pub const Session = struct {
             .submit_sequence = self.submit_sequence,
             .state = @intFromEnum(protocol.OperationState.queued),
             .reserved_u32 = 0,
-            .reserved = [_]u64{0} ** 3,
+            .reserved = @as([3]u64, @splat(0)),
         };
         return .ok;
     }
@@ -353,7 +353,7 @@ pub const Session = struct {
             .operation_id = record.operation_id,
             .state_revision = self.state_revision,
             .flags = record.flags,
-            .reserved = [_]u64{0} ** 3,
+            .reserved = @as([3]u64, @splat(0)),
         };
         if (prune_terminal) _ = self.pruneTerminalsLocked(
             input.observed_monotonic_milliseconds,
@@ -646,7 +646,7 @@ pub const Session = struct {
                 protocol.SnapshotFlags.next_wake_valid
             else
                 0,
-            .reserved = [_]u64{0} ** 4,
+            .reserved = @as([4]u64, @splat(0)),
         };
         return .ok;
     }
@@ -977,7 +977,7 @@ pub const Session = struct {
                 protocol.SnapshotFlags.next_wake_valid
             else
                 0,
-            .reserved = [_]u64{0} ** 4,
+            .reserved = @as([4]u64, @splat(0)),
         };
         return .ok;
     }
@@ -1112,7 +1112,7 @@ pub const Session = struct {
             .reserved_u32 = 0,
             .deadline_monotonic_milliseconds = deadline,
             .flags = flags,
-            .reserved = [_]u64{0} ** 3,
+            .reserved = @as([3]u64, @splat(0)),
         };
         if (!self.bank.appendAction(action)) return false;
         record.pending_action_id = action_id;

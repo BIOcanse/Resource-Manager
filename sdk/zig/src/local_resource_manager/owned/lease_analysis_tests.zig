@@ -10,7 +10,7 @@ const analysis = types.LeaseAnalysis;
 const uid_module = @import("../uid.zig");
 
 const Lease = types.For(uid_module.Identifier(128)).Lease;
-const sample_uid = [_]u8{0x35} ** 16;
+const sample_uid = @as([16]u8, @splat(0x35));
 const a = Lease{ .slot = 0, .allocation_number = 1, .use_generation = 1 };
 const b = Lease{ .slot = 0, .allocation_number = 1, .use_generation = 2 };
 const c = Lease{ .slot = 1, .allocation_number = 2, .use_generation = 1 };

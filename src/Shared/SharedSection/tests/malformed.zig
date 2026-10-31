@@ -216,7 +216,7 @@ test "laying out rejects an invalid layout before writing anything" {
     var long_name = sources;
     long_name[1].owner_name_length = ss.owner_name_capacity + 1;
     try expectRejected(error.OwnerName, &region, &long_name, &support.positions, 2, capacity);
-    try testing.expectError(error.OwnerName, ss.SourceIdentity.init(&([_]u8{'n'} ** 65), 1, 0, 0));
+    try testing.expectError(error.OwnerName, ss.SourceIdentity.init(&(@as([65]u8, @splat('n'))), 1, 0, 0));
 }
 
 test "random corruption of a written region never crashes a reader, writer or end" {

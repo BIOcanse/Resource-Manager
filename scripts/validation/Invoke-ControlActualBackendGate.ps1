@@ -32,7 +32,7 @@ if (-not $Output.StartsWith((Join-Path $Root '.local\reports\'), [StringComparis
 }
 [void][IO.Directory]::CreateDirectory($Output)
 (Get-Process -Id $PID).PriorityClass = 'BelowNormal'
-$env:PATH = "C:\Program Files\dotnet;$tools\PowerShell\7.6.9;$tools\Zig\zig-0.16.0;" +
+$env:PATH = "C:\Program Files\dotnet;$tools\PowerShell\7.6.9;$tools\Zig\zig-0.17.0;" +
     "$tools\WinGetPackages\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin;" +
     'C:\Program Files\nodejs;C:\Program Files\Git\cmd;C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0'
 $env:NuGetAudit = 'false'

@@ -197,8 +197,8 @@ test "a writer writes only its own positions, within their capacity, inside its 
     var rows = try ss.Writer.begin(f.bytes(), support.rows_source);
     try testing.expectError(error.WrongKind, rows.appendString(support.ids, 0, "x"));
     try testing.expectError(error.ElementRange, rows.appendString(support.names, support.row_capacity, "x"));
-    try testing.expectError(error.ElementRange, rows.appendString(support.names, 0, &([_]u8{'q'} ** 129)));
-    try rows.appendString(support.names, 0, &([_]u8{'q'} ** 128));
+    try testing.expectError(error.ElementRange, rows.appendString(support.names, 0, &(@as([129]u8, @splat('q')))));
+    try rows.appendString(support.names, 0, &(@as([128]u8, @splat('q'))));
     try testing.expectError(error.ElementRange, rows.appendString(support.names, 1, "r"));
     try rows.end(.has_value, 0);
 }

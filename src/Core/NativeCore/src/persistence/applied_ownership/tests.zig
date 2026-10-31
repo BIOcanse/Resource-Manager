@@ -35,7 +35,7 @@ test "CPU and memory process ownership coexist by target and restore independent
     try std.testing.expectEqual(protocol.Status.ok, session_module.promote(session, &memory));
 
     var header = std.mem.zeroes(protocol.SnapshotHeader);
-    var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 4;
+    var records = @as([4]protocol.Record, @splat(std.mem.zeroes(protocol.Record)));
     try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(session, &header, &records));
     try std.testing.expectEqual(@as(u32, 2), header.entry_count);
     try std.testing.expectEqual(cpu.primary.process_id, memory.primary.process_id);
@@ -407,7 +407,7 @@ test "hot mutations snapshot encode and staging decode allocate nothing" {
     try std.testing.expectEqual(protocol.Status.ok, session_module.transition(session, &transition));
     record = try getRecord(session, &promote_input.primary);
     var header = std.mem.zeroes(protocol.SnapshotHeader);
-    var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 2;
+    var records = @as([2]protocol.Record, @splat(std.mem.zeroes(protocol.Record)));
     try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(session, &header, &records));
     var image: [maximum_test_image]u8 = undefined;
     var written: u64 = 0;
@@ -434,7 +434,7 @@ test "module-local C ABI traverses create promote snapshot encode open and remov
     var promote_input = corpus.processPromote(1, 1, 100);
     try std.testing.expectEqual(@intFromEnum(protocol.Status.ok), abi.rm_applied_ownership_promote(handle, &promote_input));
     var header = std.mem.zeroes(protocol.SnapshotHeader);
-    var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 2;
+    var records = @as([2]protocol.Record, @splat(std.mem.zeroes(protocol.Record)));
     try std.testing.expectEqual(@intFromEnum(protocol.Status.ok), abi.rm_applied_ownership_snapshot(handle, &header, &records, records.len));
     var image: [maximum_test_image]u8 = undefined;
     var written: u64 = 0;

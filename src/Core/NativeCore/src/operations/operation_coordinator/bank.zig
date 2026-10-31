@@ -106,7 +106,7 @@ pub const Record = struct {
             .flags = self.flags,
             .attempt_configuration_generation = self.attempt_configuration_generation,
             .queue_order = self.queue_order,
-            .reserved = [_]u64{0} ** 2,
+            .reserved = @as([2]u64, @splat(0)),
         };
     }
 };
@@ -445,7 +445,7 @@ fn addCommittedProduct(
 }
 
 test "operation index deletion compacts probes without historical tombstones" {
-    var index = [_]IndexSlot{.{}} ** 64;
+    var index = @as([64]IndexSlot, @splat(.{}));
     var ordinal: u64 = 1;
     while (ordinal <= 4_096) : (ordinal += 1) {
         const key = protocol.Handle128{

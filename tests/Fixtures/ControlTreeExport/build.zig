@@ -4,18 +4,18 @@ pub fn build(b: *std.Build) void {
     const control = b.createModule(.{
         .root_source_file = b.path("../../../src/Shared/Control/src/root.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     });
     const source = b.createModule(.{
         .root_source_file = b.path("process.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{.{ .name = "rm_control", .module = control }},
     });
     const executable = b.addExecutable(.{ .name = "fixture-export", .use_llvm = false, .root_module = b.createModule(.{
         .root_source_file = b.path("../../../src/Shared/Control/src/export_tree_main.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{ .{ .name = "rm_control", .module = control }, .{ .name = "process_tree", .module = source } },
     }) });
     const run = b.addRunArtifact(executable);
@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{ .use_llvm = false, .root_module = b.createModule(.{
         .root_source_file = b.path("../../../src/Shared/Control/src/export_tree.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     }) });
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Test declaration-only export").dependOn(&run_tests.step);

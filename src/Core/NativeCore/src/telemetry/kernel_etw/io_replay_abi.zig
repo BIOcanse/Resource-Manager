@@ -636,7 +636,7 @@ pub export fn rm_kernel_etw_test_shared_initialize(handle: ?*anyopaque, qpc: i64
     if (self.owner.trace != null or qpc < 0 or filetime <= 0 or mode > 2) return 1;
     const a = self.owner.controlAllocator();
     const t = a.create(controlled_trace.Trace) catch |err| return result(err);
-    const copied = a.dupeZ(u16, std.unicode.utf8ToUtf16LeStringLiteral("controlled-native-test")) catch |err| { a.destroy(t); return result(err); };
+    const copied = a.dupeSentinel(u16, std.unicode.utf8ToUtf16LeStringLiteral("controlled-native-test"), 0) catch |err| { a.destroy(t); return result(err); };
     const scripted = if (mode == 2) ControlledDiagnostics.create(std.heap.smp_allocator, self.owner.config, filetime) catch |err| {
         a.free(copied); a.destroy(t); return result(err);
     } else null;

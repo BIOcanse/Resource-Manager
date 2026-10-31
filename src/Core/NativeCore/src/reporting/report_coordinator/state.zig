@@ -541,13 +541,13 @@ pub const Session = struct {
         if (resident > self.config.resident_byte_budget) return .out_of_memory;
         const replacement = createWithShape(self.allocator, &self.config, shape) catch return .out_of_memory;
         defer replacement.destroy();
-        inline for (@typeInfo(Session).@"struct".fields) |field| {
-            if (comptime switch (@typeInfo(field.type)) {
+        inline for (@typeInfo(Session).@"struct".field_names, @typeInfo(Session).@"struct".field_types) |field_name, field_type| {
+            if (comptime switch (@typeInfo(field_type)) {
                 .pointer => |pointer| pointer.size == .slice,
                 else => false,
-            } and !std.mem.eql(u8, field.name, "storage")) {
-                const source = @field(self, field.name);
-                @memcpy(@field(replacement, field.name)[0..source.len], source);
+            } and !std.mem.eql(u8, field_name, "storage")) {
+                const source = @field(self, field_name);
+                @memcpy(@field(replacement, field_name)[0..source.len], source);
             }
         }
         if (!rebuildSourceIndex(replacement.sources, replacement.source_index) or
@@ -561,11 +561,11 @@ pub const Session = struct {
             if (!replacement.insertPlannedPersistenceIndex(@intCast(index))) return .invalid_argument;
         }
         const old_arena_bytes = self.storage.len * @sizeOf(u128);
-        inline for (@typeInfo(Session).@"struct".fields) |field| {
-            if (comptime switch (@typeInfo(field.type)) {
+        inline for (@typeInfo(Session).@"struct".field_names, @typeInfo(Session).@"struct".field_types) |field_name, field_type| {
+            if (comptime switch (@typeInfo(field_type)) {
                 .pointer => |pointer| pointer.size == .slice,
                 else => false,
-            }) std.mem.swap(field.type, &@field(self, field.name), &@field(replacement, field.name));
+            }) std.mem.swap(field_type, &@field(self, field_name), &@field(replacement, field_name));
         }
         self.resident_byte_count = resident;
         self.growth.record(reason, .bytes, old_arena_bytes, self.storage.len * @sizeOf(u128));

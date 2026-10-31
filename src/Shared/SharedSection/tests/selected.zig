@@ -119,11 +119,11 @@ const Region = struct {
 
 /// Caller memory for a selected copy, zeroed, with room for every source.
 const Storage = struct {
-    data: [data_capacity]u8 = [_]u8{0} ** data_capacity,
-    sources: [source_count]ss.SourceCopy = [_]ss.SourceCopy{.{}} ** source_count,
+    data: [data_capacity]u8 = @as([data_capacity]u8, @splat(0)),
+    sources: [source_count]ss.SourceCopy = @as([source_count]ss.SourceCopy, @splat(.{})),
     positions: [position_count]ss.PositionEntry = std.mem.zeroes([position_count]ss.PositionEntry),
-    source_indices: [source_count]u32 = [_]u32{0} ** source_count,
-    position_indices: [position_count]u32 = [_]u32{0} ** position_count,
+    source_indices: [source_count]u32 = @as([source_count]u32, @splat(0)),
+    position_indices: [position_count]u32 = @as([position_count]u32, @splat(0)),
     copy: ss.SelectedCopy = .{},
 
     /// Points the copy at exactly the prefixes `needs` asks for, as a binding does.
@@ -554,7 +554,7 @@ const PairingWriters = struct {
         self.columns_done.store(true, .release);
     }
     fn writeColumns(self: *PairingWriters) !void {
-        var data: [id_rows * 8]u8 = [_]u8{0} ** (id_rows * 8);
+        var data: [id_rows * 8]u8 = @as([(id_rows * 8)]u8, @splat(0));
         var held = [_]ss.SourceCopy{.{}};
         var entries = std.mem.zeroes([1]ss.PositionEntry);
         var source_index = [_]u32{0};
@@ -591,7 +591,7 @@ test "a selected reader concurrent with two sources never pairs a column with ot
     // The reader names only the column's source; the selection adds the rows.
     const needs = try ss.selectedRequirements(&region, &.{1});
     try testing.expectEqual(ss.SelectedRequirements{ .data_bytes = pairing_data_capacity, .source_count = 2, .position_count = 2 }, needs);
-    var data = [_]u8{0} ** pairing_data_capacity;
+    var data = @as([pairing_data_capacity]u8, @splat(0));
     var held = [_]ss.SourceCopy{ .{}, .{} };
     var entries = std.mem.zeroes([2]ss.PositionEntry);
     var source_indices = [_]u32{ 0, 0 };

@@ -29,7 +29,7 @@ pub fn explicitConfig(feature_flags: u64) protocol.Config {
         .required_consecutive_decisions = 3,
         .failure_retry_ms = 5_000,
         .reservation_timeout_ms = 30_000,
-        .reserved_timing = [_]u32{0} ** 3,
+        .reserved_timing = @as([3]u32, @splat(0)),
         .process_state_multipliers = state_multipliers,
         .a1_minimum_cpu_score = 120.0,
         .default_minimum_cpu_score_scale = 70.0,
@@ -40,7 +40,7 @@ pub fn explicitConfig(feature_flags: u64) protocol.Config {
         .reserved_process_policy0 = 0,
         .high_tier_minimum_base_score = 81.0,
         .middle_tier_minimum_base_score = 21.0,
-        .reserved = [_]u64{0} ** 4,
+        .reserved = @as([4]u64, @splat(0)),
     };
 }
 
@@ -124,7 +124,7 @@ pub fn processFact(
         .device_index = 0,
         .score_member_count = 0,
         .applied_process_grade = applied_process_grade,
-        .reserved2 = [_]u8{0} ** 7,
+        .reserved2 = @as([7]u8, @splat(0)),
         .process_score = 0,
         .software_score = 0,
     };
@@ -218,25 +218,25 @@ pub fn feedbackFor(action: protocol.Action, status: protocol.FeedbackStatus, com
         .status = @intFromEnum(status),
         .scope = action.scope,
         .actual_process_grade = process_grade,
-        .reserved0 = [_]u8{0} ** 5,
+        .reserved0 = @as([5]u8, @splat(0)),
         .reserved1 = 0,
     };
 }
 
 pub fn layoutFingerprint(comptime T: type) u64 {
-    const fields = @typeInfo(T).@"struct".fields;
+    const info = @typeInfo(T).@"struct";
     var hash: u64 = 0xcbf29ce484222325;
     hash = fingerprintInteger(hash, @sizeOf(T));
     hash = fingerprintInteger(hash, @alignOf(T));
-    hash = fingerprintInteger(hash, fields.len);
-    inline for (fields) |field| {
-        inline for (field.name) |byte| {
+    hash = fingerprintInteger(hash, info.field_names.len);
+    inline for (info.field_names, info.field_types) |field_name, field_type| {
+        inline for (field_name) |byte| {
             hash = (hash ^ byte) *% 0x100000001b3;
         }
         hash = (hash ^ 0xff) *% 0x100000001b3;
-        hash = fingerprintInteger(hash, @offsetOf(T, field.name));
-        hash = fingerprintInteger(hash, @sizeOf(field.type));
-        hash = fingerprintInteger(hash, @alignOf(field.type));
+        hash = fingerprintInteger(hash, @offsetOf(T, field_name));
+        hash = fingerprintInteger(hash, @sizeOf(field_type));
+        hash = fingerprintInteger(hash, @alignOf(field_type));
     }
     return hash;
 }

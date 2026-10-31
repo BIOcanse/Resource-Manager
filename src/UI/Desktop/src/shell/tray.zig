@@ -13,7 +13,7 @@ pub const Tray = struct {
     lock: std.atomic.Mutex = .unlocked,
     window: c.HWND = null,
     menu: c.HMENU = null,
-    language: [32]u8 = .{0} ** 32,
+    language: [32]u8 = @splat(0),
     language_length: usize = 0,
     diagnostic_menu: bool = false,
 

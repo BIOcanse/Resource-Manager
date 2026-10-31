@@ -278,7 +278,12 @@ pub export fn rm_shared_section_read_selected(region: ?[*]const u8, length: u64,
     return statusOf(readSelectedFrom(region, length, sources, source_count, out, retry_limit));
 }
 fn readSelectedFrom(region: ?[*]const u8, length: u64, sources: ?[*]const u32, source_count: u32, out: *SelectedCopy, retry_limit: u32) Error!void {
-    errdefer |err| out.markFailed(failureOf(err));
+    readSelectedUnmarked(region, length, sources, source_count, out, retry_limit) catch |err| {
+        out.markFailed(failureOf(err));
+        return err;
+    };
+}
+fn readSelectedUnmarked(region: ?[*]const u8, length: u64, sources: ?[*]const u32, source_count: u32, out: *SelectedCopy, retry_limit: u32) Error!void {
     try readSelected(try regionOf(region, length), try tableOf(u32, sources, source_count), out, retry_limit);
 }
 

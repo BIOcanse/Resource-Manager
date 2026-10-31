@@ -270,7 +270,7 @@ fn timeoutFeedback(reservation: *const state.Reservation, now_ms: i64) protocol.
         .status = @intFromEnum(protocol.FeedbackStatus.state_uncertain),
         .scope = reservation.action.scope,
         .actual_process_grade = protocol.ProcessGrade.normal,
-        .reserved0 = [_]u8{0} ** 5,
+        .reserved0 = @as([5]u8, @splat(0)),
         .reserved1 = 0,
     };
 }

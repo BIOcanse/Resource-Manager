@@ -19,7 +19,7 @@ pub fn replaceRules(session: *state.Session, count: usize) ResultCode {
 
 pub fn importRows(session: *state.Session, rows: []const protocol.PersistenceOperation) ResultCode {
     var demand = session.allocationShape();
-    var counts = [_]u32{0} ** 6;
+    var counts = @as([6]u32, @splat(0));
     for (rows) |row| {
         if (row.operation_kind >= 1 and row.operation_kind <= 6) counts[row.operation_kind - 1] += 1;
     }

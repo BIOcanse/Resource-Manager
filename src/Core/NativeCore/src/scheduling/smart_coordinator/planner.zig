@@ -178,7 +178,7 @@ pub fn fillSnapshot(
         .reason_mask = session.last_reason_mask,
         .event_boost_rounds_remaining = session.event_boost_rounds_remaining,
         .early_wake_after_ms = session.early_wake_after_ms,
-        .reserved = [_]u64{0} ** 2,
+        .reserved = @as([2]u64, @splat(0)),
     };
 }
 
@@ -735,7 +735,7 @@ fn processAction(session: *state.Session, process: *state.ProcessState, input: *
         .reserved0 = 0,
         .from_process_grade = process.transition.applied,
         .to_process_grade = target_grade,
-        .reserved1 = [_]u8{0} ** 2,
+        .reserved1 = @as([2]u8, @splat(0)),
     };
 }
 

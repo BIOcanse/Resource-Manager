@@ -69,7 +69,7 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
         var n: usize = 0;
         for (node_uids, 0..) |uid, ni| {
             var bit: u7 = 0;
-            var used = [_]bool{false} ** registry.conditions.len;
+            var used = @as([registry.conditions.len]bool, @splat(false));
             for (0..registry.conditions.len) |_| {
                 for (registry.conditions, 0..) |c, ci| {
                     if (used[ci] or c.per_block or c.node != uid) continue;
@@ -153,7 +153,7 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
         };
         const Action = union(enum) { transition: Transition, start: struct { block: u32, run: u64 }, stop: struct { block: u32, run: u64 }, info: struct { uid: u32, wanted: u64, source: t.EventSource, kind: ?u32, plan: ?u64 }, failure: struct { uid: u32, err: anyerror } };
         const Worker = struct { thread: ?std.Thread = null, buffer: []u8 };
-        const Completion = struct { used: bool = false, token: u64 = 0, targets: [node_count]u64 = [_]u64{0} ** node_count };
+        const Completion = struct { used: bool = false, token: u64 = 0, targets: [node_count]u64 = @as([node_count]u64, @splat(0)) };
         allocator: std.mem.Allocator,
         config: t.Config,
         host: t.Host,
@@ -171,7 +171,7 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
         transition_sequence: u64 = 0,
         transition_retained: usize = 0,
         decisions: []Decision,
-        current_decisions: [node_count]?Decision = [_]?Decision{null} ** node_count,
+        current_decisions: [node_count]?Decision = @as([node_count]?Decision, @splat(null)),
         history_items: []ItemValue,
         current_items: []ItemValue,
         pending_reason_bytes: []u8,

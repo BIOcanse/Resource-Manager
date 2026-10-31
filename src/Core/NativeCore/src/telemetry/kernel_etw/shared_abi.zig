@@ -113,7 +113,7 @@ pub export fn rm_kernel_etw_shared_open(handle: ?*anyopaque, name: ?[*]const u16
     if (self.trace != null or length == 0 or length > 32767 or realtime > 1 or std.mem.indexOfScalar(u16, text, 0) != null) return code(.invalid_argument);
     const a = self.controlAllocator();
     const t = a.create(trace.Trace) catch |err| return fail(err);
-    const copy = a.dupeZ(u16, text) catch |err| {
+    const copy = a.dupeSentinel(u16, text, 0) catch |err| {
         a.destroy(t);
         return fail(err);
     };

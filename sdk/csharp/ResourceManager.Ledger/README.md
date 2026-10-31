@@ -20,7 +20,7 @@ Every epoch a lease covers is active. Final return stops that interval.
 The same Use/EndUse syntax applies to short calls. Optional internal window
 reuse preserves real logical pins across arbitrary ticks/awaits; it uses bounded
 slot hints with full identity checks, never a grace-time assumption. Enabled
-Native builds currently require x86_64+cx16 (-mcpu=baseline+cx16 with Zig 0.16).
+Native builds currently require x86_64+cx16 (-mcpu=baseline+cx16 with Zig 0.17).
 The disabled path retains the prior target requirements. The measured default is off: single-reader UID paths improve, but contended fixed
 direct paths regress and each slot costs 104 extra bytes. See the complete
 matrix and workload limits in the main implementation record before enabling.

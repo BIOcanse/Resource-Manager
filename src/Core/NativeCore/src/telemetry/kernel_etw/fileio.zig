@@ -609,7 +609,7 @@ test "FileIO records apply mode-specific removals and map names when added" {
     _ = try realtime.observe(testRaw(35, 100, live_delete_payload), &paths, &threads, scratch);
     try std.testing.expect(realtime.lookupName(11, 100) == null);
 
-    var cleanup_payload = [_]u8{0} ** 32;
+    var cleanup_payload = @as([32]u8, @splat(0));
     std.mem.writeInt(u64, cleanup_payload[16..24], 12, .little);
     try recorded.addName(12, 50, &.{ 'r', 'e', 'c' }, false);
     try realtime.addName(12, 50, &.{ 'l', 'i', 'v' }, false);
@@ -662,7 +662,7 @@ test "FileIOCreate and FileIOWrite repair sentinel identity and resolve FileObje
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    var create_payload = [_]u8{0} ** 52;
+    var create_payload = @as([52]u8, @splat(0));
     std.mem.writeInt(u64, create_payload[0..8], 0x111, .little);
     std.mem.writeInt(u32, create_payload[8..12], 55, .little);
     std.mem.writeInt(u64, create_payload[16..24], 0x44, .little);
@@ -687,7 +687,7 @@ test "FileIOCreate and FileIOWrite repair sentinel identity and resolve FileObje
         else => return error.UnexpectedEventKind,
     }
 
-    var write_payload = [_]u8{0} ** 48;
+    var write_payload = @as([48]u8, @splat(0));
     std.mem.writeInt(i64, write_payload[0..8], 0x1234, .little);
     std.mem.writeInt(u64, write_payload[8..16], 0x222, .little);
     std.mem.writeInt(u32, write_payload[16..20], 55, .little);

@@ -6,12 +6,12 @@ pub fn build(b: *std.Build) void {
     const control = b.addModule("rm_control", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/root.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{.{ .name = "rm_control", .module = control }},
     }) });
     const run_tests = b.addRunArtifact(tests);
@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
     const json_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("src/json.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     }) });
     const run_json_tests = b.addRunArtifact(json_tests);
     test_step.dependOn(&run_json_tests.step);
@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
         const compile = b.addObject(.{ .name = fixture.file, .root_module = b.createModule(.{
             .root_source_file = b.path(b.fmt("tests/compile_fail/{s}.zig", .{fixture.file})),
             .target = target,
-            .optimize = .ReleaseSafe,
+            .optimize = .safe,
             .imports = &.{.{ .name = "rm_control", .module = control }},
         }) });
         compile.expect_errors = .{ .contains = fixture.message };
@@ -58,7 +58,7 @@ pub fn build(b: *std.Build) void {
     const valid_data_cycle = b.addObject(.{ .name = "valid_data_cycle", .root_module = b.createModule(.{
         .root_source_file = b.path("tests/compile_fail/valid_data_cycle.zig"),
         .target = target,
-        .optimize = .ReleaseFast,
+        .optimize = .fast,
         .imports = &.{.{ .name = "rm_control", .module = control }},
     }) });
     test_step.dependOn(&valid_data_cycle.step);

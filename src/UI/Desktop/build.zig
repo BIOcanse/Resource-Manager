@@ -3,17 +3,19 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const state_names = b.option(bool, "state-names", "Include development registry names") orelse (optimize == .Debug);
-    if (state_names and optimize != .Debug) @panic("Registry names are development-only; release builds require -Dstate-names=false");
+    const state_names = b.option(bool, "state-names", "Include development registry names") orelse (optimize == .debug);
+    if (state_names and optimize != .debug) @panic("Registry names are development-only; release builds require -Dstate-names=false");
     const control = b.createModule(.{
         .root_source_file = b.path("../../Shared/Control/src/root.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     });
+    // Win32 headers go through the build's translate-C step; src/backend/c.zig imports the result.
+    const win32_c = b.addTranslateC(.{ .root_source_file = b.path("src/backend/win32.h"), .target = target, .optimize = optimize }).createModule();
     const module = b.createModule(.{ .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize });
     const states = stateItems(b, control, target, optimize, state_names);
     module.addImport("desktop_state_items", states);
-    configure(module, control);
+    configure(module, control, win32_c);
     if (b.option([]const u8, "points-root", "Directory containing selected FreedomPoint values")) |root| {
         const values = b.createModule(.{ .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ root, "points.values.zig" }) }, .target = target, .optimize = optimize });
         const structure = b.createModule(.{ .root_source_file = b.path("src/generated/points.structure.zig"), .target = target, .optimize = optimize });
@@ -21,11 +23,11 @@ pub fn build(b: *std.Build) void {
         module.addImport("desktop_points_values", values);
     }
     const executable = b.addExecutable(.{ .name = "ResourceManager.Desktop", .root_module = module });
-    executable.subsystem = .Windows;
+    executable.subsystem = .windows;
     b.installArtifact(executable);
     const tests = b.createModule(.{ .root_source_file = b.path("src/tests.zig"), .target = target, .optimize = optimize });
     tests.addImport("desktop_state_items", states);
-    configure(tests, control);
+    configure(tests, control, win32_c);
     const run = b.addRunArtifact(b.addTest(.{ .root_module = tests }));
     const test_step = b.step("test", "Run resident tree and block tests");
     test_step.dependOn(&run.step);
@@ -51,13 +53,13 @@ pub fn build(b: *std.Build) void {
     desktop_tree.addImport("desktop_state_items", states);
     // Export always uses a separate development table, even if the product
     // table omits names. The exporter is never installed with the resident.
-    const export_tree = b.createModule(.{ .root_source_file = b.path("src/tree.zig"), .target = target, .optimize = .ReleaseSafe });
+    const export_tree = b.createModule(.{ .root_source_file = b.path("src/tree.zig"), .target = target, .optimize = .safe });
     export_tree.addImport("rm_control", control);
-    export_tree.addImport("desktop_state_items", stateItems(b, control, target, .ReleaseSafe, true));
+    export_tree.addImport("desktop_state_items", stateItems(b, control, target, .safe, true));
     const export_source = b.createModule(.{
         .root_source_file = b.path("src/export_tree.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
         .imports = &.{ .{ .name = "rm_control", .module = control }, .{ .name = "desktop_tree", .module = export_tree } },
     });
     const exporter = b.addExecutable(.{
@@ -66,7 +68,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("../../Shared/Control/src/export_tree_main.zig"),
             .target = target,
-            .optimize = .ReleaseSafe,
+            .optimize = .safe,
             .imports = &.{ .{ .name = "rm_control", .module = control }, .{ .name = "process_tree", .module = export_source } },
         }),
     });
@@ -90,7 +92,7 @@ pub fn build(b: *std.Build) void {
     b.step("test-integration", "Run the resident controller with real child processes").dependOn(&integration_run.step);
     b.step("test-blocks", "Run resident declarations and block unit tests").dependOn(&run.step);
     const key_fixture = b.createModule(.{ .root_source_file = b.path("src/backend/key_fixture_test.zig"), .target = target, .optimize = optimize });
-    configure(key_fixture, control);
+    configure(key_fixture, control, win32_c);
     const key_fixture_options = b.addOptions();
     key_fixture_options.addOption([]const u8, "work_root", b.option([]const u8, "key-fixture-work-root", "WorkRoot given to Initialize-BackendKeyFixture.ps1; unset skips test-key-fixture") orelse "");
     key_fixture.addOptions("key_fixture_options", key_fixture_options);
@@ -111,14 +113,15 @@ pub fn build(b: *std.Build) void {
     b.step("fixture", "Install the pipe test child").dependOn(&b.addInstallArtifact(fixture, .{}).step);
 }
 
-fn configure(module: *std.Build.Module, control: *std.Build.Module) void {
+fn configure(module: *std.Build.Module, control: *std.Build.Module, win32_c: *std.Build.Module) void {
+    module.addImport("desktop_win32_c", win32_c);
     module.addImport("rm_control", control);
     module.link_libc = true;
     for ([_][]const u8{ "user32", "shell32", "advapi32", "winhttp", "iphlpapi", "ws2_32", "ole32" }) |library|
         module.linkSystemLibrary(library, .{});
 }
 
-fn stateItems(b: *std.Build, control: *std.Build.Module, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, state_names: bool) *std.Build.Module {
+fn stateItems(b: *std.Build, control: *std.Build.Module, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize, state_names: bool) *std.Build.Module {
     const generation = b.addSystemCommand(&.{ "pwsh", "-NoProfile", "-File" });
     generation.addFileArg(b.path("../../../scripts/build/Generate-DesktopStateItems.ps1"));
     generation.addFileInput(b.path("../../Shared/StateItems/state-items.json"));

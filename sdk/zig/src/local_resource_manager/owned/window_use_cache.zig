@@ -75,7 +75,7 @@ pub const Entry = struct {
 
 pub fn Hints(comptime slots: u32) type {
     return struct {
-        slots: [slots]std.atomic.Value(u32) = .{std.atomic.Value(u32).init(types.no_slot)} ** slots,
+        slots: [slots]std.atomic.Value(u32) = @splat(std.atomic.Value(u32).init(types.no_slot)),
         pub fn position(uid: anytype) usize {
             // A bounded hint, deliberately storing no UID and owning no identity.
             return @intCast(std.hash.Wyhash.hash(0, &uid.bytes) % slots);

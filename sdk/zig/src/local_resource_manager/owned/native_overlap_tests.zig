@@ -59,7 +59,7 @@ test "Native outputs reject UID and lease aliases before clearing caller memory"
 
     var operation: Binding.OperationWorkspaceType = .{};
     const table_target = native.Target{ .kind = 0, .table = 0, .parent_uid = null, .parent_uid_length = 0 };
-    var zero_uid = [_]u8{0} ** @sizeOf(Uid);
+    var zero_uid = @as([@sizeOf(Uid)]u8, @splat(0));
     var initial_borrow = std.mem.zeroes(native.Borrow);
     try std.testing.expectEqual(
         @intFromEnum(native.Status.newly_allocated),
@@ -80,7 +80,7 @@ test "Native outputs reject UID and lease aliases before clearing caller memory"
         Binding.rm_ledger_end_use(instance, &initial_borrow.lease, 0),
     );
 
-    var uid_alias = BorrowUidOverlap{ .uid = [_]u8{0x73} ** @sizeOf(Uid) };
+    var uid_alias = BorrowUidOverlap{ .uid = @as([@sizeOf(Uid)]u8, @splat(0x73)) };
     const uid_before = uid_alias.uid;
     try std.testing.expectEqual(
         @intFromEnum(native.Status.input_error),

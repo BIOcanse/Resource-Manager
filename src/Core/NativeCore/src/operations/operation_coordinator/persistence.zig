@@ -56,7 +56,7 @@ pub fn encode(
         .flags = 0,
         .checksum_high = 0,
         .checksum_low = 0,
-        .reserved = [_]u64{0} ** 4,
+        .reserved = @as([4]u64, @splat(0)),
     };
     const checksum = persistenceChecksum(header, records[0..count]);
     header.checksum_high = checksum.high;
@@ -767,6 +767,6 @@ fn validTestRecord() protocol.PersistenceRecord {
         .flags = 0,
         .attempt_configuration_generation = 0,
         .queue_order = 1,
-        .reserved = [_]u64{0} ** 2,
+        .reserved = @as([2]u64, @splat(0)),
     };
 }

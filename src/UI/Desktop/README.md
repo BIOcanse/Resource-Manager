@@ -1,6 +1,6 @@
 # Desktop 常驻进程（phase A）
 
-使用 Zig 0.16.0 和 `src/Shared/Control` 的 `rm_control`。运行入口由宿主线程执行，控制器回调只排队。运行时存储有固定上限；控制器仅以 ReleaseSafe 编译。
+使用 Zig 0.17.0 和 `src/Shared/Control` 的 `rm_control`。运行入口由宿主线程执行，控制器回调只排队。运行时存储有固定上限；控制器仅以 ReleaseSafe 编译。
 
 
 常驻进程的控制树：
@@ -33,7 +33,7 @@ $work = '<workset-root>\desktop-resident'
 & scripts/build/Generate-DesktopText.ps1
 $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 & <tools>\JobQueue\JobQueue.ps1 -Action Run -Label 'desktop Debug' `
-  -FilePath <tools>\Zig\zig-0.16.0\zig.exe `
+  -FilePath <tools>\Zig\zig-0.17.0\zig.exe `
   -ArgumentList @('build', '-Doptimize=Debug', "-Dpoints-root=$work/desktop-points", '--cache-dir', "$work\zig-cache", '--prefix', "$work\debug", '-j1') `
   -WorkingDirectory "$PWD\src\UI\Desktop"
 ```

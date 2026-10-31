@@ -102,8 +102,8 @@ test "file query short and FTS plans are explicit and deterministic" {
     try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var output = std.mem.zeroes(protocol.PlanOutput);
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     var short_input = beginInput(1, 1, 2);
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -139,7 +139,7 @@ test "file query short and FTS plans are explicit and deterministic" {
     try std.testing.expectEqual(ResultCode.ok, session.reset(&reset_input));
 
     output = std.mem.zeroes(protocol.PlanOutput);
-    sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
+    sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
     @memset(&plan_bytes, 0);
     var fts_input = beginInput(2, 3, 4);
     try std.testing.expectEqual(
@@ -190,8 +190,8 @@ test "file query module-local C ABI completes an exact lifecycle" {
     const query = "GaMe";
     var begin_input = beginInput(1, 1, query.len);
     var plan_output = std.mem.zeroes(protocol.PlanOutput);
-    var source_outputs = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var source_outputs = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     try std.testing.expectEqual(
         @intFromEnum(ResultCode.ok),
         abi.rm_file_query_begin(
@@ -227,7 +227,7 @@ test "file query module-local C ABI completes an exact lifecycle" {
     );
 
     var finalize_input = finalizeInput(1, 3);
-    var results = [_]protocol.ResultOutput{std.mem.zeroes(protocol.ResultOutput)} ** 4;
+    var results = @as([4]protocol.ResultOutput, @splat(std.mem.zeroes(protocol.ResultOutput)));
     var finalize_output = std.mem.zeroes(protocol.FinalizeOutput);
     try std.testing.expectEqual(
         @intFromEnum(ResultCode.ok),
@@ -264,8 +264,8 @@ test "file query deduplicates sources and ranks stable matches" {
     try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var plan_output = std.mem.zeroes(protocol.PlanOutput);
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     var begin_input = beginInput(11, 1, 4);
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -331,7 +331,7 @@ test "file query deduplicates sources and ranks stable matches" {
     try std.testing.expectEqual(@as(u32, 1), submit_output.duplicate_candidate_count);
     try std.testing.expectEqual(@as(u32, 1), submit_output.total_unique_candidate_count);
 
-    var results = [_]protocol.ResultOutput{std.mem.zeroes(protocol.ResultOutput)} ** 4;
+    var results = @as([4]protocol.ResultOutput, @splat(std.mem.zeroes(protocol.ResultOutput)));
     var finalize_output = std.mem.zeroes(protocol.FinalizeOutput);
     var finalize_input = finalizeInput(11, 3);
     try std.testing.expectEqual(
@@ -358,8 +358,8 @@ test "file query rejects a drifting batch atomically" {
     try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var plan_output = std.mem.zeroes(protocol.PlanOutput);
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     var begin_input = beginInput(20, 1, 3);
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -410,8 +410,8 @@ test "file query emits distinct Unicode trigrams and explicit path tokens" {
     try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var output = std.mem.zeroes(protocol.PlanOutput);
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     const query = "foo/bar baz";
     var input = beginInput(1, 1, query.len);
     try std.testing.expectEqual(
@@ -437,7 +437,7 @@ test "file query emits distinct Unicode trigrams and explicit path tokens" {
     var reset_input = resetInput(2);
     try std.testing.expectEqual(ResultCode.ok, session.reset(&reset_input));
     output = std.mem.zeroes(protocol.PlanOutput);
-    sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
+    sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
     @memset(&plan_bytes, 0);
     const unicode_query = "你好你";
     input = beginInput(2, 3, unicode_query.len);
@@ -485,8 +485,8 @@ test "file query path planning matches the fixed Unicode 6.1 token categories" {
         try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
         var output = std.mem.zeroes(protocol.PlanOutput);
-        var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-        var plan_bytes = [_]u8{0} ** 1024;
+        var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+        var plan_bytes = @as([1024]u8, @splat(0));
         var input = beginInput(1, 1, case.query.len);
         try std.testing.expectEqual(
             ResultCode.ok,
@@ -529,8 +529,8 @@ test "file query escapes quotes and removes repeated trigrams" {
     try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var output = std.mem.zeroes(protocol.PlanOutput);
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     const quoted = "a\"b";
     var input = beginInput(1, 1, quoted.len);
     try std.testing.expectEqual(
@@ -556,7 +556,7 @@ test "file query escapes quotes and removes repeated trigrams" {
     var reset_input = resetInput(2);
     try std.testing.expectEqual(ResultCode.ok, session.reset(&reset_input));
     output = std.mem.zeroes(protocol.PlanOutput);
-    sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
+    sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
     @memset(&plan_bytes, 0);
     input = beginInput(2, 3, 4);
     try std.testing.expectEqual(
@@ -606,8 +606,8 @@ test "file query trims only the published query boundary and rejects an empty re
     try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var output = std.mem.zeroes(protocol.PlanOutput);
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     const query = " \tGaMe\r\n";
     var input = beginInput(1, 1, query.len);
     try std.testing.expectEqual(
@@ -639,7 +639,7 @@ test "file query trims only the published query boundary and rejects an empty re
     var reset_input = resetInput(2);
     try std.testing.expectEqual(ResultCode.ok, session.reset(&reset_input));
     output = std.mem.zeroes(protocol.PlanOutput);
-    sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
+    sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
     @memset(&plan_bytes, 0);
     input = beginInput(2, 3, 4);
     try std.testing.expectEqual(
@@ -712,8 +712,8 @@ test "file query output buffers are transactional and require zero initializatio
 
     var output = std.mem.zeroes(protocol.PlanOutput);
     output.flags = 1;
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     var input = beginInput(1, 1, 4);
     try std.testing.expectEqual(
         ResultCode.abi_mismatch,
@@ -781,7 +781,7 @@ test "file query ranks by configured source then rune count name and handle" {
             &submit_output,
         ),
     );
-    var results = [_]protocol.ResultOutput{std.mem.zeroes(protocol.ResultOutput)} ** 4;
+    var results = @as([4]protocol.ResultOutput, @splat(std.mem.zeroes(protocol.ResultOutput)));
     var finalize_output = std.mem.zeroes(protocol.FinalizeOutput);
     var finalize_input = finalizeInput(1, 3);
     try std.testing.expectEqual(
@@ -860,8 +860,8 @@ test "file query enforces the explicit per-source candidate budget atomically" {
     try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var plan_output = std.mem.zeroes(protocol.PlanOutput);
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     var begin_input = beginInput(1, 1, 4);
     begin_input.requested_result_count = 1;
     try std.testing.expectEqual(
@@ -944,7 +944,7 @@ test "file query finalize capacity failure is retryable without phase mutation" 
     try std.testing.expectEqual(ResultCode.ok, session.snapshot(&snapshot));
     try std.testing.expectEqual(@intFromEnum(protocol.QueryPhase.planned), snapshot.phase);
 
-    var results = [_]protocol.ResultOutput{std.mem.zeroes(protocol.ResultOutput)} ** 4;
+    var results = @as([4]protocol.ResultOutput, @splat(std.mem.zeroes(protocol.ResultOutput)));
     input.result_capacity = results.len;
     output = std.mem.zeroes(protocol.FinalizeOutput);
     try std.testing.expectEqual(
@@ -999,10 +999,8 @@ test "file query runs one thousand lifecycles from the create-time resident set"
     var iteration: u32 = 0;
     while (iteration < 1000) : (iteration += 1) {
         var plan_output = std.mem.zeroes(protocol.PlanOutput);
-        var sources = [_]protocol.SourcePlanOutput{
-            std.mem.zeroes(protocol.SourcePlanOutput),
-        } ** 3;
-        var plan_bytes = [_]u8{0} ** 1024;
+        var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+        var plan_bytes = @as([1024]u8, @splat(0));
         var begin_input = beginInput(query_epoch, operation_epoch, 3);
         try std.testing.expectEqual(
             ResultCode.ok,
@@ -1019,7 +1017,7 @@ test "file query runs one thousand lifecycles from the create-time resident set"
             ),
         );
 
-        var results = [_]protocol.ResultOutput{std.mem.zeroes(protocol.ResultOutput)} ** 4;
+        var results = @as([4]protocol.ResultOutput, @splat(std.mem.zeroes(protocol.ResultOutput)));
         var finalize_output = std.mem.zeroes(protocol.FinalizeOutput);
         var finalize_input = finalizeInput(query_epoch, operation_epoch + 1);
         try std.testing.expectEqual(
@@ -1045,8 +1043,8 @@ test "file query runs one thousand lifecycles from the create-time resident set"
 
 fn beginQuery(session: *session_module.Session, query_epoch: u64, query: []const u8) !void {
     var output = std.mem.zeroes(protocol.PlanOutput);
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     var input = beginInput(query_epoch, 1, query.len);
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -1101,8 +1099,8 @@ test "file query construction has no columns and explicit scratch release permit
     try std.testing.expectEqual(@as(usize, 0), session.candidates.len);
     try std.testing.expectEqual(@as(usize, 0), session.candidate_text_bytes.len);
     var output = std.mem.zeroes(protocol.PlanOutput);
-    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
-    var plan_bytes = [_]u8{0} ** 1024;
+    var sources = @as([3]protocol.SourcePlanOutput, @splat(std.mem.zeroes(protocol.SourcePlanOutput)));
+    var plan_bytes = @as([1024]u8, @splat(0));
     var input = beginInput(1, 1, 6);
     try std.testing.expectEqual(ResultCode.unavailable, session_module.begin(session, &input, "ledger".ptr, 6, &output, &sources, sources.len, &plan_bytes, plan_bytes.len));
     const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.scratch_byte_count));

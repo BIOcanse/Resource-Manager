@@ -321,8 +321,8 @@ fn parseDomain(value: []const u8) ParseError!calibration.Domain {
 }
 
 fn parseOutcome(value: []const u8) ParseError!Outcome {
-    inline for (std.meta.fields(Outcome)) |field| {
-        if (std.mem.eql(u8, value, field.name)) return @enumFromInt(field.value);
+    inline for (@typeInfo(Outcome).@"enum".field_names, @typeInfo(Outcome).@"enum".field_values) |field_name, field_value| {
+        if (std.mem.eql(u8, value, field_name)) return @enumFromInt(field_value);
     }
     return error.InvalidOutcome;
 }

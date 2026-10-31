@@ -27,7 +27,7 @@ $profile=Json $profilePath;Require ($profile.schema-ceq'rm/disk-checkpoint-input
 foreach($name in @('declaration','sdkRoot','bindingRoot','toolsRoot','builderPath','nativeOwner','worksetRoot','projectRoot')){[void](Full ([string]$profile.$name))}
 Import-Module (Join-Path $PSScriptRoot '..\..\dev\MachineRoots.psm1') -DisableNameChecking
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..')).TrimEnd('\');$workset=Join-Path (Get-MachineRoot -Name WorkRoot) 'Resource-Manager-Development\generated'
-$zig=Join-Path (Get-MachineRoot -Name ToolsRoot) 'Zig\zig-0.16.0\zig.exe'
+$zig=Join-Path (Get-MachineRoot -Name ToolsRoot) 'Zig\zig-0.17.0\zig.exe'
 Require ((Full $profile.projectRoot)-ieq$repo-and(Full $profile.worksetRoot)-ieq$workset-and[IO.Path]::GetDirectoryName((Full $profile.nativeOwner))-ieq$workset) 'Disk project/workset/owner differs.'
 $ownerMarker=Join-Path $profile.nativeOwner '.generated-workspace.json';$owner=Json $ownerMarker
 Require ($owner.rootId-ceq'rm-disk-native-artifacts'-and(Full $owner.rootPath)-ieq$workset-and(Full $owner.workspacePath)-ieq(Full $profile.nativeOwner)-and$owner.state-cin@('running','completed')-and$owner.references-icontains$task) 'Disk artifact owner is not registered for this task.'

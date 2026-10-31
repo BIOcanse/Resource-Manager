@@ -382,7 +382,7 @@ fn fixtureTest(mode: TestMode) !void {
     var called = false;
     const expected_path = if (mode == .reject_path) std.unicode.utf8ToUtf16LeStringLiteral("Z:\\not-the-fixture.exe") else path[0..path_length];
     const gate: TestGate = .{ .scratch = &scratch.process, .expected = expected, .path = expected_path, .called = &called };
-    const key = if (mode == .empty_key) "" else "rm_sk_" ++ "0" ** 64;
+    const key = if (mode == .empty_key) "" else "rm_sk_" ++ "0000000000000000000000000000000000000000000000000000000000000000";
     const started = c.GetTickCount64();
     const result = if (mode == .reject_service)
         authenticated(stop, port, 2000, &scratch.transport, &scratch.process, expected, expected_path, std.unicode.utf8ToUtf16LeStringLiteral("ResourceManager.Desktop.NonexistentTestService"), key)

@@ -23,9 +23,9 @@ pub const Reason = enum(u32) {
     stale_binding, incomplete_window, capacity, before_process_birth,
     invalid_process, stopped, system_process, closed_queue, user_mode_image,
 };
-pub const kind_count = @typeInfo(Kind).@"enum".fields.len;
-pub const physical_count = @typeInfo(PhysicalKind).@"enum".fields.len;
-pub const reason_count = @typeInfo(Reason).@"enum".fields.len;
+pub const kind_count = @typeInfo(Kind).@"enum".field_names.len;
+pub const physical_count = @typeInfo(PhysicalKind).@"enum".field_names.len;
+pub const reason_count = @typeInfo(Reason).@"enum".field_names.len;
 pub const all_kinds: u64 = (@as(u64, 1) << kind_count) - 1;
 pub const active: u32 = 1;
 pub const window_active: u32 = 4;
@@ -38,8 +38,8 @@ pub const Pair = extern struct { received: u64 = 0, dropped: u64 = 0 };
 /// A retired binding's final immutable totals. Taking it acknowledges native
 /// release; the host folds these bounded rows into stable holder diagnostics.
 pub const Frame = extern struct {
-    totals: [kind_count]Pair = [_]Pair{.{}} ** kind_count,
-    rejected: [kind_count][reason_count]u64 = [_][reason_count]u64{[_]u64{0} ** reason_count} ** kind_count,
+    totals: [kind_count]Pair = @as([kind_count]Pair, @splat(.{})),
+    rejected: [kind_count][reason_count]u64 = @as([kind_count][reason_count]u64, @splat(@as([reason_count]u64, @splat(0)))),
 };
 pub const Config = extern struct {
     token: u64,
@@ -89,9 +89,9 @@ fn increment(value: *Atomic) void {
 }
 const Consumer = struct {
     config: Config,
-    totals: [kind_count]Counter = [_]Counter{.{}} ** kind_count,
-    rejected: [kind_count][reason_count]Atomic = [_][reason_count]Atomic{[_]Atomic{Atomic.init(0)} ** reason_count} ** kind_count,
-    accepted_epoch: [kind_count]u64 = [_]u64{0} ** kind_count,
+    totals: [kind_count]Counter = @as([kind_count]Counter, @splat(.{})),
+    rejected: [kind_count][reason_count]Atomic = @as([kind_count][reason_count]Atomic, @splat(@as([reason_count]Atomic, @splat(Atomic.init(0))))),
+    accepted_epoch: [kind_count]u64 = @as([kind_count]u64, @splat(0)),
     retire_requested: bool = false,
     next_retired: ?*Consumer = null,
 };
@@ -115,7 +115,7 @@ pub const Store = struct {
     retired: ?*Consumer = null,
     retired_count: usize = 0,
     retire_requests: usize = 0,
-    physical: [physical_count]Counter = [_]Counter{.{}} ** physical_count,
+    physical: [physical_count]Counter = @as([physical_count]Counter, @splat(.{})),
     query_mutex: Mutex = .{},
     epoch: u64 = 0,
 

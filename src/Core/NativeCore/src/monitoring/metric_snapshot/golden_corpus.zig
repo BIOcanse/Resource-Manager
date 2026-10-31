@@ -297,19 +297,19 @@ fn moduleLayoutFingerprint() u64 {
 }
 
 fn layoutFingerprint(comptime T: type) u64 {
-    const fields = @typeInfo(T).@"struct".fields;
+    const info = @typeInfo(T).@"struct";
     var hash: u64 = 0xcbf29ce484222325;
     hash = fingerprintInteger(hash, @sizeOf(T));
     hash = fingerprintInteger(hash, @alignOf(T));
-    hash = fingerprintInteger(hash, fields.len);
-    inline for (fields) |field| {
-        inline for (field.name) |byte| {
+    hash = fingerprintInteger(hash, info.field_names.len);
+    inline for (info.field_names, info.field_types) |field_name, field_type| {
+        inline for (field_name) |byte| {
             hash = (hash ^ byte) *% 0x100000001b3;
         }
         hash = (hash ^ 0xff) *% 0x100000001b3;
-        hash = fingerprintInteger(hash, @offsetOf(T, field.name));
-        hash = fingerprintInteger(hash, @sizeOf(field.type));
-        hash = fingerprintInteger(hash, @alignOf(field.type));
+        hash = fingerprintInteger(hash, @offsetOf(T, field_name));
+        hash = fingerprintInteger(hash, @sizeOf(field_type));
+        hash = fingerprintInteger(hash, @alignOf(field_type));
     }
     return hash;
 }

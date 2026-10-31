@@ -319,9 +319,9 @@ test "partition planning takes the lowest sufficient empty interval before any r
         .latest_access = 0,
         .allocation_numbers = allocations[0..],
     }};
-    var first = [_]u64{0} ** 2;
-    var second = [_]u64{0} ** 2;
-    var best = [_]u64{0} ** 2;
+    var first = @as([2]u64, @splat(0));
+    var second = @as([2]u64, @splat(0));
+    var best = @as([2]u64, @splat(0));
     const selected = (try P.plan(20, 9, cells[0..], children[0..], 2, .{
         .candidate_a = first[0..],
         .candidate_b = second[0..],
@@ -349,9 +349,9 @@ test "replacement ranks complete child summaries and treats unsafe children and 
         .{ .start = 13, .capacity = 3, .safe = true, .score = 1, .aligned_bits = 0, .latest_access = 7, .allocation_numbers = middle_numbers[0..] },
         .{ .start = 17, .capacity = 2, .safe = true, .score = 3, .aligned_bits = 0, .latest_access = 5, .allocation_numbers = last_numbers[0..] },
     };
-    var first = [_]u64{0} ** 6;
-    var second = [_]u64{0} ** 6;
-    var best = [_]u64{0} ** 6;
+    var first = @as([6]u64, @splat(0));
+    var second = @as([6]u64, @splat(0));
+    var best = @as([6]u64, @splat(0));
     const selected = (try P.plan(10, 9, cells[0..], children[0..], 3, .{
         .candidate_a = first[0..],
         .candidate_b = second[0..],
@@ -396,9 +396,9 @@ test "replacement ranks complete child summaries and treats unsafe children and 
 
 test "equal-score ranking compares oldest differing bit, latest access, and allocation lists" {
     const P = For(u8);
-    var first = [_]u64{0} ** 4;
-    var second = [_]u64{0} ** 4;
-    var best = [_]u64{0} ** 4;
+    var first = @as([4]u64, @splat(0));
+    var second = @as([4]u64, @splat(0));
+    var best = @as([4]u64, @splat(0));
 
     const bit_a = [_]u64{ 20 };
     const bit_b = [_]u64{ 10 };
@@ -476,7 +476,7 @@ fn oraclePlan(
     var best_score: u8 = 0;
     var best_bits: P.BitmapType = 0;
     var best_latest: u64 = 0;
-    var best_numbers = [_]u64{0} ** 256;
+    var best_numbers = @as([256]u64, @splat(0));
     var best_number_count: usize = 0;
     var left: usize = 0;
     while (left < cells.len) : (left += 1) {
@@ -485,7 +485,7 @@ fn oraclePlan(
         var score: u8 = 0;
         var bits: P.BitmapType = 0;
         var latest: u64 = 0;
-        var numbers = [_]u64{0} ** 256;
+        var numbers = @as([256]u64, @splat(0));
         var number_count: usize = 0;
         var right = left;
         while (right < cells.len) : (right += 1) {
@@ -564,9 +564,9 @@ test "minimal-prefix enumeration agrees with a full-window oracle across bounded
     var number_store: [5][2]u64 = undefined;
     var cells: [5]P.Cell = undefined;
     var children: [5]P.Child = undefined;
-    var first = [_]u64{0} ** 10;
-    var second = [_]u64{0} ** 10;
-    var best = [_]u64{0} ** 10;
+    var first = @as([10]u64, @splat(0));
+    var second = @as([10]u64, @splat(0));
+    var best = @as([10]u64, @splat(0));
     var layout: u32 = 0;
     while (layout < 1024) : (layout += 1) {
         var child_count: usize = 0;
@@ -624,9 +624,9 @@ test "whole child intervals may overshoot requested capacity but are never cut" 
         .{ .start = 6, .capacity = 2, .safe = true, .score = 1, .aligned_bits = 0, .latest_access = 0, .allocation_numbers = first_numbers[0..] },
         .{ .start = 8, .capacity = 1, .safe = true, .score = 1, .aligned_bits = 0, .latest_access = 0, .allocation_numbers = second_numbers[0..] },
     };
-    var first = [_]u64{0} ** 3;
-    var second = [_]u64{0} ** 3;
-    var best = [_]u64{0} ** 3;
+    var first = @as([3]u64, @splat(0));
+    var second = @as([3]u64, @splat(0));
+    var best = @as([3]u64, @splat(0));
     const selected = (try P.plan(5, 5, cells[0..], children[0..], 3, .{
         .candidate_a = first[0..], .candidate_b = second[0..], .best_numbers = best[0..],
     })).?;

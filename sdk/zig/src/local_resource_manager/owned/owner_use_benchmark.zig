@@ -430,7 +430,7 @@ fn Driver(comptime bits: u16, comptime capacity: usize, comptime candidate: Cand
         }
 
         fn runPath(allocator: std.mem.Allocator, io: std.Io, options: Options, comptime path: Path) !void {
-            if (options.mode == .timing and builtin.mode != .ReleaseFast)
+            if (options.mode == .timing and builtin.mode != .fast)
                 return error.TimingRequiresReleaseFast;
 
             const rows = try allocator.alloc(Ledger.Row, capacity);
@@ -1179,7 +1179,7 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     var options = try parseOptions(args);
-    if (options.mode == .timing and builtin.mode != .ReleaseFast) return error.TimingRequiresReleaseFast;
+    if (options.mode == .timing and builtin.mode != .fast) return error.TimingRequiresReleaseFast;
     if (options.affinity_mask) |mask| options.placement = try benchmark_affinity.apply(mask);
     try dispatch(allocator, init.io, options);
 }

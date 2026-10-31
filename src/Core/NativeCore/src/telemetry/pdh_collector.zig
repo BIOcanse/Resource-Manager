@@ -183,8 +183,8 @@ const CounterSet = struct {
 
     fn count(self: *const CounterSet) u32 {
         var result: u32 = 0;
-        inline for (std.meta.fields(CounterSet)) |field| {
-            if (@field(self, field.name) != null) result += 1;
+        inline for (@typeInfo(CounterSet).@"struct".field_names) |field_name| {
+            if (@field(self, field_name) != null) result += 1;
         }
         return result;
     }

@@ -336,7 +336,7 @@ $nativeReadme = @'
 
 This archive contains the production C2 ledger Native source closure under `src/local_resource_manager`, the public `src/ledger.zig` module root, the paired C ABI header, and the public `tools/Build-LedgerNative.ps1` build entry. The package is a candidate until an installed-package consumer run succeeds.
 
-Use the packaged `ledger-configuration` tool to generate the selected FreedomPoint structure and values. Use the packaged `ledger-build native` command with the owner's canonical JSON, exact `ledger_values.zig`, and UID width to generate `LedgerOwnerShape.zig`, `LedgerNativeEntry.zig`, `LedgerOwnerBuild.g.cs`, `LedgerOwnerBuild.props`, and `ledger-native-build.json`. The generated props are paired build metadata. Development analysis is automatic in the selected Native build; consumers do not add read/write or coverage markers. The Native build script verifies that manifest, then builds the DLL from this source root using Zig 0.16 and records input/output fingerprints.
+Use the packaged `ledger-configuration` tool to generate the selected FreedomPoint structure and values. Use the packaged `ledger-build native` command with the owner's canonical JSON, exact `ledger_values.zig`, and UID width to generate `LedgerOwnerShape.zig`, `LedgerNativeEntry.zig`, `LedgerOwnerBuild.g.cs`, `LedgerOwnerBuild.props`, and `ledger-native-build.json`. The generated props are paired build metadata. Development analysis is automatic in the selected Native build; consumers do not add read/write or coverage markers. The Native build script verifies that manifest, then builds the DLL from this source root using Zig 0.17 and records input/output fingerprints.
 
 Generated owner/value/structure files remain consumer build inputs. They are not copied into this archive. From the extracted archive root, invoke the public builder with the installed build tool, generated files, and an existing output workspace:
 
@@ -346,7 +346,7 @@ pwsh ./tools/Build-LedgerNative.ps1 `
   -NativeBuildManifestPath '<generated-directory>/ledger-native-build.json' `
   -GeneratedSourceRoot '<generated-directory>' `
   -NativeSourceRoot '<extracted-archive-root>' `
-  -ZigPath '<zig-0.16.0>/zig.exe' `
+  -ZigPath '<zig-0.17.0>/zig.exe' `
   -StructurePath '<structure-directory>/ledger_structure.zig' `
   -ValuesPath '<values-directory>/ledger_values.zig' `
   -UidWidthBits 128 `

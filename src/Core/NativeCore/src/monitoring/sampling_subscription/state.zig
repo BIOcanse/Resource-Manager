@@ -1049,8 +1049,8 @@ pub fn lockMutex(mutex: *std.atomic.Mutex) void {
 }
 
 test "sampling source index deletion compacts probes without historical tombstones" {
-    var index = [_]u32{no_index} ** 64;
-    var sources = [_]SourceSlot{.{}} ** 1;
+    var index = @as([64]u32, @splat(no_index));
+    var sources = @as([1]SourceSlot, @splat(.{}));
     var ordinal: u64 = 1;
     while (ordinal <= 4_096) : (ordinal += 1) {
         sources[0] = .{ .active = true, .source_handle = ordinal };
