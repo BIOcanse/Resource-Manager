@@ -19,7 +19,7 @@ public struct NativeKernelEtwResidencyConfig
 public struct NativeKernelEtwInterruptConfig
 {
     public uint Size, Version, MaximumModules, MaximumPathUnits, MaximumIdentities,
-        MaximumSlices, MaximumSliceDrivers, Reserved;
+        MaximumSlices, MaximumSliceDrivers, BucketMilliseconds, BucketCount, ReportedDrivers;
     public ulong ByteCap, Generation;
     public long StartedTickMilliseconds;
     public ulong EventsLost;
@@ -39,7 +39,7 @@ public struct NativeKernelEtwSessionConfig
         MaximumCommands, MaximumCommandNameBytes, PublicationBanks, Reserved;
     public long WindowMilliseconds, RetentionMilliseconds, DiskBucketMilliseconds, StartedTickMilliseconds;
     public uint MaximumPendingEvents, MaximumPendingPathUnits;
-    public uint MaximumRendererProcesses, Reserved3;
+    public uint MaximumRendererProcesses, NetworkInitialEvents;
 
     internal void StampAbi(KernelEtwSessionContext context)
     {

@@ -44,7 +44,9 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         BusinessBlockOptions? blockOptions = null,
         bool useNativeSession = false,
         Func<ResourceManager.App.Domain.GpuPlacement.GpuPlacementProcessInstance, bool>? isCurrentGraphicsApiProcess = null,
-        bool useProductionActivityFacts = false)
+        bool useProductionActivityFacts = false,
+        IInjectedOverlaySizeReader? injectedSizes = null,
+        Func<ResourceManager.App.Domain.RuntimeSpecialization.FramePipelineOptions>? readPipeline = null)
     {
         var sessions = new PresentFrameEtwTestSessionFactory();
         PresentFrameEtwSource? source = null;
@@ -63,13 +65,15 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         if (useNativeSession)
         {
             source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, availability,
-                static () => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.PresentSessionBuffers, observer);
+                static () => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.PresentSessionBuffers,
+                static () => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline, observer);
         }
         else
         {
             source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, availability, sessions.Create,
                 timeProvider ?? new PresentFrameEtwManualTimeProvider(), observer,
-                isCurrentGraphicsApiProcess ?? (static _ => true));
+                isCurrentGraphicsApiProcess ?? (static _ => true), readPipeline,
+                injectedSizes);
         }
 
         recorder = new(source, diagnostics, BackendUids.PresentFrameEtwSource);
@@ -249,6 +253,12 @@ internal sealed class PresentFrameEtwRecordingSession(string name) : IPresentFra
         lock (sync) operations.Add(new("disable", provider));
         ThrowIfRequested("disable", provider);
         lock (sync) enabled.Remove(provider);
+    }
+
+    public void CaptureState(Guid provider, ulong keywords)
+    {
+        lock (sync) operations.Add(new("capture-state", provider, Keywords: keywords));
+        ThrowIfRequested("capture-state", provider);
     }
 
     public void Flush()

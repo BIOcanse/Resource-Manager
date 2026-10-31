@@ -27,7 +27,8 @@ internal static class MonitoringSettings
             freedom.Consume<TargetedRecordingOptions>(BackendFreedomPointPaths.TargetedRecording, Consumer).Validate(),
             SessionBuffers(freedom, BackendFreedomPointPaths.VidMmSessionBuffers),
             SessionBuffers(freedom, BackendFreedomPointPaths.GpuAllocationSessionBuffers),
-            SessionBuffers(freedom, BackendFreedomPointPaths.PresentSessionBuffers));
+            SessionBuffers(freedom, BackendFreedomPointPaths.PresentSessionBuffers),
+            freedom.Consume<FramePipelineOptions>(BackendFreedomPointPaths.FramePipeline, Consumer).Validate());
     }
 
     private static EtwSessionBuffers SessionBuffers(FreedomPointCompilation freedom, string path)

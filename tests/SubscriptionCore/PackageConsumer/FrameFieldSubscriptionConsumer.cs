@@ -216,6 +216,14 @@ internal static class FrameFieldSubscriptionConsumer
         internal int ActiveLeases => Volatile.Read(ref activeLeases);
         internal bool FailAcquisitions { get; init; }
 
+        public TimeSpan Retention => TimeSpan.FromSeconds(30);
+        public IFrameSubscriptionLease AcquireSubscription(FrameSubscriptionRequest request) => new FrameLeaseAdapter(AcquireSubscription());
+        private sealed class FrameLeaseAdapter(IDisposable inner) : IFrameSubscriptionLease
+        {
+            public void Update(FrameSubscriptionRequest request) { }
+            public void Dispose() => inner.Dispose();
+        }
+
         public IDisposable AcquireSubscription()
         {
             Interlocked.Increment(ref acquisitions);

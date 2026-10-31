@@ -13,7 +13,8 @@ public sealed class ExternalGpuResidentObservation(
 {
     // Renderer qualification and residency confirmation need independent, current GPU facts even
     // when Smart and every resource table are stopped. One second matches action confirmation needs.
-    internal static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
+    internal static readonly TimeSpan RefreshInterval =
+        TimeSpan.FromMilliseconds(GpuPlacementSettings.ProductDefaults.ExternalRuntime.ResidentRefreshMilliseconds);
     private static readonly MetricSampleRequest InventoryRequest = MetricSampleRequest.ForIds([
         SamplingDatasetIds.SystemGpuInventory]);
     private const SchedulingProcessMetricMask ResidentMetricMask = SchedulingProcessMetricMask.GpuDedicatedMemory
@@ -94,7 +95,8 @@ public sealed class ExternalGpuResidentObservation(
             var sample = read();
             // Inspect existing publications only. An empty next value also settles this attempt.
             if (sample?.LastAttemptAtUtcTicks > afterUtcTicks) return sample;
-            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+            // Interim poll: this should wait on the observation's publication signal instead.
+            await Task.Delay(GpuPlacementSettings.ProductDefaults.ExternalRuntime.ResidentPollMilliseconds, cancellationToken).ConfigureAwait(false);
         }
         return null;
     }

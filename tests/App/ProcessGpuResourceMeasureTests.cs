@@ -19,7 +19,7 @@ public sealed class ProcessGpuResourceMeasureTests
     {
         var snapshot = Snapshot((41, 0, 60), (41, 1, 80));
         var fields = ProcessGpuResourceFieldRegistry.Describe([(0, Luid), (1, 24)], snapshot);
-        Assert.Equal(8, fields.Count); // Three residency amounts per adapter plus two observed engines.
+        Assert.Equal(10, fields.Count); // Three residency amounts and one shared-system-memory amount per adapter plus two observed engines.
         Assert.Equal(fields.Count, fields.Select(static field => field.Name).Distinct().Count());
         foreach (var field in fields)
         {
@@ -144,7 +144,8 @@ public sealed class ProcessGpuResourceMeasureTests
         ledger.SetCommittedGlobal(12, 2);
         var allocations = ledger.Read(new Dictionary<int, long> { [41] = 100, [42] = 100 })
             with { ObservedAtUtcTicks = Captured.UtcTicks, Generation = 7 };
-        var definitions = ProcessGpuResourceFieldRegistry.Describe([(0, Luid)], null);
+        var definitions = ProcessGpuResourceFieldRegistry.Describe([(0, Luid)], null)
+            .Where(ProcessGpuResourceFieldRegistry.IsVram).ToArray();
         var result = Project(definitions, null, null, allocations, Hardware(10));
         Assert.Equal(11D, result.Facts.Single(fact => fact.MetricId.StartsWith(ProcessGpuResourceFieldRegistry.ResidentBytes + "_gpu_", StringComparison.Ordinal)).ProcessSumValue);
         Assert.Equal(2D, result.Facts.Single(fact => fact.MetricId.StartsWith(ProcessGpuResourceFieldRegistry.ResidentPrivateBytes + "_gpu_", StringComparison.Ordinal)).ProcessSumValue);
@@ -162,6 +163,80 @@ public sealed class ProcessGpuResourceMeasureTests
         });
         Assert.All(result.Fields.Fields, static field =>
             Assert.Equal("process.gpu.resident-fields", field.DatasetId));
+    }
+
+    [Fact]
+    public void SharedSystemMemoryFieldIsBoundButNotVramAndNamesItsOwnDataset()
+    {
+        var field = ProcessGpuResourceFieldRegistry.ForSharedSystemMemory(0, Luid);
+        Assert.Equal("process_all_gpu_shared_system_memory_bytes_actual_gpu_0_luid_0000000000000017", field.Name);
+        Assert.Equal(field, ProcessGpuResourceFieldRegistry.Find(field.Name));
+        Assert.True(ProcessGpuResourceFieldRegistry.IsBound(field));
+        Assert.False(ProcessGpuResourceFieldRegistry.IsVram(field)); // never starts the ETW allocation collector
+        Assert.Equal(ProcessGpuResourceFieldRegistry.SharedSystemMemoryDatasetId, field.DatasetId);
+        Assert.Equal(ProcessGpuResourceFieldRegistry.SharedSystemMemorySourceId, field.SourceId);
+        Assert.Equal("gpu.0.sharedMemoryUsed", field.ResourceFactTotalMetricId);
+        Assert.NotEqual(ProcessGpuResourceFieldRegistry.ForResidentMemory(0, Luid,
+            ProcessMetricFieldCode.GpuResidentSharedBytes).DatasetId, field.DatasetId);
+    }
+
+    [Fact]
+    public void SharedSystemMemoryPublishesOneValuePerValidatedInstanceAndAdapter()
+    {
+        var field = ProcessGpuResourceFieldRegistry.ForSharedSystemMemory(0, Luid);
+        var read = new ProcessGpuSharedSystemMemoryRead(NativePdhProviderAvailability.Available, NativePdhResultCode.Ok,
+            Captured, new Dictionary<(ulong AdapterLuid, int ProcessId, ulong ProcessStartKey), double>
+            {
+                [(Luid, 41, 100)] = 4096,
+                [(24, 41, 100)] = 777, // another adapter: not this field's value
+                [(Luid, 42, 99)] = 555 // a different instance of PID 42
+            });
+
+        var result = WindowsResourceBreakdownSampler.CreateGpuResourceFacts([field], Samples, [Adapter(Luid)], null,
+            null, null, null, read);
+
+        var fact = Assert.Single(result.Facts);
+        var process = Assert.Single(fact.Processes);
+        Assert.Equal((41, 100L, 4096D), (process.ProcessId, process.ProcessStartKey, process.Value));
+        Assert.Equal(4096D, fact.ProcessSumValue);
+        Assert.Equal(Captured, fact.CapturedAt);
+        Assert.Equal("B", fact.Unit);
+        Assert.Null(fact.CapacityValue);
+        var row = Assert.Single(result.Fields.Processes);
+        Assert.Equal(41, row.ProcessId);
+        Assert.Equal(4096D, Assert.Single(row.Values).NumericValue);
+        Assert.Equal(ProcessGpuResourceFieldRegistry.SharedSystemMemoryDatasetId, Assert.Single(result.Fields.Fields).DatasetId);
+    }
+
+    [Fact]
+    public void SharedSystemMemoryWithoutAReadOrForAMissingInstanceHasNoRowAndNoZero()
+    {
+        var field = ProcessGpuResourceFieldRegistry.ForSharedSystemMemory(0, Luid);
+        var unavailable = new ProcessGpuSharedSystemMemoryRead(NativePdhProviderAvailability.Unavailable,
+            NativePdhResultCode.PdhError, null, new Dictionary<(ulong AdapterLuid, int ProcessId, ulong ProcessStartKey), double>());
+
+        foreach (var read in new ProcessGpuSharedSystemMemoryRead?[] { null, ProcessGpuSharedSystemMemoryRead.NotRequested, unavailable })
+        {
+            var result = WindowsResourceBreakdownSampler.CreateGpuResourceFacts([field], Samples, [Adapter(Luid)], null,
+                null, null, null, read);
+            var fact = Assert.Single(result.Facts);
+            Assert.Empty(fact.Processes);
+            Assert.Null(fact.CapturedAt);
+            Assert.Empty(result.Fields.Processes);
+        }
+    }
+
+    [Fact]
+    public void SharedSystemMemoryOnAnAdapterThatNoLongerMatchesPublishesNothing()
+    {
+        var field = ProcessGpuResourceFieldRegistry.ForSharedSystemMemory(0, Luid);
+        var read = new ProcessGpuSharedSystemMemoryRead(NativePdhProviderAvailability.Available, NativePdhResultCode.Ok,
+            Captured, new Dictionary<(ulong AdapterLuid, int ProcessId, ulong ProcessStartKey), double> { [(Luid, 41, 100)] = 1 });
+
+        var result = WindowsResourceBreakdownSampler.CreateGpuResourceFacts([field], Samples, [Adapter(24)], null,
+            null, null, null, read);
+
+        Assert.Empty(Assert.Single(result.Facts).Processes);
     }
 
     [Fact]

@@ -20,7 +20,8 @@ public sealed class ServiceSettingsCallbackLifetimeTests
         using var publication = new BlockedPublication(plans, delayedPlan);
         var control = new RecoveryControl();
         var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true),
-            control, NullLogger<ServiceRecoverySettings>.Instance);
+            control, CrashReportTestSupport.DumpSettings(), new CrashReportTestSupport.RecordingOwner(),
+            NullLogger<ServiceRecoverySettings>.Instance);
         await service.StartAsync(default);
         var publishing = Task.Run(() => plans.Publish(delayedPlan));
         try
@@ -50,7 +51,8 @@ public sealed class ServiceSettingsCallbackLifetimeTests
         using var publication = new BlockedPublication(plans, delayedPlan);
         var control = new RecoveryControl();
         var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true),
-            control, NullLogger<ServiceRecoverySettings>.Instance);
+            control, CrashReportTestSupport.DumpSettings(), new CrashReportTestSupport.RecordingOwner(),
+            NullLogger<ServiceRecoverySettings>.Instance);
         await service.StartAsync(default);
         var publishing = Task.Run(() => plans.Publish(delayedPlan));
         try
@@ -64,7 +66,8 @@ public sealed class ServiceSettingsCallbackLifetimeTests
             publication.Release.Set();
             Assert.Empty((await publishing.WaitAsync(Timeout)).DeliveryFailures);
             Assert.Single(control.Writes);
-            Assert.Equal(1, control.IdentityChecks);
+            // One check for the crash dump state (its first attempt) and one for the recovery configuration.
+        Assert.Equal(2, control.IdentityChecks);
             Assert.Equal(1, control.Reads);
 
             Assert.Empty(plans.Publish(Plan(3, true, 30)).DeliveryFailures);

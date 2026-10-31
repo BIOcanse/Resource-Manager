@@ -20,7 +20,8 @@ public sealed class GpuPlacementProcessHistoryObserver(
     ILogger<GpuPlacementProcessHistoryObserver> logger,
     TimeProvider? clock = null) : BackgroundService
 {
-    internal static readonly TimeSpan ObservationWindow = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan ObservationWindow =
+        TimeSpan.FromMilliseconds(GpuPlacementSettings.ProductDefaults.ProcessHistory.ObservationWindowMilliseconds);
     private readonly TimeProvider time = clock ?? TimeProvider.System;
     private static readonly SchedulingProcessFactRequest Request = new(
         SchedulingProcessMetricMask.GpuUsage,
@@ -91,7 +92,8 @@ public sealed class GpuPlacementProcessHistoryObserver(
         finally
         {
             presents.ObservationChanged -= results.Publish;
-            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var cleanup = new CancellationTokenSource(
+                TimeSpan.FromMilliseconds(GpuPlacementSettings.ProductDefaults.ProcessHistory.StopCleanupTimeoutMilliseconds));
             try
             {
                 foreach (var attempt in attempts.Values) await EndEmptyAttemptAsync(attempt, cleanup.Token);

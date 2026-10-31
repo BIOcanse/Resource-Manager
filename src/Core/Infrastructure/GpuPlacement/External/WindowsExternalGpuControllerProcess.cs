@@ -95,7 +95,8 @@ internal sealed class WindowsExternalGpuControllerProcess : IDisposable
 
     private async Task ConnectAsync(NamedPipeServerStream pipe)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var timeout = new CancellationTokenSource(
+            TimeSpan.FromMilliseconds(GpuPlacementSettings.ProductDefaults.ExternalRuntime.ControllerConnectTimeoutMilliseconds));
         await pipe.WaitForConnectionAsync(timeout.Token).ConfigureAwait(false);
         if (!Native.GetNamedPipeClientProcessId(pipe.SafePipeHandle, out var pid) || pid != Process.Id)
             throw new UnauthorizedAccessException("Controller output peer is not the owned process.");

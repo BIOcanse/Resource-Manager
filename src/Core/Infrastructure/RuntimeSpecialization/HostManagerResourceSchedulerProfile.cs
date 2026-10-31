@@ -174,6 +174,12 @@ internal sealed class HostManagerResourceSchedulerConfigurationProfile
     [JsonPropertyName("strong_pressure_free_ratio")]
     public required double StrongPressureFreeRatio { get; init; }
 
+    [JsonPropertyName("danger_minimum_physical_after_vram_move_ratio")]
+    public required double DangerMinimumPhysicalAfterVramMoveRatio { get; init; }
+
+    [JsonPropertyName("danger_minimum_virtual_after_physical_move_ratio")]
+    public required double DangerMinimumVirtualAfterPhysicalMoveRatio { get; init; }
+
     [JsonPropertyName("danger_severity_weights")]
     public required int[] DangerSeverityWeights { get; init; }
 }

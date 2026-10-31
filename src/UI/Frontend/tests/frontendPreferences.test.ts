@@ -103,7 +103,8 @@ test("cache explanation and reset are translated in every selectable locale", as
 });
 
 const notificationSymbols = ["UpdateNotify", "UpdateInApp", "UpdateSystem", "AccessRequestNotify", "AccessRequestInApp",
-  "AccessRequestSystem", "MemoryProtectionNotify", "MemoryProtectionInApp", "MemoryProtectionSystem"] as const;
+  "AccessRequestSystem", "MemoryProtectionNotify", "MemoryProtectionInApp", "MemoryProtectionSystem",
+  "CrashReportNotify", "CrashReportInApp", "CrashReportSystem"] as const;
 const allNotifications = (value: "on" | "off") => Object.fromEntries(notificationSymbols.map(symbol =>
   [symbol[0]!.toLowerCase() + symbol.slice(1), value])) as ReturnType<typeof pointPreferences>["notifications"];
 
@@ -154,7 +155,9 @@ test("the notification points use the notification group and enabled on/off choi
     UpdateNotify: "notification-update_notify", UpdateInApp: "notification-update_in_app", UpdateSystem: "notification-update_system",
     AccessRequestNotify: "notification-access_request_notify", AccessRequestInApp: "notification-access_request_in_app",
     AccessRequestSystem: "notification-access_request_system", MemoryProtectionNotify: "notification-memory_protection_notify",
-    MemoryProtectionInApp: "notification-memory_protection_in_app", MemoryProtectionSystem: "notification-memory_protection_system"
+    MemoryProtectionInApp: "notification-memory_protection_in_app", MemoryProtectionSystem: "notification-memory_protection_system",
+    CrashReportNotify: "notification-crash_report_notify", CrashReportInApp: "notification-crash_report_in_app",
+    CrashReportSystem: "notification-crash_report_system"
   };
   for (const symbol of notificationSymbols) {
     assert.deepEqual(declaration.points.find((point: { symbol: string }) => point.symbol === symbol),

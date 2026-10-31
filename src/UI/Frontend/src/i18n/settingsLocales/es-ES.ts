@@ -7,7 +7,8 @@ export default createSettingsLocale("es-ES", {
     "kinds": {
       "memoryProtection": { "title": "Protección de memoria del equipo", "description": "Notifica cuando la protección de memoria del equipo termina un proceso o un árbol de procesos, con el objetivo, el número de procesos y el tamaño del volcado." },
       "update": { "title": "Nueva versión", "description": "Notifica cuando hay una nueva versión disponible." },
-      "accessRequest": { "title": "Solicitudes de acceso", "description": "Notifica cuando una nueva solicitud de acceso de confianza espera aprobación, con el nombre y el programa del solicitante." }
+      "accessRequest": { "title": "Solicitudes de acceso", "description": "Notifica cuando una nueva solicitud de acceso de confianza espera aprobación, con el nombre y el programa del solicitante." },
+      "crashReport": { "title": "Informes de bloqueo", "description": "Notifica después de que Resource Manager se recupera de un bloqueo; ábrala para ver los registros de bloqueo y cargar el volcado." }
     },
     "notifyTitle": "Mostrar notificaciones",
     "notifyDescription": "Si está desactivado, este tipo de notificación no se muestra por ninguna vía; se conserva la elección de ambas vías.",
@@ -569,5 +570,115 @@ export default createSettingsLocale("es-ES", {
       "license": "Licencia",
       "source": "Origen"
     }
+  },
+  "crashDumps": {
+    "title": "Volcados de bloqueo",
+    "description": "Cuando un programa de Resource Manager (el servicio en segundo plano, el proceso de ventana o el proceso residente del área de notificación) se bloquea, Windows escribe su memoria en un archivo de volcado que ayuda a localizar el error. Los volcados se quedan en este equipo y nunca se cargan automáticamente.",
+    "modeTitle": "Escribir volcados de bloqueo",
+    "modeDescription": "Elija si se guarda un volcado cuando se produce un bloqueo. «Seguir el canal de publicación» está activado en las versiones beta y pregunta primero en las versiones estables.",
+    "modeOptions": {
+      "default": { "label": "Seguir el canal de publicación", "description": "Activado en las versiones beta; pregunta primero en las versiones estables." },
+      "ask": { "label": "Preguntar primero", "description": "No escribe volcados por ahora y pregunta en la interfaz si desea activarlos." },
+      "on": { "label": "Activado", "description": "Guarda un volcado cuando se produce un bloqueo." },
+      "off": { "label": "Desactivado", "description": "No guarda volcados; los bloqueos se registran solo a partir del registro de eventos." }
+    },
+    "effective": (mode: string, source: string) => `Actual: ${mode} (${source})`,
+    "effectiveModes": {
+      "ask": "sin decidir, no se escriben volcados",
+      "on": "activado",
+      "off": "desactivado"
+    },
+    "sourceUser": "su elección",
+    "channelNames": {
+      "beta": "versión beta",
+      "stable": "versión estable"
+    },
+    "defaultModeNames": {
+      "on": "activado de forma predeterminada",
+      "ask": "pregunta primero de forma predeterminada",
+      "off": "desactivado de forma predeterminada"
+    },
+    "channelDefault": (channel: string, mode: string) => `${channel}, ${mode}`,
+    "turnOff": "Desactivar los volcados de bloqueo",
+    "turnOffDescription": "Los desactiva y guarda de inmediato.",
+    "dumpTypeTitle": "Tipo de volcado",
+    "dumpTypeDescription": "Un minivolcado basta para localizar la mayoría de los errores y normalmente cabe como adjunto en una issue de GitHub.",
+    "dumpTypeOptions": {
+      "mini": { "label": "Minivolcado", "description": "Pilas de subprocesos y segmentos de datos; normalmente unos pocos MB." },
+      "full": { "label": "Volcado completo", "description": "Toda la memoria del proceso; puede ocupar cientos de MB y solo es adecuado para el análisis local." }
+    },
+    "keepCountTitle": "Copias conservadas por programa",
+    "keepCountDescription": "Número máximo de registros de bloqueo y volcados que se conservan por programa; por encima de él se eliminan los más antiguos.",
+    "statusTitle": "Estado real",
+    "status": {
+      "notApplied": "La configuración de volcados de bloqueo aún no se ha escrito.",
+      "applied": "La configuración de volcados de Informe de errores de Windows coincide con sus ajustes.",
+      "mismatch": "La configuración real de Informe de errores de Windows difiere de sus ajustes.",
+      "failed": "No se pudo escribir la configuración de volcados de Informe de errores de Windows.",
+      "skipped": "No se ha escrito la configuración de volcados de Informe de errores de Windows."
+    },
+    "skipReasons": {
+      "not-running-as-installed-service": "No se ejecuta como el servicio instalado, por lo que el Registro no se modifica."
+    },
+    "skipReasonOther": (reason: string) => `Motivo: ${reason}`,
+    "writeFailed": (error: string) => `Error al escribir: ${error}`,
+    "readFailed": (error: string) => `No se pudo leer la configuración real: ${error}`,
+    "imageStates": {
+      "written": "escrita",
+      "absent": "no escrita",
+      "foreign": "configurada por otro programa"
+    },
+    "actualDetail": (dumpType: string, count: number | null, folder: string) => `${dumpType}, ${count === null ? "— conservados" : plural("es-ES", count, { one: "{count} copia conservada", many: "{count} de copias conservadas", other: "{count} copias conservadas" })}, carpeta ${folder}`,
+    "dumpTypeOther": (value: number) => `tipo ${value}`,
+    "historyTitle": "Registros de bloqueo",
+    "historyDescription": "Registros creados tras el bloqueo de un programa de Resource Manager, al siguiente inicio del servicio o la siguiente apertura de la interfaz.",
+    "historyEmpty": "No hay registros de bloqueo.",
+    "dumpFolderLabel": "Carpeta de volcados",
+    "roles": {
+      "service": "servicio en segundo plano",
+      "window": "proceso de ventana",
+      "resident": "proceso residente del área de notificación"
+    },
+    "program": (program: string, role: string) => `${program} (${role})`,
+    "timeLabel": "Fecha",
+    "versionLabel": "Versión",
+    "versionUnknown": "Desconocida",
+    "faultLabel": "Error",
+    "faultUnknown": "El registro de eventos no contiene ningún error correspondiente.",
+    "dumpLabel": "Archivo de volcado",
+    "dumpNotEnabled": "Los volcados de bloqueo estaban desactivados",
+    "dumpMissing": "El archivo de volcado ya no existe",
+    "sizeLabel": "Tamaño",
+    "reportedLabel": "Notificado",
+    "reported": "Notificado",
+    "notReported": "No notificado",
+    "packageLabel": "Paquete de informe",
+    "packageExceeds": (packageSizeText: string, attachmentLimitText: string) => `El paquete de informe ocupa ${packageSizeText}, por encima del límite de adjuntos de las issues de GitHub (${attachmentLimitText}), por lo que no se puede adjuntar directamente. El volcado no se ha truncado.`,
+    "openFolder": "Abrir la carpeta contenedora",
+    "buildPackage": "Crear paquete de informe",
+    "reportOnGitHub": "Notificar en GitHub",
+    "delete": "Eliminar",
+    "deleteConfirmTitle": "¿Eliminar este registro de bloqueo?",
+    "deleteConfirmMessage": (program: string, time: string) => `Se eliminará el registro del bloqueo de ${program} del ${time}, junto con su archivo de volcado y su paquete de informe.`,
+    "revealFailed": "No se pudo mostrar este archivo en el Explorador de archivos.",
+    "openFailed": "No se pudo abrir la página de GitHub.",
+    "actionFailed": "La acción no se pudo completar.",
+    "requestTitle": "¿Activar los volcados de bloqueo?",
+    "requestWhat": "Cuando un programa de Resource Manager se bloquea, Windows puede escribir su memoria en un archivo de volcado que ayuda a encontrar dónde se produjo el error.",
+    "requestWhere": (folder: string) => `Los volcados se guardan en ${folder}. Puede verlos, eliminarlos o desactivarlos en Configuración · Integración del sistema.`,
+    "requestSize": "Un minivolcado suele ocupar unos pocos MB y se puede adjuntar a una issue de GitHub; un volcado completo puede ocupar cientos de MB.",
+    "requestContent": "Un volcado contiene la memoria del proceso en el momento del bloqueo y puede incluir rutas de archivo y su nombre de usuario. Los volcados nunca se cargan automáticamente; usted decide si envía alguno.",
+    "requestEnable": "Activar",
+    "requestDecline": "No activar",
+    "requestFailed": "No se pudo guardar el ajuste. Inténtelo de nuevo.",
+    "dialogTitle": "Resource Manager se cerró inesperadamente",
+    "dialogIntro": "Los programas siguientes se bloquearon. Cargar el paquete de informe en una issue de GitHub ayuda a encontrar la causa: «Notificar en GitHub» crea el paquete, abre en el navegador una página de issue rellenada previamente y selecciona el paquete en el Explorador de archivos, listo para arrastrarlo a la issue.",
+    "dialogCrashed": (program: string, time: string) => `${program} se bloqueó el ${time}`,
+    "dialogIssueLink": "Abrir la página de issue de GitHub rellenada previamente",
+    "dialogLocalPath": "Archivo local",
+    "dialogLater": "Más tarde",
+    "noticeTitle": "Informe de bloqueo",
+    "noticeMessage": "Resource Manager acaba de recuperarse de un bloqueo y ha guardado un volcado.",
+    "noticeOpen": "Ver registros de bloqueo"
   }
 });

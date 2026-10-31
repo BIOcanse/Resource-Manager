@@ -10,14 +10,15 @@ public sealed partial class WindowsGpuPlacementInjector
         int processId,
         string moduleName)
     {
-        for (var attempt = 0; attempt < 20; attempt++)
+        var injection = GpuPlacementSettings.ProductDefaults.Injection;
+        for (var attempt = 0; attempt < injection.ModuleFindAttempts; attempt++)
         {
             var module = FindRemoteModule(processId, moduleName);
             if (module is not null)
             {
                 return module;
             }
-            Thread.Sleep(25);
+            Thread.Sleep(injection.ModuleFindRetryMilliseconds);
         }
 
         return null;
@@ -25,7 +26,7 @@ public sealed partial class WindowsGpuPlacementInjector
 
     // A module snapshot fails with ERROR_BAD_LENGTH while the target is loading or unloading modules;
     // the documented answer is to take the snapshot again. Bounded, and any other failure throws at once.
-    private const int ModuleSnapshotAttempts = 10;
+    private static readonly int ModuleSnapshotAttempts = GpuPlacementSettings.ProductDefaults.Injection.ModuleSnapshotAttempts;
 
     internal static SafeKernelHandle OpenModuleSnapshot(int processId)
     {

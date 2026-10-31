@@ -11,6 +11,8 @@ internal static class IdId
         MemoryProtectionTitle = "Perlindungan memori host mengambil tindakan",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) telah dihentikan. Ukuran dump: {2}. Klik untuk membuka Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Pohon proses di bawah {0} (PID {1}) telah dihentikan. Proses: {2}; ukuran dump: {3}. Klik untuk membuka Resource Manager.",
+        CrashReportTitle = "Laporan crash",
+        CrashReportMessage = "Resource Manager baru saja pulih dari crash dan telah menyimpan dump crash. Klik untuk membuka Resource Manager.",
         AppName = "Pengelola Sumber Daya",
         WindowTitleFormat = "Pengelola Sumber Daya - {0}",
         TrayTooltipFormat = "Pengelola Sumber Daya - {0}",

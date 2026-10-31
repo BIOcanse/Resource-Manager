@@ -1,3 +1,4 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const std = @import("std");
 
 extern "kernel32" fn GetEnvironmentVariableW(name: [*:0]const u16, output: [*]u16, capacity: u32) callconv(.winapi) u32;
@@ -15,13 +16,10 @@ const Entry = struct { kernel: []u16, user: []u16 };
 /// insertion order (first case-insensitive prefix wins). Retained strings and
 /// the entry array use the injected owner allocator, normally its Budget.
 pub const PathMap = struct {
-    pub const default_entry_cap: usize = 32;
-    pub const namespace_entry_cap: usize = 512;
-
     allocator: std.mem.Allocator,
     entries: std.ArrayListUnmanaged(Entry) = .empty,
-    max_entries: usize = default_entry_cap,
-    max_path_units: usize = 32768,
+    max_entries: usize,
+    max_path_units: usize,
     local: bool = false,
     recorded: bool = false,
     deferred_local: bool = false,
@@ -29,19 +27,15 @@ pub const PathMap = struct {
     drive_query_failed: bool = false,
     system_drive: ?[2]u16 = null,
 
-    /// Compatibility initializer for explicit maps and existing retrospective
-    /// query tests. Local defaults are not loaded unless initLocal is requested.
-    pub fn init(allocator: std.mem.Allocator) PathMap {
-        return .{ .allocator = allocator };
+    /// Explicit map for retrospective query tests. Local defaults are not loaded
+    /// unless initLocal is requested. Both limits come from the caller.
+    pub fn init(allocator: std.mem.Allocator, max_path_units: usize, max_entries: usize) PathMap {
+        return .{ .allocator = allocator, .max_path_units = max_path_units, .max_entries = max_entries };
     }
 
     /// Creates the production map with local-machine defaults deferred until
     /// the first path conversion. SysConfig records added before that point
     /// suppress local defaults, matching TraceEvent's empty-map check.
-    pub fn initDeferred(allocator: std.mem.Allocator, max_path_units: u32) !PathMap {
-        return initDeferredWithLimits(allocator, max_path_units, namespace_entry_cap);
-    }
-
     pub fn initDeferredWithLimits(allocator: std.mem.Allocator, max_path_units: u32, max_entries: usize) !PathMap {
         if (max_path_units == 0 or max_entries == 0) return error.InvalidConfiguration;
         return .{
@@ -148,15 +142,15 @@ pub const PathMap = struct {
         const root = try environment(scratch, "SystemRoot", @intCast(self.max_path_units));
         try self.add(wide("\\SystemRoot\\"), try std.mem.concat(scratch, u16, &.{ root, wide("\\") }));
 
-        // Match TraceEvent's explicit 2048-unit query bound and A-to-Z order.
-        const target = try scratch.alloc(u16, 2048);
+        // The declared DOS-device query capacity preserves TraceEvent's default bound and A-to-Z order.
+        const target = try scratch.alloc(u16, policy.query_dos_device_units);
         const drives = GetLogicalDrives();
         self.drive_query_failed = drives == 0;
         for (0..26) |i| {
             const bit: u32 = @as(u32, 1) << @as(u5, @intCast(i));
             if (drives & bit == 0) continue;
             var name: [3:0]u16 = .{ @as(u16, 'A') + @as(u16, @intCast(i)), ':', 0 };
-            const query_count = QueryDosDeviceW(&name, target.ptr, 2048);
+            const query_count = QueryDosDeviceW(&name, target.ptr, policy.query_dos_device_units);
             if (query_count == 0) {
                 // Keep a readable record of missing local topology while
                 // preserving unrelated valid mappings.
@@ -183,10 +177,9 @@ pub const PathMap = struct {
     }
 
     /// RuntimeRead: EventDriven("Windows drive topology or DOS device mapping changed")
-    pub fn initLocal(allocator: std.mem.Allocator, max_path_units: u32) !PathMap {
-        if (max_path_units == 0) return error.InvalidConfiguration;
-        var self = PathMap.init(allocator);
-        self.max_path_units = max_path_units;
+    pub fn initLocal(allocator: std.mem.Allocator, max_path_units: u32, max_entries: usize) !PathMap {
+        if (max_path_units == 0 or max_entries == 0) return error.InvalidConfiguration;
+        var self = PathMap.init(allocator, max_path_units, max_entries);
         var round = std.heap.ArenaAllocator.init(allocator);
         defer round.deinit();
         errdefer self.deinit();
@@ -223,7 +216,7 @@ pub const PathMap = struct {
 };
 
 test "kernel path mapping preserves first prefix, casing, and one-pass semantics" {
-    var map = PathMap.init(std.testing.allocator);
+    var map = PathMap.init(std.testing.allocator, 32768, 32);
     defer map.deinit();
     try map.add(wide("\\??\\"), &.{});
     try map.add(wide("\\SystemRoot\\"), wide("C:\\WINDOWS\\"));
@@ -256,7 +249,7 @@ test "deferred local defaults follow SysConfig arrival precedence" {
     try std.testing.expectEqualSlices(u16, wide("\\Windows\\System32\\kernel32.dll"), mapped);
     try std.testing.expect(!deferred.local);
 
-    var eager = try PathMap.initLocal(std.testing.allocator, 4096);
+    var eager = try PathMap.initLocal(std.testing.allocator, 4096, 32);
     defer eager.deinit();
     const custom_windows = [_]u8{ 'Z', 0, ':', 0, '\\', 0, 'W', 0, 'i', 0, 'n', 0, 'd', 0, 'o', 0, 'w', 0, 's', 0, '\\', 0 };
     try eager.addSystemPathsUtf16Le(&.{ 'C', 0, ':', 0 }, &custom_windows);
@@ -289,18 +282,18 @@ fn allocationRound(a: std.mem.Allocator) !void {
 
 test "kernel path mapping fails boundedly and releases partial allocations" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, allocationRound, .{});
-    try std.testing.expectError(error.CapacityExceeded, PathMap.initLocal(std.testing.allocator, 1));
-    var local = try PathMap.initLocal(std.testing.allocator, 4096);
+    try std.testing.expectError(error.CapacityExceeded, PathMap.initLocal(std.testing.allocator, 1, 32));
+    var local = try PathMap.initLocal(std.testing.allocator, 4096, 32);
     defer local.deinit();
     try std.testing.expect(local.local);
     try std.testing.expect(local.count() >= 6 and local.count() <= 32);
 
-    var full = PathMap.init(std.testing.allocator);
+    var full = PathMap.init(std.testing.allocator, 32768, 32);
     defer full.deinit();
     for (0..32) |_| try full.add(wide("k"), wide("u"));
     try std.testing.expectError(error.CapacityExceeded, full.add(wide("overflow"), wide("overflow")));
 
-    try std.testing.expectError(error.InvalidConfiguration, PathMap.initDeferred(std.testing.allocator, 0));
+    try std.testing.expectError(error.InvalidConfiguration, PathMap.initDeferredWithLimits(std.testing.allocator, 0, 32));
     var map = try PathMap.initDeferredWithLimits(std.testing.allocator, 2, 1);
     defer map.deinit();
     try std.testing.expectError(error.CapacityExceeded, map.add(wide("long"), wide("x")));

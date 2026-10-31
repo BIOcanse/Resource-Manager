@@ -1,11 +1,13 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
+import { cjkText } from "../cjkSpacing.ts";
 export default createSettingsLocale("zh-TW", {
   "notifications": {
     "intro": "依類別設定通知是否彈出、經由哪些途徑彈出。Windows 通知由工作列通知區發出，軟體內提示在介面顯示時出現。",
     "kinds": {
       "memoryProtection": { "title": "主機記憶體保護", "description": "主機記憶體保護結束一個處理程序或一棵處理程序樹後通知，寫明處理對象、處理程序數和轉儲量。" },
       "update": { "title": "新版本", "description": "發現可用的新版本後通知。" },
-      "accessRequest": { "title": "存取請求", "description": "有新的可信存取請求等待核准時通知，寫明請求方的名稱和程式。" }
+      "accessRequest": { "title": "存取請求", "description": "有新的可信存取請求等待核准時通知，寫明請求方的名稱和程式。" },
+      "crashReport": { "title": "崩潰報告", "description": "資源管理器從崩潰中復原後通知；點開後可查看崩潰記錄並上傳轉儲。" }
     },
     "notifyTitle": "彈出通知",
     "notifyDescription": "關閉後這一類通知不經任何途徑彈出；兩條途徑各自的選擇會保留。",
@@ -567,5 +569,115 @@ export default createSettingsLocale("zh-TW", {
       "license": "授權條款",
       "source": "來源"
     }
+  },
+  "crashDumps": {
+    "title": "崩潰轉儲",
+    "description": "資源管理器自己的程式（背景服務、視窗處理程序、常駐通知區處理程序）崩潰時，由 Windows 把處理程序記憶體寫成轉儲檔案，用來定位故障。轉儲只保存在本機，不會自動上傳。",
+    "modeTitle": "寫入崩潰轉儲",
+    "modeDescription": "選擇崩潰時是否保存轉儲。「跟隨發行通道」在 beta 版開啟，在正式版先詢問。",
+    "modeOptions": {
+      "default": { "label": "跟隨發行通道", "description": "beta 版開啟，正式版先詢問。" },
+      "ask": { "label": "先詢問", "description": "暫不寫入轉儲，在介面上詢問是否開啟。" },
+      "on": { "label": "開啟", "description": "崩潰時保存轉儲。" },
+      "off": { "label": "關閉", "description": "崩潰時不保存轉儲，只從事件記錄登記崩潰記錄。" }
+    },
+    "effective": (mode: string, source: string) => `目前：${mode}（${source}）`,
+    "effectiveModes": {
+      "ask": "尚未決定，暫不寫入",
+      "on": "已開啟",
+      "off": "已關閉"
+    },
+    "sourceUser": "依你的選擇",
+    "channelNames": {
+      "beta": "beta 版",
+      "stable": "正式版"
+    },
+    "defaultModeNames": {
+      "on": "預設開啟",
+      "ask": "預設先詢問",
+      "off": "預設關閉"
+    },
+    "channelDefault": (channel: string, mode: string) => cjkText`${channel}${mode}`,
+    "turnOff": "關閉崩潰轉儲",
+    "turnOffDescription": "立即關閉並儲存，不需要再按儲存。",
+    "dumpTypeTitle": "轉儲類型",
+    "dumpTypeDescription": "小型轉儲足以定位大多數故障，通常可附加到 GitHub issue。",
+    "dumpTypeOptions": {
+      "mini": { "label": "小型轉儲", "description": "包含執行緒堆疊和資料區段，通常幾 MB。" },
+      "full": { "label": "完整轉儲", "description": "包含整個處理程序記憶體，可能幾百 MB，只適合在本機分析。" }
+    },
+    "keepCountTitle": "每個程式保留份數",
+    "keepCountDescription": "每個程式最多保留的崩潰記錄和轉儲份數，超出時刪除最舊的。",
+    "statusTitle": "實際狀態",
+    "status": {
+      "notApplied": "尚未寫入崩潰轉儲設定。",
+      "applied": "Windows 錯誤報告的轉儲設定與所選設定一致。",
+      "mismatch": "Windows 錯誤報告的實際設定與所選設定不同。",
+      "failed": "寫入 Windows 錯誤報告的轉儲設定失敗。",
+      "skipped": "沒有寫入 Windows 錯誤報告的轉儲設定。"
+    },
+    "skipReasons": {
+      "not-running-as-installed-service": "目前不是以已安裝的服務執行，不修改登錄檔。"
+    },
+    "skipReasonOther": (reason: string) => `原因：${reason}`,
+    "writeFailed": (error: string) => `寫入失敗：${error}`,
+    "readFailed": (error: string) => `讀取實際設定失敗：${error}`,
+    "imageStates": {
+      "written": "已寫入",
+      "absent": "未寫入",
+      "foreign": "已有其他程式寫入的設定"
+    },
+    "actualDetail": (dumpType: string, count: number | null, folder: string) => `${dumpType}，保留 ${count ?? "—"} 份，資料夾 ${folder}`,
+    "dumpTypeOther": (value: number) => `類型 ${value}`,
+    "historyTitle": "崩潰記錄",
+    "historyDescription": "資源管理器的程式崩潰後，下次服務啟動或開啟介面時登記的記錄。",
+    "historyEmpty": "沒有崩潰記錄。",
+    "dumpFolderLabel": "轉儲資料夾",
+    "roles": {
+      "service": "背景服務",
+      "window": "視窗處理程序",
+      "resident": "常駐通知區處理程序"
+    },
+    "program": (program: string, role: string) => `${program}（${role}）`,
+    "timeLabel": "時間",
+    "versionLabel": "版本",
+    "versionUnknown": "未知",
+    "faultLabel": "故障",
+    "faultUnknown": "事件記錄中沒有對應的故障記錄。",
+    "dumpLabel": "轉儲檔案",
+    "dumpNotEnabled": "未開啟崩潰轉儲",
+    "dumpMissing": "轉儲檔案已不存在",
+    "sizeLabel": "大小",
+    "reportedLabel": "回報",
+    "reported": "已回報",
+    "notReported": "未回報",
+    "packageLabel": "報告包",
+    "packageExceeds": (packageSizeText: string, attachmentLimitText: string) => `報告包 ${packageSizeText}，超過 GitHub issue 的附件上限 ${attachmentLimitText}，無法直接附加；轉儲未被截斷。`,
+    "openFolder": "開啟所在資料夾",
+    "buildPackage": "產生報告包",
+    "reportOnGitHub": "在 GitHub 回報",
+    "delete": "刪除",
+    "deleteConfirmTitle": "要刪除這筆崩潰記錄嗎？",
+    "deleteConfirmMessage": (program: string, time: string) => `將刪除 ${program} 在 ${time} 的崩潰記錄，以及它的轉儲檔案和報告包。`,
+    "revealFailed": "無法在檔案總管中顯示這個檔案。",
+    "openFailed": "無法開啟 GitHub 頁面。",
+    "actionFailed": "操作失敗。",
+    "requestTitle": "是否開啟崩潰轉儲？",
+    "requestWhat": "資源管理器自己的程式崩潰時，Windows 可以把處理程序記憶體寫成轉儲檔案，用來找出故障位置。",
+    "requestWhere": (folder: string) => `轉儲保存在 ${folder}，可在設定 · 系統整合中檢視、刪除或關閉。`,
+    "requestSize": "小型轉儲通常幾 MB，可以附加到 GitHub issue；完整轉儲可能幾百 MB。",
+    "requestContent": "轉儲包含崩潰時的處理程序記憶體，可能含有檔案路徑、使用者名稱等資訊。轉儲不會自動上傳，是否提交由你決定。",
+    "requestEnable": "開啟",
+    "requestDecline": "不開啟",
+    "requestFailed": "未能儲存這項設定，請重試。",
+    "dialogTitle": "資源管理器曾異常結束",
+    "dialogIntro": "以下程式發生過崩潰。將報告包上傳到 GitHub issue 有助於找出原因：選擇「在 GitHub 回報」後，會產生報告包、在瀏覽器中開啟預先填好的 issue 頁面，並在檔案總管中選取報告包，將它拖入 issue 即可。",
+    "dialogCrashed": (program: string, time: string) => `${program} 於 ${time} 崩潰`,
+    "dialogIssueLink": "開啟預先填好的 GitHub issue 頁面",
+    "dialogLocalPath": "本機檔案",
+    "dialogLater": "稍後",
+    "noticeTitle": "崩潰報告",
+    "noticeMessage": "資源管理器剛從崩潰中復原，已保存崩潰轉儲。",
+    "noticeOpen": "查看崩潰記錄"
   }
 });

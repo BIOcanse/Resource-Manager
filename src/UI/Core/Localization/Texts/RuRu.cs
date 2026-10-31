@@ -11,6 +11,8 @@ internal static class RuRu
         MemoryProtectionTitle = "Защита памяти узла приняла меры",
         MemoryProtectionProcessMessageFormat = "Процесс {0} (PID {1}) завершён. Объём дампа: {2}. Нажмите, чтобы открыть Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Дерево процессов под {0} (PID {1}) завершено. Процессов: {2}; объём дампа: {3}. Нажмите, чтобы открыть Resource Manager.",
+        CrashReportTitle = "Отчёт о сбое",
+        CrashReportMessage = "Resource Manager только что восстановился после сбоя и сохранил аварийный дамп. Нажмите, чтобы открыть Resource Manager.",
         AppName = "Диспетчер ресурсов",
         WindowTitleFormat = "Диспетчер ресурсов - {0}",
         TrayTooltipFormat = "Диспетчер ресурсов - {0}",

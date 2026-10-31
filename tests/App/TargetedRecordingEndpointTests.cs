@@ -541,8 +541,8 @@ public sealed class TargetedRecordingEndpointTests
 
     /// <summary>"software" runs as this test process; "other-software" is registered but not running.</summary>
     private sealed class EndpointObservations : ISoftwareRegistryView, IFrameTimingObservationSource,
-        IResourceBreakdownObservationSource, IMetricSnapshotObservationSource, ITargetedRecordingProcessReader,
-        ITargetedRecordingItemCatalog, ITargetedProcessLiveness
+        IResourceBreakdownObservationSource, IMetricSnapshotObservationSource, IResourceBreakdownPushSource,
+        IMetricSnapshotPushSource, ITargetedRecordingProcessReader, ITargetedRecordingItemCatalog, ITargetedProcessLiveness
     {
         private static readonly long CurrentStartKey =
             System.Diagnostics.Process.GetCurrentProcess().StartTime.ToFileTimeUtc();
@@ -566,6 +566,9 @@ public sealed class TargetedRecordingEndpointTests
             => Task.FromResult(Records);
         public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken)
             => Task.FromResult(Records);
+        public TimeSpan Retention => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.Retention;
+        public IFrameSubscriptionLease AcquireSubscription(FrameSubscriptionRequest request) => new FrameLeaseAdapter(AcquireSubscription());
+
         public IDisposable AcquireSubscription() => new EmptyLease();
         public FrameTimingSnapshot? Read(TimeSpan window) => null;
         public FrameIntervalBatch? ReadIntervals(DateTimeOffset after, DateTimeOffset through)
@@ -576,6 +579,25 @@ public sealed class TargetedRecordingEndpointTests
         public IDisposable AcquireSubscription(string subscriptionId, MetricSampleRequest request,
             TimeSpan refreshInterval) => new EmptyLease();
         public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request) => null;
+        // The recorder's subscription chain: the breakdown publishes the running target once per interval; the
+        // metric source holds the subscription and publishes nothing.
+        public async IAsyncEnumerable<ResourceBreakdownSnapshot> SubscribeAsync(string subscriptionId,
+            ResourceBreakdownSampleRequest request, TimeSpan interval,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                await Task.Delay(interval, cancellationToken);
+                yield return Running();
+            }
+        }
+        public async IAsyncEnumerable<HardwareMetricSnapshot> SubscribeAsync(string subscriptionId,
+            MetricSampleRequest request, TimeSpan interval,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            yield break;
+        }
         public Task<ResourceBreakdownSnapshot?> ReadOnceAsync(CancellationToken cancellationToken)
             => Task.FromResult<ResourceBreakdownSnapshot?>(Running());
         public Task<IReadOnlyList<TargetedRecordingCatalogItem>> ReadAsync(CancellationToken cancellationToken)

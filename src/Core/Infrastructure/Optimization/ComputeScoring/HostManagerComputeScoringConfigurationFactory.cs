@@ -5,7 +5,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 internal static class HostManagerComputeScoringConfigurationFactory
 {
-    internal const double MaximumBaseImportance = 100;
+    internal static readonly double MaximumBaseImportance = OptimizationSettings.ProductDefaults.RuntimeLimits.MaximumBaseImportance;
 
     internal static NativeComputeScoringConfiguration Create(
         CompiledHostManagerSmartCoordinatorPlan plan,

@@ -32,13 +32,15 @@ public sealed record CpuCorePerformancePreset(
     bool PerformanceCoreHasSmt = true,
     bool EfficientCoreHasSmt = false,
     bool LowPowerEfficientCoreHasSmt = false,
-    double PerformanceCoreScore = 100,
-    double EfficientCoreScore = 65,
-    double LowPowerEfficientCoreScore = 45,
     string PerformanceCoreClassName = "P-core",
     string EfficientCoreClassName = "E-core",
     string LowPowerEfficientCoreClassName = "LP-E-core")
 {
+    // Class scores come from the declared core_class_scores point; a preset overrides one with an initializer.
+    public double PerformanceCoreScore { get; init; } = CpuCorePerformancePresetResolver.ClassScores.Performance;
+    public double EfficientCoreScore { get; init; } = CpuCorePerformancePresetResolver.ClassScores.Efficient;
+    public double LowPowerEfficientCoreScore { get; init; } = CpuCorePerformancePresetResolver.ClassScores.LowPowerEfficient;
+
     public bool HasExpectedCoreLayout =>
         ExpectedPerformanceCoreCount.HasValue
         || ExpectedEfficientCoreCount.HasValue
@@ -57,9 +59,8 @@ public sealed record CpuCorePerformancePreset(
 
 public static class CpuCorePerformancePresetResolver
 {
-    private const double PerformanceCoreScore = 100;
-    private const double EfficientCoreScore = 65;
-    private const double LowPowerEfficientCoreScore = 45;
+    internal static ResourceManager.App.Domain.RuntimeSpecialization.CpuCoreClassScores ClassScores
+        => ResourceManager.App.Infrastructure.Optimization.OptimizationSettings.ProductDefaults.CoreClassScores;
 
     public static CpuCorePerformanceScoreResult Resolve(
         string cpuName,
@@ -350,7 +351,7 @@ public static class CpuCorePerformancePresetResolver
                 var isPerformance = index < pCoreCount;
                 return new CpuCorePerformanceScore(
                     core.CoreIndex,
-                    isPerformance ? PerformanceCoreScore : EfficientCoreScore,
+                    isPerformance ? ClassScores.Performance : ClassScores.Efficient,
                     isPerformance ? "P-core" : "E-core",
                     "model-preset:intel-hybrid-thread-shape");
             })
@@ -386,7 +387,7 @@ public static class CpuCorePerformancePresetResolver
     private static IReadOnlyDictionary<int, CpuCorePerformanceScore> CreateUniformScores(
         IReadOnlyList<CpuCorePerformanceInput> cores,
         string source,
-        double performanceScore = PerformanceCoreScore)
+        double performanceScore)
     {
         return cores
             .Select(core => new CpuCorePerformanceScore(
@@ -548,9 +549,6 @@ public static class CpuCorePerformancePresetResolver
             PerformanceCoreHasSmt: false,
             EfficientCoreHasSmt: false,
             LowPowerEfficientCoreHasSmt: false,
-            PerformanceCoreScore: PerformanceCoreScore,
-            EfficientCoreScore: EfficientCoreScore,
-            LowPowerEfficientCoreScore: LowPowerEfficientCoreScore,
             PerformanceCoreClassName: "Intel-N-core");
         return true;
     }
@@ -924,9 +922,7 @@ public static class CpuCorePerformancePresetResolver
         int lowPowerEfficientCoreCount = 0,
         bool performanceCoreHasSmt = true,
         bool efficientCoreHasSmt = false,
-        bool lowPowerEfficientCoreHasSmt = false,
-        double efficientCoreScore = EfficientCoreScore,
-        double lowPowerEfficientCoreScore = LowPowerEfficientCoreScore)
+        bool lowPowerEfficientCoreHasSmt = false)
     {
         return new CpuCorePerformancePreset(
             "Intel",
@@ -940,10 +936,7 @@ public static class CpuCorePerformancePresetResolver
             lowPowerEfficientCoreCount,
             performanceCoreHasSmt,
             efficientCoreHasSmt,
-            lowPowerEfficientCoreHasSmt,
-            PerformanceCoreScore,
-            efficientCoreScore,
-            lowPowerEfficientCoreScore);
+            lowPowerEfficientCoreHasSmt);
     }
 
     private static bool TryClassifyAmdRyzenAi(
@@ -1143,12 +1136,12 @@ public static class CpuCorePerformancePresetResolver
             PerformanceCoreHasSmt: true,
             EfficientCoreHasSmt: true,
             LowPowerEfficientCoreHasSmt: false,
-            PerformanceCoreScore: PerformanceCoreScore,
-            EfficientCoreScore: 82,
-            LowPowerEfficientCoreScore: LowPowerEfficientCoreScore,
             PerformanceCoreClassName: "Zen5-core",
             EfficientCoreClassName: "Zen5c-core",
-            LowPowerEfficientCoreClassName: "Low-power-core");
+            LowPowerEfficientCoreClassName: "Low-power-core")
+        {
+            EfficientCoreScore = ClassScores.AmdCompact
+        };
     }
 
     private static CpuCorePerformancePreset AmdHomogeneousZenPreset(
@@ -1166,9 +1159,6 @@ public static class CpuCorePerformancePresetResolver
                 KnownHomogeneous: true,
                 KnownX3d: knownX3d,
                 source,
-                PerformanceCoreScore: PerformanceCoreScore,
-                EfficientCoreScore: EfficientCoreScore,
-                LowPowerEfficientCoreScore: LowPowerEfficientCoreScore,
                 PerformanceCoreClassName: "Zen-core",
                 EfficientCoreClassName: "Zen-efficiency-class",
                 LowPowerEfficientCoreClassName: "Zen-low-power-class");
@@ -1187,9 +1177,6 @@ public static class CpuCorePerformancePresetResolver
             PerformanceCoreHasSmt: true,
             EfficientCoreHasSmt: false,
             LowPowerEfficientCoreHasSmt: false,
-            PerformanceCoreScore: PerformanceCoreScore,
-            EfficientCoreScore: EfficientCoreScore,
-            LowPowerEfficientCoreScore: LowPowerEfficientCoreScore,
             PerformanceCoreClassName: "Zen-core",
             EfficientCoreClassName: "Zen-efficiency-class",
             LowPowerEfficientCoreClassName: "Zen-low-power-class");

@@ -11,6 +11,8 @@ internal static class EnUs
         MemoryProtectionTitle = "Host memory protection took action",
         MemoryProtectionProcessMessageFormat = "Ended {0} (PID {1}). Dump size: {2}. Click to open Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Ended the process tree under {0} (PID {1}). Processes: {2}; dump size: {3}. Click to open Resource Manager.",
+        CrashReportTitle = "Crash report",
+        CrashReportMessage = "Resource Manager has just recovered from a crash and saved a crash dump. Click to open Resource Manager.",
         AppName = "Resource Manager",
         WindowTitleFormat = "Resource Manager - {0}",
         TrayTooltipFormat = "Resource Manager - {0}",

@@ -166,4 +166,20 @@ expect("zh-CN", "app.diskUsage.fileCount", 1, "1 个文件");
 expect("ja-JP", "app.diskUsage.fileCount", 1, "ファイル 1 件");
 expect("ko-KR", "app.diskUsage.fileCount", 1, "파일 1개");
 
+expect("en-US", "settings.crashDumps.actualDetail", 1, "«dumpType», 1 copy kept, folder «folder»");
+expect("en-US", "settings.crashDumps.actualDetail", 2, "«dumpType», 2 copies kept, folder «folder»");
+expect("de-DE", "settings.crashDumps.actualDetail", 1, "«dumpType», 1 Kopie aufbewahrt, Ordner «folder»");
+expect("de-DE", "settings.crashDumps.actualDetail", 2, "«dumpType», 2 Kopien aufbewahrt, Ordner «folder»");
+expect("fr-FR", "settings.crashDumps.actualDetail", 0, "«dumpType», 0 copie conservée, dossier «folder»");
+expect("fr-FR", "settings.crashDumps.actualDetail", 2, "«dumpType», 2 copies conservées, dossier «folder»");
+expect("es-ES", "settings.crashDumps.actualDetail", 1, "«dumpType», 1 copia conservada, carpeta «folder»");
+expect("es-ES", "settings.crashDumps.actualDetail", 2, "«dumpType», 2 copias conservadas, carpeta «folder»");
+expect("ru-RU", "settings.crashDumps.actualDetail", 1, "«dumpType», 1 копия сохранена, папка «folder»");
+expect("ru-RU", "settings.crashDumps.actualDetail", 2, "«dumpType», 2 копии сохранены, папка «folder»");
+expect("ru-RU", "settings.crashDumps.actualDetail", 5, "«dumpType», 5 копий сохранено, папка «folder»");
+for (const locale of locales) {
+  const copy = (await loadSettingsText(locale)).crashDumps;
+  assert.ok(copy.actualDetail("dump", null, "folder").includes("—"), `${locale}: unknown retention count remains unknown`);
+}
+
 console.log(`plural count contract: ${checkedFunctions} count functions across ${locales.length} languages`);

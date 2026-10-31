@@ -42,8 +42,17 @@ public static class TargetedRecordingGapReasons
 {
     /// <summary>The item was not in the live catalog when the recording started.</summary>
     public const string ItemUnavailable = "item-unavailable";
-    /// <summary>The item's source published no current value for this span.</summary>
+    /// <summary>The item's source published no value for this span and gave no reason of its own.</summary>
     public const string ValueUnavailable = "value-unavailable";
+    /// <summary>At start the metric catalog marked the item not applicable to this device: one whole-span gap,
+    /// no subscription.</summary>
+    public const string NotApplicable = "not-applicable";
+    /// <summary>At start the item had no source on this machine: one whole-span gap, no subscription.</summary>
+    public const string NoSource = "no-source";
+    /// <summary>The source published nothing new for more than 1.5 × the item interval and gave no reason.</summary>
+    public const string SourceNotRefreshed = "source-not-refreshed";
+    /// <summary>A gpu.target.* item: no GPU carried any of the target's GPU usage.</summary>
+    public const string TargetGpuUnresolved = "target-gpu-unresolved";
     /// <summary>The report reached its size cap; nothing more was stored.</summary>
     public const string SizeLimit = "size-limit";
     /// <summary>The frame ledger reported an incomplete batch.</summary>
@@ -51,7 +60,40 @@ public static class TargetedRecordingGapReasons
     /// <summary>More than the frame ledger window passed between reads; older presents were lost.</summary>
     public const string FramesWindowSkipped = "frames-window-skipped";
     public static readonly IReadOnlyList<string> All =
-        [ItemUnavailable, ValueUnavailable, SizeLimit, FramesIncomplete, FramesWindowSkipped];
+        [ItemUnavailable, ValueUnavailable, NotApplicable, NoSource, SourceNotRefreshed, TargetGpuUnresolved, SizeLimit,
+            FramesIncomplete, FramesWindowSkipped];
+}
+
+/// <summary>Reasons the item reader gives when a source publication carries no value; recording gaps and the
+/// overlay both use them. A source's own failure or unavailable code is passed through instead whenever it has
+/// one.</summary>
+public static class TargetedRecordingReadReasons
+{
+    /// <summary>The metric id has no field binding in the publication.</summary>
+    public const string MetricUnknown = "metric-unknown";
+    /// <summary>The metric dataset is warming up or not requested yet.</summary>
+    public const string MetricWarming = "metric-warming";
+    /// <summary>The metric dataset reports the quantity unsupported.</summary>
+    public const string MetricUnsupported = "metric-unsupported";
+    /// <summary>The metric dataset is not current for another reason (unavailable, invalid, partial, retained).</summary>
+    public const string MetricUnavailable = "metric-unavailable";
+    /// <summary>No resource breakdown publication yet, or it is still warming up.</summary>
+    public const string BreakdownWarming = "breakdown-warming";
+    /// <summary>The resource breakdown sampling failed without a failure code.</summary>
+    public const string BreakdownFailed = "breakdown-failed";
+    /// <summary>The publication has no bar for this item.</summary>
+    public const string BreakdownBarMissing = "breakdown-bar-missing";
+    /// <summary>The bar reports the quantity unsupported without a reason code.</summary>
+    public const string BreakdownUnsupported = "breakdown-unsupported";
+    /// <summary>The bar is not current for another reason, without a reason code.</summary>
+    public const string BreakdownUnavailable = "breakdown-unavailable";
+    /// <summary>No target process carried a value of this process field.</summary>
+    public const string ProcessMetricUnavailable = "process-metric-unavailable";
+    public static readonly IReadOnlyList<string> All =
+    [
+        MetricUnknown, MetricWarming, MetricUnsupported, MetricUnavailable, BreakdownWarming, BreakdownFailed,
+        BreakdownBarMissing, BreakdownUnsupported, BreakdownUnavailable, ProcessMetricUnavailable
+    ];
 }
 
 public static class TargetedRecordingIntervalOrigins
@@ -127,14 +169,19 @@ public sealed record TargetedRecordingJsonExport(
 public sealed record TargetedRecordingTarget(string SoftwareId, string Name, int ProcessCount);
 
 /// <summary>One recordable item with its unit, the concrete sources a profile may name, and where it can be
-/// used: a recording profile, the overlay, or both.</summary>
+/// used: a recording profile, the overlay, or both. UnavailableReason is not-applicable or no-source when the
+/// item cannot be read on this machine; a recording then writes one whole-span gap with that reason and the
+/// overlay answers it, and neither subscribes.</summary>
 public sealed record TargetedRecordingCatalogItem(
     string Kind,
     string Id,
     string Unit,
     IReadOnlyList<string> Sources,
     int? NaturalIntervalMs,
-    IReadOnlyList<string> Uses);
+    IReadOnlyList<string> Uses)
+{
+    public string? UnavailableReason { get; init; }
+}
 
 public static class TargetedRecordingItemUses
 {

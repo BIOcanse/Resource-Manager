@@ -1,3 +1,4 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const std = @import("std");
 const capture = @import("abi.zig");
 const irq = @import("interrupt_abi.zig");
@@ -58,7 +59,8 @@ pub const Config = extern struct {
     maximum_pending_events: u32,
     maximum_pending_path_units: u32,
     maximum_renderer_processes: u32,
-    reserved3: u32 = 0,
+    /// Network events the owner reserves before its first growth, capped by maximum_network_events.
+    network_initial_events: u32,
 };
 pub const ProcessDisk = extern struct {
     pid: u32,
@@ -366,7 +368,7 @@ pub const Owner = struct {
     fn validateConfig(cfg: Config) !void {
         // The shared owner configures processors through configure_processors only.
         if (cfg.residency.processor_count != 0 or cfg.residency.processors != null) return error.InvalidConfig;
-        if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or cfg.reserved != 0 or cfg.reserved3 != 0 or cfg.maximum_renderer_processes == 0 or
+        if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or cfg.reserved != 0 or cfg.network_initial_events == 0 or cfg.maximum_renderer_processes == 0 or
             cfg.maximum_pending_events == 0 or cfg.maximum_pending_path_units == 0 or cfg.maximum_commands == 0 or cfg.maximum_command_name_bytes == 0 or cfg.publication_banks < 2 or cfg.publication_banks > 8 or
             cfg.maximum_namespace_entries == 0 or cfg.maximum_path_units == 0 or cfg.started_tick_ms < 0) return error.InvalidConfig;
     }
@@ -409,7 +411,7 @@ pub const Owner = struct {
             self.active_outputs |= 4;
         }
         if (mask & 8 != 0 and old & 8 == 0) {
-            self.network = try network.Owner.init(self.outputAllocator(4, 0), .{ .byte_cap = @intCast(cfg.network_byte_cap), .window_ms = cfg.window_ms, .retention_ms = cfg.retention_ms, .initial_event_capacity = @min(256, cfg.maximum_network_events), .maximum_retained_events = cfg.maximum_network_events, .maximum_processes = cfg.maximum_network_processes }, self.identity_source);
+            self.network = try network.Owner.init(self.outputAllocator(4, 0), .{ .byte_cap = @intCast(cfg.network_byte_cap), .window_ms = cfg.window_ms, .retention_ms = cfg.retention_ms, .initial_event_capacity = @min(cfg.network_initial_events, cfg.maximum_network_events), .maximum_retained_events = cfg.maximum_network_events, .maximum_processes = cfg.maximum_network_processes }, self.identity_source);
             self.active_outputs |= 8;
         }
         if (mask & 16 != 0 and old & 16 == 0) {
@@ -574,7 +576,7 @@ pub const Owner = struct {
 
     pub fn createExternal(span: []u8, cfg: Config, source: identity.Source) !*Owner {
         if (cfg.residency.processor_count != 0 or cfg.residency.processors != null) return error.InvalidConfig;
-        if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or cfg.reserved != 0 or cfg.reserved3 != 0 or cfg.maximum_renderer_processes == 0 or cfg.byte_cap < span.len or
+        if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or cfg.reserved != 0 or cfg.network_initial_events == 0 or cfg.maximum_renderer_processes == 0 or cfg.byte_cap < span.len or
             cfg.maximum_pending_events == 0 or cfg.maximum_pending_path_units == 0 or cfg.maximum_commands == 0 or cfg.maximum_command_name_bytes == 0 or cfg.publication_banks < 2 or cfg.publication_banks > 8 or
             cfg.maximum_namespace_entries == 0 or cfg.maximum_path_units == 0 or cfg.started_tick_ms < 0) return error.InvalidConfig;
         const address = std.mem.alignForward(usize, @intFromPtr(span.ptr), @alignOf(Owner));
@@ -623,7 +625,7 @@ pub const Owner = struct {
         self.interrupts.owner.publication_round.child_allocator = self.interrupts.budget.transientAllocator();
         self.disk = try disk.Owner.init(a, .{ .byte_cap = @intCast(cfg.disk_byte_cap), .window_ms = cfg.window_ms, .retention_ms = cfg.retention_ms, .bucket_width_ms = cfg.disk_bucket_ms, .maximum_active_pairs = cfg.maximum_disk_pairs, .maximum_disks = cfg.maximum_disks, .maximum_cached_processes = cfg.maximum_cached_processes }, source);
         errdefer self.disk.deinit();
-        self.network = try network.Owner.init(a, .{ .byte_cap = @intCast(cfg.network_byte_cap), .window_ms = cfg.window_ms, .retention_ms = cfg.retention_ms, .initial_event_capacity = @min(256, cfg.maximum_network_events), .maximum_retained_events = cfg.maximum_network_events, .maximum_processes = cfg.maximum_network_processes }, source);
+        self.network = try network.Owner.init(a, .{ .byte_cap = @intCast(cfg.network_byte_cap), .window_ms = cfg.window_ms, .retention_ms = cfg.retention_ms, .initial_event_capacity = @min(cfg.network_initial_events, cfg.maximum_network_events), .maximum_retained_events = cfg.maximum_network_events, .maximum_processes = cfg.maximum_network_processes }, source);
         errdefer self.network.deinit();
         self.files = try fileio.FileIoState.init(a, .{ .byte_cap = @intCast(cfg.file_byte_cap), .max_entries = cfg.maximum_file_entries, .max_versions = cfg.maximum_file_versions, .max_name_units = cfg.maximum_path_units, .max_path_units = cfg.maximum_path_units }, .recorded);
         errdefer self.files.deinit();
@@ -995,7 +997,7 @@ pub const Owner = struct {
         }
         if (units > self.pending_paths.len - self.pending_path_count) {
             const old_address = @intFromPtr(self.pending_paths.ptr);
-            self.pending_paths = try a.realloc(self.pending_paths, @min(self.config.maximum_pending_path_units, @max(self.pending_path_count + units, @max(64, self.pending_paths.len * 2))));
+            self.pending_paths = try a.realloc(self.pending_paths, @min(self.config.maximum_pending_path_units, @max(self.pending_path_count + units, @max(policy.etw_initial_pending_path_units, self.pending_paths.len * 2))));
             for (self.pending_events[0..self.pending_event_count]) |*note| if (note.path) |old| { note.path = self.pending_paths.ptr + (@intFromPtr(old) - old_address) / @sizeOf(u16); };
         }
         var copy = value;
@@ -1602,7 +1604,7 @@ pub const Owner = struct {
     }
 };
 fn testConfig() Config {
-    return .{ .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 16, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 }, .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 }, .byte_cap = 4 * 1024 * 1024, .disk_byte_cap = 512 * 1024, .network_byte_cap = 512 * 1024, .file_byte_cap = 256 * 1024, .history_byte_cap = 256 * 1024, .maximum_disk_pairs = 32, .maximum_disks = 16, .maximum_cached_processes = 16, .maximum_network_events = 64, .maximum_network_processes = 16, .maximum_file_entries = 16, .maximum_file_versions = 64, .maximum_history_entries = 64, .maximum_path_units = 128, .maximum_namespace_entries = 16, .maximum_commands = 8, .maximum_command_name_bytes = 128, .publication_banks = 3, .window_ms = 2000, .retention_ms = 8000, .disk_bucket_ms = 100, .started_tick_ms = 0, .maximum_pending_events = 128, .maximum_pending_path_units = 4096, .maximum_renderer_processes = 4096 };
+    return .{ .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 16, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 }, .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 }, .byte_cap = 4 * 1024 * 1024, .disk_byte_cap = 512 * 1024, .network_byte_cap = 512 * 1024, .file_byte_cap = 256 * 1024, .history_byte_cap = 256 * 1024, .maximum_disk_pairs = 32, .maximum_disks = 16, .maximum_cached_processes = 16, .maximum_network_events = 64, .maximum_network_processes = 16, .maximum_file_entries = 16, .maximum_file_versions = 64, .maximum_history_entries = 64, .maximum_path_units = 128, .maximum_namespace_entries = 16, .maximum_commands = 8, .maximum_command_name_bytes = 128, .publication_banks = 3, .window_ms = 2000, .retention_ms = 8000, .disk_bucket_ms = 100, .started_tick_ms = 0, .maximum_pending_events = 128, .maximum_pending_path_units = 4096, .maximum_renderer_processes = 4096, .network_initial_events = 256 };
 }
 fn absentOpen(_: ?*anyopaque, _: u32) ?*anyopaque {
     return null;

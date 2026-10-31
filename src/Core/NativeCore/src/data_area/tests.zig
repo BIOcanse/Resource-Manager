@@ -214,7 +214,7 @@ fn regionBytes(sources: u32, positions: u32, data: u32) u64 {
 test "the hardware metric declarations lay out, bind and borrow in both regions" {
     const fixture = Fixture.init(40);
     const declarations = fixture.declarations();
-    var owner = Owner.init(std.testing.allocator, .{});
+    var owner = Owner.init(std.testing.allocator, .{ .borrow_drain_timeout_ms = 5_000 });
     var failure = plan.ApplyFailure{};
     try owner.apply(&declarations, 1_000, &failure);
 
@@ -451,7 +451,7 @@ test "a region no declaration targets is not created" {
     const sources = [_]ss.SourceIdentity{try ss.SourceIdentity.init("only.normal", 1, 0, 0)};
     const positions = [_]plan.PositionDeclaration{column(0, 8, 4, none)};
     const declarations = [_]plan.Declaration{plan.Declaration.init(.normal, &sources, &positions)};
-    var owner = Owner.init(std.testing.allocator, .{});
+    var owner = Owner.init(std.testing.allocator, .{ .borrow_drain_timeout_ms = 5_000 });
     var failure = plan.ApplyFailure{};
     try owner.apply(&declarations, 1, &failure);
     try std.testing.expectError(error.Absent, owner.acquire(.administrator, 0));

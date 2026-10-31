@@ -53,14 +53,15 @@ internal sealed unsafe partial class NativeKernelEtwTestResource : IKernelEtwSes
                 MaximumProcesses = 64, MaximumThreads = 128, MaximumProcessors = maximumProcessors,
                 MaximumNameBytes = 4096, ByteCap = 4 * 1024 * 1024 },
             Interrupts = new() { MaximumModules = 16, MaximumPathUnits = 1024, MaximumIdentities = 64,
-                MaximumSlices = 128, MaximumSliceDrivers = 256, ByteCap = 4 * 1024 * 1024 },
+                MaximumSlices = 128, MaximumSliceDrivers = 256, BucketMilliseconds = 10000, BucketCount = 6, ReportedDrivers = 16,
+                ByteCap = 4 * 1024 * 1024 },
             MaximumDiskPairs = 32, MaximumDisks = 16, MaximumCachedProcesses = 32,
             MaximumNetworkEvents = 256, MaximumNetworkProcesses = 64, MaximumFileEntries = 64,
             MaximumFileVersions = 256, MaximumHistoryEntries = 128, MaximumPathUnits = 1024,
             MaximumNamespaceEntries = 32, MaximumCommands = 128, MaximumCommandNameBytes = 4096,
             PublicationBanks = 3, WindowMilliseconds = 2000, RetentionMilliseconds = 8000,
             DiskBucketMilliseconds = 100, StartedTickMilliseconds = startedTick,
-            MaximumPendingEvents = 128, MaximumPendingPathUnits = 4096, MaximumRendererProcesses = 64
+            MaximumPendingEvents = 128, MaximumPendingPathUnits = 4096, MaximumRendererProcesses = 64, NetworkInitialEvents = 256
         };
         config.StampAbi(new(1, DateTimeOffset.UnixEpoch.AddMilliseconds(startedTick)));
         return config;

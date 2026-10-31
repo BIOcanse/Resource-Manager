@@ -209,7 +209,7 @@ test "shared reader publications retain rows and age idle interrupt windows" {
     const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 64, .max_processes = 64, .max_threads = 128, .max_processors = 8, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &cfg);
     defer owner.destroy();
-    const irq_cfg: irq.Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 7, .started_tick_ms = 0, .events_lost = 0 };
+    const irq_cfg: irq.Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 7, .started_tick_ms = 0, .events_lost = 0 };
     const interrupt_owner = try irq.Session.create(std.testing.allocator, &irq_cfg);
     defer interrupt_owner.destroy();
     var state = try State.init(std.testing.allocator, owner, interrupt_owner, &.{4});
@@ -260,7 +260,7 @@ test "residency bank stores only final rows and one name per process instance" {
     const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 512, .max_processes = 8, .max_threads = 512, .max_processors = 1, .max_name_bytes = 4096, .byte_cap = 2 * 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &cfg);
     defer owner.destroy();
-    const irq_cfg: irq.Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 8, .max_slice_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
+    const irq_cfg: irq.Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 8, .max_slice_drivers = 16, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
     const interrupt_owner = try irq.Session.create(std.testing.allocator, &irq_cfg);
     defer interrupt_owner.destroy();
     var state = try State.init(std.testing.allocator, owner, interrupt_owner, &.{0});
@@ -300,7 +300,7 @@ test "residency publication reuses fragmented region islands with retained banks
     const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 512, .max_processes = 8, .max_threads = 512, .max_processors = 1, .max_name_bytes = 4096, .byte_cap = 2 * 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &cfg);
     defer owner.destroy();
-    const irq_cfg: irq.Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 8, .max_slice_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
+    const irq_cfg: irq.Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 8, .max_slice_drivers = 16, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
     const interrupt_owner = try irq.Session.create(std.testing.allocator, &irq_cfg);
     defer interrupt_owner.destroy();
     var state = try State.init(std.testing.allocator, owner, interrupt_owner, &.{0});

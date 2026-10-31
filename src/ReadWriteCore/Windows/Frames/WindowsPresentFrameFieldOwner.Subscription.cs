@@ -50,7 +50,7 @@ public sealed partial class WindowsPresentFrameFieldOwner
     private void EnsureBorrowLease(FrameFieldCollectionBorrow borrow)
     {
         borrow.RequireActive();
-        if (!borrow.HasSourceLease) borrow.AcquireSourceLease(source.AcquireSubscription());
+        if (!borrow.HasSourceLease) borrow.AcquireSourceLease(source.AcquireSubscription(new([Query.ProcessId], FrameDetail.None)));
     }
 
     private async ValueTask<FieldCollectionResult> CollectBorrowedAsync(

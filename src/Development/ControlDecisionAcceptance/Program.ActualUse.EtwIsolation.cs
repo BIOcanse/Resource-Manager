@@ -47,8 +47,9 @@ internal static partial class Program
             {
                 RequireOwnSessionName(ResourceManagerEtwSessionNames.PresentFramesPrefix, name);
                 return new TraceEventPresentFrameEtwSession(name, ReadPublishedMonitoring(provider).PresentSessionBuffers,
-                    provider.GetRequiredService<ILogger<PresentFrameEtwSource>>());
-            }, TimeProvider.System, provider.GetService<IEtwConsumerThreadObserver>())));
+                    provider.GetRequiredService<ILogger<PresentFrameEtwSource>>(), ReadPublishedMonitoring(provider).FramePipeline);
+            }, TimeProvider.System, provider.GetService<IEtwConsumerThreadObserver>(),
+            readPipeline: () => ReadPublishedMonitoring(provider).FramePipeline)));
         services.Replace(ServiceDescriptor.Singleton<GpuAllocationCollector>(provider => new(
             provider.GetRequiredService<ILogger<GpuAllocationCollector>>(),
             provider.GetRequiredService<IConfiguration>(),

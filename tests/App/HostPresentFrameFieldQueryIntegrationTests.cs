@@ -174,6 +174,9 @@ public sealed class HostPresentFrameFieldQueryIntegrationTests
         internal int ReadCount => Volatile.Read(ref reads);
         internal TimeSpan LastWindow => lastWindow;
 
+        public TimeSpan Retention => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.Retention;
+        public IFrameSubscriptionLease AcquireSubscription(FrameSubscriptionRequest request) => new FrameLeaseAdapter(AcquireSubscription());
+
         public IDisposable AcquireSubscription()
         {
             Interlocked.Increment(ref acquisitions);

@@ -11,6 +11,8 @@ internal static class ViVn
         MemoryProtectionTitle = "Tính năng bảo vệ bộ nhớ máy chủ đã xử lý",
         MemoryProtectionProcessMessageFormat = "Đã kết thúc {0} (PID {1}). Dung lượng kết xuất: {2}. Nhấp để mở Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Đã kết thúc cây tiến trình dưới {0} (PID {1}). Tiến trình: {2}; dung lượng kết xuất: {3}. Nhấp để mở Resource Manager.",
+        CrashReportTitle = "Báo cáo sự cố",
+        CrashReportMessage = "Resource Manager vừa khôi phục sau sự cố và đã lưu bản kết xuất sự cố. Nhấp để mở Resource Manager.",
         AppName = "Trình quản lý tài nguyên",
         WindowTitleFormat = "Trình quản lý tài nguyên - {0}",
         TrayTooltipFormat = "Trình quản lý tài nguyên - {0}",

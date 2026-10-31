@@ -14,9 +14,21 @@ internal static class BackendFreedomPointPositions
     public const ulong VidmmSessionBuffers = 0x0001000200050005UL;
     public const ulong GpuAllocationSessionBuffers = 0x0001000200050006UL;
     public const ulong PresentSessionBuffers = 0x0001000200050007UL;
+    public const ulong NativeBuildPolicy = 0x0001000200050008UL;
+    public const ulong FramePipeline = 0x0001000200050009UL;
     public const ulong ObservationWindowMs = 0x0001000200080000UL;
     public const ulong ExecutionTimeSource = 0x0001000200090000UL;
     public const ulong SubscriptionIntervalMs = 0x00010002000C0000UL;
+    public const ulong RollbackStateStore = 0x00010002000D0000UL;
+    public const ulong AuthorityRetirement = 0x00010002000D0001UL;
+    public const ulong IdealProcessorWorkspace = 0x00010002000D0002UL;
+    public const ulong NormalRestoration = 0x00010002000D0003UL;
+    public const ulong EffectValidationLease = 0x00010002000D0004UL;
+    public const ulong MemoryCleanupValidationEvidence = 0x00010002000D0005UL;
+    public const ulong SmartRecordHistory = 0x00010002000D0006UL;
+    public const ulong OptimizationStorageLimits = 0x00010002000D0007UL;
+    public const ulong LegacyAffinity = 0x00010002000D0008UL;
+    public const ulong OptimizationRuntimeLimits = 0x00010002000D0009UL;
     public const ulong RequiredConsecutiveDecisions = 0x0001000200120000UL;
     public const ulong GameStartGraceMs = 0x0001000200120001UL;
     public const ulong FailureRetryMs = 0x0001000200120002UL;
@@ -25,11 +37,17 @@ internal static class BackendFreedomPointPositions
     public const ulong GpuApiObservationWindowMs = 0x0001000200140000UL;
     public const ulong GpuNoPresentExpirySeconds = 0x0001000200140001UL;
     public const ulong GpuWindowExecutionLimits = 0x0001000200150000UL;
+    public const ulong ProcessHistory = 0x0001000200150001UL;
+    public const ulong ExternalGpuRuntime = 0x0001000200150002UL;
+    public const ulong GpuInjection = 0x0001000200150003UL;
+    public const ulong GpuLaunchReports = 0x0001000200150004UL;
     public const ulong ActionTimeoutMs = 0x0001000200160000UL;
     public const ulong AutomaticExclusivity = 0x0001000200170000UL;
     public const ulong SoftwareWelfare = 0x0001000200190000UL;
+    public const ulong SoftwareKindBaseScores = 0x0001000200190001UL;
     public const ulong BaseScoreTiers = 0x00010002001B0000UL;
     public const ulong SmtAccounting = 0x00010002001D0000UL;
+    public const ulong CoreClassScores = 0x00010002001D0001UL;
     public const ulong MachineBaselineRatio = 0x00010002001E0000UL;
     public const ulong CpuInputRetainedRounds = 0x00010002001E0001UL;
     public const ulong ScoreRetainedRounds = 0x00010002001E0002UL;
@@ -38,6 +56,7 @@ internal static class BackendFreedomPointPositions
     public const ulong CpuInputAlgorithm = 0x00010002001F0002UL;
     public const ulong ScoreAlgorithm = 0x00010002001F0003UL;
     public const ulong CrashCounterResetSeconds = 0x0001000200200000UL;
+    public const ulong CrashReports = 0x0001000200210000UL;
     public const ulong RequestLifetimeMs = 0x0001000200240000UL;
     public const ulong WorkerCount = 0x0001000200280000UL;
     public const ulong HistoryCapacity = 0x0001000200280001UL;
@@ -52,6 +71,8 @@ internal static class BackendFreedomPointPositions
     public const ulong FanCurveFeed = 0x00010002002D0001UL;
     public const ulong UniwillEcChannel = 0x00010002002D0002UL;
     public const ulong ObservationGrowthLimit = 0x0001000200300000UL;
+    public const ulong ReportSampleIntervalMs = 0x0001000200300001UL;
+    public const ulong ReportRuleLimits = 0x0001000200310000UL;
     public const ulong GcGen0MaxBudget = 0x0001000200350000UL;
     public const ulong GcConserveMemory = 0x0001000200350001UL;
     public const ulong LedgerMemoryModeFloor = 0x0001000200350002UL;
@@ -64,4 +85,5 @@ internal static class BackendFreedomPointPositions
     public const ulong FileQuerySessionsMax = 0x0001000200350009UL;
     public const ulong FileQuerySessionsPrebuilt = 0x000100020035000AUL;
     public const ulong FileQueryIdleSessions = 0x000100020035000BUL;
+    public const ulong SqliteVacuum = 0x0001000200390000UL;
 }

@@ -15,8 +15,10 @@ internal sealed record OverlayTarget(
 }
 
 // The current value of one requested item (backend PerformanceOverlayItemValue). State is current or
-// unavailable; Reason says why a value is unavailable (target-not-running, frame-events-lost, no-frame-data,
-// metric-unavailable, process-cpu-unavailable, process-metric-unavailable).
+// unavailable; Reason says why a value is unavailable: target-not-running, frame-events-lost, no-frame-data, the
+// item reader's concrete reason (the source's own code such as gpu-dedicated-memory-metrics-unsupported, or
+// not-applicable, no-source, target-gpu-unresolved, metric-*, breakdown-*), else metric-unavailable,
+// process-cpu-unavailable, process-metric-unavailable. OverlayItemLabels shows unknown codes as they are.
 internal sealed record OverlayItemValue(
     string Kind, string Id, string? Unit, string SelectedSource, string? ActualSource,
     int IntervalMs, string IntervalOrigin, string SyncPrecision,

@@ -250,6 +250,53 @@ public sealed class EtwFixedLayoutTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void PresentLayoutFailuresNameEachEventVersionAndKeepSupportedEventsAvailable()
+    {
+        var dxgi = PresentFrameEtwSource.DxgiProvider;
+        // Replay real v0 start/stop events against an unknown start version and an oversized stop
+        // prefix. All other events still use the production catalog in this same session.
+        var incompatible = new EtwFixedLayoutCatalog(0)
+            .Add(dxgi, [42], 1, new(0))
+            .Add(dxgi, [43], 0, new(4096));
+        var name = $"present-layout-rejection-{Guid.NewGuid():N}";
+        var logger = new WarningLogger();
+        var run = EtwEventDropDiagnostics.Start(name, () => 0);
+        var gate = new EtwFixedLayoutGate(logger, name, run);
+        var supported = 0;
+        var rejected = new Dictionary<int, int>();
+        try
+        {
+            using var source = new ETWTraceEventSource(Fixture("present.etl.bin"), TraceEventSourceType.FileOnly);
+            source.UnhandledEvents += data =>
+            {
+                var counter = run.Kind(data.ProviderGuid, (int)data.ID, (int)data.Opcode);
+                counter.Receive();
+                var status = incompatible.Find(data, out _);
+                if (status == EtwFixedLayoutStatus.NotConsumed)
+                    status = PresentFrameEtwLayouts.Catalog.Find(data, out _);
+                if (!gate.Admit(data, counter, status))
+                {
+                    Assert.Equal(dxgi, data.ProviderGuid);
+                    rejected[(int)data.ID] = rejected.GetValueOrDefault((int)data.ID) + 1;
+                }
+                else if (status == EtwFixedLayoutStatus.Decoded) supported++;
+            };
+            source.Process();
+            Assert.True(supported > 0);
+            var kinds = Assert.Single(EtwEventDropDiagnostics.Read().Sessions, item => item.Name == name).Kinds;
+            foreach (var (id, reason) in new[] { (42, "unknown-version"), (43, "short-payload") })
+            {
+                Assert.True(rejected[id] > 0);
+                var diagnostic = Assert.Single(kinds, item => item.Kind == $"fixed-layout/{dxgi:D}/{id}/v0/{reason}");
+                Assert.Equal((rejected[id], rejected[id]), ((int)diagnostic.Received, (int)diagnostic.Dropped));
+                Assert.Contains(logger.Warnings, line => line.Contains($"/{id} version 0", StringComparison.Ordinal)
+                    && line.Contains(reason, StringComparison.Ordinal));
+            }
+        }
+        finally { run.Complete(); }
+    }
+
+    [Fact]
     public void DecodingConsumedEventsAllocatesNothing()
     {
         var catalogs = new[]

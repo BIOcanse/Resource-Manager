@@ -143,8 +143,10 @@ internal sealed class HostManagerMemoryCleanupValidationEvidenceLedger
     internal const int SchemaVersion = 4;
     internal const string Contract =
         "host-manager-memory-cleanup-validation-evidence-v4";
-    internal const int MaximumBatchCount = 256;
-    internal const int MaximumActionCount = 4096;
+    internal static readonly int MaximumBatchCount =
+        OptimizationSettings.ProductDefaults.MemoryCleanupValidationEvidence.MaximumBatchCount;
+    internal static readonly int MaximumActionCount =
+        OptimizationSettings.ProductDefaults.MemoryCleanupValidationEvidence.MaximumActionCount;
 
     private readonly object sync = new();
     private readonly Dictionary<Guid, PendingBatch> pending = [];

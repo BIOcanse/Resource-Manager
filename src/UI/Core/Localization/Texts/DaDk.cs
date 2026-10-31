@@ -11,6 +11,8 @@ internal static class DaDk
         MemoryProtectionTitle = "Hukommelsesbeskyttelsen på værten greb ind",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) blev afsluttet. Dumpstørrelse: {2}. Klik for at åbne Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Procestræet under {0} (PID {1}) blev afsluttet. Processer: {2}; dumpstørrelse: {3}. Klik for at åbne Resource Manager.",
+        CrashReportTitle = "Nedbrudsrapport",
+        CrashReportMessage = "Resource Manager er netop kommet sig efter et nedbrud og har gemt et nedbrudsdump. Klik for at åbne Resource Manager.",
         AppName = "Ressourcestyring",
         WindowTitleFormat = "Ressourcestyring - {0}",
         TrayTooltipFormat = "Ressourcestyring - {0}",

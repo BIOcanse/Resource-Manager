@@ -1,14 +1,20 @@
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Hosting;
+using ResourceManager.App.Infrastructure.CrashReports;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Application.CrashReports;
 
 namespace ResourceManager.App.Infrastructure.ServiceHosting;
 
+// The service's crash handling: SCM recovery (restart after a crash), WER LocalDumps through CrashDumpSettings
+// (a dump of the crash), and the crash-report discovery that runs once when the service starts (the record of it).
 public sealed class ServiceRecoverySettings(
     RuntimePlanProvider plans,
     BackendHostEnvironment environment,
     IServiceRecoveryControl control,
+    CrashDumpSettings crashDumps,
+    ICrashReportOwner crashReports,
     ILogger<ServiceRecoverySettings> logger) : IHostedService
 {
     private readonly object gate = new();
@@ -16,6 +22,7 @@ public sealed class ServiceRecoverySettings(
     private (string Revision, bool Enabled, int Delay, int Count, int Reset)? attempted;
     private bool skipLogged;
     private ServiceRecoveryDiagnostics diagnostics = new("notApplied", 0);
+    private Task? discovery;
 
     public ServiceRecoveryDiagnostics Diagnostics => Volatile.Read(ref diagnostics);
 
@@ -33,21 +40,40 @@ public sealed class ServiceRecoverySettings(
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
+        Task running;
         lock (gate)
         {
             if (onPublished is { } callback) plans.Published -= callback;
             onPublished = null;
+            running = discovery ?? Task.CompletedTask;
         }
-        return Task.CompletedTask;
+        await running.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    private void DiscoverCrashes()
+    {
+        try { crashReports.DiscoverAtStartup(); }
+        catch (Exception error)
+        {
+            logger.LogError(error, "Crash report discovery failed.");
+        }
+    }
+
+    // Null when this process is the installed service and may change the machine's crash handling.
+    private string? SkipReason()
+        => !environment.IsWindowsService ? "not-running-as-installed-service" : control.GetSkipReason();
 
     private void Apply(CompiledRuntimePlan plan, Action<CompiledRuntimePlan> callback)
     {
         lock (gate)
         {
             if (!ReferenceEquals(onPublished, callback)) return;
+            crashDumps.Apply(plan, SkipReason);
+            // Once per start, with the first plan (it carries the crash_reports point): a crash before this start is
+            // registered now, so a restart after a crash marks its dump. Stop waits for it.
+            discovery ??= Task.Run(DiscoverCrashes, CancellationToken.None);
             var settings = plan.ServiceRecovery;
             var reset = plan.HostManager.ServiceRecoveryResetPeriodSeconds;
             var key = (plan.HostManager.BindingProvenance.SettingsEffectiveSha256,
@@ -59,8 +85,7 @@ public sealed class ServiceRecoverySettings(
             string? skip;
             try
             {
-                skip = !environment.IsWindowsService
-                    ? "not-running-as-installed-service" : control.GetSkipReason();
+                skip = SkipReason();
             }
             catch (Exception error)
             {

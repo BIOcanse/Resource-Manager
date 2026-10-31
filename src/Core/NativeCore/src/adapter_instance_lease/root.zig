@@ -1,3 +1,4 @@
+const policy = @import("../configuration/NativePolicy.g.zig");
 const std = @import("std");
 const ResultCode = @import("../common/result_codes.zig").ResultCode;
 
@@ -11,9 +12,9 @@ extern "bcrypt" fn BCryptGenRandom(
 ) callconv(.winapi) i32;
 
 pub const abi_version: u32 = 0x0003_0000;
-pub const hard_capacity_limit: u32 = 65_536;
+pub const hard_capacity_limit: u32 = policy.adapter_lease_maximum_capacity;
 
-const opaque_id_attempt_limit: u8 = 8;
+const opaque_id_attempt_limit: u32 = policy.adapter_lease_id_attempts;
 
 pub const Capability = struct {
     pub const register: u64 = 1 << 0;
@@ -279,7 +280,7 @@ pub const Session = struct {
     }
 
     fn createUniqueLeaseId(self: *Session) ?[2]u64 {
-        var attempt: u8 = 0;
+        var attempt: u32 = 0;
         while (attempt < opaque_id_attempt_limit) : (attempt += 1) {
             const candidate = createOpaqueId() orelse return null;
             if (self.findActive(candidate[0], candidate[1]) == null) return candidate;
@@ -412,7 +413,7 @@ fn fillReceipt(slot: *const Slot, output: *LeaseReceipt) void {
 
 fn createOpaqueId() ?[2]u64 {
     var value: [2]u64 = undefined;
-    var attempt: u8 = 0;
+    var attempt: u32 = 0;
     while (attempt < opaque_id_attempt_limit) : (attempt += 1) {
         const bytes = std.mem.asBytes(&value);
         const status = BCryptGenRandom(

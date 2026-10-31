@@ -70,7 +70,7 @@ pub export fn rm_data_area_abi_version() callconv(.c) u32 {
     return abi_version;
 }
 
-/// `settings` may be null for the defaults; `settings_size` is its size.
+/// `settings` may be null for the declared defaults; `settings_size` is its size.
 pub export fn rm_data_area_create(settings: ?*const owner_module.Settings, settings_size: u32, output: ?*?*anyopaque) callconv(.c) u32 {
     const out = output orelse return code(.invalid_argument);
     out.* = null;

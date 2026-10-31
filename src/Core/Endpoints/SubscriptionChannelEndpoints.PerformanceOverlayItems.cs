@@ -17,7 +17,8 @@ namespace ResourceManager.App.Endpoints;
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     internal const string PerformanceOverlayTargetNotRunning = "target-not-running";
-    // The same unavailable reasons the id/field overlay reports (PerformanceOverlayProjection).
+    // The id/field overlay's unavailable reasons (PerformanceOverlayProjection). Item reads answer the reader's
+    // concrete reason (TargetedRecordingItemReading.Reason) and fall back to these only when it gives none.
     internal const string PerformanceOverlayFrameEventsLost = "frame-events-lost";
     internal const string PerformanceOverlayNoFrameData = "no-frame-data";
     internal const string PerformanceOverlayProcessCpuUnavailable = "process-cpu-unavailable";
@@ -39,6 +40,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         /// <summary>The item is no longer in the catalog (its device left); it answers unknown-metric and holds nothing.</summary>
         public bool Unknown { get; init; }
         public ResourceBreakdownSampleRequest? BreakdownRequest { get; init; }
+        /// <summary>The catalog the plan was made from; a gpu.target.* item looks up each resolved GPU's quantity in it.</summary>
+        public IReadOnlyList<TargetedRecordingCatalogItem> Catalog { get; init; } = [];
+        /// <summary>gpu.target.*: the GPU last resolved and the metric subscription held for it.</summary>
+        public int? TargetGpu { get; set; }
+        public IDisposable? TargetGpuLease { get; set; }
 
         public PerformanceOverlayItemValue Value(double? value, string? actualSource, string? unit,
             DateTimeOffset? observedAt, string? reason)
@@ -84,8 +90,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return new PerformanceOverlayItemPlan(item, entry, intervalMs, origin)
             {
                 Unknown = unknown,
-                BreakdownRequest = item.Kind == TargetedRecordingItemKinds.Software && !unknown
-                    ? TargetedRecordingItemReader.SoftwareRequest(item, catalog) : null
+                Catalog = catalog,
+                BreakdownRequest = unknown ? null
+                    : item.Kind == TargetedRecordingItemKinds.Software ? TargetedRecordingItemReader.SoftwareRequest(item, catalog)
+                    : TargetedRecordingItemCatalogRules.IsTargetGpu(item.Id)
+                        ? TargetedRecordingItemReader.SoftwareRequest(
+                            new(TargetedRecordingItemKinds.Software, TargetedRecordingItemCatalogRules.GpuUsageTotalId), catalog)
+                        : null
             };
         }).ToArray();
     }
@@ -110,10 +121,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             var plan = plans[index];
             var item = plan.Item;
-            if (plan.Unknown)
+            if (plan.Unknown || plan.Entry?.UnavailableReason is not null)
             {
+                // Not in the catalog (unknown-metric), or not applicable / without a source here: the reason, no holder.
                 if (plan.Last is null) due = true;
-                values[index] = plan.Last ??= plan.Value(null, null, null, null, PerformanceOverlayUnknownMetric);
+                values[index] = plan.Last ??= plan.Value(null, null, null, null,
+                    plan.Unknown ? PerformanceOverlayUnknownMetric : plan.Entry!.UnavailableReason);
                 continue;
             }
             if (!hasTargets)
@@ -121,6 +134,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 if (plan.Lease is not null || plan.Last?.Reason != PerformanceOverlayTargetNotRunning) due = true;
                 plan.Lease?.Dispose();
                 plan.Lease = null;
+                plan.TargetGpuLease?.Dispose();
+                plan.TargetGpuLease = null;
+                plan.TargetGpu = null;
                 plan.LastObservedAt = null;
                 plan.NextDue = DateTimeOffset.MinValue;
                 plan.Last = plan.Value(null, null, null, null, PerformanceOverlayTargetNotRunning);
@@ -129,8 +145,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             var holder = $"performance-overlay:{subscriptionId}:item:{item.Kind}:{item.Id}";
             var period = TimeSpan.FromMilliseconds(plan.IntervalMs);
+            var targetGpu = item.Kind == TargetedRecordingItemKinds.Metric && TargetedRecordingItemCatalogRules.IsTargetGpu(item.Id);
             plan.Lease ??= item.Kind switch
             {
+                // gpu.target.* holds the per-GPU usage bars that resolve its GPU, and the resolved GPU's metric below.
+                TargetedRecordingItemKinds.Metric when targetGpu => (IDisposable?)breakdown.AcquireSubscription($"{holder}:gpus",
+                    plan.BreakdownRequest!, period),
                 TargetedRecordingItemKinds.Metric => (IDisposable?)metrics.AcquireSubscription(holder,
                     TargetedRecordingItemReader.MetricRequest(item), period),
                 TargetedRecordingItemKinds.Software => (IDisposable?)breakdown.AcquireSubscription(holder,
@@ -146,13 +166,46 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             due = true;
             switch (item.Kind)
             {
+                case TargetedRecordingItemKinds.Metric when targetGpu:
+                {
+                    var gpu = TargetedRecordingTargets.TargetGpu(breakdown.ReadLatest(plan.BreakdownRequest!), softwareIds);
+                    if (gpu != plan.TargetGpu)
+                    {
+                        plan.TargetGpuLease?.Dispose();
+                        plan.TargetGpuLease = null;
+                        plan.TargetGpu = gpu;
+                        plan.LastObservedAt = null;
+                    }
+                    if (gpu is not { } gpuIndex)
+                    {
+                        plan.Last = plan.Value(null, null, null, null, TargetedRecordingGapReasons.TargetGpuUnresolved);
+                        break;
+                    }
+                    var address = TargetedRecordingItemCatalogRules.GpuMetricId(gpuIndex,
+                        TargetedRecordingItemCatalogRules.TargetGpuQuantity(item.Id));
+                    var gpuEntry = TargetedRecordingItemCatalogRules.Find(plan.Catalog, TargetedRecordingItemKinds.Metric, address);
+                    if (gpuEntry is null || gpuEntry.UnavailableReason is not null)
+                    {
+                        plan.Last = plan.Value(null, null, null, null, gpuEntry?.UnavailableReason ?? TargetedRecordingGapReasons.NoSource);
+                        break;
+                    }
+                    var gpuItem = item with { Id = address, Source = TargetedRecordingProfileDefaults.AutoSource };
+                    plan.TargetGpuLease ??= metrics.AcquireSubscription($"{holder}:{address}",
+                        TargetedRecordingItemReader.MetricRequest(gpuItem), period);
+                    var reading = TargetedRecordingItemReader.ReadMetric(metrics, gpuItem, plan.LastObservedAt);
+                    if (reading.Unchanged && plan.Last is { Value: not null } previous) { values[index] = previous; continue; }
+                    plan.LastObservedAt = reading.ObservedAt;
+                    plan.Last = plan.Value(reading.Value, reading.ActualSource, reading.Unit, reading.ObservedAt,
+                        reading.Reason ?? PerformanceOverlayMetricUnavailable);
+                    break;
+                }
                 case TargetedRecordingItemKinds.Metric:
                 {
                     var reading = TargetedRecordingItemReader.ReadMetric(metrics, item, plan.LastObservedAt);
                     if (reading.Unchanged && plan.Last is { Value: not null } previous) { values[index] = previous; continue; }
                     plan.LastObservedAt = reading.ObservedAt;
                     plan.Last = plan.Value(reading.Value, reading.ActualSource, reading.Unit, reading.ObservedAt,
-                        PerformanceOverlayMetricUnavailable);
+                        reading.Reason ?? PerformanceOverlayMetricUnavailable);
                     break;
                 }
                 case TargetedRecordingItemKinds.Software:
@@ -161,8 +214,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         breakdown.ReadLatest(plan.BreakdownRequest!), item, softwareIds,
                         (processId, startKey) => targetKeys.Contains((processId, startKey)));
                     plan.Last = plan.Value(reading.Value, reading.ActualSource, reading.Unit, reading.ObservedAt,
-                        string.Equals(item.Id, ResourceBreakdownMetricIds.CpuUsage, StringComparison.OrdinalIgnoreCase)
-                            ? PerformanceOverlayProcessCpuUnavailable : PerformanceOverlayProcessMetricUnavailable);
+                        reading.Reason ?? (string.Equals(item.Id, ResourceBreakdownMetricIds.CpuUsage, StringComparison.OrdinalIgnoreCase)
+                            ? PerformanceOverlayProcessCpuUnavailable : PerformanceOverlayProcessMetricUnavailable));
                     break;
                 }
                 default:
@@ -213,6 +266,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             plan.Lease?.Dispose();
             plan.Lease = null;
+            plan.TargetGpuLease?.Dispose();
+            plan.TargetGpuLease = null;
         }
     }
 }

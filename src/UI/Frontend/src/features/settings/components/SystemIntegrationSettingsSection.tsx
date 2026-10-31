@@ -1,4 +1,7 @@
+import { Show } from "solid-js";
 import { ServiceRecoverySetting } from "./ServiceRecoverySetting";
+import { CrashDumpSettings } from "./CrashDumpSettings";
+import { CrashDumpRequestCard } from "../../crashReports/CrashDumpRequestCard.tsx";
 import { FrontendStartupSetting } from "./FrontendStartupSetting";
 import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
 import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
@@ -9,8 +12,11 @@ import {
 } from "../editableHotkeys";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
+  AppCrashDumpMode,
+  AppCrashDumpSettings,
   AppEditableHotkeySettings,
-  AppSystemIntegrationSettings
+  AppSystemIntegrationSettings,
+  CrashDumpDiagnostics
 } from "../../../types";
 import { EditableHotkeyEditor } from "./EditableHotkeyEditor";
 import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
@@ -22,10 +28,16 @@ interface SystemIntegrationSettingsSectionProps {
   onAutoStartChange: (enabled: boolean) => void;
   onServiceRecoveryChange: (enabled: boolean, delay: number, count: number) => void;
   serviceRecovery?: import("../../../types").ServiceRecoveryDiagnostics;
+  crashDumps?: CrashDumpDiagnostics;
+  onCrashDumpsChange: (crashDumps: AppCrashDumpSettings) => void;
+  onChooseCrashDumpMode: (mode: AppCrashDumpMode) => Promise<void>;
   onEditableHotkeyChange: (hotkey: AppEditableHotkeySettings) => void;
 }
 
-/** 设置 → 系统集成：崩溃后重启、登录后启动到托盘、开机自启、替换任务管理器和强制结束快捷键。 */
+/**
+ * 设置 → 系统集成：崩溃转储的请求卡片（尚未决定时）、崩溃后重启、崩溃转储和崩溃记录、登录后启动到托盘、开机自启、
+ * 替换任务管理器和强制结束快捷键。
+ */
 export function SystemIntegrationSettingsSection(props: SystemIntegrationSettingsSectionProps) {
   const systemIntegration = (): AppSystemIntegrationSettings => props.settings ?? {
     autoStartEnabled: false,
@@ -41,8 +53,12 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
 
   return (
     <div class="settings-section-panel" {...frontendVisibilitySurface(workId, [workId])}>
+      <CrashDumpRequestCard diagnostics={props.crashDumps} onChoose={props.onChooseCrashDumpMode} />
       <ServiceRecoverySetting settings={systemIntegration()} diagnostics={props.serviceRecovery}
         text={props.text.systemIntegration} onChange={props.onServiceRecoveryChange} />
+      <Show when={systemIntegration().crashDumps}>{(settings) =>
+        <CrashDumpSettings settings={settings()} diagnostics={props.crashDumps} text={props.text}
+          onChange={props.onCrashDumpsChange} onChooseMode={props.onChooseCrashDumpMode} />}</Show>
       <FrontendStartupSetting text={props.text.systemIntegration} />
       <div class="settings-row">
         <div class="settings-row-copy">

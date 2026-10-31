@@ -447,7 +447,9 @@ pub export fn rm_kernel_etw_trace_bind_interrupts(handle: ?*anyopaque, interrupt
         if (self.paths == null) {
             const a = owner.budget.allocator();
             const paths = a.create(PathMap) catch |err| return owner.fail(err);
-            paths.* = PathMap.initDeferred(a, target.owner.config.max_path_units) catch |err| {
+            // Only the interrupt equivalence tests bind a standalone trace; the product's shared owner
+            // sizes its map from kernel_etw_limits. 512 is the namespace map those replays expect.
+            paths.* = PathMap.initDeferredWithLimits(a, target.owner.config.max_path_units, 512) catch |err| {
                 a.destroy(paths);
                 return owner.fail(err);
             };
@@ -552,7 +554,7 @@ test "fatal decoder failure invalidates both capture owners" {
     var before = try owner.residency.snapshot(std.testing.allocator);
     defer before.deinit(std.testing.allocator);
     try std.testing.expect(before.is_complete);
-    const icfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
+    const icfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
     const target = try interrupt_abi.Session.create(std.testing.allocator, &icfg);
     defer target.destroy();
     try target.owner.observe(.dpc, 1, 0, 1000);
@@ -568,7 +570,7 @@ test "lost event marker resets interrupt coverage at its actual replay time" {
     const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 8, .max_processes = 8, .max_threads = 16, .max_processors = 2, .max_name_bytes = 1024, .byte_cap = 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &config);
     defer owner.destroy();
-    const icfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
+    const icfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
     const target = try interrupt_abi.Session.create(std.testing.allocator, &icfg);
     defer target.destroy();
     try target.owner.observe(.isr, 1, 0, 1000);
@@ -587,7 +589,7 @@ test "recorded namespace is applied by raw consumer before first image path" {
     const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 8, .max_processes = 8, .max_threads = 16, .max_processors = 2, .max_name_bytes = 1024, .byte_cap = 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &cfg);
     defer owner.destroy();
-    const icfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
+    const icfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
     const target = try interrupt_abi.Session.create(std.testing.allocator, &icfg);
     defer target.destroy();
     var paths = try PathMap.initDeferredWithLimits(owner.budget.allocator(), 128, 8);
@@ -637,10 +639,10 @@ test "IRQ-only shared trace needs no CPU owner and respects held-output admissio
         fn admit(ctx: *anyopaque, _: native.decoder.Event) anyerror!void { cast(ctx).admitted += 1; }
     };
     var fixture: Fixture = .{};
-    const cfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
+    const cfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
     const target = try interrupt_abi.Session.create(std.testing.allocator, &cfg);
     defer target.destroy();
-    var paths = PathMap.init(std.testing.allocator);
+    var paths = PathMap.init(std.testing.allocator, 32768, 32);
     defer paths.deinit();
     var input: Trace = .{
         .consumer = native.Consumer.init(.{ .context = null, .on_notice = Trace.onNotice }),

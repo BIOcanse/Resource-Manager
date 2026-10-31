@@ -423,7 +423,7 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
             var config = new Configuration { Size = (uint)Marshal.SizeOf<Configuration>(), Version = 0x10000,
                 MaxModules = recorded ? 16384u : 64u, MaxPathUnits = 4096,
                 MaxIdentities = recorded ? 32768u : 128u, MaxSlices = maxSlices,
-                MaxSliceDrivers = recorded ? 65536u : 1024u,
+                MaxSliceDrivers = recorded ? 65536u : 1024u, BucketMilliseconds = 10000, BucketCount = 6, ReportedDrivers = 16,
                 ByteCap = (recorded ? 64UL : 4UL) * 1024 * 1024, Generation = 7, StartedTick = started };
             Assert.Equal(0, Create(ref config, out var handle));
             Assert.NotEqual(0, handle);
@@ -608,7 +608,7 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
 
     [StructLayout(LayoutKind.Sequential)] private struct Configuration
     {
-        public uint Size, Version, MaxModules, MaxPathUnits, MaxIdentities, MaxSlices, MaxSliceDrivers, Reserved;
+        public uint Size, Version, MaxModules, MaxPathUnits, MaxIdentities, MaxSlices, MaxSliceDrivers, BucketMilliseconds, BucketCount, ReportedDrivers;
         public ulong ByteCap, Generation;
         public long StartedTick;
         public ulong EventsLost;

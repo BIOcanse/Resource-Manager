@@ -42,6 +42,10 @@ import { applyLanguage, currentSettingsText, uiText } from "./text.ts";
 import { LanguageLoadNotice } from "./i18n/LanguageLoadNotice";
 import { applyByteUnitMode, formatBytes } from "./presentation/byteUnits.ts";
 import { bindBackendNotificationToasts } from "./features/notifications/backendNotificationToasts.ts";
+import { createCrashReportStore } from "./features/crashReports/crashReportStore.ts";
+import { CrashReportProvider } from "./features/crashReports/CrashReportContext.tsx";
+import { CrashReportDialog } from "./features/crashReports/CrashReportDialog.tsx";
+import { CrashDumpRequestCard } from "./features/crashReports/CrashDumpRequestCard.tsx";
 import type {
   MetricDefinition,
   PageId
@@ -80,6 +84,14 @@ export default function App() {
   const settings = createSettingsStore({
     source: frontendRuntime.sources.appSettings,
     requestClient: frontendRuntime.requestClient
+  });
+  // 崩溃记录（docs/crash_dumps_2026-10-31.md）：界面可见时订阅；有未读记录时弹出崩溃提示弹窗，设置 · 系统集成列出全部记录。
+  const crashReports = createCrashReportStore({
+    source: frontendRuntime.sources.crashReports,
+    active: frontendWork.frontendVisible,
+    requestClient: frontendRuntime.requestClient,
+    confirm: confirmDialog,
+    notifyError: (message) => showToast({ tone: "error", title: currentSettingsText().crashDumps.title, message })
   });
   const productUpdates = createProductUpdateStore({
     source: frontendRuntime.sources.productUpdateStatus,
@@ -161,7 +173,7 @@ export default function App() {
   // 后端通知（docs/notifications_2026-10-29.md“前端”）：界面可见时订阅，新通知按种类用界面提示显示；
   // Windows 通知由托盘发。入口跳到详细信息的内存保护记录。
   // 后端通知的界面提示（docs/notifications_2026-10-29.md“前端”）：界面打开时订阅，按种类和这一类的设置提示。
-  const openSettingsSection = (section: "updates" | "trustedAccess") => {
+  const openSettingsSection = (section: "updates" | "trustedAccess" | "systemIntegration") => {
     settings.setActiveSection(section);
     setActivePage("settings");
   };
@@ -215,6 +227,18 @@ export default function App() {
             message: text.accessRequestNoticeMessage(notification.name, program),
             durationMs: null,
             actions: [{ label: text.accessRequestNoticeOpen, onSelect: () => openSettingsSection("trustedAccess") }]
+          });
+          return;
+        }
+        case "crash-report": {
+          // 未读的记录同时由崩溃提示弹窗列出；提示只带到设置 · 系统集成的崩溃记录。
+          const text = currentSettingsText().crashDumps;
+          showToast({
+            tone: "warning",
+            title: text.noticeTitle,
+            message: text.noticeMessage,
+            durationMs: null,
+            actions: [{ label: text.noticeOpen, onSelect: () => openSettingsSection("systemIntegration") }]
           });
           return;
         }
@@ -386,6 +410,7 @@ export default function App() {
 
   return (
     <FrontendWorkProvider controller={frontendWork}>
+      <CrashReportProvider store={crashReports}>
       <AccessRequestSnapshotProvider>
       <FrontendReadIntervalsProvider configuration={settings.frontendRefreshIntervals} current={readContext.readIntervals}>
       <>
@@ -411,6 +436,11 @@ export default function App() {
           <TrustedAccessPendingBanner
             hidden={() => activePage() === "settings" && settings.activeSection() === "trustedAccess"}
             onReview={openAccessRequests}
+          />
+          <CrashDumpRequestCard
+            diagnostics={settings.crashDumps()}
+            hidden={activePage() === "settings" && settings.activeSection() === "systemIntegration"}
+            onChoose={settings.chooseCrashDumpMode}
           />
           <LanguageLoadNotice />
         </>}
@@ -499,12 +529,14 @@ export default function App() {
         onClose={() => setTaskCenterOpen(false)}
         onCancelError={(error) => showErrorToast(error, uiText.appShellExtras.cancelTaskFailed)}
       />
+      <CrashReportDialog store={crashReports} active={frontendWork.frontendVisible()} />
       <ConfirmDialogHost request={confirmQueue()[0] ?? null} onResolve={resolveConfirmDialog} />
       <ToastHost items={toasts()} onDismiss={dismissToast} />
       <TooltipLayer />
       </>
       </FrontendReadIntervalsProvider>
       </AccessRequestSnapshotProvider>
+      </CrashReportProvider>
     </FrontendWorkProvider>
   );
 }

@@ -1030,6 +1030,8 @@
         "trim_release_denominator": 4,
         "maximum_actions_per_target": 1,
         "strong_pressure_free_ratio": 0.2,
+        "danger_minimum_physical_after_vram_move_ratio": 0.1,
+        "danger_minimum_virtual_after_physical_move_ratio": 0.12,
         "danger_severity_weights": [
           2,
           4,

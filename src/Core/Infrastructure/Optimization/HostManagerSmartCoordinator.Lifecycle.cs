@@ -227,15 +227,15 @@ public sealed partial class HostManagerSmartCoordinator
     {
         // The worker and admitted requests have joined and this method owns the gate.
         // Restore through the same receipts and transaction journal as Normal mode.
-        using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var restoration = OptimizationSettings.ProductDefaults.NormalRestoration;
+        using var limit = new CancellationTokenSource(TimeSpan.FromMilliseconds(restoration.TimeoutMilliseconds));
         try
         {
             var validation = processEffectValidationScopeAuthorityOwner.Capture();
             var effects = HostManagerCycleEffectAdmission.CreateForValidation(
                 runtimePlanProvider.Current.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled, validation);
             if (effects.IsScoreOnly) return;
-            const uint maximumActions = 4096;
-            effects.InitializeBudgets(maximumActions, maximumActions);
+            effects.InitializeBudgets(restoration.MaximumActions, restoration.MaximumActions);
             var recovery = await RecoverNativeTransactionsAsync(effects, limit.Token);
             if (recovery.IsBlocked || !nativeActionTransactions.TryAcquireExecutionAdmission(out var admission) || admission is null)
             {
@@ -244,7 +244,7 @@ public sealed partial class HostManagerSmartCoordinator
             }
             await using var owner = admission;
             var restored = await RestoreOwnedEffectsForNormalModeAsync(effects, validation, admission,
-                maximumActions, limit.Token, gpuControlAvailable: !runningGpuPlacementActions.HasUnreleasedExternalControl,
+                restoration.MaximumActions, limit.Token, gpuControlAvailable: !runningGpuPlacementActions.HasUnreleasedExternalControl,
                 forShutdown: true);
             if (!restored) logger.LogWarning("Some temporary scheduling receipts remain for the next restoration attempt.");
         }

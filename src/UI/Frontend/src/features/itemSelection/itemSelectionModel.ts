@@ -39,6 +39,8 @@ export interface CatalogEntry {
   sources: string[];
   naturalIntervalMs: number | null;
   uses: ItemUse[];
+  /** 这台机器上不适用或没有来源的原因码（not-applicable、no-source）；可用时为 null。 */
+  unavailableReason?: string | null;
 }
 
 /** 只留下能用在 use 里的目录项（浮层独有的帧率、1% Low、0.1% Low 不进录制配置）。 */

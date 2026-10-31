@@ -1,3 +1,4 @@
+const policy = @import("../configuration/NativePolicy.g.zig");
 const std = @import("std");
 pub const ExternalScratch = @import("pdh_scratch.zig");
 const PhysicalNetwork = @import("physical_network.zig");
@@ -565,7 +566,7 @@ pub const Collector = struct {
         try self.raw_engine_buffer.ensureByteCapacity(self.allocator, size, scratch);
         size = self.raw_engine_buffer.byteCapacity(scratch);
         const items: [*]RawCounterItem = @ptrCast(@alignCast(self.raw_engine_buffer.bytePointer(scratch).?));
-        if (PdhGetRawCounterArrayW(self.counters.gpu_engine, &size, &count, items) != 0 or count > 262144
+        if (PdhGetRawCounterArrayW(self.counters.gpu_engine, &size, &count, items) != 0 or count > policy.maximum_gpu_engine_rows
             or @as(u64, count) * @sizeOf(RawCounterItem) > size) { self.engine_sample_times.clearRetainingCapacity(); return; }
         for (items[0..count]) |item| {
             if (item.value.status != PDH_CSTATUS_VALID_DATA and item.value.status != PDH_CSTATUS_NEW_DATA) continue;

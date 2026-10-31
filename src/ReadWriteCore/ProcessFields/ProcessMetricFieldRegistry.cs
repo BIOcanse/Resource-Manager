@@ -11,7 +11,7 @@ public enum ProcessMetricFieldCode
     StartTime, ImagePath, ParentPid, UserSid, ThreadCount, CommandLine, PhysicalDiskReadBytes, PhysicalDiskWriteBytes, CpuResidency, GpuResidency,
     IoReadOperations, IoWriteOperations, IoOtherOperations,
     IoReadOperationsRate, IoWriteOperationsRate, IoOtherOperationsRate, IoReadBytesRate, IoWriteBytesRate, IoOtherBytesRate,
-    GpuResidentPrivateBytes, GpuResidentSharedBytes, GpuResidentBytes
+    GpuResidentPrivateBytes, GpuResidentSharedBytes, GpuResidentBytes, GpuSharedSystemMemoryBytes
 }
 
 [Flags]
@@ -65,6 +65,7 @@ public sealed record ProcessMetricFieldDefinition(
         ProcessMetricFieldCode.GpuResidentBytes => new("gpu", "dedicated_resident_apportioned"),
         ProcessMetricFieldCode.GpuResidentPrivateBytes => new("gpu", "dedicated_resident_private"),
         ProcessMetricFieldCode.GpuResidentSharedBytes => new("gpu", "dedicated_resident_shared_apportioned"),
+        ProcessMetricFieldCode.GpuSharedSystemMemoryBytes => new("gpu", "shared_system_memory_usage"),
         _ => null
     };
 }

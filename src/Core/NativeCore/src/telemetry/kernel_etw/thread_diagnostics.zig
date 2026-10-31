@@ -1,3 +1,4 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const std = @import("std");
 
 pub const Times = struct { birth: i64, exit: i64 = 0, kernel: i64 = 0, user: i64 = 0 };
@@ -65,7 +66,7 @@ pub const Owner = struct {
 
     pub fn init(allocator: std.mem.Allocator, source: Source, max_threads: u32, max_requests: u32,
         max_path_units: u32, max_modules: u32, max_inventory_bytes: usize) !Owner {
-        if (max_threads == 0 or max_requests == 0 or max_path_units == 0 or max_modules == 0 or max_inventory_bytes < 65536) return error.InvalidConfig;
+        if (max_threads == 0 or max_requests == 0 or max_path_units == 0 or max_modules == 0 or max_inventory_bytes < policy.diagnostic_minimum_inventory_bytes) return error.InvalidConfig;
         return .{ .allocator = allocator, .source = source, .max_threads = max_threads, .max_requests = max_requests,
             .max_path_units = max_path_units, .max_modules = max_modules, .max_inventory_bytes = max_inventory_bytes,
             .round = std.heap.ArenaAllocator.init(allocator) };

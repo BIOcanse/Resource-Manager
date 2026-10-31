@@ -11,6 +11,8 @@ internal static class PtPt
         MemoryProtectionTitle = "A proteção de memória do anfitrião atuou",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) foi terminado. Tamanho da cópia de memória: {2}. Clique para abrir o Resource Manager.",
         MemoryProtectionTreeMessageFormat = "A árvore de processos sob {0} (PID {1}) foi terminada. Processos: {2}; tamanho da cópia de memória: {3}. Clique para abrir o Resource Manager.",
+        CrashReportTitle = "Relatório de falha",
+        CrashReportMessage = "O Resource Manager acabou de recuperar de uma falha e guardou uma cópia de memória da falha. Clique para abrir o Resource Manager.",
         AppName = "Gestor de Recursos",
         WindowTitleFormat = "Gestor de Recursos - {0}",
         TrayTooltipFormat = "Gestor de Recursos - {0}",

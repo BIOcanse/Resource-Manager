@@ -11,6 +11,8 @@ internal static class HuHu
         MemoryProtectionTitle = "A gazdagép memóriavédelme beavatkozott",
         MemoryProtectionProcessMessageFormat = "A(z) {0} (PID {1}) leállítva. Memóriakép mérete: {2}. Kattintson a Resource Manager megnyitásához.",
         MemoryProtectionTreeMessageFormat = "A(z) {0} (PID {1}) alatti folyamatfa leállítva. Folyamatok: {2}; memóriakép mérete: {3}. Kattintson a Resource Manager megnyitásához.",
+        CrashReportTitle = "Összeomlási jelentés",
+        CrashReportMessage = "A Resource Manager éppen helyreállt egy összeomlás után, és mentette az összeomlási memóriaképet. Kattintson a Resource Manager megnyitásához.",
         AppName = "Erőforrás-kezelő",
         WindowTitleFormat = "Erőforrás-kezelő - {0}",
         TrayTooltipFormat = "Erőforrás-kezelő - {0}",

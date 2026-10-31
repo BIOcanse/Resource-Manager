@@ -11,6 +11,8 @@ internal static class KoKr
         MemoryProtectionTitle = "호스트 메모리 보호가 조치를 취했습니다",
         MemoryProtectionProcessMessageFormat = "{0}(PID {1})을(를) 종료했습니다. 덤프 크기: {2}. 클릭하여 Resource Manager를 여세요.",
         MemoryProtectionTreeMessageFormat = "{0}(PID {1}) 아래의 프로세스 트리를 종료했습니다. 프로세스: {2}, 덤프 크기: {3}. 클릭하여 Resource Manager를 여세요.",
+        CrashReportTitle = "충돌 보고",
+        CrashReportMessage = "Resource Manager가 방금 충돌에서 복구되었으며 충돌 덤프를 저장했습니다. 클릭하여 Resource Manager를 여세요.",
         AppName = "리소스 관리자",
         WindowTitleFormat = "리소스 관리자 - {0}",
         TrayTooltipFormat = "리소스 관리자 - {0}",

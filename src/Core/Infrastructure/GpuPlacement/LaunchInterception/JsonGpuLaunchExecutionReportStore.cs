@@ -8,7 +8,7 @@ namespace ResourceManager.App.Infrastructure.GpuPlacement;
 public sealed class JsonGpuLaunchExecutionReportStore(IHostEnvironment environment)
     : IGpuLaunchExecutionReportStore
 {
-    private const int MaxReports = 256;
+    private static readonly int MaxReports = GpuPlacementSettings.ProductDefaults.LaunchReports.MaximumReports;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true

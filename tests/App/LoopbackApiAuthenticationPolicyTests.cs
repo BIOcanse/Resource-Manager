@@ -105,6 +105,11 @@ public sealed class LoopbackApiAuthenticationPolicyTests
     [InlineData("GET", "/api/settings/app", "Protected", "read")]
     [InlineData("HEAD", "/api/settings/app", "Protected", "read")]
     [InlineData("POST", "/api/settings/app/reapply", "Protected", "machine.write")]
+    [InlineData("GET", "/api/crash-reports", "Protected", "read")]
+    [InlineData("POST", "/api/crash-reports/{id}/package", "Protected", "machine.write")]
+    [InlineData("POST", "/api/crash-reports/{id}/issue-link", "Protected", "machine.write")]
+    [InlineData("POST", "/api/crash-reports/{id}/acknowledge", "Protected", "machine.write")]
+    [InlineData("DELETE", "/api/crash-reports/{id}", "Protected", "machine.write")]
     public void HttpRoutesHaveExplicitAccessRequirements(
         string method,
         string path,

@@ -3,13 +3,14 @@ const io = @import("io_decode.zig");
 const identity = @import("io_identity.zig");
 const Budget = @import("budget.zig").Budget;
 
+/// Every limit comes from the host's kernel_etw_limits declaration; no field defaults.
 pub const Config = struct {
-    window_ms: i64 = 2000,
-    retention_ms: i64 = 8000,
-    bucket_width_ms: i64 = 100,
-    maximum_active_pairs: usize = 8192,
-    maximum_disks: usize = 8192,
-    maximum_cached_processes: usize = 8192,
+    window_ms: i64,
+    retention_ms: i64,
+    bucket_width_ms: i64,
+    maximum_active_pairs: usize,
+    maximum_disks: usize,
+    maximum_cached_processes: usize,
     byte_cap: usize,
 };
 

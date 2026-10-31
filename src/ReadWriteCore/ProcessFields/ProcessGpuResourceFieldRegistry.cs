@@ -12,6 +12,12 @@ public static class ProcessGpuResourceFieldRegistry
     public const string ResidentSharedBytes = "process_all_gpu_resident_shared_bytes_attributed";
     public const string AllocationSourceId = "windows.etw.gpu-allocation";
     public const string AllocationDatasetId = "process.gpu.resident-fields";
+    /// <summary>Windows shared GPU memory per process (system memory in the GPU's shared segments),
+    /// read from PDH <c>\GPU Process Memory(*)\Shared Usage</c>. Unrelated to <see cref="ResidentSharedBytes"/>,
+    /// which apportions jointly owned dedicated VRAM.</summary>
+    public const string SharedSystemMemoryBytes = "process_all_gpu_shared_system_memory_bytes_actual";
+    public const string SharedSystemMemorySourceId = "windows.pdh.gpu-process-memory";
+    public const string SharedSystemMemoryDatasetId = "process.gpu.shared-system-memory";
 
     public static IReadOnlyList<ProcessMetricFieldDefinition> Describe(
         IEnumerable<(int Index, ulong Luid)> adapters, NativePdhSnapshot? snapshot)
@@ -29,6 +35,7 @@ public static class ProcessGpuResourceFieldRegistry
             foreach (var code in new[] { ProcessMetricFieldCode.GpuResidentBytes,
                 ProcessMetricFieldCode.GpuResidentPrivateBytes, ProcessMetricFieldCode.GpuResidentSharedBytes })
                 fields.Add(ForResidentMemory(adapter.Index, adapter.Luid, code));
+            fields.Add(ForSharedSystemMemory(adapter.Index, adapter.Luid));
             if (snapshot is null) continue;
             foreach (var scope in snapshot.EngineRows.Where(row => row.AdapterLuid == adapter.Luid)
                 .Select(static row => new ProcessGpuEngineScope(row.AdapterLuid, row.PhysicalIndex, row.EngineIndex))
@@ -83,6 +90,23 @@ public static class ProcessGpuResourceFieldRegistry
         };
     }
 
+    /// <summary>Per-process Windows shared GPU memory on one adapter, in bytes.
+    /// The adapter total is the existing system field gpu_all_shared_memory_used_bytes (gpu.{i}.sharedMemoryUsed).</summary>
+    public static ProcessMetricFieldDefinition ForSharedSystemMemory(int gpuIndex, ulong adapterLuid)
+    {
+        ValidateAdapter(gpuIndex, adapterLuid);
+        return new(ProcessMetricFieldCode.GpuSharedSystemMemoryBytes,
+            FormattableString.Invariant($"{SharedSystemMemoryBytes}_gpu_{gpuIndex}_luid_{adapterLuid:x16}"),
+            "float64", "B", ReadVolatility.Sampled, SharedSystemMemorySourceId, SharedSystemMemoryDatasetId)
+        {
+            ResourceFactMetricId = FormattableString.Invariant($"gpu.{gpuIndex}.sharedMemoryUsed"),
+            ResourceFactAdditive = true,
+            GpuIndex = gpuIndex,
+            GpuAdapterLuid = adapterLuid,
+            SourceFieldName = SharedSystemMemoryBytes
+        };
+    }
+
     public static ProcessMetricFieldDefinition? Find(string name)
     {
         if (string.IsNullOrEmpty(name)) return null;
@@ -113,17 +137,20 @@ public static class ProcessGpuResourceFieldRegistry
                 ResidentBytes => ProcessMetricFieldCode.GpuResidentBytes,
                 ResidentPrivateBytes => ProcessMetricFieldCode.GpuResidentPrivateBytes,
                 ResidentSharedBytes => ProcessMetricFieldCode.GpuResidentSharedBytes,
+                SharedSystemMemoryBytes => ProcessMetricFieldCode.GpuSharedSystemMemoryBytes,
                 _ => null
             };
             if (code is null) return null;
-            field = ForResidentMemory(gpuIndex, luid, code.Value);
+            field = code == ProcessMetricFieldCode.GpuSharedSystemMemoryBytes
+                ? ForSharedSystemMemory(gpuIndex, luid) : ForResidentMemory(gpuIndex, luid, code.Value);
         }
         return field.Name.Equals(name, StringComparison.OrdinalIgnoreCase) ? field : null;
     }
 
     public static bool IsBound(ProcessMetricFieldDefinition field)
         => field.GpuIndex is >= 0 && field.GpuAdapterLuid is > 0
-            && (field.Code == ProcessMetricFieldCode.GpuResidency && field.GpuEngine is not null || IsVram(field));
+            && (field.Code == ProcessMetricFieldCode.GpuResidency && field.GpuEngine is not null || IsVram(field)
+                || field.Code == ProcessMetricFieldCode.GpuSharedSystemMemoryBytes);
 
     public static bool IsVram(ProcessMetricFieldDefinition field)
         => field.Code is ProcessMetricFieldCode.GpuResidentBytes or ProcessMetricFieldCode.GpuResidentPrivateBytes

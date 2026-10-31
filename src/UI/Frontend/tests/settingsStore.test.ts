@@ -699,7 +699,8 @@ await new Promise<void>((resolve, reject) => {
       store.updateNotificationSwitch("accessRequestSystem", false);
       assert.deepEqual(store.draftSettings().notifications, { updateNotify: "on", updateInApp: "on", updateSystem: "off",
         accessRequestNotify: "on", accessRequestInApp: "on", accessRequestSystem: "off",
-        memoryProtectionNotify: "on", memoryProtectionInApp: "on", memoryProtectionSystem: "on" });
+        memoryProtectionNotify: "on", memoryProtectionInApp: "on", memoryProtectionSystem: "on",
+        crashReportNotify: "on", crashReportInApp: "on", crashReportSystem: "on" });
       dispose(); resolve();
     })().catch(error => { dispose(); reject(error); });
   });

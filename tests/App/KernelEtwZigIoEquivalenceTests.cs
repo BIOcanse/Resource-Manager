@@ -372,7 +372,8 @@ public sealed class KernelEtwZigIoEquivalenceTests(Xunit.Abstractions.ITestOutpu
                 MaximumPairs = 65536, MaximumProcesses = 32768, MaximumThreads = 131072,
                 MaximumProcessors = processors, MaximumNameBytes = 8 * 1024 * 1024, ByteCap = 128 * 1024 * 1024 },
             Interrupts = new() { MaximumModules = 8192, MaximumPathUnits = 32768, MaximumIdentities = 32768,
-                MaximumSlices = 262144, MaximumSliceDrivers = 1048576, ByteCap = 128 * 1024 * 1024 },
+                MaximumSlices = 262144, MaximumSliceDrivers = 1048576, BucketMilliseconds = 10000, BucketCount = 6, ReportedDrivers = 16,
+                ByteCap = 128 * 1024 * 1024 },
             MaximumDiskPairs = 8192, MaximumDisks = 8192, MaximumCachedProcesses = 8192,
             // Finite recorded histories retain closed addresses: the 32,768-entry
             // limit was reached exactly at record 5,264,884. This is the same
@@ -386,7 +387,7 @@ public sealed class KernelEtwZigIoEquivalenceTests(Xunit.Abstractions.ITestOutpu
             // batch exhausted 1,048,576 units at 7,159 events. Keep a finite 4M-unit
             // replay staging allowance; all region/owner byte ceilings stay fixed.
             StartedTickMilliseconds = 1000, MaximumPendingEvents = 32768, MaximumPendingPathUnits = 4 * 1024 * 1024,
-            MaximumRendererProcesses = 4096
+            MaximumRendererProcesses = 4096, NetworkInitialEvents = 256
         };
         config.StampAbi(new(1, DateTimeOffset.UnixEpoch.AddMilliseconds(1000)));
         return config;

@@ -15,12 +15,13 @@ public sealed partial class HostManagerPlanCompiler
     private const string MissesField = "requiredConsecutiveMisses";
     private const string ZeroActivityField = "zeroActivityThreshold";
     private const string ExecutableNamesField = "executableNames";
-    private const uint ReportRuleCountMaximum = 1000;
-    private const double ReportRuleZeroActivityMaximumPercent = 10;
-    private const int ReportRuleExecutableNameCountMaximum = 256;
-    private const int ReportRuleExecutableNameLengthMaximum = 260;
-    private const double Mebibyte = 1024d * 1024d;
-    private const double Gibibyte = Mebibyte * 1024d;
+    // Read on use: a static field here would run the embedded declaration compilation inside this type's initializer.
+    private static ReportRuleLimits RuleLimits =>
+        ResourceManager.App.Infrastructure.Optimization.OptimizationSettings.ProductDefaults.ReportRuleLimits;
+    private static uint ReportRuleCountMaximum => RuleLimits.MaximumConsecutiveCount;
+    private static double ReportRuleZeroActivityMaximumPercent => RuleLimits.MaximumZeroActivityPercent;
+    private static int ReportRuleExecutableNameCountMaximum => RuleLimits.MaximumExecutableNames;
+    private static int ReportRuleExecutableNameLengthMaximum => RuleLimits.MaximumExecutableNameCharacters;
 
     private static readonly ImmutableArray<string> ThresholdAndCountFields =
         [ActivationField, ClearField, HitsField, MissesField];
@@ -56,26 +57,23 @@ public sealed partial class HostManagerPlanCompiler
         HostManagerReportCoordinatorRuleProfile item)
     {
         // Ranges are in the stored unit of each fact; display unit, scale and step serve the settings page.
-        (string Unit, double Scale, double Step, double Minimum, double Maximum, ImmutableArray<string> Fields) range =
+        ImmutableArray<string> fields =
             item.FactKind switch
             {
-                HostManagerReportFactKind.CpuTemperatureCelsius => ("celsius", 1, 1, 40, 110, ThresholdAndCountFields),
-                HostManagerReportFactKind.CpuUsagePercent => ("percent", 1, 1, 1, 100, ThresholdAndCountFields),
-                HostManagerReportFactKind.CpuFrequencyPercent => ("percent", 1, 1, 1, 200, ThresholdAndCountFields),
-                HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds =>
-                    ("milliseconds", 1, 0.1, 0.1, 1000, ThresholdAndCountFields),
-                HostManagerReportFactKind.InterruptCpuCapacityPercent => ("percent", 1, 0.1, 0.1, 100, ThresholdAndCountFields),
-                HostManagerReportFactKind.SoftwareMemorySystemPercent => ("percent", 1, 0.5, 1, 100, ThresholdAndCountFields),
-                HostManagerReportFactKind.SoftwareMemoryBytes =>
-                    ("gibibytes", Gibibyte, 0.25, 256 * Mebibyte, 1024 * Gibibyte, ThresholdAndCountFields),
-                HostManagerReportFactKind.ProcessMemoryBytes =>
-                    ("mebibytes", Mebibyte, 1, Mebibyte, 64 * Gibibyte, [ActivationField, ClearField]),
-                HostManagerReportFactKind.ProcessIdleMilliseconds =>
-                    ("minutes", 60_000, 1, 60_000, 86_400_000, [ActivationField, ZeroActivityField, ExecutableNamesField]),
+                HostManagerReportFactKind.CpuTemperatureCelsius
+                    or HostManagerReportFactKind.CpuUsagePercent
+                    or HostManagerReportFactKind.CpuFrequencyPercent
+                    or HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds
+                    or HostManagerReportFactKind.InterruptCpuCapacityPercent
+                    or HostManagerReportFactKind.SoftwareMemorySystemPercent
+                    or HostManagerReportFactKind.SoftwareMemoryBytes => ThresholdAndCountFields,
+                HostManagerReportFactKind.ProcessMemoryBytes => [ActivationField, ClearField],
+                HostManagerReportFactKind.ProcessIdleMilliseconds => [ActivationField, ZeroActivityField, ExecutableNamesField],
                 _ => throw new InvalidDataException(
                     $"host_recreate.report_coordinator.rules fact_kind {item.FactKind} has no settings range.")
             };
-        var fields = range.Fields;
+        if (!RuleLimits.ThresholdRanges.TryGetValue(item.FactKind.ToString(), out var range))
+            throw new InvalidDataException($"The report threshold range for {item.FactKind} is not declared.");
         if (fields.Contains(ClearField) && item.Comparison is not (1 or 2))
         {
             throw new InvalidDataException(
@@ -178,9 +176,9 @@ public sealed partial class HostManagerPlanCompiler
                     user?.ClearThreshold is not null || user?.ActivationThreshold is not null);
         }
 
-        if (fields.Contains(HitsField) && rule.RequiredConsecutiveHits is < 1 or > ReportRuleCountMaximum)
+        if (fields.Contains(HitsField) && (rule.RequiredConsecutiveHits < 1 || rule.RequiredConsecutiveHits > ReportRuleCountMaximum))
             throw Invalid(HitsField, "out-of-range", user?.RequiredConsecutiveHits is not null);
-        if (fields.Contains(MissesField) && rule.RequiredConsecutiveMisses is < 1 or > ReportRuleCountMaximum)
+        if (fields.Contains(MissesField) && (rule.RequiredConsecutiveMisses < 1 || rule.RequiredConsecutiveMisses > ReportRuleCountMaximum))
             throw Invalid(MissesField, "out-of-range", user?.RequiredConsecutiveMisses is not null);
         if (fields.Contains(ZeroActivityField)
             && !InRange(rule.ZeroActivityThreshold ?? double.NaN, 0, ReportRuleZeroActivityMaximumPercent))
@@ -201,7 +199,7 @@ public sealed partial class HostManagerPlanCompiler
     private static bool AreValidExecutableNames(IReadOnlyList<string>? names)
         => names is not null
             && names.Count <= ReportRuleExecutableNameCountMaximum
-            && names.All(static name => name is { Length: > 0 and <= ReportRuleExecutableNameLengthMaximum }
+            && names.All(static name => name is { Length: > 0 } && name.Length <= ReportRuleExecutableNameLengthMaximum
                 && name == name.Trim()
                 && name.IndexOfAny(['/', '\\', ':']) < 0
                 && !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))

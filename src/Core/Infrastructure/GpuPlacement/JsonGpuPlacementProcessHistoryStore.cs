@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -10,8 +11,9 @@ namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
 public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment environment) : IGpuPlacementProcessHistoryStore
 {
-    private const int MaxProcessesPerSoftware = 64;
-    private static readonly TimeSpan MinimumLastSeenPersistInterval = TimeSpan.FromMinutes(10);
+    private static readonly GpuPlacementProcessHistoryOptions History = GpuPlacementSettings.ProductDefaults.ProcessHistory;
+    private static readonly int MaxProcessesPerSoftware = History.MaximumProcessesPerSoftware;
+    private static readonly TimeSpan MinimumLastSeenPersistInterval = TimeSpan.FromMilliseconds(History.LastSeenPersistIntervalMilliseconds);
     private static readonly JsonSerializerOptions JsonOptions = new JsonGpuPlacementProcessHistoryStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -337,10 +339,10 @@ public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment
             ?? "unknown";
         var executablePath = CleanPath(input.ExecutablePath);
         var evidence = CleanEvidenceSources(input.EvidenceSources);
-        var confidence = executablePath is null ? (byte)55 : (byte)85;
+        var confidence = executablePath is null ? History.ConfidenceWithoutPath : History.ConfidenceWithPath;
         if (evidence.Count > 1)
         {
-            confidence = (byte)Math.Min(100, confidence + 10);
+            confidence = (byte)Math.Min(100, confidence + History.ConfidenceCorroborationBonus);
         }
 
         return new GpuPlacementObservedProcess(

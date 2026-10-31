@@ -21,14 +21,19 @@ public sealed class PdhProcessGpuReader
             static pid => BasicMetricReader.ReadCurrentCreationFileTime(pid));
     private readonly Func<IReadOnlyCollection<ProcessInstanceKey>, IReadOnlySet<ProcessInstanceKey>>
         validateCurrentProcessInstances;
+    // Null only for the parameterless source-less reader, matching its unavailable native snapshot source.
+    private readonly PdhGpuProcessSharedMemoryReader? sharedSystemMemoryReader;
 
     public PdhProcessGpuReader()
-        : this(UnavailableNativePdhSnapshotSource.Instance, ReadCurrentProcessInstances)
+        : this(UnavailableNativePdhSnapshotSource.Instance, ReadCurrentProcessInstances, null)
     {
     }
 
+    /// <summary>The production route: the native PDH collector plus the managed per-process
+    /// shared-memory reader, which opens its PDH query only inside <see cref="ReadSharedSystemMemory"/>.</summary>
     internal PdhProcessGpuReader(INativePdhSnapshotSource snapshotSource)
-        : this(snapshotSource, ReadCurrentProcessInstances)
+        : this(snapshotSource, ReadCurrentProcessInstances,
+            new PdhGpuProcessSharedMemoryReader())
     {
     }
 
@@ -36,9 +41,42 @@ public sealed class PdhProcessGpuReader
         INativePdhSnapshotSource snapshotSource,
         Func<IReadOnlyCollection<ProcessInstanceKey>, IReadOnlySet<ProcessInstanceKey>>
             validateCurrentProcessInstances)
+        : this(snapshotSource, validateCurrentProcessInstances, null)
+    {
+    }
+
+    internal PdhProcessGpuReader(
+        INativePdhSnapshotSource snapshotSource,
+        Func<IReadOnlyCollection<ProcessInstanceKey>, IReadOnlySet<ProcessInstanceKey>>
+            validateCurrentProcessInstances,
+        PdhGpuProcessSharedMemoryReader? sharedSystemMemoryReader)
     {
         this.snapshotSource = snapshotSource;
         this.validateCurrentProcessInstances = validateCurrentProcessInstances;
+        this.sharedSystemMemoryReader = sharedSystemMemoryReader;
+    }
+
+    /// <summary>Reads Windows shared GPU memory for the given adapters and binds each PID to the exact
+    /// expected process instance. Identity is validated after the PDH read, so a PID reused during
+    /// the read cannot claim the value. Called only when a subscribed field selects an adapter.</summary>
+    internal ProcessGpuSharedSystemMemoryRead ReadSharedSystemMemory(
+        IReadOnlyCollection<ulong> adapterLuids,
+        IReadOnlyCollection<ProcessInstanceKey> expectedProcessInstances)
+    {
+        ArgumentNullException.ThrowIfNull(adapterLuids);
+        ArgumentNullException.ThrowIfNull(expectedProcessInstances);
+        if (adapterLuids.Count == 0) return ProcessGpuSharedSystemMemoryRead.NotRequested;
+        if (sharedSystemMemoryReader is null) return ProcessGpuSharedSystemMemoryRead.NoReader;
+        var read = sharedSystemMemoryReader.Read(adapterLuids);
+        var bytes = new Dictionary<(ulong AdapterLuid, int ProcessId, ulong ProcessStartKey), double>();
+        if (read.ProviderAvailability == NativePdhProviderAvailability.Available)
+        {
+            var stableProcesses = CreateStableProcessMap(expectedProcessInstances);
+            foreach (var ((luid, processId), value) in read.SharedUsageBytes)
+                if (stableProcesses.TryGetValue(processId, out var identity))
+                    bytes[(luid, processId, checked((ulong)identity.StartKey))] = value;
+        }
+        return new(read.ProviderAvailability, read.ResultCode, read.ObservedAt, bytes);
     }
 
     internal NativePdhProviderAvailability ProviderAvailability { get; private set; } = NativePdhProviderAvailability.NotRequested;
@@ -426,6 +464,23 @@ internal sealed class ProcessGpuBreakdownRead(
         GetDedicatedMemoryBytesByProcess(int adapterIndex)
         => memoryByAdapter.GetValueOrDefault(adapterIndex)
             ?? EmptyValues;
+}
+
+/// <summary>Windows shared GPU memory bytes per adapter and validated process instance.</summary>
+internal sealed record ProcessGpuSharedSystemMemoryRead(
+    NativePdhProviderAvailability Availability,
+    NativePdhResultCode ResultCode,
+    DateTimeOffset? ObservedAt,
+    IReadOnlyDictionary<(ulong AdapterLuid, int ProcessId, ulong ProcessStartKey), double> Bytes)
+{
+    public static ProcessGpuSharedSystemMemoryRead NotRequested { get; } = new(
+        NativePdhProviderAvailability.NotRequested, NativePdhResultCode.NoData, null,
+        new Dictionary<(ulong AdapterLuid, int ProcessId, ulong ProcessStartKey), double>());
+
+    /// <summary>The source-less reader has no PDH route; the field stays unavailable.</summary>
+    public static ProcessGpuSharedSystemMemoryRead NoReader { get; } = new(
+        NativePdhProviderAvailability.Unavailable, NativePdhResultCode.NoData, null,
+        new Dictionary<(ulong AdapterLuid, int ProcessId, ulong ProcessStartKey), double>());
 }
 
 internal sealed record SchedulingProcessGpuRead(

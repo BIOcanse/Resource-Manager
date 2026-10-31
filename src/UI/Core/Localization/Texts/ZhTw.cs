@@ -11,6 +11,8 @@ internal static class ZhTw
         MemoryProtectionTitle = "主機記憶體保護已處理",
         MemoryProtectionProcessMessageFormat = "已結束 {0}（PID {1}），轉儲量 {2}。點擊開啟資源管理器。",
         MemoryProtectionTreeMessageFormat = "已結束 {0}（PID {1}）下的處理程序樹，涉及 {2} 個處理程序，轉儲量 {3}。點擊開啟資源管理器。",
+        CrashReportTitle = "崩潰報告",
+        CrashReportMessage = "資源管理器剛從崩潰中復原，已保存崩潰轉儲。點擊開啟資源管理器。",
         AppName = "資源管理器",
         WindowTitleFormat = "資源管理器 - {0}",
         TrayTooltipFormat = "資源管理器 - {0}",

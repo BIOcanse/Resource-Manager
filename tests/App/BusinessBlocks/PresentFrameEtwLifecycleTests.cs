@@ -177,11 +177,11 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Equal(0, session.EventsLostReads);
         Assert.Equal(0, session.Flushes);
 
-        clock.Advance(PresentFrameEtwSource.FlushInterval);
+        clock.Advance(ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.FlushInterval);
         Assert.Equal(1, session.Flushes);
         Assert.Equal(1, session.EventsLostReads);
         await harness.ReleaseAsync(frame);
-        clock.Advance(PresentFrameEtwSource.FlushInterval);
+        clock.Advance(ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.FlushInterval);
         Assert.Equal(1, session.Flushes);
     }
 
@@ -207,7 +207,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Equal(1, stream.Statistics.IntervalCount);
         Assert.Equal(16d, stream.Statistics.DurationMs);
 
-        clock.Advance(PresentFrameEtwSource.FlushInterval);
+        clock.Advance(ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.FlushInterval);
         var completion = await harness.NextResultAsync();
         Assert.Equal(BusinessBlockOutcome.Failed, completion.Outcome);
         Assert.Equal(1, session.Flushes);

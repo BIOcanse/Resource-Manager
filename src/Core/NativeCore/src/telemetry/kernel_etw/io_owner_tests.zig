@@ -4,6 +4,20 @@ const identity = @import("io_identity.zig");
 const disk = @import("disk_io_owner.zig");
 const network = @import("network_io_owner.zig");
 
+/// Test limits (the former Config field defaults); each test overrides the fields it exercises.
+fn networkConfig(fields: anytype) network.Config {
+    var config: network.Config = .{ .window_ms = 2000, .retention_ms = 8000, .initial_event_capacity = 256, .maximum_retained_events = 262144, .maximum_processes = 65536, .byte_cap = 0 };
+    inline for (@typeInfo(@TypeOf(fields)).@"struct".field_names) |name| @field(config, name) = @field(fields, name);
+    return config;
+}
+
+/// Test limits (the former Config field defaults); each test overrides the fields it exercises.
+fn diskConfig(fields: anytype) disk.Config {
+    var config: disk.Config = .{ .window_ms = 2000, .retention_ms = 8000, .bucket_width_ms = 100, .maximum_active_pairs = 8192, .maximum_disks = 8192, .maximum_cached_processes = 8192, .byte_cap = 0 };
+    inline for (@typeInfo(@TypeOf(fields)).@"struct".field_names) |name| @field(config, name) = @field(fields, name);
+    return config;
+}
+
 fn put(comptime T: type, buffer: []u8, offset: usize, value: T) void {
     std.mem.writeInt(T, buffer[offset..][0..@sizeOf(T)], value, .little);
 }
@@ -220,7 +234,7 @@ fn identitySource(fixture: *IdentityFixture) identity.Source {
 
 test "disk owner aggregates verified process and per-disk rows with fixed rates" {
     var fixture: IdentityFixture = .{ .birth = 400 };
-    var owner = try disk.Owner.init(std.testing.allocator, .{ .maximum_active_pairs = 8, .maximum_disks = 4, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try disk.Owner.init(std.testing.allocator, diskConfig(.{ .maximum_active_pairs = 8, .maximum_disks = 4, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     const transfer: decode.DiskTransfer = .{ .process_id = 7, .thread_id = 70, .bytes = 100, .disk_number = 2, .is_write = false, .qpc = 1, .event_filetime_100ns = 500 };
     try owner.observe(transfer, 710);
@@ -266,7 +280,7 @@ test "disk owner aggregates verified process and per-disk rows with fixed rates"
 
 test "disk owner caches intake identity until process lifecycle invalidates it" {
     var fixture: IdentityFixture = .{ .birth = 100 };
-    var owner = try disk.Owner.init(std.testing.allocator, .{ .maximum_active_pairs = 8, .maximum_disks = 4, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try disk.Owner.init(std.testing.allocator, diskConfig(.{ .maximum_active_pairs = 8, .maximum_disks = 4, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     const event: decode.DiskTransfer = .{ .process_id = 7, .thread_id = 70, .bytes = 10, .disk_number = 1, .is_write = false, .qpc = 1, .event_filetime_100ns = 100 };
     try owner.observe(event, 100);
@@ -280,7 +294,7 @@ test "disk owner caches intake identity until process lifecycle invalidates it" 
 
 test "disk owner repairs unknown birth only for future events after double verification" {
     var fixture: IdentityFixture = .{ .birth = 100, .fail_open_count = 1 };
-    var owner = try disk.Owner.init(std.testing.allocator, .{ .maximum_active_pairs = 8, .maximum_disks = 4, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try disk.Owner.init(std.testing.allocator, diskConfig(.{ .maximum_active_pairs = 8, .maximum_disks = 4, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     const event: decode.DiskTransfer = .{ .process_id = 7, .thread_id = 70, .bytes = 10, .disk_number = 1, .is_write = false, .qpc = 1, .event_filetime_100ns = 150 };
     try owner.observe(event, 100);
@@ -310,7 +324,7 @@ test "disk owner repairs unknown birth only for future events after double verif
 
 test "disk owner rejects a process whose identity changes on its final same-handle read" {
     var fixture: IdentityFixture = .{ .birth = 50, .change_birth_on_read = 3, .changed_birth = 51 };
-    var owner = try disk.Owner.init(std.testing.allocator, .{ .maximum_active_pairs = 8, .maximum_disks = 4, .maximum_cached_processes = 8, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try disk.Owner.init(std.testing.allocator, diskConfig(.{ .maximum_active_pairs = 8, .maximum_disks = 4, .maximum_cached_processes = 8, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     const event: decode.DiskTransfer = .{ .process_id = 7, .thread_id = 70, .bytes = 10, .disk_number = 1, .is_write = false, .qpc = 1, .event_filetime_100ns = 60 };
     try owner.observe(event, 100);
@@ -329,7 +343,7 @@ test "disk owner rejects a process whose identity changes on its final same-hand
 
 test "disk owner omits partial buckets and excludes completion before process birth" {
     var fixture: IdentityFixture = .{ .birth = 100 };
-    var owner = try disk.Owner.init(std.testing.allocator, .{ .maximum_active_pairs = 8, .maximum_disks = 4, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try disk.Owner.init(std.testing.allocator, diskConfig(.{ .maximum_active_pairs = 8, .maximum_disks = 4, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     const event: decode.DiskTransfer = .{ .process_id = 7, .thread_id = 70, .bytes = 10, .disk_number = 1, .is_write = false, .qpc = 1, .event_filetime_100ns = 90 };
     try owner.observe(event, 90);
@@ -354,7 +368,7 @@ test "disk owner omits partial buckets and excludes completion before process bi
 
 test "disk owner exposes hard capacity failure and invalidates its current window" {
     var fixture: IdentityFixture = .{ .birth = 5 };
-    var owner = try disk.Owner.init(std.testing.allocator, .{ .maximum_active_pairs = 1, .maximum_disks = 2, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try disk.Owner.init(std.testing.allocator, diskConfig(.{ .maximum_active_pairs = 1, .maximum_disks = 2, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     const event: decode.DiskTransfer = .{ .process_id = 7, .thread_id = 1, .bytes = 1, .disk_number = 1, .is_write = false, .qpc = 1, .event_filetime_100ns = 5 };
     try owner.observe(event, 100);
@@ -376,7 +390,7 @@ fn networkTransfer(process_id: u32, bytes: u32, direction: decode.Direction, add
 
 test "signed TraceEvent PID sentinels retain the managed attribution policy" {
     var fixture: IdentityFixture = .{ .birth = 5 };
-    var disks = try disk.Owner.init(std.testing.allocator, .{ .maximum_active_pairs = 2, .maximum_disks = 2, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var disks = try disk.Owner.init(std.testing.allocator, diskConfig(.{ .maximum_active_pairs = 2, .maximum_disks = 2, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer disks.deinit();
     try disks.observe(.{ .process_id = 0x8000_0001, .thread_id = null, .bytes = 10, .disk_number = 1, .is_write = true, .qpc = 1, .event_filetime_100ns = 5 }, 100);
     var processes: [2]disk.ProcessRow = undefined;
@@ -388,7 +402,7 @@ test "signed TraceEvent PID sentinels retain the managed attribution policy" {
     try std.testing.expectEqual(@as(u32, 0), window.disk_rows[0].process_id);
     try std.testing.expect(!window.disk_rows[0].available);
     try std.testing.expectEqual(@as(usize, 0), fixture.open_count);
-    var networks = try network.Owner.init(std.testing.allocator, .{ .initial_event_capacity = 2, .maximum_retained_events = 4, .maximum_processes = 2, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var networks = try network.Owner.init(std.testing.allocator, networkConfig(.{ .initial_event_capacity = 2, .maximum_retained_events = 4, .maximum_processes = 2, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer networks.deinit();
     try networks.observe(networkTransfer(0x8000_0001, 10, .send, .{ .ipv4 = .{ 192, 0, 2, 1 } }, 5), 100);
     try std.testing.expectEqual(@as(usize, 0), networks.event_count);
@@ -396,7 +410,7 @@ test "signed TraceEvent PID sentinels retain the managed attribution policy" {
 
 test "network owner aggregates raw and external totals with same-handle identity checks" {
     var fixture: IdentityFixture = .{ .birth = 1100 };
-    var owner = try network.Owner.init(std.testing.allocator, .{ .initial_event_capacity = 2, .maximum_retained_events = 16, .maximum_processes = 4, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try network.Owner.init(std.testing.allocator, networkConfig(.{ .initial_event_capacity = 2, .maximum_retained_events = 16, .maximum_processes = 4, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     owner.invalidate(100);
     try owner.observe(networkTransfer(7, 100, .receive, .{ .ipv4 = .{ 198, 51, 100, 9 } }, 1200), 600);
@@ -424,7 +438,7 @@ test "network owner aggregates raw and external totals with same-handle identity
 
 test "network owner invalidates a PID when any event lacks FILETIME" {
     var fixture: IdentityFixture = .{ .birth = 90 };
-    var owner = try network.Owner.init(std.testing.allocator, .{ .initial_event_capacity = 2, .maximum_retained_events = 8, .maximum_processes = 4, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try network.Owner.init(std.testing.allocator, networkConfig(.{ .initial_event_capacity = 2, .maximum_retained_events = 8, .maximum_processes = 4, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     owner.invalidate(50);
     try owner.observe(networkTransfer(7, 10, .send, .{ .ipv4 = .{ 192, 0, 2, 1 } }, 100), 100);
@@ -441,7 +455,7 @@ test "network owner invalidates a PID when any event lacks FILETIME" {
 
 test "network owner rejects a process whose identity changes on its final same-handle read" {
     var fixture: IdentityFixture = .{ .birth = 50, .change_birth_on_read = 2, .changed_birth = 51 };
-    var owner = try network.Owner.init(std.testing.allocator, .{ .initial_event_capacity = 2, .maximum_retained_events = 8, .maximum_processes = 4, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try network.Owner.init(std.testing.allocator, networkConfig(.{ .initial_event_capacity = 2, .maximum_retained_events = 8, .maximum_processes = 4, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     owner.invalidate(10);
     try owner.observe(networkTransfer(7, 10, .send, .{ .ipv4 = .{ 192, 0, 2, 1 } }, 100), 100);
@@ -456,7 +470,7 @@ test "network owner rejects a process whose identity changes on its final same-h
 
 test "network owner reports retained-event cap instead of hiding truncation" {
     var fixture: IdentityFixture = .{ .birth = 90 };
-    var owner = try network.Owner.init(std.testing.allocator, .{ .initial_event_capacity = 2, .maximum_retained_events = 2, .maximum_processes = 2, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try network.Owner.init(std.testing.allocator, networkConfig(.{ .initial_event_capacity = 2, .maximum_retained_events = 2, .maximum_processes = 2, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     owner.invalidate(1);
     const event = networkTransfer(7, 1, .send, .{ .ipv4 = .{ 192, 0, 2, 1 } }, 100);
@@ -472,7 +486,7 @@ test "network owner reports retained-event cap instead of hiding truncation" {
 
 test "disk allocations follow occupied data rather than configured maxima and return when unused" {
     var fixture: IdentityFixture = .{ .birth = 5 };
-    var owner = try disk.Owner.init(std.testing.allocator, .{ .byte_cap = 8 * 1024 * 1024 }, identitySource(&fixture));
+    var owner = try disk.Owner.init(std.testing.allocator, diskConfig(.{ .byte_cap = 8 * 1024 * 1024 }), identitySource(&fixture));
     defer owner.deinit();
     try std.testing.expectEqual(@as(usize, @sizeOf(disk.Owner)), owner.usage().current_bytes);
     const event: decode.DiskTransfer = .{ .process_id = 7, .thread_id = 1, .bytes = 4096, .disk_number = 2, .is_write = false, .qpc = 1, .event_filetime_100ns = 5 };
@@ -496,7 +510,7 @@ test "disk allocations follow occupied data rather than configured maxima and re
 
 test "network allocations return after all retained input expires and can grow again" {
     var fixture: IdentityFixture = .{ .birth = 5 };
-    var owner = try network.Owner.init(std.testing.allocator, .{ .initial_event_capacity = 2, .maximum_retained_events = 16, .maximum_processes = 4, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try network.Owner.init(std.testing.allocator, networkConfig(.{ .initial_event_capacity = 2, .maximum_retained_events = 16, .maximum_processes = 4, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     try std.testing.expectEqual(@as(usize, @sizeOf(network.Owner)), owner.usage().current_bytes);
     const event = networkTransfer(7, 4096, .receive, .{ .ipv4 = .{ 192, 0, 2, 1 } }, 5);
@@ -514,7 +528,7 @@ test "network allocations return after all retained input expires and can grow a
 
 fn occupiedDiskAllocationLifetime(allocator: std.mem.Allocator) !void {
     var fixture: IdentityFixture = .{ .birth = 5 };
-    var owner = try disk.Owner.init(allocator, .{ .maximum_active_pairs = 8, .maximum_disks = 8, .maximum_cached_processes = 8, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try disk.Owner.init(allocator, diskConfig(.{ .maximum_active_pairs = 8, .maximum_disks = 8, .maximum_cached_processes = 8, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     for (0..3) |index| {
         try owner.observe(.{ .process_id = @as(u32, @intCast(7 + index)), .thread_id = null, .bytes = 4096, .disk_number = @as(u32, @intCast(index)), .is_write = false, .qpc = 1, .event_filetime_100ns = 5 }, @intCast(1100 + index * 100));
@@ -529,7 +543,7 @@ fn occupiedDiskAllocationLifetime(allocator: std.mem.Allocator) !void {
 
 fn occupiedNetworkAllocationLifetime(allocator: std.mem.Allocator) !void {
     var fixture: IdentityFixture = .{ .birth = 5 };
-    var owner = try network.Owner.init(allocator, .{ .initial_event_capacity = 2, .maximum_retained_events = 16, .maximum_processes = 8, .byte_cap = 1 << 20 }, identitySource(&fixture));
+    var owner = try network.Owner.init(allocator, networkConfig(.{ .initial_event_capacity = 2, .maximum_retained_events = 16, .maximum_processes = 8, .byte_cap = 1 << 20 }), identitySource(&fixture));
     defer owner.deinit();
     for (0..3) |index| try owner.observe(networkTransfer(@intCast(7 + index), 4096, .receive, .{ .ipv4 = .{ 192, 0, 2, 1 } }, 5), @intCast(1100 + index));
     var rows: [8]network.Row = undefined;

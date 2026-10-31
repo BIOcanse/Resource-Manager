@@ -11,6 +11,8 @@ internal static class ArSa
         MemoryProtectionTitle = "اتخذت حماية ذاكرة الجهاز إجراءً",
         MemoryProtectionProcessMessageFormat = "تم إنهاء {0} (PID {1}). حجم التفريغ: {2}. انقر لفتح Resource Manager.",
         MemoryProtectionTreeMessageFormat = "تم إنهاء شجرة العمليات التابعة لـ {0} (PID {1}). العمليات: {2}؛ حجم التفريغ: {3}. انقر لفتح Resource Manager.",
+        CrashReportTitle = "تقرير عن تعطل",
+        CrashReportMessage = "تعافى Resource Manager للتو من تعطل وحفظ ملف تفريغ التعطل. انقر لفتح Resource Manager.",
         AppName = "مدير الموارد",
         WindowTitleFormat = "مدير الموارد - {0}",
         TrayTooltipFormat = "مدير الموارد - {0}",

@@ -11,6 +11,8 @@ internal static class FrFr
         MemoryProtectionTitle = "La protection de la mémoire de l’hôte est intervenue",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) a été arrêté. Taille du vidage : {2}. Cliquez pour ouvrir Resource Manager.",
         MemoryProtectionTreeMessageFormat = "L’arborescence de processus sous {0} (PID {1}) a été arrêtée. Processus : {2} ; taille du vidage : {3}. Cliquez pour ouvrir Resource Manager.",
+        CrashReportTitle = "Rapport de plantage",
+        CrashReportMessage = "Resource Manager vient de reprendre après un plantage et a enregistré un vidage. Cliquez pour ouvrir Resource Manager.",
         AppName = "Gestionnaire de ressources",
         WindowTitleFormat = "Gestionnaire de ressources - {0}",
         TrayTooltipFormat = "Gestionnaire de ressources - {0}",

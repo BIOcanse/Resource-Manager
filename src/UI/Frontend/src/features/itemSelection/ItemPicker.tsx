@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, For, Index, Show } from "solid-
 import { createStore, produce } from "solid-js/store";
 import { StandardSelect } from "../../components/StandardSelect.tsx";
 import { uiText } from "../../text.ts";
-import { itemName, sourceName } from "./itemNames.ts";
+import { itemName, itemReasonText, sourceName } from "./itemNames.ts";
 import {
   addItem, catalogForUse, catalogGroups, findCatalogEntry, intervalPlaceholder, itemKey, parseIntervalText, removeItem,
   sourceOptions, syncPrecisions, updateItem,
@@ -92,6 +92,10 @@ export function ItemPicker(props: {
                           <span class="item-picker-entry-name">
                             <strong>{row.name}</strong>
                             <span>{row.entry.id}{row.entry.unit ? ` · ${row.entry.unit}` : ""}</span>
+                            {/* 这台机器上不适用或没有来源：仍可选，录制时整段记这个原因。 */}
+                            <Show when={row.entry.unavailableReason}>
+                              {(reason) => <span class="item-picker-entry-reason">{itemReasonText(reason())}</span>}
+                            </Show>
                           </span>
                           <Show when={!row.selected} fallback={<span class="item-picker-added">{copy().added}</span>}>
                             <button class="secondary" type="button" disabled={full()}

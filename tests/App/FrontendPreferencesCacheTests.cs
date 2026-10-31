@@ -374,14 +374,16 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     private static readonly string[] NotificationFields =
     [
         "updateNotify", "updateInApp", "updateSystem", "accessRequestNotify", "accessRequestInApp", "accessRequestSystem",
-        "memoryProtectionNotify", "memoryProtectionInApp", "memoryProtectionSystem"
+        "memoryProtectionNotify", "memoryProtectionInApp", "memoryProtectionSystem",
+        "crashReportNotify", "crashReportInApp", "crashReportSystem"
     ];
 
     private static FrontendNotifications AllNotifications(string value) => new()
     {
         UpdateNotify = value, UpdateInApp = value, UpdateSystem = value,
         AccessRequestNotify = value, AccessRequestInApp = value, AccessRequestSystem = value,
-        MemoryProtectionNotify = value, MemoryProtectionInApp = value, MemoryProtectionSystem = value
+        MemoryProtectionNotify = value, MemoryProtectionInApp = value, MemoryProtectionSystem = value,
+        CrashReportNotify = value, CrashReportInApp = value, CrashReportSystem = value
     };
 
     [Fact]
@@ -394,7 +396,9 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
             UpdateNotify = FrontendPoints.UpdateNotify, UpdateInApp = FrontendPoints.UpdateInApp, UpdateSystem = FrontendPoints.UpdateSystem,
             AccessRequestNotify = FrontendPoints.AccessRequestNotify, AccessRequestInApp = FrontendPoints.AccessRequestInApp,
             AccessRequestSystem = FrontendPoints.AccessRequestSystem, MemoryProtectionNotify = FrontendPoints.MemoryProtectionNotify,
-            MemoryProtectionInApp = FrontendPoints.MemoryProtectionInApp, MemoryProtectionSystem = FrontendPoints.MemoryProtectionSystem
+            MemoryProtectionInApp = FrontendPoints.MemoryProtectionInApp, MemoryProtectionSystem = FrontendPoints.MemoryProtectionSystem,
+            CrashReportNotify = FrontendPoints.CrashReportNotify, CrashReportInApp = FrontendPoints.CrashReportInApp,
+            CrashReportSystem = FrontendPoints.CrashReportSystem
         }, current);
         Assert.Equal(AllNotifications("on"), current);
         // A cache written before the section existed keeps its choices and gets the section's points.
@@ -411,7 +415,8 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     public void NotificationSectionRoundTripsThroughTheGlobalScope()
     {
         var owner = Owner();
-        var desired = AllNotifications("off") with { UpdateInApp = "on", AccessRequestSystem = "on", MemoryProtectionNotify = "on" };
+        var desired = AllNotifications("off") with { UpdateInApp = "on", AccessRequestSystem = "on", MemoryProtectionNotify = "on",
+            CrashReportSystem = "on" };
         owner.SaveGlobal(owner.Read() with { Notifications = desired });
         Assert.Equal(desired, Owner().Read().Notifications);
         var text = File.ReadAllText(Cache);
@@ -428,6 +433,9 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     [InlineData("""{"memoryProtectionNotify":""}""")]
     [InlineData("""{"memoryProtectionInApp":"yes"}""")]
     [InlineData("""{"memoryProtectionSystem":null}""")]
+    [InlineData("""{"crashReportNotify":"yes"}""")]
+    [InlineData("""{"crashReportInApp":""}""")]
+    [InlineData("""{"crashReportSystem":1}""")]
     [InlineData("""{"updateInApp":"on","notifiedVersion":"1.0.0"}""")]
     [InlineData("null")]
     public void InvalidNotificationSectionIsRejected(string section)

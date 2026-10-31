@@ -22,6 +22,7 @@ internal sealed class TrayBackendNotifications(
     internal const string MemoryProtectionKind = "memory-protection.action";
     internal const string UpdateAvailableKind = "update-available";
     internal const string AccessRequestKind = "access-request";
+    internal const string CrashReportKind = "crash-report";
 
     /// <summary>Called on the UI dispatch thread with each frame value of the notification subscription.</summary>
     internal void ObserveFrame(JsonElement value)
@@ -66,7 +67,7 @@ internal sealed class TrayBackendNotifications(
 
     private void Handle(Notification notification)
     {
-        var known = notification.Kind is MemoryProtectionKind or UpdateAvailableKind or AccessRequestKind;
+        var known = notification.Kind is MemoryProtectionKind or UpdateAvailableKind or AccessRequestKind or CrashReportKind;
         if (!known) return; // Unknown kinds are skipped without invalidating the frame.
         var language = readLanguage is null ? NativeUiText.Language : readLanguage();
         var text = NativeTextCatalog.For(language);
@@ -75,6 +76,7 @@ internal sealed class TrayBackendNotifications(
         {
             MemoryProtectionKind => MemoryProtectionMessage(notification.Facts, text, culture),
             UpdateAvailableKind => UpdateMessage(notification.Facts, text, culture),
+            CrashReportKind => CrashReportMessage(notification.Facts, text),
             _ => AccessRequestMessage(notification.Facts, text, culture)
         };
         if (message is null)
@@ -89,10 +91,12 @@ internal sealed class TrayBackendNotifications(
         {
             MemoryProtectionKind => settings.MemoryProtectionNotify == "on" && settings.MemoryProtectionSystem == "on",
             UpdateAvailableKind => settings.UpdateNotify == "on" && settings.UpdateSystem == "on",
+            CrashReportKind => settings.CrashReportNotify == "on" && settings.CrashReportSystem == "on",
             _ => settings.AccessRequestNotify == "on" && settings.AccessRequestSystem == "on"
         };
         // A click opens the main window through the tray's balloon click. The shell cannot open a specific frontend
-        // page yet, so an access request also opens just the main window rather than the trusted access page.
+        // page yet, so an access request also opens just the main window rather than the trusted access page. A crash report
+        // opens the main window too, where the web frontend shows its crash dialog for the unread records.
         if (enabled) showBalloon(message.Value.Title, message.Value.Body);
     }
 
@@ -129,6 +133,16 @@ internal sealed class TrayBackendNotifications(
         var fileName = Path.GetFileName(path);
         if (fileName.Length == 0) return null;
         return (text.AccessRequestTitle, string.Format(culture, text.AccessRequestMessageFormat, name, fileName));
+    }
+
+    private static (string Title, string Body)? CrashReportMessage(JsonElement? facts, NativeText text)
+    {
+        // docs/crash_dumps_2026-10-31.md: posted once by the service's startup discovery when it registered new records.
+        // The text is fixed; the facts are checked so a malformed notification is skipped like the other kinds.
+        if (facts is not { ValueKind: JsonValueKind.Object } value
+            || !TryCount(value, "count", out var count) || count < 1
+            || !TryString(value, "latestReportId", out var latest) || latest.Length == 0) return null;
+        return (text.CrashReportTitle, text.CrashReportMessage);
     }
 
     /// <summary>Binary units with one decimal from KiB up: 0 is "0 B", 1536 is "1.5 KiB" in the invariant culture.</summary>

@@ -13,6 +13,8 @@ internal interface IPresentFrameEtwSession : IDisposable
     void Process();
     void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds, int[]? processIds = null);
     void DisableProvider(Guid provider);
+    /// <summary>Asks an enabled provider for its rundown (CAPTURE_STATE), e.g. DC_Start of objects created earlier.</summary>
+    void CaptureState(Guid provider, ulong keywords);
     void Flush();
 }
 
@@ -22,19 +24,22 @@ internal sealed class TraceEventPresentFrameEtwSession : IPresentFrameEtwSession
     private readonly ILogger logger;
     private readonly TraceEventSession session;
     private readonly TraceEventSessionProcessingRuntime cleanup;
+    private readonly TimeSpan releaseTimeout;
     private ETWTraceEventSource? source;
 
-    internal TraceEventPresentFrameEtwSession(string name, EtwSessionBuffers buffers, ILogger logger)
+    internal TraceEventPresentFrameEtwSession(string name, EtwSessionBuffers buffers, ILogger logger,
+        ResourceManager.App.Domain.RuntimeSpecialization.FramePipelineOptions pipeline)
     {
         this.name = name;
         this.logger = logger;
+        releaseTimeout = TimeSpan.FromMilliseconds(pipeline.SessionReleaseTimeoutMilliseconds);
         session = new(name)
         {
             StopOnDispose = true,
             // The declared pool (present_session_buffers).
             BufferQuantumKB = buffers.BufferKib,
             BufferSizeMB = buffers.PoolMib,
-            EnableProviderTimeoutMSec = 2000
+            EnableProviderTimeoutMSec = pipeline.ProviderEnableTimeoutMilliseconds
         };
         cleanup = new(session, blockId: BlockUids.PresentFrameEtwSource);
     }
@@ -73,6 +78,7 @@ internal sealed class TraceEventPresentFrameEtwSession : IPresentFrameEtwSession
         session.DisableProvider(provider);
         Drops.DisableProvider(provider.ToString("D"));
     }
+    public void CaptureState(Guid provider, ulong keywords) => session.CaptureState(provider, keywords);
     public void Flush() => session.Flush();
     public void Dispose()
     {
@@ -87,7 +93,7 @@ internal sealed class TraceEventPresentFrameEtwSession : IPresentFrameEtwSession
         finally
         {
             drops?.Complete();
-            var release = cleanup.Stop(TimeSpan.FromSeconds(2));
+            var release = cleanup.Stop(releaseTimeout);
             if (!release.IsReleased) throw new IOException("Present session release was not confirmed: " + string.Join(" | ", release.Failures));
             drops?.ConfirmNativeRelease();
         }

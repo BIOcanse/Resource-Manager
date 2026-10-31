@@ -41,6 +41,9 @@ import type {
   AppPresetNumericSettingMode,
   AppSettings,
   AppSystemIntegrationSettings,
+  AppCrashDumpMode,
+  AppCrashDumpSettings,
+  CrashDumpDiagnostics,
   ServiceRecoveryDiagnostics,
   AppPalette,
   AppResourceBarFrameRateMode,
@@ -96,6 +99,8 @@ export interface SettingsStore {
   /** Set together with runtimeFailureCode: the rejected value's JSON path, when the backend names one. */
   runtimeFailurePath: Accessor<string | null>;
   serviceRecovery: Accessor<ServiceRecoveryDiagnostics | undefined>;
+  /** 崩溃转储的实际模式、来源和注册表实际值（后端随设置结果发出）；没有时为 undefined。 */
+  crashDumps: Accessor<CrashDumpDiagnostics | undefined>;
   activeSection: Accessor<SettingsSection>;
   setActiveSection: Setter<SettingsSection>;
   refresh: () => Promise<void>;
@@ -128,6 +133,13 @@ export interface SettingsStore {
   updateTaskManagerShortcutReplacement: (enabled: boolean) => void;
   updateAutoStart: (enabled: boolean) => void;
   updateServiceRecovery: (enabled: boolean, delay: number, count: number) => void;
+  /** 设置页草稿里的崩溃转储设置，随设置页保存。 */
+  updateCrashDumps: (crashDumps: AppCrashDumpSettings) => void;
+  /**
+   * 立即写回崩溃转储模式（请求卡片的“开启/不开启”、设置页的“一键关闭”）：只 PATCH systemIntegration.crashDumps.mode，
+   * 设置页草稿里的其他修改保留。设置正在保存、读取未就绪或写入失败时 reject。
+   */
+  chooseCrashDumpMode: (mode: AppCrashDumpMode) => Promise<void>;
   updateUpdateMode: (mode: AppUpdateMode) => void;
   updatePeriodicUpdateCheck: (enabled: boolean) => void;
   updateCheckInterval: (hours: number) => void;
@@ -190,6 +202,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setRuntimeFailurePath(path);
   });
   const [serviceRecovery, setServiceRecovery] = createSignal<ServiceRecoveryDiagnostics>();
+  const [crashDumps, setCrashDumps] = createSignal<CrashDumpDiagnostics>();
   const [activeSection, setActiveSection] = createSignal<SettingsSection>("runtimePolicy");
   const isDirty = createMemo(() => revision() !== null
     && !areSettingsEqual(settings(), draftSettings()));
@@ -315,6 +328,25 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     }
   }
 
+  async function chooseCrashDumpMode(mode: AppCrashDumpMode) {
+    const expectedRevision = revision();
+    if (loadState() !== "ready" || !expectedRevision || saveState() === "saving" || saveState() === "conflict") {
+      throw new Error(uiText.misc.saveSettingsFailed);
+    }
+    try {
+      const result = await saveAppSettingsPatch(options.requestClient, expectedRevision,
+        { systemIntegration: { crashDumps: { mode } } });
+      if (classifySettingsApplicationOutcome(result.runtimeApplicationDisposition) === "rejected") {
+        throw new Error(uiText.misc.settingsNotCommitted);
+      }
+      acceptCommitted(result, "preserve-draft");
+    } catch (error) {
+      // 别处先改了设置：收下新版本（草稿照留），这次写入算失败，由用户再点一次。
+      if (error instanceof AppSettingsRevisionConflictError) acceptCommitted(error.result, "preserve-draft");
+      throw error;
+    }
+  }
+
   async function reapply() {
     if (loadState() !== "ready" || saveState() !== "partial") {
       return;
@@ -404,6 +436,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setRuntimeCapabilityConstrainedPaths(snapshot.data.runtimeCapabilityConstrainedPaths ?? []);
     setRuntimeFailure(snapshot.data.runtimeFailureCode ?? null, snapshot.data.runtimeFailurePath ?? null);
     setServiceRecovery(snapshot.data.serviceRecovery ?? undefined);
+    setCrashDumps(snapshot.data.crashDumps ?? undefined);
     setLoadState(nextLoadState);
   }
 
@@ -497,6 +530,8 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     runtimeFailureCode,
     runtimeFailurePath,
     serviceRecovery,
+    crashDumps,
+    chooseCrashDumpMode,
     activeSection,
     setActiveSection,
     frontendNotifications,
@@ -627,6 +662,10 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       restartAfterCrashEnabled: enabled,
       crashRestartDelaySeconds: normalizeInteger(delay, 1, 3600, current.crashRestartDelaySeconds ?? 10),
       crashRestartCount: normalizeInteger(count, 1, 10, current.crashRestartCount ?? 3)
+    })),
+    updateCrashDumps: (crashDumps) => updateSystemIntegration((current) => ({
+      ...current,
+      crashDumps: normalizeCrashDumpSettings(crashDumps)
     })),
     updateAutoStart: (enabled) => updateSystemIntegration((systemIntegration) => ({
       ...systemIntegration,
@@ -856,7 +895,8 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       crashRestartCount: normalizeInteger(settings?.systemIntegration?.crashRestartCount, 1, 10, 3),
       autoStartEnabled: settings?.systemIntegration?.autoStartEnabled === true,
       taskManagerShortcutReplacementEnabled: settings?.systemIntegration?.taskManagerShortcutReplacementEnabled === true,
-      hotkeys: normalizeEditableHotkeys(settings?.systemIntegration?.hotkeys)
+      hotkeys: normalizeEditableHotkeys(settings?.systemIntegration?.hotkeys),
+      crashDumps: normalizeCrashDumpSettings(settings?.systemIntegration?.crashDumps)
     },
     debug: normalizeDebugSettings(settings?.debug),
     publicService: {
@@ -883,10 +923,20 @@ const updateModes: readonly AppUpdateMode[] = ["off", "notify", "automatic"];
 /** 后端限制的自动检查间隔（小时）；设置页的输入框显示同一范围。 */
 export const updateCheckIntervalHours = { minimum: 24, maximum: 168, defaultValue: 24 } as const;
 
+/**
+ * 崩溃转储设置的取值（crash-reports wire-contract.md）：缺省 default、mini、5；份数至少 1，
+ * 上限是后端自由点（诊断里的 keepCountMaximum），由后端收敛，这里不写死。
+ */
+export function normalizeCrashDumpSettings(value?: AppCrashDumpSettings | null): AppCrashDumpSettings | undefined {
+  // Settings are decoded at the backend boundary. Missing data stays missing; only the backend supplies defaults.
+  return value ? { ...value } : undefined;
+}
+
 function notificationSwitches(value: AppNotificationSettings): AppNotificationSettings {
   return { updateNotify: value.updateNotify === "off" ? "off" : "on", updateInApp: value.updateInApp === "off" ? "off" : "on", updateSystem: value.updateSystem === "off" ? "off" : "on",
     accessRequestNotify: value.accessRequestNotify === "off" ? "off" : "on", accessRequestInApp: value.accessRequestInApp === "off" ? "off" : "on", accessRequestSystem: value.accessRequestSystem === "off" ? "off" : "on",
-    memoryProtectionNotify: value.memoryProtectionNotify === "off" ? "off" : "on", memoryProtectionInApp: value.memoryProtectionInApp === "off" ? "off" : "on", memoryProtectionSystem: value.memoryProtectionSystem === "off" ? "off" : "on" };
+    memoryProtectionNotify: value.memoryProtectionNotify === "off" ? "off" : "on", memoryProtectionInApp: value.memoryProtectionInApp === "off" ? "off" : "on", memoryProtectionSystem: value.memoryProtectionSystem === "off" ? "off" : "on",
+    crashReportNotify: value.crashReportNotify === "off" ? "off" : "on", crashReportInApp: value.crashReportInApp === "off" ? "off" : "on", crashReportSystem: value.crashReportSystem === "off" ? "off" : "on" };
 }
 
 function normalizeLmStudioEndpoint(endpoint?: string | null): string {

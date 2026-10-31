@@ -11,6 +11,8 @@ internal static class TrTr
         MemoryProtectionTitle = "Ana bilgisayar bellek koruması işlem yaptı",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) sonlandırıldı. Döküm boyutu: {2}. Resource Manager uygulamasını açmak için tıklayın.",
         MemoryProtectionTreeMessageFormat = "{0} (PID {1}) altındaki işlem ağacı sonlandırıldı. İşlemler: {2}; döküm boyutu: {3}. Resource Manager uygulamasını açmak için tıklayın.",
+        CrashReportTitle = "Çökme raporu",
+        CrashReportMessage = "Resource Manager bir çökmeden yeni kurtuldu ve çökme dökümünü kaydetti. Resource Manager uygulamasını açmak için tıklayın.",
         AppName = "Kaynak Yöneticisi",
         WindowTitleFormat = "Kaynak Yöneticisi - {0}",
         TrayTooltipFormat = "Kaynak Yöneticisi - {0}",

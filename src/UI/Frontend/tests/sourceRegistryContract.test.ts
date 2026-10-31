@@ -27,7 +27,11 @@ assert.match(
   /subscriptionChannel\.dispose\(\)[\s\S]*sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(runtime, /sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(sources, /subscriptionChannel:\s*BackendSubscriptionChannel/);
-assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 20);
+assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 21);
+// Crash history joins the existing push channel; the frontend neither scans nor polls for crashes.
+assert.match(sources, /crashReports:\s*new BackendCurrentValueSource<CrashReportList>/);
+assert.match(sources, /key:\s*"crash-reports\.list"/);
+assert.match(sources, /buildUrl:\s*\(\) => crashReportsSubscriptionPath/);
 // 内核泄漏报告只走统一订阅通道的推送（后端在报告变化时推送，没有采样间隔）。
 assert.match(sources, /kernelLeakReport:\s*new BackendCurrentValueSource/);
 assert.match(sources, /key:\s*"kernel-leaks\.report"/);

@@ -11,6 +11,8 @@ internal static class NbNo
         MemoryProtectionTitle = "Minnebeskyttelsen på verten grep inn",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) ble avsluttet. Dumpstørrelse: {2}. Klikk for å åpne Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Prosesstreet under {0} (PID {1}) ble avsluttet. Prosesser: {2}; dumpstørrelse: {3}. Klikk for å åpne Resource Manager.",
+        CrashReportTitle = "Krasjrapport",
+        CrashReportMessage = "Resource Manager har nettopp gjenopprettet seg etter et krasj og lagret en krasjdump. Klikk for å åpne Resource Manager.",
         AppName = "Ressursbehandling",
         WindowTitleFormat = "Ressursbehandling - {0}",
         TrayTooltipFormat = "Ressursbehandling - {0}",

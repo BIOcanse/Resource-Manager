@@ -4,6 +4,7 @@ using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.ReadWrite.Windows.Frames;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -11,7 +12,8 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 /// <summary>
 /// 按进程采集 Present 帧时间。独立 ETW 会话，不并入内核会话：内核会话在订阅变化或丢事件时会整体重启，
 /// 高频的 Present 事件不能连累其他采集。订阅活动由上级决策节点判断；运行入口独占会话的取得和释放。
-/// 事件口径见 docs/performance_overlay_and_targeted_report_2026-10-02.md 的“第 1 片合同”。
+/// 事件口径见 docs/performance_overlay_and_targeted_report_2026-10-02.md 的“第 1 片合同”；
+/// 帧管线的上限和间隔来自 frame_pipeline 自由点（<see cref="FramePipelineOptions"/>）。
 /// </summary>
 public sealed partial class PresentFrameEtwSource(
     ILogger<PresentFrameEtwSource> logger,
@@ -19,6 +21,7 @@ public sealed partial class PresentFrameEtwSource(
     BusinessBlockDiagnosticsRegistry diagnostics,
     NativeEtwSessionAvailability availability,
     Func<EtwSessionBuffers> readSessionBuffers,
+    Func<FramePipelineOptions> readPipeline,
     IEtwConsumerThreadObserver? consumerThreadObserver = null)
     : IFrameTimingObservationSource, IBusinessBlock, IDisposable
 {
@@ -28,11 +31,15 @@ public sealed partial class PresentFrameEtwSource(
     internal static readonly Guid KernelProcessProvider = new("22FB2CD6-0E7B-422B-A0C7-2FAD1FD0E716");
     internal static readonly Guid Win32kProvider = new("8C416C79-D49B-4F01-A467-E56D3AA8234C");
     private const ulong RuntimeEventsKeyword = 0x2;
+    private const ulong DxgiObjectsKeyword = 0x1;
     private const ulong GraphicsKernelDisplayKeyword = 0x4000000008000001;
     private const ulong Win32kDisplayKeyword = 0x8000000400001000;
     private const ulong KernelProcessKeyword = 0x10;
+    private const int DxgiSwapChainStart = 10;
+    private const int DxgiSwapChainRundown = 12;
     private const int DxgiPresentStart = 42;
     private const int DxgiPresentStop = 43;
+    private const int DxgiResizeBuffersStop = 46;
     private const int DxgiMultiplaneOverlayPresentStart = 55;
     private const int DxgiMultiplaneOverlayPresentStop = 56;
     private const int Direct3D9PresentStart = 1;
@@ -46,10 +53,10 @@ public sealed partial class PresentFrameEtwSource(
     private const int Win32kTokenCompositionSurfaceObject = 201;
     private const int Win32kTokenStateChanged = 301;
     private const uint FlipImmediate = 2;
+    // DXGI_PRESENT_TEST: the runtime only tests the swap chain; nothing is displayed.
+    private const uint DxgiPresentTest = 1;
     private const int ProcessStart = 1;
     private const int ProcessStop = 2;
-    // 帧事件量小，实时缓冲很久才会写满；定时冲刷把投递延迟限制在这个间隔内（叠加层按 250–500 ms 刷新）。
-    internal static readonly TimeSpan FlushInterval = TimeSpan.FromMilliseconds(250);
 
     private readonly object lifecycle = new();
     private readonly Func<string, IPresentFrameEtwSession> createSession = name =>
@@ -57,13 +64,16 @@ public sealed partial class PresentFrameEtwSource(
         ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
             ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner, name);
         // The buffer pool is read when each session is created.
-        return new TraceEventPresentFrameEtwSession(name, readSessionBuffers(), logger);
+        return new TraceEventPresentFrameEtwSession(name, readSessionBuffers(), logger, readPipeline());
     };
     private readonly TimeProvider timeProvider = TimeProvider.System;
     private readonly Func<GpuPlacementProcessInstance, bool> isCurrentGraphicsApiProcess =
         static process => ReadProcessStartKey(process.ProcessId) == (long)process.ProcessStartKey;
+    private readonly IInjectedOverlaySizeReader injectedSizes = new InjectedOverlaySectionSizeReader();
     private readonly object gate = new();
-    private PresentFrameLedger ledger = new(ReadProcessStartKey);
+    // Created when the first frame lease starts a capture, with the limits published at that moment.
+    private PresentFrameLedger? ledger;
+    private FramePipelineOptions? pipeline;
     private readonly HashSet<FrameSubscription> frameSubscriptions = [];
     private int frameLeases;
     private long nextHolderId;
@@ -81,27 +91,40 @@ public sealed partial class PresentFrameEtwSource(
         Func<string, IPresentFrameEtwSession> createSession,
         TimeProvider? timeProvider = null,
         IEtwConsumerThreadObserver? consumerThreadObserver = null,
-        Func<GpuPlacementProcessInstance, bool>? isCurrentGraphicsApiProcess = null)
-        : this(logger, controller, diagnostics, availability, InjectedSessionBuffers, consumerThreadObserver)
+        Func<GpuPlacementProcessInstance, bool>? isCurrentGraphicsApiProcess = null,
+        Func<FramePipelineOptions>? readPipeline = null,
+        IInjectedOverlaySizeReader? injectedSizes = null)
+        : this(logger, controller, diagnostics, availability, InjectedSessionBuffers,
+            readPipeline ?? (static () => Monitoring.MonitoringSettings.ProductDefaults.FramePipeline), consumerThreadObserver)
     {
         this.createSession = createSession;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         if (isCurrentGraphicsApiProcess is not null) this.isCurrentGraphicsApiProcess = isCurrentGraphicsApiProcess;
+        if (injectedSizes is not null) this.injectedSizes = injectedSizes;
     }
 
     // An injected session creator sizes its own sessions; nothing reads this.
     private static EtwSessionBuffers InjectedSessionBuffers()
         => throw new InvalidOperationException("Injected Present sessions own their buffer pool.");
 
-    public IDisposable AcquireSubscription()
+    // Read once per instance, on first use: a changed declaration rebuilds the backend.
+    private FramePipelineOptions Pipeline => Volatile.Read(ref pipeline) ?? Interlocked.CompareExchange(ref pipeline, readPipeline(), null) ?? pipeline!;
+
+    public TimeSpan Retention => Pipeline.Retention;
+
+    public IDisposable AcquireSubscription() => AcquireSubscription(FrameSubscriptionRequest.AllProcesses);
+
+    public IFrameSubscriptionLease AcquireSubscription(FrameSubscriptionRequest request)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        request = SnapshotRequest(request);
         lock (lifecycle)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             var wasActive = HasActiveSubscriptions;
             var previousFrameLeases = frameLeases;
-            var subscription = new FrameSubscription(this, ++nextHolderId);
-            frameSubscriptions.Add(subscription);
+            var subscription = new FrameSubscription(this, ++nextHolderId, request);
+            lock (gate) frameSubscriptions.Add(subscription);
             Volatile.Write(ref frameLeases, frameSubscriptions.Count);
             UpdateOutputProviders(previousFrameLeases);
             PublishSubscriptionActivity(wasActive);
@@ -123,76 +146,186 @@ public sealed partial class PresentFrameEtwSource(
 
     public FrameTimingSnapshot? Read(TimeSpan window)
     {
+        if (window <= TimeSpan.Zero || window > Retention) throw new ArgumentOutOfRangeException(nameof(window));
+        FrameTimingSnapshot snapshot;
+        (int ProcessId, long ProcessStartKey)[] injectedTargets;
         lock (gate)
         {
-            if (!hasFrameCurrent) return null;
+            if (frameSubscriptions.Count != 0 && captureFailure is { } failure)
+                return new FrameTimingSnapshot(timeProvider.GetUtcNow(), window, false, []) { IncompleteReasons = [failure] };
+            if (!hasFrameCurrent || ledger is null) return null;
             var now = frameStoppedAt != 0 ? frameStoppedAt : timeProvider.GetUtcNow().UtcTicks;
-            var complete = (lastLossUtcTicks == 0 || lastLossUtcTicks < now - window.Ticks)
-                && ledger.IsComplete(now - window.Ticks);
-            return new FrameTimingSnapshot(
-                new DateTimeOffset(now, TimeSpan.Zero), window, complete, ledger.Read(now, window))
+            var reasons = IncompleteReasons(now - window.Ticks);
+            snapshot = new FrameTimingSnapshot(
+                new DateTimeOffset(now, TimeSpan.Zero), window, reasons.Count == 0, ledger.Read(now, window))
             {
                 LastPresents = ledger.ReadLastPresents(now, window),
-                DisplayStreams = ledger.ReadDisplayStreams(now, window)
+                DisplayStreams = ledger.ReadDisplayStreams(now, window),
+                IncompleteReasons = reasons
             };
+            var resolutionTargets = ResolutionTargets();
+            injectedTargets = [.. snapshot.Processes
+                .Where(process => resolutionTargets.Contains(process.ProcessId))
+                .Select(static process => (process.ProcessId, process.ProcessStartKey))];
         }
+
+        return injectedTargets.Length == 0 ? snapshot : AttachInjectedSizes(snapshot, injectedTargets);
+    }
+
+    // The injected module's section is opened outside the aggregation gate, only for processes a lease
+    // named with the output-resolution tier.
+    private FrameTimingSnapshot AttachInjectedSizes(FrameTimingSnapshot snapshot, (int ProcessId, long ProcessStartKey)[] targets)
+    {
+        var sizes = new Dictionary<(int, long), FrameOutputResolution>();
+        foreach (var target in targets)
+        {
+            if (injectedSizes.Read(target.ProcessId, target.ProcessStartKey, timeProvider.GetUtcNow()) is { } size) sizes[target] = size;
+        }
+
+        if (sizes.Count == 0) return snapshot;
+        return snapshot with
+        {
+            Processes = [.. snapshot.Processes.Select(process => sizes.TryGetValue((process.ProcessId, process.ProcessStartKey), out var size)
+                ? process with { OutputResolutions = [size] }
+                : process)]
+        };
     }
 
     public FrameIntervalBatch? ReadIntervals(DateTimeOffset after, DateTimeOffset through)
     {
-        if (through <= after || through - after > PresentFrameLedger.Retention)
+        if (through <= after || through - after > Retention)
         {
             throw new ArgumentOutOfRangeException(nameof(through));
         }
 
         lock (gate)
         {
-            if (!hasFrameCurrent) return null;
+            if (frameSubscriptions.Count != 0 && captureFailure is { } failure)
+                return new FrameIntervalBatch(through, false, []) { IncompleteReasons = [failure] };
+            if (!hasFrameCurrent || ledger is null) return null;
             var throughTicks = frameStoppedAt != 0 ? Math.Min(through.UtcTicks, frameStoppedAt) : through.UtcTicks;
+            var reasons = IncompleteReasons(after.UtcTicks);
             return new FrameIntervalBatch(through,
-                throughTicks == through.UtcTicks && (lastLossUtcTicks == 0 || lastLossUtcTicks < after.UtcTicks)
-                    && ledger.IsComplete(after.UtcTicks),
-                ledger.ReadIntervals(after.UtcTicks, throughTicks));
+                throughTicks == through.UtcTicks && reasons.Count == 0,
+                ledger.ReadIntervals(after.UtcTicks, throughTicks))
+            {
+                IncompleteReasons = reasons
+            };
         }
+    }
+
+    // Caller holds gate.
+    private List<string> IncompleteReasons(long afterUtcTicks)
+    {
+        var reasons = new List<string>(3);
+        if (lastLossUtcTicks != 0 && lastLossUtcTicks >= afterUtcTicks) reasons.Add(FrameTimingReasons.EventsLost);
+        if (ledger is not null) reasons.AddRange(ledger.IncompleteReasons(afterUtcTicks));
+        return reasons;
+    }
+
+    // Caller holds gate. Processes whose injected section size a lease asked for.
+    private HashSet<int> ResolutionTargets()
+    {
+        var targets = new HashSet<int>();
+        foreach (var subscription in frameSubscriptions)
+        {
+            var request = subscription.Request;
+            if ((request.Detail & FrameDetail.OutputResolution) != 0 && request.TargetProcessIds is { } ids) targets.UnionWith(ids);
+        }
+
+        return targets;
+    }
+
+    /// <summary>
+    /// DXGI/D3D9 PID filter: API-only observation filters to its processes; frame leases filter only when every
+    /// lease names targets and the union with API observation fits the declared cap. Null = whole machine;
+    /// empty = frame leases whose targets have no process now, so no runtime Present is needed.
+    /// </summary>
+    internal static int[]? ProcessFilter(bool frames, IReadOnlyList<FrameSubscriptionRequest> requests, int[] observedPids, int capacity)
+    {
+        if (capacity == 0) return null;
+        if (!frames) return observedPids.Length <= capacity ? observedPids : null;
+        if (requests.Any(static request => request.TargetProcessIds is null)) return null;
+        var union = requests.SelectMany(static request => request.TargetProcessIds!)
+            .Where(static pid => pid > 0).Concat(observedPids).Distinct().Order().ToArray();
+        return union.Length <= capacity ? union : null;
     }
 
     private void UpdateProviders(IPresentFrameEtwSession current, int? previousFrameLeases)
     {
         var run = activeRun!;
         int[] observedPids;
-        lock (gate) observedPids = graphicsApiSubscriptions.Where(item => item.NeedsEvents)
-            .Select(item => item.Process.ProcessId).Distinct().Order().ToArray();
+        FrameSubscriptionRequest[] requests;
+        lock (gate)
+        {
+            observedPids = graphicsApiSubscriptions.Where(item => item.NeedsEvents)
+                .Select(item => item.Process.ProcessId).Distinct().Order().ToArray();
+            requests = [.. frameSubscriptions.Select(static item => item.Request)];
+        }
         var pending = observedPids.Length != 0;
         var frames = frameLeases > 0;
-        // ETW permits at most eight PIDs per provider. Above that limit preserve
-        // coverage on this session; frame consumers also require all processes.
-        var pidFilter = !frames && observedPids.Length <= 8 ? observedPids : null;
+        var detail = requests.Aggregate(FrameDetail.None, static (all, request) => all | request.Detail);
+        var resolution = frames && (detail & FrameDetail.OutputResolution) != 0;
+        bool gpu;
+        lock (gate)
+        {
+            if (frameLeases > 0 && (previousFrameLeases is null or 0))
+            {
+                ledger = new PresentFrameLedger(ReadProcessStartKey, Pipeline.LedgerLimits);
+                lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
+                frameStoppedAt = 0; hasFrameCurrent = false; captureFailure = null;
+                gpuTracker = null;
+            }
+            gpu = PrepareGpuTier(requests);
+        }
+        var pidFilter = ProcessFilter(frames, requests, observedPids, Pipeline.ProcessFilterCapacity);
         var desired = new List<ProviderSelection>();
         // Only the frame ledger consumes machine-wide process lifetimes.
         // API-only attempts validate birth on the matching Present instead.
         if (frames) desired.Add(new(KernelProcessProvider, TraceEventLevel.Informational, KernelProcessKeyword,
             [ProcessStart, ProcessStop]));
-        if (frames || pending)
+        if ((frames || pending) && pidFilter is not { Length: 0 })
         {
-            desired.Add(new(DxgiProvider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
-                frames ? [DxgiPresentStart, DxgiPresentStop, DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop]
+            desired.Add(new(DxgiProvider, TraceEventLevel.Verbose,
+                resolution ? RuntimeEventsKeyword | DxgiObjectsKeyword : RuntimeEventsKeyword,
+                frames
+                    ? resolution
+                        ? [DxgiSwapChainStart, DxgiSwapChainRundown, DxgiPresentStart, DxgiPresentStop, DxgiResizeBuffersStop,
+                            DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop]
+                        : [DxgiPresentStart, DxgiPresentStop, DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop]
                     : [DxgiPresentStart, DxgiMultiplaneOverlayPresentStart], pidFilter));
             desired.Add(new(Direct3D9Provider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
                 frames ? [Direct3D9PresentStart, Direct3D9PresentStop] : [Direct3D9PresentStart], pidFilter));
         }
         if (frames)
         {
-            desired.Add(new(GraphicsKernelProvider, TraceEventLevel.Verbose, GraphicsKernelDisplayKeyword,
-                [GraphicsKernelPresent, GraphicsKernelFlip, GraphicsKernelFlipMultiPlaneOverlay,
-                    GraphicsKernelQueuePacketStart, GraphicsKernelMmioFlip, GraphicsKernelVSyncDpc]));
+            int[] displayEvents = [GraphicsKernelPresent, GraphicsKernelFlip, GraphicsKernelFlipMultiPlaneOverlay,
+                GraphicsKernelQueuePacketStart, GraphicsKernelMmioFlip, GraphicsKernelVSyncDpc];
+            desired.Add(new(GraphicsKernelProvider, TraceEventLevel.Verbose,
+                GraphicsKernelDisplayKeyword | (gpu ? GpuObjectKeywords : 0),
+                gpu ? [.. displayEvents, .. GpuEventIds] : displayEvents));
             desired.Add(new(Win32kProvider, TraceEventLevel.Verbose, Win32kDisplayKeyword,
                 [Win32kTokenCompositionSurfaceObject, Win32kTokenStateChanged]));
         }
+        var captures = new List<ProviderSelection>();
         foreach (var selection in desired)
         {
-            if (run.Providers.TryGetValue(selection.Provider, out var old) && old.SameFilter(selection)) continue;
-            current.EnableProvider(selection.Provider, selection.Level, selection.Keywords, selection.EventIds, selection.ProcessIds);
+            var hadObjects = run.Providers.TryGetValue(selection.Provider, out var old)
+                && (old.Keywords & DxgiObjectsKeyword) != 0;
+            if (old is not null && old.SameFilter(selection) && !(selection.Provider == GraphicsKernelProvider && gpuRundownNeeded)) continue;
+            try
+            {
+                current.EnableProvider(selection.Provider, selection.Level, selection.Keywords, selection.EventIds, selection.ProcessIds);
+            }
+            catch (Exception error) when (selection.Provider == GraphicsKernelProvider && gpu)
+            {
+                RefuseGpuTier(current, selection, error);
+                continue;
+            }
             run.Providers[selection.Provider] = selection;
+            if (selection.Provider == GraphicsKernelProvider) gpuEventsEnabled = gpu;
+            if ((selection.Provider == DxgiProvider && resolution && !hadObjects)
+                || (selection.Provider == GraphicsKernelProvider && gpu && gpuRundownNeeded)) captures.Add(selection);
         }
         foreach (var provider in run.Providers.Keys.Where(provider => !desired.Any(item => item.Provider == provider)).ToArray())
         {
@@ -203,19 +336,30 @@ public sealed partial class PresentFrameEtwSource(
         {
             lock (gate)
             {
-                // Events buffered before both providers were enabled cannot fill this window.
-                ledger = new PresentFrameLedger(ReadProcessStartKey);
+                // Coverage starts only after every display provider has finished enabling. Request
+                // rundown below this boundary so its metadata is not rejected as pre-coverage data.
                 lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
-                frameStoppedAt = 0;
                 hasFrameCurrent = true;
             }
         }
-        else if (frameLeases == 0 && previousFrameLeases > 0)
+        foreach (var selection in captures)
+        {
+            try
+            {
+                current.CaptureState(selection.Provider, selection.Provider == DxgiProvider ? DxgiObjectsKeyword : GpuObjectKeywords);
+                if (selection.Provider == GraphicsKernelProvider) gpuRundownNeeded = false;
+            }
+            catch (Exception error) when (selection.Provider == GraphicsKernelProvider && gpu)
+            {
+                RefuseGpuTier(current, selection, error);
+            }
+        }
+        if (frameLeases == 0 && previousFrameLeases > 0)
         {
             lock (gate)
             {
                 frameStoppedAt = timeProvider.GetUtcNow().UtcTicks;
-                ledger.ReleaseCorrelationState();
+                ledger?.ReleaseCorrelationState();
             }
         }
     }
@@ -236,7 +380,8 @@ public sealed partial class PresentFrameEtwSource(
                     {
                         observedEventsLost = lost;
                         lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
-                        ledger.EventsLost();
+                        ledger?.EventsLost();
+                        gpuTracker?.Refuse(FrameTimingReasons.EventsLost);
                     }
             }
         }
@@ -250,6 +395,7 @@ public sealed partial class PresentFrameEtwSource(
     {
         bool used;
         var graphicsApiUseChanged = false;
+        var gpuUseChanged = false;
         // The session already dropped consumed events without a matching fixed layout.
         if (PresentFrameEtwLayouts.Catalog.Find(data, out var payload) is EtwFixedLayoutStatus.UnknownVersion or EtwFixedLayoutStatus.ShortPayload)
             return false;
@@ -261,8 +407,13 @@ public sealed partial class PresentFrameEtwSource(
                 graphicsApiUseChanged = used = ApplyGraphicsApiEvent(data, payload);
                 // An API-only lease uses the supplied process birth identity. It does not
                 // invoke the frame ledger's process-handle fallback for other processes.
-                if (Volatile.Read(ref frameLeases) > 0
-                    && data.TimeStamp.ToUniversalTime().Ticks >= lastLossUtcTicks) used |= Apply(ledger, data, payload);
+                if (Volatile.Read(ref frameLeases) > 0 && ledger is { } current
+                    && data.TimeStamp.ToUniversalTime().Ticks >= lastLossUtcTicks)
+                {
+                    used |= ApplyGpuEvent(current, data, payload);
+                    used |= Apply(current, data, payload);
+                    gpuUseChanged = gpuTracker?.Failure is not null && gpuEventsEnabled;
+                }
             }
             catch (Exception error)
             {
@@ -273,7 +424,19 @@ public sealed partial class PresentFrameEtwSource(
         // Provider mutation/authority notification must leave the aggregation
         // gate first: a control callback can bind or drain on another thread.
         if (graphicsApiUseChanged) SynchronizeGraphicsApiUse();
+        if (gpuUseChanged)
+        {
+            lock (lifecycle) UpdateOutputProviders(frameLeases);
+        }
         return used;
+    }
+
+    private static FrameSubscriptionRequest SnapshotRequest(FrameSubscriptionRequest request)
+    {
+        if ((request.Detail & ~(FrameDetail.OutputResolution | FrameDetail.GpuFrames)) != 0
+            || request.TargetProcessIds?.Any(static pid => pid <= 0) == true)
+            throw new ArgumentOutOfRangeException(nameof(request));
+        return new(request.TargetProcessIds is null ? null : request.TargetProcessIds.Distinct().Order().ToArray(), request.Detail);
     }
 
     private sealed record ProviderSelection(Guid Provider, TraceEventLevel Level, ulong Keywords, int[] EventIds, int[]? ProcessIds = null)
@@ -316,16 +479,31 @@ public sealed partial class PresentFrameEtwSource(
             var threadId = data.ThreadID;
             target.Present(data.ProcessID, FramePresentSource.Dxgi,
                 payload.Pointer((int)PresentFrameField.pIDXGISwapChain), timestamp, threadId, timestampQpc, qpcFrequency);
-            if (id == DxgiMultiplaneOverlayPresentStart
-                || (payload.UInt32((int)PresentFrameField.Flags) & 1) != 0)
+            if (id == DxgiMultiplaneOverlayPresentStart)
             {
-                target.UnsupportedDisplayPath(data.ProcessID, threadId);
+                target.UnsupportedDisplayPath(data.ProcessID, threadId, FrameTimingReasons.MultiplaneOverlayNotParsed);
+            }
+            else if ((payload.UInt32((int)PresentFrameField.Flags) & DxgiPresentTest) != 0)
+            {
+                target.UnsupportedDisplayPath(data.ProcessID, threadId, FrameTimingReasons.TestPresentNotDisplayed);
             }
         }
         else if (data.ProviderGuid == DxgiProvider && id is DxgiPresentStop or DxgiMultiplaneOverlayPresentStop)
         {
             target.PresentStopped(data.ProcessID, data.ThreadID, timestamp, timestampQpc,
                 payload.Int32((int)PresentFrameField.Result));
+        }
+        else if (data.ProviderGuid == DxgiProvider && id is DxgiSwapChainStart or DxgiSwapChainRundown)
+        {
+            target.SwapChainSize(data.ProcessID, payload.Pointer((int)PresentFrameField.pIDXGISwapChain),
+                payload.UInt32((int)PresentFrameField.Width), payload.UInt32((int)PresentFrameField.Height), timestamp);
+        }
+        else if (data.ProviderGuid == DxgiProvider && id == DxgiResizeBuffersStop)
+        {
+            // ReturnValue is the HRESULT of ResizeBuffers; a failed resize keeps the old size.
+            if (payload.Int32((int)PresentFrameField.ReturnValue) < 0) return false;
+            target.SwapChainSize(data.ProcessID, payload.Pointer((int)PresentFrameField.pIDXGISwapChain),
+                payload.UInt32((int)PresentFrameField.NewWidth), payload.UInt32((int)PresentFrameField.NewHeight), timestamp);
         }
         else if (data.ProviderGuid == Direct3D9Provider && id == Direct3D9PresentStart)
         {
@@ -348,7 +526,7 @@ public sealed partial class PresentFrameEtwSource(
         }
         else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelFlipMultiPlaneOverlay)
         {
-            target.UnsupportedDisplayPath(data.ProcessID, data.ThreadID,
+            target.UnsupportedDisplayPath(data.ProcessID, data.ThreadID, FrameTimingReasons.MultiplaneOverlayNotParsed,
                 payload.UInt32((int)PresentFrameField.VidPnSourceId));
         }
         else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelQueuePacketStart)
@@ -377,7 +555,10 @@ public sealed partial class PresentFrameEtwSource(
             target.TrackWin32kToken(data.ProcessID, data.ThreadID,
                 payload.UInt64((int)PresentFrameField.CompositionSurfaceLuid),
                 payload.UInt64((int)PresentFrameField.PresentCount),
-                payload.UInt64((int)PresentFrameField.BindId));
+                payload.UInt64((int)PresentFrameField.BindId),
+                timestamp,
+                payload.UInt32((int)PresentFrameField.DestWidth),
+                payload.UInt32((int)PresentFrameField.DestHeight));
         }
         else if (data.ProviderGuid == Win32kProvider && id == Win32kTokenStateChanged)
         {

@@ -21,6 +21,7 @@
 //!   it, so the re-check cannot move ahead of the copy. Equal sequences mean the
 //!   copy holds one round's values; anything else means retry.
 //! On x86-64 these acquire loads and release stores are plain moves.
+const policy = @import("NativePolicy.g.zig");
 const std = @import("std");
 const layout = @import("layout.zig");
 const Layout = layout.Layout;
@@ -37,7 +38,7 @@ const none = layout.none;
 /// a limit to `read`; this is the default they use. Each retry first issues a
 /// spin-loop hint; the limit keeps a reader from spinning on a writer that stays
 /// odd, so a read always returns.
-pub const default_retry_limit: u32 = 1000;
+pub const default_retry_limit: u32 = policy.shared_read_retry_limit;
 
 /// How a round ends.
 pub const Outcome = union(enum) {

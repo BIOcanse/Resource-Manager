@@ -32,7 +32,7 @@ internal sealed class WindowsRendererQualificationNativeApi : IRendererQualifica
         if (pointer == IntPtr.Zero) return default;
         try
         {
-            if (count <= 0 || count > 4096) return default;
+            if (count <= 0 || count > GpuPlacementSettings.ProductDefaults.Injection.MaximumRendererQualificationRows) return default;
             var arguments = new string[count];
             for (var index = 0; index < count; index++) arguments[index] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(pointer, index * IntPtr.Size)) ?? string.Empty;
             return new(arguments);

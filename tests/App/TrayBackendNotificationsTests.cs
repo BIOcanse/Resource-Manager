@@ -19,6 +19,7 @@ public sealed class TrayBackendNotificationsTests : IDisposable
     private const string Memory = TrayBackendNotifications.MemoryProtectionKind;
     private const string Update = TrayBackendNotifications.UpdateAvailableKind;
     private const string Access = TrayBackendNotifications.AccessRequestKind;
+    private const string Crash = TrayBackendNotifications.CrashReportKind;
     private static readonly JsonSerializerOptions WireJson = new(JsonSerializerDefaults.Web);
 
     private readonly string root = Path.Combine(Path.GetTempPath(), "rm-tray-backend-notifications-" + Guid.NewGuid().ToString("N"));
@@ -122,6 +123,8 @@ public sealed class TrayBackendNotificationsTests : IDisposable
             nameof(FrontendNotifications.MemoryProtectionInApp)),
         Update => (nameof(FrontendNotifications.UpdateNotify), nameof(FrontendNotifications.UpdateSystem),
             nameof(FrontendNotifications.UpdateInApp)),
+        Crash => (nameof(FrontendNotifications.CrashReportNotify), nameof(FrontendNotifications.CrashReportSystem),
+            nameof(FrontendNotifications.CrashReportInApp)),
         _ => (nameof(FrontendNotifications.AccessRequestNotify), nameof(FrontendNotifications.AccessRequestSystem),
             nameof(FrontendNotifications.AccessRequestInApp))
     };
@@ -130,6 +133,7 @@ public sealed class TrayBackendNotificationsTests : IDisposable
     [InlineData(Memory)]
     [InlineData(Update)]
     [InlineData(Access)]
+    [InlineData(Crash)]
     public void MasterOffOnlyAdvancesTheRecord(string kind)
     {
         var (notify, _, _) = Switches(kind);
@@ -149,6 +153,7 @@ public sealed class TrayBackendNotificationsTests : IDisposable
     [InlineData(Memory)]
     [InlineData(Update)]
     [InlineData(Access)]
+    [InlineData(Crash)]
     public void WindowsChannelOffOnlyAdvancesTheRecord(string kind)
     {
         var (_, system, _) = Switches(kind);
@@ -163,6 +168,7 @@ public sealed class TrayBackendNotificationsTests : IDisposable
     [InlineData(Memory)]
     [InlineData(Update)]
     [InlineData(Access)]
+    [InlineData(Crash)]
     public void SwitchesAreReadAtTheMomentOfEachDecision(string kind)
     {
         var (notify, system, _) = Switches(kind);
@@ -189,6 +195,7 @@ public sealed class TrayBackendNotificationsTests : IDisposable
     [InlineData(Memory)]
     [InlineData(Update)]
     [InlineData(Access)]
+    [InlineData(Crash)]
     public void InAppSwitchHasNoEffect(string kind)
     {
         var (_, system, inApp) = Switches(kind);
@@ -491,6 +498,9 @@ public sealed class TrayBackendNotificationsTests : IDisposable
             nameof(FrontendNotifications.AccessRequestNotify) => current with { AccessRequestNotify = value },
             nameof(FrontendNotifications.AccessRequestSystem) => current with { AccessRequestSystem = value },
             nameof(FrontendNotifications.AccessRequestInApp) => current with { AccessRequestInApp = value },
+            nameof(FrontendNotifications.CrashReportNotify) => current with { CrashReportNotify = value },
+            nameof(FrontendNotifications.CrashReportSystem) => current with { CrashReportSystem = value },
+            nameof(FrontendNotifications.CrashReportInApp) => current with { CrashReportInApp = value },
             _ => throw new ArgumentOutOfRangeException(nameof(property), property, null)
         };
         owner.SaveGlobal(owner.Read() with { Notifications = next });
@@ -500,6 +510,7 @@ public sealed class TrayBackendNotificationsTests : IDisposable
     {
         Memory => TreeFacts(),
         Update => UpdateFacts("1.0.0"),
+        Crash => CrashFacts(),
         _ => AccessFacts()
     };
 
@@ -510,6 +521,32 @@ public sealed class TrayBackendNotificationsTests : IDisposable
         new { actionId = "action-2", targetKind = "processTree", name = "launcher.exe", processId = 100, recordCount = 7, bytesWritten = 1048576 };
 
     private static object UpdateFacts(string version) => new { version };
+
+    // docs/crash_dumps_2026-10-31.md: posted once by the service's startup discovery for its new crash records.
+    private static object CrashFacts() =>
+        new { count = 1, latestReportId = "20261030T152506Z-ResourceManager.exe-12345", program = "ResourceManager.exe", role = "service" };
+
+    [Fact]
+    public void ACrashReportShowsTheFixedRecoveryTextInTheShellLanguage()
+    {
+        Owner().RecordLastHandledNotificationSequence(0);
+        Consumer("zh-CN").ObserveFrame(Frame((1, Crash, CrashFacts())));
+        var shown = Assert.Single(balloons);
+        Assert.Equal(NativeTextCatalog.For("zh-CN").CrashReportTitle, shown.Title);
+        Assert.Equal(NativeTextCatalog.For("zh-CN").CrashReportMessage, shown.Message);
+    }
+
+    [Fact]
+    public void ACrashReportWithFactsThatDoNotDecodeIsSkippedButMovesTheRecord()
+    {
+        Owner().RecordLastHandledNotificationSequence(0);
+        Consumer().ObserveFrame(Frame(
+            (1, Crash, new { latestReportId = "x" }),
+            (2, Crash, new { count = 0, latestReportId = "x" }),
+            (3, Crash, new { count = 1, latestReportId = "" })));
+        Assert.Empty(balloons);
+        Assert.Equal(3, Owner().ReadLastHandledNotificationSequence());
+    }
 
     private static object AccessFacts() =>
         new { requestId = "request-1", name = "Example agent", observedExecutablePath = @"C:\Tools\agent.exe" };

@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Application.ResourceBreakdown;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Settings;
@@ -47,6 +48,9 @@ public static class TargetedRecordingItemCatalogRules
     // The target's total across every GPU: the sum of the per-GPU bars, usage capped at 100 %.
     public const string GpuUsageTotalId = "gpu.usage";
     public const string GpuVramTotalId = "gpu.vram";
+    // Per sample point, the reading of the GPU that carries most of the target's GPU usage (see TargetGpu).
+    public const string TargetGpuPrefix = "gpu.target.";
+    public static readonly IReadOnlyList<string> TargetGpuQuantities = ["usage", "temperature", "vram"];
 
     private static readonly (string Id, string Unit)[] BreakdownMetrics =
     [
@@ -65,8 +69,10 @@ public static class TargetedRecordingItemCatalogRules
     ];
 
     /// <summary>Union of frames, every metric catalog id (concrete sources are the catalog's candidate
-    /// fieldName@deviceIdentity ids) and the software breakdown metrics and fields. No catalog publishes a
-    /// natural interval today, so NaturalIntervalMs is null and the profile default applies.</summary>
+    /// fieldName@deviceIdentity ids), the target GPU items gpu.target.usage/temperature/vram and the software
+    /// breakdown metrics and fields. No catalog publishes a natural interval today, so NaturalIntervalMs is null
+    /// and the profile default applies. A metric the metric catalog marks not applicable to its device carries
+    /// UnavailableReason not-applicable; one with no candidate source carries no-source.</summary>
     public static IReadOnlyList<TargetedRecordingCatalogItem> Build(IReadOnlyList<MetricDefinition> metrics,
         IEnumerable<ProcessMetricFieldDefinition> fields)
     {
@@ -87,7 +93,10 @@ public static class TargetedRecordingItemCatalogRules
             if (!seen.Add((TargetedRecordingItemKinds.Metric, metric.Id.ToLowerInvariant()))) continue;
             items.Add(new(TargetedRecordingItemKinds.Metric, metric.Id, metric.Unit,
                 metric.CandidateSources.Select(static source => $"{source.FieldName}@{source.DeviceIdentity}")
-                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(), null, TargetedRecordingItemUses.Both));
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(), null, TargetedRecordingItemUses.Both)
+            {
+                UnavailableReason = MetricUnavailableReason(metric)
+            });
         }
         foreach (var (id, unit) in BreakdownMetrics)
             Add(items, seen, id, unit, ResourceBreakdownSource);
@@ -102,9 +111,59 @@ public static class TargetedRecordingItemCatalogRules
         }
         if (items.Any(static item => IsGpuPart(item, ".usage"))) Add(items, seen, GpuUsageTotalId, "%", ResourceBreakdownSource);
         if (items.Any(static item => IsGpuPart(item, ".vram"))) Add(items, seen, GpuVramTotalId, "B", ResourceBreakdownSource);
+        // The target GPU is resolved from the per-GPU usage bars, so the items exist where those bars exist.
+        if (items.Any(static item => IsGpuPart(item, ".usage")))
+            foreach (var quantity in TargetGpuQuantities)
+                AddTargetGpu(items, seen, quantity);
         foreach (var field in fields)
             Add(items, seen, field.Name, field.Unit, field.SourceId);
         return items;
+    }
+
+    public static bool IsTargetGpu(string id)
+        => id.StartsWith(TargetGpuPrefix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The quantity a gpu.target.* id reads (usage, temperature, vram).</summary>
+    public static string TargetGpuQuantity(string id) => id[TargetGpuPrefix.Length..].ToLowerInvariant();
+
+    /// <summary>The metric id of one GPU's quantity: gpu.N.quantity.</summary>
+    public static string GpuMetricId(int gpu, string quantity) => $"{ResourceBreakdownMetricIds.GpuPrefix}{gpu}.{quantity}";
+
+    /// <summary>The per-GPU usage bar ids that resolve a gpu.target.* item's GPU.</summary>
+    public static IReadOnlyList<string> TargetGpuUsageParts(IReadOnlyList<TargetedRecordingCatalogItem> catalog)
+        => TotalParts(GpuUsageTotalId, catalog) ?? [];
+
+    private static string? MetricUnavailableReason(MetricDefinition metric)
+        => !metric.Selectable && metric.DisabledReason is { Domain: BackendMessageDomains.Metric } reason
+            && reason.Code == BackendMessageCodes.Metric.NotApplicable ? TargetedRecordingGapReasons.NotApplicable
+            : metric.CandidateSources.Count == 0 ? TargetedRecordingGapReasons.NoSource : null;
+
+    /// <summary>gpu.target.quantity reads gpu.N.quantity of the resolved GPU. Auto source only: the concrete
+    /// source follows the GPU. Not applicable when every GPU's metric is; no source when no GPU has a readable one.</summary>
+    private static void AddTargetGpu(List<TargetedRecordingCatalogItem> items, HashSet<(string, string)> seen, string quantity)
+    {
+        var id = TargetGpuPrefix + quantity;
+        if (!seen.Add((TargetedRecordingItemKinds.Metric, id))) return;
+        var parts = items.Where(item => item.Kind == TargetedRecordingItemKinds.Metric && IsGpuMetric(item.Id, quantity)).ToArray();
+        var reason = parts.Length == 0 ? TargetedRecordingGapReasons.NoSource
+            : parts.Any(static part => part.UnavailableReason is null) ? null
+            : parts.All(static part => part.UnavailableReason == TargetedRecordingGapReasons.NotApplicable)
+                ? TargetedRecordingGapReasons.NotApplicable : TargetedRecordingGapReasons.NoSource;
+        var unit = parts.FirstOrDefault()?.Unit ?? (quantity == "vram" ? "B" : quantity == "usage" ? "%" : "°C");
+        items.Add(new(TargetedRecordingItemKinds.Metric, id, unit, [], null, TargetedRecordingItemUses.Both)
+        {
+            UnavailableReason = reason
+        });
+    }
+
+    private static bool IsGpuMetric(string id, string quantity)
+    {
+        if (!id.StartsWith(ResourceBreakdownMetricIds.GpuPrefix, StringComparison.OrdinalIgnoreCase)) return false;
+        var rest = id.AsSpan(ResourceBreakdownMetricIds.GpuPrefix.Length);
+        var dot = rest.IndexOf('.');
+        return dot > 0 && int.TryParse(rest[..dot], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out _)
+            && rest[(dot + 1)..].Equals(quantity, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>The per-GPU breakdown ids a GPU total sums, or null when the id is not a GPU total.</summary>

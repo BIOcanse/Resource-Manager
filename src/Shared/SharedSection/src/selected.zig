@@ -25,6 +25,7 @@
 //!
 //! The mapping is the caller's: a binding that maps another region, or
 //! another incarnation at the same address, zeroes the copy's tables first.
+const policy = @import("NativePolicy.g.zig");
 const std = @import("std");
 const layout = @import("layout.zig");
 const seqlock = @import("seqlock.zig");
@@ -40,7 +41,7 @@ const none = layout.none;
 /// Most sources one selection holds, named and added together. A call works
 /// the selection out in a list of this size on its stack (4 KiB), since it
 /// allocates nothing.
-pub const selected_source_limit: u32 = 1024;
+pub const selected_source_limit: u32 = policy.selected_source_limit;
 
 /// What a selection needs: bytes of data, and entries of `sources` and
 /// `source_indices` (`source_count`) and of `positions` and

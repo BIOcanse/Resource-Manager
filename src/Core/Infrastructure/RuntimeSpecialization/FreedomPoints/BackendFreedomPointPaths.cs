@@ -11,10 +11,13 @@ internal static class BackendFreedomPointPaths
     public const string OverlayFrameWindow = "resource-manager/backend/monitoring/build/simple/2";
     public const string TargetedRecording = "resource-manager/backend/monitoring/build/complex/3";
     public const string KernelEtwLimits = "resource-manager/backend/monitoring/build/complex/4";
+    public const string NativeBuildPolicy = "resource-manager/backend/monitoring/build/complex/8";
     public const string VidMmSessionBuffers = "resource-manager/backend/monitoring/build/complex/5";
     public const string GpuAllocationSessionBuffers = "resource-manager/backend/monitoring/build/complex/6";
     public const string PresentSessionBuffers = "resource-manager/backend/monitoring/build/complex/7";
+    public const string FramePipeline = "resource-manager/backend/monitoring/build/complex/9";
     public const string ServiceRecoveryCounterReset = "resource-manager/backend/service_recovery/build/simple/0";
+    public const string CrashReports = "resource-manager/backend/service_recovery/build/complex/0";
     public const string CpuResidencyObservationWindow = "resource-manager/backend/monitoring/cpu_residency/build/simple/0";
     public const string CpuResidencyExecutionTimeSource = "resource-manager/backend/monitoring/cpu_residency/build/complex/0";
     public const string SchedulerSamplingInterval = "resource-manager/backend/scheduling/build/simple/0";
@@ -57,4 +60,23 @@ internal static class BackendFreedomPointPaths
     public const string MemoryCpuTierFileQuerySessionsMax = "resource-manager/backend/memory_cpu_tiers/build/complex/9";
     public const string MemoryCpuTierFileQuerySessionsPrebuilt = "resource-manager/backend/memory_cpu_tiers/build/complex/10";
     public const string MemoryCpuTierFileQueryIdleSessions = "resource-manager/backend/memory_cpu_tiers/build/complex/11";
+    public const string RollbackStateStore = "resource-manager/backend/scheduling/build/complex/0";
+    public const string AuthorityRetirement = "resource-manager/backend/scheduling/build/complex/1";
+    public const string IdealProcessorWorkspace = "resource-manager/backend/scheduling/build/complex/2";
+    public const string NormalRestoration = "resource-manager/backend/scheduling/build/complex/3";
+    public const string EffectValidationLease = "resource-manager/backend/scheduling/build/complex/4";
+    public const string MemoryCleanupValidationEvidence = "resource-manager/backend/scheduling/build/complex/5";
+    public const string SmartRecordHistory = "resource-manager/backend/scheduling/build/complex/6";
+    public const string OptimizationStorageLimits = "resource-manager/backend/scheduling/build/complex/7";
+    public const string LegacyAffinity = "resource-manager/backend/scheduling/build/complex/8";
+    public const string OptimizationRuntimeLimits = "resource-manager/backend/scheduling/build/complex/9";
+    public const string GpuPlacementProcessHistory = "resource-manager/backend/scheduling/placement/build/complex/1";
+    public const string ExternalGpuRuntime = "resource-manager/backend/scheduling/placement/build/complex/2";
+    public const string GpuInjection = "resource-manager/backend/scheduling/placement/build/complex/3";
+    public const string GpuLaunchReports = "resource-manager/backend/scheduling/placement/build/complex/4";
+    public const string SoftwareKindBaseScores = "resource-manager/backend/scoring/build/complex/1";
+    public const string CoreClassScores = "resource-manager/backend/scoring/cpu/build/complex/1";
+    public const string ReportSampleInterval = "resource-manager/backend/reports/build/simple/1";
+    public const string ReportRuleLimits = "resource-manager/backend/reports/build/complex/0";
+    public const string SqliteVacuum = "resource-manager/backend/persistence/build/complex/0";
 }

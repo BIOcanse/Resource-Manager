@@ -1071,8 +1071,19 @@ public sealed partial class WindowsResourceBreakdownSampler(
         if (needsObservedNetwork) processFieldParts.Add(CreateProcessNetworkFields(cleanMetricIds, processSamples, networkAttribution.ObservedTraffic));
         if (definitions.Any(static field => field.DatasetId == SamplingDatasetIds.ProcessBasicMetrics))
             processFieldParts.Add(CreateProcessBasicFields(definitions, processSamples, processCapturedAt, processBatch.CpuInterval, ioRates));
+        // Shared GPU memory is read only for the adapters a subscribed field names; with none, nothing opens.
+        var currentAdapterKeys = adapters.Select(static adapter => (adapter.Index, Luid: WindowsGpuAdapterIdentity.Pack(adapter.Luid))).ToHashSet();
+        var sharedSystemMemoryLuids = definitions.Where(static field => field.Code == ProcessMetricFieldCode.GpuSharedSystemMemoryBytes
+                && ProcessGpuResourceFieldRegistry.IsBound(field)
+                && field.GpuIndex is not null && field.GpuAdapterLuid is not null)
+            .Where(field => currentAdapterKeys.Contains((field.GpuIndex!.Value, field.GpuAdapterLuid!.Value)))
+            .Select(static field => field.GpuAdapterLuid!.Value).Distinct().ToArray();
+        var sharedSystemMemory = sharedSystemMemoryLuids.Length > 0
+            ? processGpuReader.ReadSharedSystemMemory(sharedSystemMemoryLuids, processSamples.Where(static sample => sample.StartKey is > 0)
+                .Select(static sample => new ProcessInstanceKey(sample.ProcessId, sample.StartKey!.Value)).ToArray())
+            : ProcessGpuSharedSystemMemoryRead.NotRequested;
         var gpuFacts = CreateGpuResourceFacts(definitions.Where(ProcessGpuResourceFieldRegistry.IsBound).ToArray(),
-            processSamples, adapters, pdhRead, engineFields, allocationReading, hardwareSnapshot);
+            processSamples, adapters, pdhRead, engineFields, allocationReading, hardwareSnapshot, sharedSystemMemory);
         if (gpuFacts.Fields.Fields.Count > 0)
         {
             processFieldParts.Add(gpuFacts.Fields);

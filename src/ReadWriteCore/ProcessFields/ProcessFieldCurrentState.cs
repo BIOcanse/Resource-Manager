@@ -25,7 +25,8 @@ public sealed class ProcessFieldCurrentState
         lock (Gate)
         {
             if (dataset != ProcessMetricDatasetIds.BasicMetrics && dataset != ProcessMetricDatasetIds.ObservedNetworkTraffic && dataset != ProcessMetricDatasetIds.ObservedPhysicalDiskIo && dataset != ProcessMetricDatasetIds.GpuResidency && dataset != ProcessMetricDatasetIds.ObservedCpuResidency
-                && dataset != ProcessGpuResourceFieldRegistry.AllocationDatasetId) return;
+                && dataset != ProcessGpuResourceFieldRegistry.AllocationDatasetId
+                && dataset != ProcessGpuResourceFieldRegistry.SharedSystemMemoryDatasetId) return;
             parts[dataset] = value; revision++;
         }
     }

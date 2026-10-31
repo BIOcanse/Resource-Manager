@@ -11,6 +11,8 @@ internal static class ItIt
         MemoryProtectionTitle = "La protezione della memoria dell’host è intervenuta",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) è stato terminato. Dimensione del dump: {2}. Fai clic per aprire Resource Manager.",
         MemoryProtectionTreeMessageFormat = "L’albero dei processi sotto {0} (PID {1}) è stato terminato. Processi: {2}; dimensione del dump: {3}. Fai clic per aprire Resource Manager.",
+        CrashReportTitle = "Segnalazione di arresto anomalo",
+        CrashReportMessage = "Resource Manager si è appena ripreso da un arresto anomalo e ha salvato un dump. Fai clic per aprire Resource Manager.",
         AppName = "Gestione risorse",
         WindowTitleFormat = "Gestione risorse - {0}",
         TrayTooltipFormat = "Gestione risorse - {0}",

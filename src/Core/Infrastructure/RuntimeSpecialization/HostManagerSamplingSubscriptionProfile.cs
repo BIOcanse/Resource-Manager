@@ -61,7 +61,7 @@ internal sealed class HostManagerSamplingSubscriptionRoleHotPublishProfile
 internal sealed class HostManagerSamplingSubscriptionHotPublishProfile
 {
     [JsonPropertyName("physical_memory_residual_minimum_interval_ms")]
-    public long PhysicalMemoryResidualMinimumIntervalMilliseconds { get; init; } = 10000;
+    public required long PhysicalMemoryResidualMinimumIntervalMilliseconds { get; init; }
 
     [JsonPropertyName("roles")]
     public required HostManagerSamplingSubscriptionRoleHotPublishProfile[] Roles { get; init; }

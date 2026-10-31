@@ -87,7 +87,22 @@ public static class AppSettingsNormalizer
             systemIntegration?.AutoStartEnabled ?? false,
             systemIntegration?.RestartAfterCrashEnabled ?? true,
             Math.Clamp(systemIntegration?.CrashRestartDelaySeconds ?? 10, 1, 3600),
-            Math.Clamp(systemIntegration?.CrashRestartCount ?? 3, 1, 10));
+            Math.Clamp(systemIntegration?.CrashRestartCount ?? 3, 1, 10))
+        {
+            CrashDumps = NormalizeCrashDumps(systemIntegration?.CrashDumps)
+        };
+    }
+
+    // Unknown values return to the record defaults; the keep count's upper bound is the compiled freedom point
+    // service_recovery.crash_reports.keep_count_maximum, applied where the plan is known (CrashDumpSettings).
+    private static AppCrashDumpSettings NormalizeCrashDumps(AppCrashDumpSettings? crashDumps)
+    {
+        var defaults = new AppCrashDumpSettings();
+        if (crashDumps is null) return defaults;
+        return new AppCrashDumpSettings(
+            AppCrashDumpModes.IsSupported(crashDumps.Mode) ? crashDumps.Mode : defaults.Mode,
+            AppCrashDumpTypes.IsSupported(crashDumps.DumpType) ? crashDumps.DumpType : defaults.DumpType,
+            crashDumps.KeepCount >= 1 ? crashDumps.KeepCount : defaults.KeepCount);
     }
 
     private static AppLocalPublicServiceSettings NormalizePublicService(

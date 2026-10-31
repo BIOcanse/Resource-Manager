@@ -40,8 +40,13 @@ internal sealed class OperatingSystemTargetedProcessLiveness : ITargetedProcessL
 /// target process set and the end reason.</summary>
 /// <remarks>Start: the software must have a running attributed process (same matcher as the target list),
 /// else 409 target-not-running and no report. Items come from the named profile, the request's own list, or
-/// the default profile. While recording, the target process set is checked every sample_interval_ms and
-/// processes that appear are merged into the known set. End reasons: user-stop; max-duration;
+/// the default profile. An item the live catalog lacks, or marks not applicable or without a source, gets one
+/// whole-span gap with that reason and no subscription. Every other item is its own named subscription on the
+/// subscription chain at its own interval, and each publication delivered to it is one point at the source's
+/// observation time; a source silent for more than not_refreshed_interval_percent of the interval leaves a gap
+/// with the reason it gave, else source-not-refreshed. The recording's process-check subscription
+/// (sample_interval_ms) drives the rest: each of its publications merges new target processes, checks exits,
+/// reads frames and stores the points delivered since. End reasons: user-stop; max-duration;
 /// all-processes-exited (the recording saw a target process and every known process has been gone for
 /// exit_confirmation_ticks checks); no-process (the recording's own checks never saw a target process in
 /// no_process_ticks ready checks; its samples are discarded and only the status is kept).</remarks>
@@ -49,8 +54,8 @@ public sealed class TargetedRecordingService(
     TargetedRecordingStore store,
     ISoftwareRegistryView softwareRegistry,
     IFrameTimingObservationSource frames,
-    IResourceBreakdownObservationSource breakdown,
-    IMetricSnapshotObservationSource metrics,
+    IResourceBreakdownPushSource breakdown,
+    IMetricSnapshotPushSource metrics,
     ITargetedRecordingProcessReader targets,
     ITargetedRecordingItemCatalog catalog,
     ILogger<TargetedRecordingService> logger,
@@ -63,12 +68,10 @@ public sealed class TargetedRecordingService(
     public static readonly int MaximumDurationLimitSeconds =
         MonitoringSettings.ProductDefaults.TargetedRecording.MaximumDurationLimitSeconds;
 
-    /// <summary>The frame ledger keeps about 30 seconds; reads stay inside it.</summary>
-    private static readonly TimeSpan FrameWindow = TimeSpan.FromSeconds(29);
-    private static readonly TimeSpan FrameReadLag = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan FrameTailDelay = TimeSpan.FromMilliseconds(300);
-
     private readonly TargetedRecordingOptions settings = options ?? MonitoringSettings.ProductDefaults.TargetedRecording;
+    private TimeSpan FrameWindow => MonitoringSettings.ProductDefaults.FramePipeline.RecordingFrameWindow;
+    private TimeSpan FrameReadLag => MonitoringSettings.ProductDefaults.FramePipeline.RecordingFrameReadLag;
+    private TimeSpan FrameTailDelay => TimeSpan.FromMilliseconds(settings.FrameTailDelayMilliseconds);
     private readonly ITargetedProcessLiveness processLiveness = liveness ?? OperatingSystemTargetedProcessLiveness.Instance;
     private readonly SemaphoreSlim control = new(1, 1);
     private ActiveRecording? active;
@@ -166,7 +169,7 @@ public sealed class TargetedRecordingService(
                 MaximumReportKib = settings.MaximumReportKib
             };
             await store.CreateAsync(header, cancellationToken);
-            var current = new ActiveRecording(header, equivalentIds, plans);
+            var current = new ActiveRecording(header, equivalentIds, plans, liveCatalog);
             active = current;
             current.Worker = RunAsync(current);
             return header;
@@ -248,7 +251,7 @@ public sealed class TargetedRecordingService(
             profile = stored.FirstOrDefault(static item => item.Id == TargetedRecordingProfileDefaults.DefaultProfileId)
                 ?? stored.FirstOrDefault() ?? TargetedRecordingProfileDefaults.CreateDefaultProfile();
         }
-        // Saved profile items that this machine does not offer right now are recorded as unavailable gaps.
+        // Saved profile items this machine does not offer, or offers without a source, are recorded as whole-span gaps.
         return new ItemSelection(profile.Id, profile.Name, profile.DefaultIntervalMs, profile.Items.ToArray());
     }
 
@@ -263,7 +266,11 @@ public sealed class TargetedRecordingService(
         return new ItemPlan(item, entry, entry?.Unit ?? string.Empty, interval, origin)
         {
             BreakdownRequest = item.Kind == TargetedRecordingItemKinds.Software
-                ? TargetedRecordingItemReader.SoftwareRequest(item, liveCatalog) : null
+                ? TargetedRecordingItemReader.SoftwareRequest(item, liveCatalog)
+                : TargetedRecordingItemCatalogRules.IsTargetGpu(item.Id)
+                    ? TargetedRecordingItemReader.SoftwareRequest(
+                        new(TargetedRecordingItemKinds.Software, TargetedRecordingItemCatalogRules.GpuUsageTotalId), liveCatalog)
+                    : null
         };
     }
 
@@ -280,130 +287,77 @@ public sealed class TargetedRecordingService(
         var sizeLimited = false;
         var maximumBytes = (long)settings.MaximumReportKib * 1024;
         var reason = TargetedRecordingStopReasons.Interrupted;
-        var leases = new List<IDisposable>();
+        IDisposable? framesLease = null;
+        var consumers = new List<Task>();
         var framesPlan = current.Plans.FirstOrDefault(static plan => plan.Item.Kind == TargetedRecordingItemKinds.Frames);
-        var sampled = current.Plans.Where(static plan => plan.Item.Kind != TargetedRecordingItemKinds.Frames
-            && plan.Catalog is not null).ToArray();
+        var sampled = current.Plans.Where(static plan => plan.IsSampled).ToArray();
         var controlInterval = TimeSpan.FromMilliseconds(settings.SampleIntervalMilliseconds);
+        var maximumDuration = TimeSpan.FromSeconds(current.Header.MaximumDurationSeconds);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(current.Cancellation.Token);
         try
         {
-            // Every item is its own named holder; the process check is one more holder.
-            leases.Add(breakdown.AcquireSubscription($"targeted-recording:{id}:processes",
-                TargetedRecordingTargets.ProcessRequest, controlInterval));
-            if (framesPlan?.Catalog is not null) leases.Add(frames.AcquireSubscription());
+            stop.CancelAfter(maximumDuration);
+            if (framesPlan?.Catalog is not null) framesLease = frames.AcquireSubscription();
+            // Every item is its own named subscription; its consumer turns the publications delivered to it into points.
             foreach (var plan in sampled)
             {
-                var interval = TimeSpan.FromMilliseconds(plan.IntervalMs!.Value);
-                if (plan.Item.Kind == TargetedRecordingItemKinds.Metric)
-                {
-                    leases.Add(metrics.AcquireSubscription($"targeted-recording:{id}:metric:{plan.Item.Id}",
-                        TargetedRecordingItemReader.MetricRequest(plan.Item), interval));
-                }
-                else
-                {
-                    leases.Add(breakdown.AcquireSubscription($"targeted-recording:{id}:software:{plan.Item.Id}",
-                        plan.BreakdownRequest, interval));
-                }
-                plan.NextDue = startedAt + interval;
+                plan.Begin(startedAt, settings.NotRefreshedIntervalPercent, settings.ActualIntervalSamples);
+                consumers.Add(ConsumeAsync(current, plan, stop.Token));
             }
 
-            var tick = sampled.Select(static plan => TimeSpan.FromMilliseconds(plan.IntervalMs!.Value))
-                .Append(controlInterval).Min();
-            var nextControl = startedAt + controlInterval;
-            using var timer = new PeriodicTimer(tick);
-            while (await timer.WaitForNextTickAsync(current.Cancellation.Token))
+            // The process check is one more named subscription; its publications drive the recording.
+            await foreach (var snapshot in breakdown.SubscribeAsync($"targeted-recording:{id}:processes",
+                TargetedRecordingTargets.ProcessRequest, controlInterval, stop.Token))
             {
                 var now = DateTimeOffset.UtcNow;
-                var nowMs = (long)(now - startedAt).TotalMilliseconds;
-                if (now >= nextControl)
+                var running = TargetedRecordingTargets.Processes(snapshot, current.EquivalentIds);
+                current.Merge(running, now);
+                if (running.Count > 0)
                 {
-                    nextControl = now + controlInterval;
-                    var snapshot = breakdown.ReadLatest(TargetedRecordingTargets.ProcessRequest);
-                    var running = TargetedRecordingTargets.Processes(snapshot, current.EquivalentIds);
-                    current.Merge(running, now);
-                    if (running.Count > 0)
-                    {
-                        seenProcess = true;
-                        readyWithoutProcess = 0;
-                    }
-                    else if (snapshot.Sampling.Status == ResourceBreakdownSamplingStatuses.Ready)
-                    {
-                        readyWithoutProcess++;
-                    }
-                    goneTicks = current.MarkExited(processLiveness, now) ? goneTicks + 1 : 0;
-
-                    if (framesPlan?.Catalog is not null)
-                    {
-                        var through = now - FrameReadLag;
-                        if (through - cursor > FrameWindow)
-                        {
-                            framesPlan.AddGap(MillisecondsSince(startedAt, cursor),
-                                MillisecondsSince(startedAt, through - FrameWindow), TargetedRecordingGapReasons.FramesWindowSkipped);
-                            cursor = through - FrameWindow;
-                            incomplete = true;
-                        }
-                        var batch = frames.ReadIntervals(cursor, through);
-                        if (batch is null || !batch.Complete)
-                        {
-                            framesPlan.AddGap(MillisecondsSince(startedAt, cursor), MillisecondsSince(startedAt, through),
-                                TargetedRecordingGapReasons.FramesIncomplete);
-                            incomplete = true;
-                        }
-                        var matching = current.MatchingFrames(batch);
-                        if (matching.Count > 0 && storedBytes >= maximumBytes)
-                        {
-                            framesPlan.AddGap(MillisecondsSince(startedAt, cursor), MillisecondsSince(startedAt, through),
-                                TargetedRecordingGapReasons.SizeLimit);
-                            sizeLimited = true;
-                        }
-                        else if (matching.Count > 0)
-                        {
-                            storedBytes += await store.AppendAsync(id, matching, null, CancellationToken.None);
-                            framesPlan.RecordFrames(matching);
-                        }
-                        cursor = through;
-                    }
+                    seenProcess = true;
+                    readyWithoutProcess = 0;
                 }
-
-                var software = new Dictionary<string, double?>(StringComparer.OrdinalIgnoreCase);
-                var system = new Dictionary<string, double?>(StringComparer.OrdinalIgnoreCase);
-                var due = new List<ItemPlan>();
-                foreach (var plan in sampled)
+                else if (snapshot.Sampling.Status == ResourceBreakdownSamplingStatuses.Ready)
                 {
-                    if (now < plan.NextDue) continue;
-                    var interval = TimeSpan.FromMilliseconds(plan.IntervalMs!.Value);
-                    plan.NextDue = plan.NextDue + interval > now ? plan.NextDue + interval : now + interval;
-                    var reading = plan.Item.Kind == TargetedRecordingItemKinds.Metric
-                        ? TargetedRecordingItemReader.ReadMetric(metrics, plan.Item, plan.LastObservedAt)
-                        : TargetedRecordingItemReader.ReadSoftware(breakdown.ReadLatest(plan.BreakdownRequest!),
-                            plan.Item, current.EquivalentIds, current.IsKnown);
-                    if (reading.Value is not { } number)
-                    {
-                        if (!reading.Unchanged)
-                            plan.AddGap(nowMs, nowMs + plan.IntervalMs.Value, TargetedRecordingGapReasons.ValueUnavailable);
-                        continue;
-                    }
-                    if (plan.Item.Kind == TargetedRecordingItemKinds.Metric) plan.LastObservedAt = reading.ObservedAt;
-                    if (reading.ActualSource is { } actualSource) plan.ActualSources.Add(actualSource);
-                    if (plan.Unit.Length == 0 && reading.Unit is { Length: > 0 } readUnit) plan.Unit = readUnit;
-                    (plan.Item.Kind == TargetedRecordingItemKinds.Metric ? system : software)[plan.Item.Id] = number;
-                    due.Add(plan);
+                    readyWithoutProcess++;
                 }
-                if (due.Count > 0)
+                goneTicks = current.MarkExited(processLiveness, now) ? goneTicks + 1 : 0;
+
+                if (framesPlan?.Catalog is not null)
                 {
-                    var sample = new TargetedResourceSample(now, software, system, []);
-                    if (storedBytes + TargetedRecordingSize.EstimateRowBytes(sample) > maximumBytes)
+                    var through = now - FrameReadLag;
+                    if (through - cursor > FrameWindow)
                     {
-                        foreach (var plan in due)
-                            plan.AddGap(nowMs, nowMs + plan.IntervalMs!.Value, TargetedRecordingGapReasons.SizeLimit);
+                        framesPlan.AddGap(MillisecondsSince(startedAt, cursor),
+                            MillisecondsSince(startedAt, through - FrameWindow), TargetedRecordingGapReasons.FramesWindowSkipped);
+                        cursor = through - FrameWindow;
+                        incomplete = true;
+                    }
+                    var batch = frames.ReadIntervals(cursor, through);
+                    if (batch is null || !batch.Complete)
+                    {
+                        framesPlan.AddGap(MillisecondsSince(startedAt, cursor), MillisecondsSince(startedAt, through),
+                            TargetedRecordingGapReasons.FramesIncomplete);
+                        incomplete = true;
+                    }
+                    var matching = current.MatchingFrames(batch);
+                    if (matching.Count > 0 && storedBytes >= maximumBytes)
+                    {
+                        framesPlan.AddGap(MillisecondsSince(startedAt, cursor), MillisecondsSince(startedAt, through),
+                            TargetedRecordingGapReasons.SizeLimit);
                         sizeLimited = true;
                     }
-                    else
+                    else if (matching.Count > 0)
                     {
-                        storedBytes += await store.AppendAsync(id, [], sample, CancellationToken.None);
-                        foreach (var plan in due) plan.RecordPoint(nowMs);
+                        storedBytes += await store.AppendAsync(id, matching, null, CancellationToken.None);
+                        framesPlan.RecordFrames(matching);
                     }
+                    cursor = through;
                 }
+
+                (storedBytes, var limited) = await StorePointsAsync(id, startedAt, sampled, storedBytes, maximumBytes);
+                sizeLimited |= limited;
+                if (consumers.FirstOrDefault(static consumer => consumer.IsFaulted) is { } faulted) await faulted;
 
                 if (seenProcess && goneTicks >= settings.ExitConfirmationTicks)
                 {
@@ -415,11 +369,16 @@ public sealed class TargetedRecordingService(
                     reason = TargetedRecordingStopReasons.NoProcess;
                     break;
                 }
-                if (now - startedAt >= TimeSpan.FromSeconds(current.Header.MaximumDurationSeconds))
+                if (now - startedAt >= maximumDuration)
                 {
                     reason = TargetedRecordingStopReasons.MaximumDuration;
                     break;
                 }
+            }
+            if (reason == TargetedRecordingStopReasons.Interrupted)
+            {
+                // The process-check stream ended without a stop condition: the end comes from the user or the duration.
+                await Task.Delay(Timeout.Infinite, stop.Token);
             }
 
             if (current.Cancellation.IsCancellationRequested)
@@ -427,9 +386,9 @@ public sealed class TargetedRecordingService(
                 reason = current.StopReason;
             }
         }
-        catch (OperationCanceledException) when (current.Cancellation.IsCancellationRequested)
+        catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
-            reason = current.StopReason;
+            reason = current.Cancellation.IsCancellationRequested ? current.StopReason : TargetedRecordingStopReasons.MaximumDuration;
         }
         catch (Exception error)
         {
@@ -439,6 +398,15 @@ public sealed class TargetedRecordingService(
         }
         finally
         {
+            // Release every item subscription before the frame tail and the final store.
+            await stop.CancelAsync();
+            try { await Task.WhenAll(consumers); }
+            catch (OperationCanceledException) { }
+            catch (Exception error)
+            {
+                logger.LogError(error, "Targeted recording {RecordingId} item subscription failed.", id);
+                incomplete = true;
+            }
             try
             {
                 if (framesPlan?.Catalog is not null && reason != TargetedRecordingStopReasons.NoProcess)
@@ -463,17 +431,23 @@ public sealed class TargetedRecordingService(
                         }
                     }
                 }
+                if (reason != TargetedRecordingStopReasons.NoProcess)
+                {
+                    (storedBytes, var limited) = await StorePointsAsync(id, startedAt, sampled, storedBytes, maximumBytes);
+                    sizeLimited |= limited;
+                }
             }
             catch (Exception error)
             {
-                logger.LogError(error, "Targeted recording {RecordingId} could not read its final frames.", id);
+                logger.LogError(error, "Targeted recording {RecordingId} could not store its final frames and points.", id);
                 incomplete = true;
             }
-            foreach (var lease in leases) lease.Dispose();
+            framesLease?.Dispose();
 
             try
             {
-                var endMs = MillisecondsSince(startedAt, DateTimeOffset.UtcNow);
+                var endedAt = DateTimeOffset.UtcNow;
+                var endMs = MillisecondsSince(startedAt, endedAt);
                 if (reason == TargetedRecordingStopReasons.NoProcess)
                 {
                     // No target process was ever observed while recording: keep the status, not a report.
@@ -482,7 +456,7 @@ public sealed class TargetedRecordingService(
                     incomplete = true;
                 }
                 if (sizeLimited || reason is TargetedRecordingStopReasons.Interrupted) incomplete = true;
-                var items = current.Plans.Select(plan => plan.FinalReport(endMs,
+                var items = current.Plans.Select(plan => plan.FinalReport(endedAt, endMs,
                     reason == TargetedRecordingStopReasons.NoProcess)).ToArray();
                 await store.FinishAsync(id, reason, incomplete, items, current.ProcessList(), storedBytes,
                     CancellationToken.None);
@@ -507,6 +481,145 @@ public sealed class TargetedRecordingService(
         }
     }
 
+    /// <summary>Stores the points delivered since the last call, one row per observation time (the software and
+    /// system values observed at that instant), in time order. Rows over the size cap become size-limit gaps.</summary>
+    private async Task<(long StoredBytes, bool SizeLimited)> StorePointsAsync(string id, DateTimeOffset startedAt,
+        IReadOnlyList<ItemPlan> sampled, long storedBytes, long maximumBytes)
+    {
+        var rows = new SortedDictionary<DateTimeOffset, PointRow>();
+        foreach (var plan in sampled)
+        foreach (var (at, value) in plan.Drain())
+        {
+            if (!rows.TryGetValue(at, out var row))
+            {
+                row = new PointRow();
+                rows.Add(at, row);
+            }
+            (plan.Item.Kind == TargetedRecordingItemKinds.Metric ? row.System : row.Software)[plan.Item.Id] = value;
+            row.Plans.Add(plan);
+        }
+        var sizeLimited = false;
+        foreach (var (at, row) in rows)
+        {
+            var atMs = MillisecondsSince(startedAt, at);
+            var sample = new TargetedResourceSample(at, row.Software, row.System, []);
+            if (storedBytes + TargetedRecordingSize.EstimateRowBytes(sample) > maximumBytes)
+            {
+                foreach (var plan in row.Plans)
+                    plan.AddGap(atMs, atMs + plan.IntervalMs!.Value, TargetedRecordingGapReasons.SizeLimit);
+                sizeLimited = true;
+                continue;
+            }
+            storedBytes += await store.AppendAsync(id, [], sample, CancellationToken.None);
+            foreach (var plan in row.Plans) plan.RecordPoint(atMs);
+        }
+        return (storedBytes, sizeLimited);
+    }
+
+    private sealed class PointRow
+    {
+        public Dictionary<string, double?> Software { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, double?> System { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<ItemPlan> Plans { get; } = [];
+    }
+
+    /// <summary>One item's subscription consumer until the recording stops.</summary>
+    private async Task ConsumeAsync(ActiveRecording current, ItemPlan plan, CancellationToken cancellationToken)
+    {
+        var holder = $"targeted-recording:{current.Header.Id}:{plan.Item.Kind}:{plan.Item.Id}";
+        var interval = TimeSpan.FromMilliseconds(plan.IntervalMs!.Value);
+        try
+        {
+            if (plan.Item.Kind == TargetedRecordingItemKinds.Software)
+            {
+                await foreach (var snapshot in breakdown.SubscribeAsync(holder, plan.BreakdownRequest!, interval, cancellationToken))
+                    plan.Accept(TargetedRecordingItemReader.ReadSoftware(snapshot, plan.Item, current.EquivalentIds,
+                        current.IsKnown), DateTimeOffset.UtcNow);
+                cancellationToken.ThrowIfCancellationRequested();
+                plan.Report(TargetedRecordingGapReasons.NoSource, DateTimeOffset.UtcNow);
+            }
+            else if (TargetedRecordingItemCatalogRules.IsTargetGpu(plan.Item.Id))
+            {
+                await ConsumeTargetGpuAsync(current, plan, holder, interval, cancellationToken);
+            }
+            else
+            {
+                await ConsumeMetricAsync(plan, TargetedRecordingItemReader.MetricAddress(plan.Item), holder, interval,
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    /// <summary>Points from one metric address's publications. A stream the source ends by itself means nothing
+    /// on this machine can be subscribed at that address: no-source from then on.</summary>
+    private async Task ConsumeMetricAsync(ItemPlan plan, string address, string holder, TimeSpan interval,
+        CancellationToken cancellationToken)
+    {
+        await foreach (var publication in metrics.SubscribeAsync(holder, MetricSampleRequest.ForIds([address]), interval,
+            cancellationToken))
+            plan.Accept(TargetedRecordingItemReader.ReadMetric(publication, address), DateTimeOffset.UtcNow);
+        cancellationToken.ThrowIfCancellationRequested();
+        plan.Report(TargetedRecordingGapReasons.NoSource, DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>gpu.target.*: at each publication of the per-GPU usage bars the item resolves the GPU the target
+    /// uses most (TargetedRecordingTargets.TargetGpu) and holds one metric subscription to that GPU's quantity,
+    /// recording its publications. A changed GPU releases the old subscription and holds the new one. No GPU is
+    /// target-gpu-unresolved; a GPU whose quantity the catalog marks not applicable or without a source gives
+    /// that reason.</summary>
+    private async Task ConsumeTargetGpuAsync(ActiveRecording current, ItemPlan plan, string holder, TimeSpan interval,
+        CancellationToken cancellationToken)
+    {
+        var quantity = TargetedRecordingItemCatalogRules.TargetGpuQuantity(plan.Item.Id);
+        int? selected = null;
+        var resolved = false;
+        CancellationTokenSource? gpuStop = null;
+        Task? gpuConsumer = null;
+        try
+        {
+            await foreach (var snapshot in breakdown.SubscribeAsync($"{holder}:gpus", plan.BreakdownRequest!, interval,
+                cancellationToken))
+            {
+                var gpu = TargetedRecordingTargets.TargetGpu(snapshot, current.EquivalentIds);
+                if (resolved && gpu == selected) continue;
+                resolved = true;
+                selected = gpu;
+                await StopGpuConsumerAsync(gpuStop, gpuConsumer);
+                gpuStop = null;
+                gpuConsumer = null;
+                var now = DateTimeOffset.UtcNow;
+                if (gpu is not { } index)
+                {
+                    plan.Report(TargetedRecordingTargets.NotReadyReason(snapshot) ?? TargetedRecordingGapReasons.TargetGpuUnresolved, now);
+                    continue;
+                }
+                var address = TargetedRecordingItemCatalogRules.GpuMetricId(index, quantity);
+                var entry = TargetedRecordingItemCatalogRules.Find(current.Catalog, TargetedRecordingItemKinds.Metric, address);
+                if (entry is null || entry.UnavailableReason is not null)
+                {
+                    plan.Report(entry?.UnavailableReason ?? TargetedRecordingGapReasons.NoSource, now);
+                    continue;
+                }
+                gpuStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                gpuConsumer = ConsumeMetricAsync(plan, address, $"{holder}:{address}", interval, gpuStop.Token);
+            }
+        }
+        finally
+        {
+            await StopGpuConsumerAsync(gpuStop, gpuConsumer);
+        }
+    }
+
+    private static async Task StopGpuConsumerAsync(CancellationTokenSource? stop, Task? consumer)
+    {
+        if (stop is null) return;
+        await stop.CancelAsync();
+        try { await consumer!; }
+        catch (OperationCanceledException) { }
+        finally { stop.Dispose(); }
+    }
+
     private static long MillisecondsSince(DateTimeOffset startedAt, DateTimeOffset at)
         => Math.Max(0, (long)(at - startedAt).TotalMilliseconds);
 
@@ -514,93 +627,194 @@ public sealed class TargetedRecordingService(
         IReadOnlyList<TargetedRecordingItem> Items);
 
     private sealed class ActiveRecording(TargetedRecordingHeader header, IReadOnlySet<string> equivalentIds,
-        IReadOnlyList<ItemPlan> plans)
+        IReadOnlyList<ItemPlan> plans, IReadOnlyList<TargetedRecordingCatalogItem> catalog)
     {
+        // Item consumers match process fields against the known set while the process check extends it.
+        private readonly Lock sync = new();
         private readonly Dictionary<(int, long), TargetedRecordingProcess> known = header.Processes
             .ToDictionary(static process => (process.ProcessId, process.ProcessStartKey));
 
         public TargetedRecordingHeader Header { get; } = header;
         public IReadOnlySet<string> EquivalentIds { get; } = equivalentIds;
         public IReadOnlyList<ItemPlan> Plans { get; } = plans;
+        /// <summary>The live catalog at start; target GPU items look up each resolved GPU's quantity in it.</summary>
+        public IReadOnlyList<TargetedRecordingCatalogItem> Catalog { get; } = catalog;
         public CancellationTokenSource Cancellation { get; } = new();
         public string StopReason { get; set; } = TargetedRecordingStopReasons.UserStop;
         public Task? Worker { get; set; }
 
         public void Merge(IReadOnlyList<ResourceProcessSegment> running, DateTimeOffset now)
         {
-            foreach (var process in running)
+            lock (sync)
             {
-                var key = (process.ProcessId, process.ProcessStartKey ?? 0);
-                if (!known.ContainsKey(key))
-                    known[key] = new TargetedRecordingProcess(key.Item1, key.Item2, process.Name, now, null);
+                foreach (var process in running)
+                {
+                    var key = (process.ProcessId, process.ProcessStartKey ?? 0);
+                    if (!known.ContainsKey(key))
+                        known[key] = new TargetedRecordingProcess(key.Item1, key.Item2, process.Name, now, null);
+                }
             }
         }
 
         /// <summary>Stamps known processes that no longer exist; true when every known process is gone.</summary>
         public bool MarkExited(ITargetedProcessLiveness liveness, DateTimeOffset now)
         {
-            var allGone = known.Count > 0;
-            foreach (var (key, process) in known.ToArray())
+            lock (sync)
             {
-                if (liveness.IsRunning(new TargetedProcessIdentity(key.Item1, key.Item2)))
+                var allGone = known.Count > 0;
+                foreach (var (key, process) in known.ToArray())
                 {
-                    allGone = false;
-                    continue;
+                    if (liveness.IsRunning(new TargetedProcessIdentity(key.Item1, key.Item2)))
+                    {
+                        allGone = false;
+                        continue;
+                    }
+                    if (process.ExitedAt is null) known[key] = process with { ExitedAt = now };
                 }
-                if (process.ExitedAt is null) known[key] = process with { ExitedAt = now };
+                return allGone;
             }
-            return allGone;
         }
 
         public bool IsKnown(int processId, long startKey)
-            => known.ContainsKey((processId, startKey)) || known.ContainsKey((processId, 0));
+        {
+            lock (sync) return known.ContainsKey((processId, startKey)) || known.ContainsKey((processId, 0));
+        }
 
         public IReadOnlyList<FrameIntervalSample> MatchingFrames(FrameIntervalBatch? batch)
-            => batch?.Intervals.Where(item => known.ContainsKey((item.ProcessId, item.ProcessStartKey))
-                || known.ContainsKey((item.ProcessId, 0))).ToArray() ?? [];
+        {
+            lock (sync)
+                return batch?.Intervals.Where(item => known.ContainsKey((item.ProcessId, item.ProcessStartKey))
+                    || known.ContainsKey((item.ProcessId, 0))).ToArray() ?? [];
+        }
 
         public IReadOnlyList<TargetedRecordingProcess> ProcessList()
-            => known.Values.OrderBy(static process => process.FirstSeenAt).ThenBy(static process => process.ProcessId).ToArray();
+        {
+            lock (sync)
+                return known.Values.OrderBy(static process => process.FirstSeenAt).ThenBy(static process => process.ProcessId).ToArray();
+        }
     }
 
+    /// <summary>One recorded item. Consumers hand it publications (Accept) and reasons (Report) on the
+    /// subscription threads; the recording drains its points into rows and reads its report at the end.</summary>
+    /// <remarks>A point is kept once per observation time: a publication whose observation is not newer than the
+    /// last point is the same value again. Between two points, or between the start or the end and a point, a
+    /// silence longer than not_refreshed_interval_percent of the interval is a gap from one interval after the
+    /// earlier point (or from the start) to the later point (or the end). Its reason is the one the source gave
+    /// during the silence (the first one from the silence's start, split where it changed), else
+    /// source-not-refreshed.</remarks>
     internal sealed class ItemPlan(TargetedRecordingItem item, TargetedRecordingCatalogItem? catalog, string unit,
         int? intervalMs, string intervalOrigin)
     {
-        private const int MaximumSpacings = 8192;
+        private readonly Lock sync = new();
         private readonly List<long> spacings = [];
         private readonly List<TargetedRecordingGap> gaps = [];
+        private readonly List<(DateTimeOffset At, double Value)> pending = [];
+        private readonly List<(DateTimeOffset At, string Reason)> silence = [];
+        private readonly HashSet<string> actualSources = new(StringComparer.OrdinalIgnoreCase);
         private long? lastPointMs;
+        private DateTimeOffset startedAt;
+        private DateTimeOffset? lastObservedAt;
+        private long? notRefreshedMs;
+        private int maximumSpacings;
 
         public TargetedRecordingItem Item { get; } = item;
         public TargetedRecordingCatalogItem? Catalog { get; } = catalog;
-        public string Unit { get; set; } = unit;
+        public string Unit { get; private set; } = unit;
         public int? IntervalMs { get; } = intervalMs;
         public string IntervalOrigin { get; } = intervalOrigin;
-        public HashSet<string> ActualSources { get; } = new(StringComparer.OrdinalIgnoreCase);
         public long PointCount { get; private set; }
-        public DateTimeOffset NextDue { get; set; }
-        public DateTimeOffset? LastObservedAt { get; set; }
-        public ResourceBreakdownSampleRequest? BreakdownRequest { get; set; }
+        public ResourceBreakdownSampleRequest? BreakdownRequest { get; init; }
+
+        /// <summary>item-unavailable when the live catalog lacks the item, else the catalog's not-applicable or
+        /// no-source; such an item is one whole-span gap and is not subscribed.</summary>
+        public string? WholeSpanReason => Catalog is null ? TargetedRecordingGapReasons.ItemUnavailable : Catalog.UnavailableReason;
+
+        public bool IsSampled => Item.Kind != TargetedRecordingItemKinds.Frames && WholeSpanReason is null;
+
+        /// <summary>Starts sampling: the recording start, the not-refreshed share of the interval (percent) and how
+        /// many point spacings the actual interval (their median) is taken from.</summary>
+        public void Begin(DateTimeOffset start, int notRefreshedIntervalPercent, int actualIntervalSamples)
+        {
+            lock (sync)
+            {
+                startedAt = start;
+                notRefreshedMs = (long)IntervalMs!.Value * notRefreshedIntervalPercent / 100;
+                maximumSpacings = actualIntervalSamples;
+            }
+        }
+
+        /// <summary>One delivered publication: a point at its observation time, or the reason it has none.</summary>
+        public void Accept(TargetedRecordingItemReading reading, DateTimeOffset deliveredAt)
+        {
+            if (reading.Value is not { } value)
+            {
+                Report(reading.Reason ?? TargetedRecordingGapReasons.ValueUnavailable, deliveredAt);
+                return;
+            }
+            lock (sync)
+            {
+                var at = reading.ObservedAt ?? deliveredAt;
+                if (lastObservedAt is { } last && at <= last) return;
+                CloseSilence(at);
+                lastObservedAt = at;
+                pending.Add((at, value));
+                if (reading.ContributingSources.Count > 0) actualSources.UnionWith(reading.ContributingSources);
+                else if (reading.ActualSource is { } source) actualSources.Add(source);
+                if (Unit.Length == 0 && reading.Unit is { Length: > 0 } readUnit) Unit = readUnit;
+            }
+        }
+
+        /// <summary>The source said why it has no value now.</summary>
+        public void Report(string reason, DateTimeOffset at)
+        {
+            lock (sync)
+                if (silence.Count == 0 || silence[^1].Reason != reason) silence.Add((at, reason));
+        }
+
+        public IReadOnlyList<(DateTimeOffset At, double Value)> Drain()
+        {
+            lock (sync)
+            {
+                if (pending.Count == 0) return [];
+                var points = pending.ToArray();
+                pending.Clear();
+                return points;
+            }
+        }
 
         public void RecordPoint(long atMs)
         {
-            PointCount++;
-            if (lastPointMs is { } last && spacings.Count < MaximumSpacings) spacings.Add(atMs - last);
-            lastPointMs = atMs;
+            lock (sync)
+            {
+                PointCount++;
+                if (lastPointMs is { } last && spacings.Count < maximumSpacings) spacings.Add(atMs - last);
+                lastPointMs = atMs;
+            }
         }
 
         public void RecordFrames(IReadOnlyList<FrameIntervalSample> intervals)
         {
-            PointCount += intervals.Count;
-            foreach (var source in intervals.Select(static interval => interval.Source).Distinct())
-                ActualSources.Add(source.ToString());
+            lock (sync)
+            {
+                PointCount += intervals.Count;
+                foreach (var source in intervals.Select(static interval => interval.Source).Distinct())
+                    actualSources.Add(source.ToString());
+            }
         }
 
         /// <summary>Adds a gap, extending the previous one when it has the same reason and touches it.</summary>
         public void AddGap(long fromMs, long toMs, string reason)
         {
+            lock (sync) AddGapLocked(fromMs, toMs, reason);
+        }
+
+        private void AddGapLocked(long fromMs, long toMs, string reason)
+        {
             if (toMs < fromMs) toMs = fromMs;
-            if (gaps.Count > 0 && gaps[^1] is var last && last.Reason == reason && fromMs <= last.ToMs + (IntervalMs ?? 0))
+            // Gaps of one reason merge where they touch. Size-limit gaps are one interval per dropped row, so rows a
+            // little more than an interval apart still form one gap; silence gaps never reach across a stored point.
+            var reach = reason == TargetedRecordingGapReasons.SizeLimit ? IntervalMs ?? 0 : 0;
+            if (gaps.Count > 0 && gaps[^1] is var last && last.Reason == reason && fromMs <= last.ToMs + reach)
             {
                 gaps[^1] = last with { ToMs = Math.Max(last.ToMs, toMs) };
                 return;
@@ -608,21 +822,55 @@ public sealed class TargetedRecordingService(
             gaps.Add(new TargetedRecordingGap(fromMs, toMs, reason));
         }
 
+        /// <summary>Records the silence before an observation at until (or before the end) as gaps when it is
+        /// longer than the not-refreshed limit.</summary>
+        private void CloseSilence(DateTimeOffset until)
+        {
+            var untilMs = Since(until);
+            var lastMs = lastObservedAt is { } last ? Since(last) : 0;
+            if (notRefreshedMs is { } limit && untilMs - lastMs > limit)
+            {
+                // The first reason the source gave explains the silence from its start; later ones split it.
+                var segmentStart = lastObservedAt is null ? 0 : lastMs + IntervalMs!.Value;
+                var current = silence.Count > 0 ? silence[0].Reason : TargetedRecordingGapReasons.SourceNotRefreshed;
+                foreach (var (at, reason) in silence)
+                {
+                    var atMs = Since(at);
+                    if (atMs <= segmentStart) { current = reason; continue; }
+                    if (atMs >= untilMs) break;
+                    if (reason == current) continue;
+                    AddGapLocked(segmentStart, atMs, current);
+                    current = reason;
+                    segmentStart = atMs;
+                }
+                AddGapLocked(segmentStart, untilMs, current);
+            }
+            silence.Clear();
+        }
+
+        private long Since(DateTimeOffset at) => Math.Max(0, (long)(at - startedAt).TotalMilliseconds);
+
         public TargetedRecordingItemReport InitialReport() => new(Item.Kind, Item.Id, Unit, Item.Source, [],
             IntervalMs, IntervalOrigin, null, Item.SyncPrecision, 0, []);
 
-        public TargetedRecordingItemReport FinalReport(long endMs, bool discarded)
+        public TargetedRecordingItemReport FinalReport(DateTimeOffset endedAt, long endMs, bool discarded)
         {
-            if (Catalog is null) AddGap(0, endMs, TargetedRecordingGapReasons.ItemUnavailable);
-            int? actual = null;
-            if (spacings.Count > 0)
+            lock (sync)
             {
-                var ordered = spacings.Order().ToArray();
-                actual = (int)Math.Min(int.MaxValue, ordered[ordered.Length / 2]);
+                if (WholeSpanReason is { } wholeSpan && (Catalog is null || Item.Kind != TargetedRecordingItemKinds.Frames))
+                    AddGapLocked(0, endMs, wholeSpan);
+                else if (IsSampled && !discarded)
+                    CloseSilence(endedAt);
+                int? actual = null;
+                if (spacings.Count > 0)
+                {
+                    var ordered = spacings.Order().ToArray();
+                    actual = (int)Math.Min(int.MaxValue, ordered[ordered.Length / 2]);
+                }
+                return new TargetedRecordingItemReport(Item.Kind, Item.Id, Unit, Item.Source,
+                    actualSources.Order(StringComparer.Ordinal).ToArray(), IntervalMs, IntervalOrigin,
+                    discarded ? null : actual, Item.SyncPrecision, discarded ? 0 : PointCount, gaps.ToArray());
             }
-            return new TargetedRecordingItemReport(Item.Kind, Item.Id, Unit, Item.Source,
-                ActualSources.Order(StringComparer.Ordinal).ToArray(), IntervalMs, IntervalOrigin,
-                discarded ? null : actual, Item.SyncPrecision, discarded ? 0 : PointCount, gaps.ToArray());
         }
     }
 }
@@ -644,7 +892,7 @@ public static class TargetedRecordingSize
         var minimumInterval = int.MaxValue;
         foreach (var plan in plans)
         {
-            if (plan.IntervalMs is not { } interval || plan.Catalog is null) continue;
+            if (plan.IntervalMs is not { } interval || !plan.IsSampled) continue;
             points += (long)durationSeconds * 1000 / interval;
             minimumInterval = Math.Min(minimumInterval, interval);
         }

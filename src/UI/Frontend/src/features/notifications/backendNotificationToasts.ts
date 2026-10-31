@@ -37,7 +37,8 @@ export function createBackendNotificationFollower(show: (notification: KnownBack
 const inAppSwitches: Record<KnownBackendNotification["kind"], readonly [keyof AppNotificationSettings, keyof AppNotificationSettings]> = {
   "memory-protection.action": ["memoryProtectionNotify", "memoryProtectionInApp"],
   "update-available": ["updateNotify", "updateInApp"],
-  "access-request": ["accessRequestNotify", "accessRequestInApp"]
+  "access-request": ["accessRequestNotify", "accessRequestInApp"],
+  "crash-report": ["crashReportNotify", "crashReportInApp"]
 };
 
 /** 这一类的两项都开着时界面里提示；偏好缓存还没读到时不提示。 */

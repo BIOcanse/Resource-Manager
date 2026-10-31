@@ -388,9 +388,11 @@ public sealed class FrameFieldOwnerLibraryIntegrationTests
             0, ProcessBirth, FramePresentSource.Dxgi, 0xA0, Window, FrameTimePercentile.P95));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PresentFrameFieldQuery(
             ProcessId, 0, FramePresentSource.Dxgi, 0xA0, Window, FrameTimePercentile.P95));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PresentFrameFieldQuery(
+        // The window budget is the source's declared retention, checked when an owner binds the query.
+        var source = new FakePresentSource();
+        Assert.Throws<ArgumentOutOfRangeException>(() => new WindowsPresentFrameFieldOwner(source, new PresentFrameFieldQuery(
             ProcessId, ProcessBirth, FramePresentSource.Dxgi, 0xA0,
-            PresentFrameLedger.Retention + TimeSpan.FromTicks(1), FrameTimePercentile.P95));
+            source.Retention + TimeSpan.FromTicks(1), FrameTimePercentile.P95)));
     }
 
     [Fact]
@@ -445,6 +447,9 @@ public sealed class FrameFieldOwnerLibraryIntegrationTests
         public int ActiveLeases => Volatile.Read(ref activeLeases);
         public int ReadCount { get; private set; }
         public TimeSpan? LastWindow { get; private set; }
+
+        public TimeSpan Retention => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.Retention;
+        public IFrameSubscriptionLease AcquireSubscription(FrameSubscriptionRequest request) => new FrameLeaseAdapter(AcquireSubscription());
 
         public IDisposable AcquireSubscription()
         {

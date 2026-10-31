@@ -15,12 +15,13 @@ pub const file_io_task_guid: decoder.Guid = .{
 
 pub const SourceMode = enum { recorded, realtime };
 
+/// Every limit comes from the host's kernel_etw_limits declaration; no field defaults.
 pub const Limits = struct {
-    max_entries: usize = 32768,
-    max_versions: usize = 131072,
-    max_name_units: usize = 32768,
-    max_path_units: usize = 32768,
-    byte_cap: usize = 16 * 1024 * 1024,
+    max_entries: usize,
+    max_versions: usize,
+    max_name_units: usize,
+    max_path_units: usize,
+    byte_cap: usize,
 };
 
 pub const DecodeError = error{
@@ -520,8 +521,15 @@ fn testNamePayload(a: std.mem.Allocator, key: u64, name: []const u8) ![]u8 {
     return payload;
 }
 
+/// Test limits (the former Limits field defaults); each test overrides the fields it exercises.
+fn fileLimits(fields: anytype) Limits {
+    var config: Limits = .{ .max_entries = 32768, .max_versions = 131072, .max_name_units = 32768, .max_path_units = 32768, .byte_cap = 16 * 1024 * 1024 };
+    inline for (@typeInfo(@TypeOf(fields)).@"struct".field_names) |name| @field(config, name) = @field(fields, name);
+    return config;
+}
+
 test "recorded FileIO history keeps backdated names and rundown EOF identities" {
-    var state = try FileIoState.init(std.testing.allocator, .{ .max_entries = 8, .max_versions = 16, .max_name_units = 64, .max_path_units = 128, .byte_cap = 65536 }, .recorded);
+    var state = try FileIoState.init(std.testing.allocator, fileLimits(.{ .max_entries = 8, .max_versions = 16, .max_name_units = 64, .max_path_units = 128, .byte_cap = 65536 }), .recorded);
     defer state.deinit();
     try state.addName(7, 300, &.{ 'n', 'e', 'w' }, false);
     try state.addName(7, 100, &.{ 'o', 'l', 'd' }, false);
@@ -541,7 +549,7 @@ test "recorded FileIO history keeps backdated names and rundown EOF identities" 
 }
 
 test "equal FileIO names share storage while retaining every timestamp boundary" {
-    var state = try FileIoState.init(std.testing.allocator, .{ .max_entries = 8, .max_versions = 16, .byte_cap = 65536 }, .recorded);
+    var state = try FileIoState.init(std.testing.allocator, fileLimits(.{ .max_entries = 8, .max_versions = 16, .byte_cap = 65536 }), .recorded);
     defer state.deinit();
     try state.addName(7, 100, &.{ 's', 'a', 'm', 'e' }, false);
     try state.addName(7, 300, &.{ 's', 'a', 'm', 'e' }, false);
@@ -561,7 +569,7 @@ test "equal FileIO names share storage while retaining every timestamp boundary"
 }
 
 test "realtime FileDelete and Cleanup retire entire name histories" {
-    var state = try FileIoState.init(std.testing.allocator, .{ .max_entries = 8, .max_versions = 16, .max_name_units = 64, .max_path_units = 128, .byte_cap = 65536 }, .realtime);
+    var state = try FileIoState.init(std.testing.allocator, fileLimits(.{ .max_entries = 8, .max_versions = 16, .max_name_units = 64, .max_path_units = 128, .byte_cap = 65536 }), .realtime);
     defer state.deinit();
     try state.addName(7, 100, &.{ 'o', 'l', 'd' }, false);
     state.removeName(7);
@@ -576,13 +584,13 @@ test "realtime FileDelete and Cleanup retire entire name histories" {
 test "FileIO records apply mode-specific removals and map names when added" {
     var threads = try thread_process.History.init(std.testing.allocator, 8, 65536, false);
     defer threads.deinit();
-    var paths = path_mapping.PathMap.init(std.testing.allocator);
+    var paths = path_mapping.PathMap.init(std.testing.allocator, 32768, 32);
     defer paths.deinit();
     var round = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer round.deinit();
     const scratch = round.allocator();
 
-    var recorded = try FileIoState.init(std.testing.allocator, .{ .max_entries = 8, .max_versions = 32, .max_name_units = 128, .max_path_units = 128, .byte_cap = 65536 }, .recorded);
+    var recorded = try FileIoState.init(std.testing.allocator, fileLimits(.{ .max_entries = 8, .max_versions = 32, .max_name_units = 128, .max_path_units = 128, .byte_cap = 65536 }), .recorded);
     defer recorded.deinit();
     const delete_payload = try testNamePayload(scratch, 7, "\\Device\\Later\\file.sys");
     const delete = (try recorded.observe(testRaw(35, 900, delete_payload), &paths, &threads, scratch)).?;
@@ -603,7 +611,7 @@ test "FileIO records apply mode-specific removals and map names when added" {
     // a namespace mapping arriving later does not rewrite that saved value.
     try std.testing.expectEqualSlices(u16, &.{ '\\', 'D', 'e', 'v', 'i', 'c', 'e', '\\', 'L', 'a', 't', 'e', 'r', '\\', 'f', 'i', 'l', 'e', '.', 's', 'y', 's' }, recorded.lookupName(7, 0).?);
 
-    var realtime = try FileIoState.init(std.testing.allocator, .{ .max_entries = 8, .max_versions = 32, .max_name_units = 128, .max_path_units = 128, .byte_cap = 65536 }, .realtime);
+    var realtime = try FileIoState.init(std.testing.allocator, fileLimits(.{ .max_entries = 8, .max_versions = 32, .max_name_units = 128, .max_path_units = 128, .byte_cap = 65536 }), .realtime);
     defer realtime.deinit();
     const live_delete_payload = try testNamePayload(scratch, 11, "\\Device\\Live\\file.sys");
     _ = try realtime.observe(testRaw(35, 100, live_delete_payload), &paths, &threads, scratch);
@@ -638,9 +646,9 @@ test "FileIO identifies the task GUID and rejects malformed recognized names" {
         .header_thread_id = 2,
         .payload = &malformed,
     };
-    var state = try FileIoState.init(std.testing.allocator, .{ .byte_cap = 65536 }, .recorded);
+    var state = try FileIoState.init(std.testing.allocator, fileLimits(.{ .byte_cap = 65536 }), .recorded);
     defer state.deinit();
-    var paths = path_mapping.PathMap.init(std.testing.allocator);
+    var paths = path_mapping.PathMap.init(std.testing.allocator, 32768, 32);
     defer paths.deinit();
     var threads = try thread_process.History.init(std.testing.allocator, 8, 65536, false);
     defer threads.deinit();
@@ -652,9 +660,9 @@ test "FileIO identifies the task GUID and rejects malformed recognized names" {
 }
 
 test "FileIOCreate and FileIOWrite repair sentinel identity and resolve FileObject names" {
-    var state = try FileIoState.init(std.testing.allocator, .{ .max_entries = 8, .max_versions = 16, .max_name_units = 128, .max_path_units = 128, .byte_cap = 65536 }, .recorded);
+    var state = try FileIoState.init(std.testing.allocator, fileLimits(.{ .max_entries = 8, .max_versions = 16, .max_name_units = 128, .max_path_units = 128, .byte_cap = 65536 }), .recorded);
     defer state.deinit();
-    var paths = path_mapping.PathMap.init(std.testing.allocator);
+    var paths = path_mapping.PathMap.init(std.testing.allocator, 32768, 32);
     defer paths.deinit();
     var threads = try thread_process.History.init(std.testing.allocator, 8, 65536, false);
     defer threads.deinit();
@@ -715,13 +723,13 @@ test "FileIOCreate and FileIOWrite repair sentinel identity and resolve FileObje
 test "FileIO histories enforce entry, version, and owner-byte caps" {
     // Leave room for the hash table's minimum allocation; this owner tests
     // entry/version limits. The independent one-byte owner below tests bytes.
-    var state = try FileIoState.init(std.testing.allocator, .{ .max_entries = 1, .max_versions = 1, .max_name_units = 8, .max_path_units = 8, .byte_cap = 4096 }, .recorded);
+    var state = try FileIoState.init(std.testing.allocator, fileLimits(.{ .max_entries = 1, .max_versions = 1, .max_name_units = 8, .max_path_units = 8, .byte_cap = 4096 }), .recorded);
     defer state.deinit();
     try state.addName(1, 1, &.{'a'}, false);
     try std.testing.expectError(error.CapacityExceeded, state.addName(1, 2, &.{'b'}, false));
     try std.testing.expectError(error.CapacityExceeded, state.addName(2, 1, &.{'c'}, false));
     try std.testing.expectEqualSlices(u16, &.{'a'}, state.lookupName(1, 1).?);
-    var tiny = try FileIoState.init(std.testing.allocator, .{ .max_entries = 1, .max_versions = 1, .max_name_units = 64, .max_path_units = 64, .byte_cap = 1 }, .recorded);
+    var tiny = try FileIoState.init(std.testing.allocator, fileLimits(.{ .max_entries = 1, .max_versions = 1, .max_name_units = 64, .max_path_units = 64, .byte_cap = 1 }), .recorded);
     defer tiny.deinit();
     try std.testing.expectError(error.OutOfMemory, tiny.addName(1, 1, &.{'a'}, false));
     try std.testing.expectEqual(@as(usize, 0), tiny.budget.current);

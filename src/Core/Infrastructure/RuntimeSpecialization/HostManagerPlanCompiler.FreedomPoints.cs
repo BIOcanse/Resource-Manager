@@ -31,6 +31,10 @@ public sealed partial class HostManagerPlanCompiler
             BackendFreedomPointPaths.HostMemoryProtectionRecords,
             "HostManagerPlanCompiler.CompileHostMemoryProtectionRecords").Validate();
 
+    private static Application.CrashReports.CrashReportOptions CompileCrashReports(FreedomPointCompilation freedom)
+        => freedom.Consume<Application.CrashReports.CrashReportOptions>(BackendFreedomPointPaths.CrashReports,
+            "HostManagerPlanCompiler.CompileCrashReports").Validate();
+
     private static int CompileServiceRecovery(FreedomPointCompilation freedom)
         => freedom.Consume<int>(BackendFreedomPointPaths.ServiceRecoveryCounterReset,
             "HostManagerPlanCompiler.CompileServiceRecovery");

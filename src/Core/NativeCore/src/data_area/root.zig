@@ -15,7 +15,6 @@ pub const Settings = owner.Settings;
 pub const Binding = owner.Binding;
 pub const ReadView = owner.ReadView;
 pub const Borrow = owner.Borrow;
-pub const default_borrow_drain_timeout_ms = owner.default_borrow_drain_timeout_ms;
 
 test {
     _ = plan;

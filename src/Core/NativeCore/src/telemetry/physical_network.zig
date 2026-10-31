@@ -1,3 +1,4 @@
+const policy = @import("../configuration/NativePolicy.g.zig");
 const std = @import("std");
 
 // Windows MIB_IF_ROW2. Unused spans preserve the documented SDK layout;
@@ -24,7 +25,7 @@ const InterfaceTable = extern struct {
 extern "iphlpapi" fn GetIfTable2(table: *?*InterfaceTable) callconv(.winapi) u32;
 extern "iphlpapi" fn FreeMibTable(table: *anyopaque) callconv(.winapi) void;
 
-const maximum_interfaces = 1024;
+const maximum_interfaces = policy.maximum_network_interfaces;
 const Counter = struct { luid: u64, receive: u64, send: u64 };
 pub const Rates = struct { receive: f64 = 0, send: f64 = 0, bandwidth: f64 = 0 };
 

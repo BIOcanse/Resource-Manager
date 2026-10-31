@@ -10,7 +10,7 @@ namespace ResourceManager.App.Infrastructure.GpuPlacement.External;
 
 public sealed partial class WindowsExternalGpuPlacementRuntime
 {
-    internal const int DiagnosticSummaryLimit = 32;
+    internal static readonly int DiagnosticSummaryLimit = GpuPlacementSettings.ProductDefaults.ExternalRuntime.DiagnosticSummaryLimit;
     private int executingAttempts;
     private readonly Dictionary<(string Directory, bool Root), GpuPlacementProcessInstance> exitedAttemptProcesses = [];
 

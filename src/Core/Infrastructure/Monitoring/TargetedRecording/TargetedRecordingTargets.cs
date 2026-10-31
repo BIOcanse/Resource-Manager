@@ -81,20 +81,79 @@ public static class TargetedRecordingTargets
         return result;
     }
 
-    /// <summary>The software's total value in one bar, summed over the matched segments; null when the bar is
-    /// absent or the snapshot is not ready.</summary>
+    /// <summary>The software's total value in one bar, summed over the matched segments. Null with the concrete
+    /// reason when there is no value: the snapshot's failure code or breakdown-warming/breakdown-failed while it is
+    /// not ready, breakdown-bar-missing, or the bar's own unavailable reason (breakdown-unsupported or
+    /// breakdown-unavailable when the bar gives none).</summary>
     public static double? Value(ResourceBreakdownSnapshot? snapshot, string metricId, IReadOnlySet<string> ids,
-        out string? unit)
+        out string? unit, out string? reason)
     {
         unit = null;
-        if (snapshot is null || snapshot.Sampling.Status != ResourceBreakdownSamplingStatuses.Ready) return null;
-        var bar = snapshot.Bars.FirstOrDefault(item => string.Equals(item.MetricId, metricId, StringComparison.OrdinalIgnoreCase));
-        if (bar is null || bar.ObservationStatus is not (SamplingObservationStatus.Current or SamplingObservationStatus.Partial)) return null;
+        reason = NotReadyReason(snapshot);
+        if (reason is not null) return null;
+        var bar = snapshot!.Bars.FirstOrDefault(item => string.Equals(item.MetricId, metricId, StringComparison.OrdinalIgnoreCase));
+        if (bar is null)
+        {
+            reason = TargetedRecordingReadReasons.BreakdownBarMissing;
+            return null;
+        }
+        if (bar.ObservationStatus is not (SamplingObservationStatus.Current or SamplingObservationStatus.Partial))
+        {
+            reason = bar.UnavailableReason is { Length: > 0 } own ? own
+                : bar.ObservationStatus == SamplingObservationStatus.Unsupported ? TargetedRecordingReadReasons.BreakdownUnsupported
+                : bar.ObservationStatus is SamplingObservationStatus.Warming or SamplingObservationStatus.NotRequested
+                    ? TargetedRecordingReadReasons.BreakdownWarming
+                : TargetedRecordingReadReasons.BreakdownUnavailable;
+            return null;
+        }
         unit = bar.Unit;
         var total = 0d;
         foreach (var segment in bar.Software)
             if (ids.Contains(segment.SoftwareId)) total += segment.Value;
         return total;
+    }
+
+    /// <summary>Why a breakdown publication has no values yet: null when it is ready; else its failure code,
+    /// breakdown-failed, or breakdown-warming (also when there is no publication).</summary>
+    public static string? NotReadyReason(ResourceBreakdownSnapshot? snapshot)
+        => snapshot is null ? TargetedRecordingReadReasons.BreakdownWarming
+            : snapshot.Sampling.Status == ResourceBreakdownSamplingStatuses.Ready ? null
+            : snapshot.Sampling.FailureCode is { Length: > 0 } failure ? failure
+            : snapshot.Sampling.Status == ResourceBreakdownSamplingStatuses.Failed ? TargetedRecordingReadReasons.BreakdownFailed
+            : TargetedRecordingReadReasons.BreakdownWarming;
+
+    /// <summary>The GPU index whose per-GPU usage bar carries the largest share of the target (ties: lower
+    /// index); null when no GPU carries any. The rule of the gpu.target.* items.</summary>
+    public static int? TargetGpu(ResourceBreakdownSnapshot? snapshot, IReadOnlySet<string> ids)
+    {
+        if (NotReadyReason(snapshot) is not null) return null;
+        int? best = null;
+        var bestValue = 0d;
+        foreach (var bar in snapshot!.Bars)
+        {
+            if (GpuIndex(bar.MetricId, ".usage") is not { } index) continue;
+            if (bar.ObservationStatus is not (SamplingObservationStatus.Current or SamplingObservationStatus.Partial)) continue;
+            var value = 0d;
+            foreach (var segment in bar.Software)
+                if (ids.Contains(segment.SoftwareId)) value += segment.Value;
+            if (value > bestValue || value > 0 && value == bestValue && index < best)
+            {
+                best = index;
+                bestValue = value;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>N of a gpu.N.suffix id, else null.</summary>
+    public static int? GpuIndex(string metricId, string suffix)
+    {
+        if (!metricId.StartsWith(ResourceBreakdownMetricIds.GpuPrefix, StringComparison.OrdinalIgnoreCase)
+            || !metricId.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) return null;
+        var middle = metricId.AsSpan(ResourceBreakdownMetricIds.GpuPrefix.Length,
+            metricId.Length - ResourceBreakdownMetricIds.GpuPrefix.Length - suffix.Length);
+        return int.TryParse(middle, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture,
+            out var index) ? index : null;
     }
 
     /// <summary>Software with at least one running attributed process, one entry per software id. A segment is

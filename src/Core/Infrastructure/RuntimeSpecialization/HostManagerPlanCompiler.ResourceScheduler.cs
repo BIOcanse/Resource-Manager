@@ -185,8 +185,8 @@ public sealed partial class HostManagerPlanCompiler
         }
 
         ValidateRatio(source.StrongPressureFreeRatio, "resource_scheduler.strong_pressure_free_ratio");
-        const double dangerPhysicalRatio = 0.10;
-        const double dangerVirtualRatio = 0.12;
+        ValidateRatio(source.DangerMinimumPhysicalAfterVramMoveRatio, "resource_scheduler.danger_minimum_physical_after_vram_move_ratio");
+        ValidateRatio(source.DangerMinimumVirtualAfterPhysicalMoveRatio, "resource_scheduler.danger_minimum_virtual_after_physical_move_ratio");
         var dangerWeights = ValidateByteArray(
             source.DangerSeverityWeights,
             ResourceSchedulerConfig.DangerFlagCount,
@@ -233,8 +233,8 @@ public sealed partial class HostManagerPlanCompiler
             source.TrimReleaseDenominator,
             source.MaximumActionsPerTarget,
             source.StrongPressureFreeRatio,
-            dangerPhysicalRatio,
-            dangerVirtualRatio,
+            source.DangerMinimumPhysicalAfterVramMoveRatio,
+            source.DangerMinimumVirtualAfterPhysicalMoveRatio,
             dangerWeights.ToImmutableArray());
         NativeResourceSchedulerSession.ValidateConfiguration(compiled);
         return compiled;

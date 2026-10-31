@@ -31,8 +31,9 @@ public static class NotificationKinds
     public static NotificationKind MemoryProtectionAction { get; } = new("memory-protection.action", AccessKeyScopes.ProcessesRead);
     public static NotificationKind UpdateAvailable { get; } = new("update-available", AccessKeyScopes.Read);
     public static NotificationKind AccessRequest { get; } = new("access-request", AccessKeyScopes.KeysManage);
+    public static NotificationKind CrashReport { get; } = new("crash-report", AccessKeyScopes.Read);
 
-    public static IReadOnlyList<NotificationKind> All { get; } = [MemoryProtectionAction, UpdateAvailable, AccessRequest];
+    public static IReadOnlyList<NotificationKind> All { get; } = [MemoryProtectionAction, UpdateAvailable, AccessRequest, CrashReport];
 
     private static readonly FrozenDictionary<string, string> scopes =
         All.ToFrozenDictionary(static kind => kind.Name, static kind => kind.Scope, StringComparer.Ordinal);
@@ -53,6 +54,9 @@ public sealed record UpdateAvailableNotificationFacts(string Version);
 
 public sealed record AccessRequestNotificationFacts(string RequestId, string Name, string ObservedExecutablePath);
 
+// Posted once by the service's startup discovery when it registered new crash records; program and role are the newest one's.
+public sealed record CrashReportNotificationFacts(int Count, string LatestReportId, string Program, string Role);
+
 // Producers turn their typed facts into the facts object of one notification.
 public static class NotificationFacts
 {
@@ -65,6 +69,9 @@ public static class NotificationFacts
     public static JsonElement Of(AccessRequestNotificationFacts facts)
         => JsonSerializer.SerializeToElement(facts, NotificationFactsJsonContext.Default.AccessRequestNotificationFacts);
 
+    public static JsonElement Of(CrashReportNotificationFacts facts)
+        => JsonSerializer.SerializeToElement(facts, NotificationFactsJsonContext.Default.CrashReportNotificationFacts);
+
     public static UpdateAvailableNotificationFacts? ReadUpdateAvailable(JsonElement facts)
     {
         try { return facts.Deserialize(NotificationFactsJsonContext.Default.UpdateAvailableNotificationFacts); }
@@ -76,4 +83,5 @@ public static class NotificationFacts
 [JsonSerializable(typeof(MemoryProtectionActionNotificationFacts))]
 [JsonSerializable(typeof(UpdateAvailableNotificationFacts))]
 [JsonSerializable(typeof(AccessRequestNotificationFacts))]
+[JsonSerializable(typeof(CrashReportNotificationFacts))]
 internal sealed partial class NotificationFactsJsonContext : JsonSerializerContext;

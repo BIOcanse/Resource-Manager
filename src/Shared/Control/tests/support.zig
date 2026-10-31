@@ -66,7 +66,7 @@ pub fn waitFor(comptime C: type, controller: *C, uid: u32, wanted: types.BlockSt
     return error.TestTimeout;
 }
 pub fn config(history: usize) types.Config {
-    return .{ .worker_count = 4, .history_capacity = history, .completion_capacity = 128, .reader_capacity = 16, .reader_bytes = 4096, .worker_arena_bytes = 65536, .shutdown_item = 11, .host_blocks = &.{ 2, 3, 4, 5, 6 } };
+    return .{ .worker_count = 4, .history_capacity = history, .completion_capacity = 128, .reader_capacity = 16, .reader_bytes = 4096, .worker_arena_bytes = 65536, .reason_text_capacity = 256, .shutdown_item = 11, .host_blocks = &.{ 2, 3, 4, 5, 6 } };
 }
 
 /// A host that immediately reports transitions, unless a test holds a run.

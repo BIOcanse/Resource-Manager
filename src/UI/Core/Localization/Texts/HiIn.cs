@@ -11,6 +11,8 @@ internal static class HiIn
         MemoryProtectionTitle = "होस्ट मेमोरी सुरक्षा ने कार्रवाई की",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) को समाप्त किया गया। डंप का आकार: {2}। Resource Manager खोलने के लिए क्लिक करें।",
         MemoryProtectionTreeMessageFormat = "{0} (PID {1}) के अंतर्गत प्रोसेस ट्री समाप्त किया गया। प्रोसेस: {2}; डंप का आकार: {3}। Resource Manager खोलने के लिए क्लिक करें।",
+        CrashReportTitle = "क्रैश रिपोर्ट",
+        CrashReportMessage = "Resource Manager अभी-अभी क्रैश से उबरा है और क्रैश डंप सहेज लिया गया है। Resource Manager खोलने के लिए क्लिक करें।",
         AppName = "रिसोर्स मैनेजर",
         WindowTitleFormat = "रिसोर्स मैनेजर - {0}",
         TrayTooltipFormat = "रिसोर्स मैनेजर - {0}",

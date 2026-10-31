@@ -1,9 +1,10 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const protocol = @import("protocol.zig");
 
 pub const no_index: u32 = std.math.maxInt(u32);
-pub const initial_record_capacity: u32 = 16;
+pub const initial_record_capacity: u32 = policy.initial_record_capacity;
 
 pub const Session = struct {
     growth: growth.Log = .{},

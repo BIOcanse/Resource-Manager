@@ -11,6 +11,8 @@ internal static class HeIl
         MemoryProtectionTitle = "הגנת הזיכרון של המחשב פעלה",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) הופסק. גודל תמונת הזיכרון: {2}. לחצו לפתיחת Resource Manager.",
         MemoryProtectionTreeMessageFormat = "עץ התהליכים תחת {0} (PID {1}) הופסק. תהליכים: {2}; גודל תמונת הזיכרון: {3}. לחצו לפתיחת Resource Manager.",
+        CrashReportTitle = "דוח קריסה",
+        CrashReportMessage = "Resource Manager התאושש זה עתה מקריסה ושמר תמונת זיכרון של הקריסה. לחצו לפתיחת Resource Manager.",
         AppName = "מנהל המשאבים",
         WindowTitleFormat = "מנהל המשאבים - {0}",
         TrayTooltipFormat = "מנהל המשאבים - {0}",

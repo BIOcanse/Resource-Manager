@@ -11,6 +11,8 @@ internal static class PtBr
         MemoryProtectionTitle = "A proteção de memória do host agiu",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) foi encerrado. Tamanho do despejo: {2}. Clique para abrir o Resource Manager.",
         MemoryProtectionTreeMessageFormat = "A árvore de processos sob {0} (PID {1}) foi encerrada. Processos: {2}; tamanho do despejo: {3}. Clique para abrir o Resource Manager.",
+        CrashReportTitle = "Relatório de falha",
+        CrashReportMessage = "O Resource Manager acabou de se recuperar de uma falha e salvou um despejo de falha. Clique para abrir o Resource Manager.",
         AppName = "Gerenciador de Recursos",
         WindowTitleFormat = "Gerenciador de Recursos - {0}",
         TrayTooltipFormat = "Gerenciador de Recursos - {0}",

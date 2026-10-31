@@ -37,6 +37,10 @@ public sealed record CompiledKernelEtwLimits(
     [property: JsonRequired, JsonPropertyName("maximum_pending_events")] uint MaximumPendingEvents,
     [property: JsonRequired, JsonPropertyName("maximum_pending_path_units")] uint MaximumPendingPathUnits,
     [property: JsonRequired, JsonPropertyName("maximum_renderer_processes")] uint MaximumRendererProcesses,
+    [property: JsonRequired, JsonPropertyName("interrupt_bucket_milliseconds")] uint InterruptBucketMilliseconds,
+    [property: JsonRequired, JsonPropertyName("interrupt_bucket_count")] uint InterruptBucketCount,
+    [property: JsonRequired, JsonPropertyName("interrupt_reported_drivers")] uint InterruptReportedDrivers,
+    [property: JsonRequired, JsonPropertyName("network_initial_events")] uint NetworkInitialEvents,
     // The real-time kernel session's ETW buffer pool. Managed only: it sizes the TraceEvent session, not the native owner.
     [property: JsonRequired, JsonPropertyName("session_buffer_kib")] uint SessionBufferKib,
     [property: JsonRequired, JsonPropertyName("session_minimum_buffers")] uint SessionMinimumBuffers)
@@ -55,6 +59,11 @@ public sealed record CompiledKernelEtwLimits(
         && MaximumNamespaceEntries > 0 && MaximumCommands > 0 && MaximumCommandNameBytes > 0
         && MaximumPendingEvents > 0 && MaximumPendingPathUnits > 0
         && MaximumRendererProcesses > 0
+        // The native interrupt owner keys slices by whole seconds.
+        && InterruptBucketMilliseconds >= 1000 && InterruptBucketMilliseconds % 1000 == 0
+        && InterruptBucketCount > 0 && InterruptReportedDrivers > 0
+        && (ulong)InterruptBucketMilliseconds * InterruptBucketCount <= long.MaxValue - 1000UL
+        && NetworkInitialEvents > 0
         && PublicationBanks is >= 2 and <= 8
         && IoWindowMilliseconds > 0 && IoRetentionMilliseconds >= IoWindowMilliseconds
         && DiskBucketMilliseconds > 0

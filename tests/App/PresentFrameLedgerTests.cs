@@ -5,12 +5,15 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class PresentFrameLedgerTests
 {
+    // The pre-freedom-point bounds (16384 Presents per stream, 256 streams, 30 s), so eviction stays reachable in these tests.
+    private static readonly PresentFrameLedgerLimits Limits = new(TimeSpan.FromSeconds(30), 16384, 256);
+
     [Fact]
     public void LossRechecksReusedPidWithoutDestroyingRecordedExactHistory()
     {
         long birth = 111;
         var reads = 0;
-        var ledger = new PresentFrameLedger(_ => { reads++; return birth; });
+        var ledger = new PresentFrameLedger(_ => { reads++; return birth; }, Limits);
         ledger.Present(10, FramePresentSource.Dxgi, 1, Start, 7, 100, 1000);
         ledger.Present(10, FramePresentSource.Dxgi, 1, Start + TenMs, 7, 110, 1000);
         ledger.LegacyFlip(10, 7, true, 111);
@@ -33,13 +36,13 @@ public sealed class PresentFrameLedgerTests
     [Fact]
     public void TimestampEvictionMakesDelayedCursorIncompleteAndLaterWindowsRecover()
     {
-        var ledger = new PresentFrameLedger(_ => 111);
+        var ledger = new PresentFrameLedger(_ => 111, Limits);
         var oneMs = TimeSpan.TicksPerMillisecond;
         for (var index = 0; index < 20_000; index++)
             ledger.Present(10, FramePresentSource.Dxgi, 1, Start + index * oneMs);
 
         Assert.False(ledger.IsComplete(Start));
-        Assert.Equal(PresentFrameLedger.MaximumTimestampsPerStream - 1,
+        Assert.Equal(Limits.PresentsPerStream - 1,
             ledger.ReadIntervals(Start, Start + 20_000 * oneMs).Count);
         Assert.True(ledger.IsComplete(Start + 4000 * oneMs));
         ledger.ProcessStopped(10);
@@ -52,7 +55,7 @@ public sealed class PresentFrameLedgerTests
     [Fact]
     public void RuntimeStreamsReplaceTheGraphicsKernelCopyOfTheSameFrames()
     {
-        var ledger = new PresentFrameLedger(_ => 111);
+        var ledger = new PresentFrameLedger(_ => 111, Limits);
         for (var frame = 0; frame < 100; frame++)
         {
             ledger.Present(10, FramePresentSource.Dxgi, 0xA0, Start + frame * TenMs);
@@ -70,7 +73,7 @@ public sealed class PresentFrameLedgerTests
     [Fact]
     public void ProcessesWithoutRuntimeEventsFallBackToTheGraphicsKernel()
     {
-        var ledger = new PresentFrameLedger(_ => 222);
+        var ledger = new PresentFrameLedger(_ => 222, Limits);
         for (var frame = 0; frame < 50; frame++)
         {
             ledger.Present(20, FramePresentSource.GraphicsKernel, 0, Start + frame * TenMs);
@@ -84,7 +87,7 @@ public sealed class PresentFrameLedgerTests
     [Fact]
     public void SwapChainsAreReportedSeparately()
     {
-        var ledger = new PresentFrameLedger(_ => 333);
+        var ledger = new PresentFrameLedger(_ => 333, Limits);
         for (var frame = 0; frame < 20; frame++)
         {
             ledger.Present(30, FramePresentSource.Dxgi, 1, Start + frame * TenMs);
@@ -99,7 +102,7 @@ public sealed class PresentFrameLedgerTests
     [Fact]
     public void AReusedProcessIdStartsAFreshInstance()
     {
-        var ledger = new PresentFrameLedger(_ => null);
+        var ledger = new PresentFrameLedger(_ => null, Limits);
         ledger.ProcessStarted(40, 1000);
         ledger.Present(40, FramePresentSource.Dxgi, 1, Start);
         ledger.Present(40, FramePresentSource.Dxgi, 1, Start + TenMs);
@@ -118,7 +121,7 @@ public sealed class PresentFrameLedgerTests
     public void FramesFromProcessesWithoutAKnownStartTimeAreDropped()
     {
         var reads = 0;
-        var ledger = new PresentFrameLedger(_ => { reads++; return null; });
+        var ledger = new PresentFrameLedger(_ => { reads++; return null; }, Limits);
         for (var frame = 0; frame < 10; frame++)
         {
             ledger.Present(50, FramePresentSource.Dxgi, 1, Start + frame * TenMs);
@@ -133,7 +136,7 @@ public sealed class PresentFrameLedgerTests
     {
         const long processBirth = 987654321;
         const ulong swapChain = 0xCAFE;
-        var ledger = new PresentFrameLedger(_ => processBirth);
+        var ledger = new PresentFrameLedger(_ => processBirth, Limits);
         var presentAt = Start + TenMs;
         ledger.Present(51, FramePresentSource.Dxgi, swapChain, presentAt);
         ledger.Present(51, FramePresentSource.Dxgi, swapChain, presentAt + TenMs * 2);
@@ -151,7 +154,7 @@ public sealed class PresentFrameLedgerTests
     [Fact]
     public void OnlyTheRequestedWindowIsMeasuredAndOldStreamsArePruned()
     {
-        var ledger = new PresentFrameLedger(_ => 666);
+        var ledger = new PresentFrameLedger(_ => 666, Limits);
         for (var frame = 0; frame < 200; frame++)
         {
             ledger.Present(60, FramePresentSource.Dxgi, 1, Start + frame * TenMs);
@@ -161,14 +164,14 @@ public sealed class PresentFrameLedgerTests
         var stream = Assert.Single(Assert.Single(ledger.Read(now, TimeSpan.FromMilliseconds(500))).Streams);
         Assert.Equal(49, stream.Statistics.IntervalCount);
 
-        Assert.Empty(ledger.Read(now + PresentFrameLedger.Retention.Ticks + TenMs, TimeSpan.FromSeconds(5)));
+        Assert.Empty(ledger.Read(now + Limits.Retention.Ticks + TenMs, TimeSpan.FromSeconds(5)));
         Assert.Equal(0, ledger.StreamCount);
     }
 
     [Fact]
     public void OutOfOrderArrivalIsSortedBeforeMeasuring()
     {
-        var ledger = new PresentFrameLedger(_ => 777);
+        var ledger = new PresentFrameLedger(_ => 777, Limits);
         foreach (var frame in new[] { 0, 2, 1, 3, 5, 4 })
         {
             ledger.Present(70, FramePresentSource.Dxgi, 1, Start + frame * TenMs);
@@ -183,28 +186,28 @@ public sealed class PresentFrameLedgerTests
     [Fact]
     public void BuffersAreBoundedPerStreamAndInTotal()
     {
-        var ledger = new PresentFrameLedger(processId => processId);
-        for (var frame = 0; frame < PresentFrameLedger.MaximumTimestampsPerStream + 10; frame++)
+        var ledger = new PresentFrameLedger(processId => processId, Limits);
+        for (var frame = 0; frame < Limits.PresentsPerStream + 10; frame++)
         {
             ledger.Present(80, FramePresentSource.Dxgi, 1, Start + frame * TimeSpan.FromMilliseconds(1).Ticks);
         }
 
-        var now = Start + (PresentFrameLedger.MaximumTimestampsPerStream + 10) * TimeSpan.FromMilliseconds(1).Ticks;
+        var now = Start + (Limits.PresentsPerStream + 10) * TimeSpan.FromMilliseconds(1).Ticks;
         var stream = Assert.Single(Assert.Single(ledger.Read(now, TimeSpan.FromSeconds(29))).Streams);
-        Assert.Equal(PresentFrameLedger.MaximumTimestampsPerStream - 1, stream.Statistics.IntervalCount);
+        Assert.Equal(Limits.PresentsPerStream - 1, stream.Statistics.IntervalCount);
 
-        for (var processId = 1000; processId < 1000 + PresentFrameLedger.MaximumStreams + 5; processId++)
+        for (var processId = 1000; processId < 1000 + Limits.MaximumStreams + 5; processId++)
         {
             ledger.Present(processId, FramePresentSource.Dxgi, 1, now);
         }
 
-        Assert.Equal(PresentFrameLedger.MaximumStreams, ledger.StreamCount);
+        Assert.Equal(Limits.MaximumStreams, ledger.StreamCount);
     }
 
     [Fact]
     public void CursorReadsEveryIntervalOnceAndKeepsStoppedProcessTail()
     {
-        var ledger = new PresentFrameLedger(_ => 1234);
+        var ledger = new PresentFrameLedger(_ => 1234, Limits);
         ledger.Present(90, FramePresentSource.Dxgi, 1, Start);
         ledger.Present(90, FramePresentSource.Dxgi, 1, Start + TenMs);
         ledger.Present(90, FramePresentSource.Dxgi, 1, Start + 2 * TenMs);

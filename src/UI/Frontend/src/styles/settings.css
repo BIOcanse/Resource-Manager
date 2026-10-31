@@ -1642,3 +1642,75 @@
 .memory-cpu-tier-unset { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .memory-cpu-tier-settings > p[role="alert"] { margin: 0; color: var(--danger); font-size: 13px; }
 .memory-cpu-tier-retry { justify-self: start; }
+
+/* 崩溃转储（docs/crash_dumps_2026-10-31.md）：请求卡片、设置 · 系统集成里的设置和崩溃记录、崩溃提示弹窗。 */
+.crash-dump-request {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--text);
+  box-shadow: var(--elev-1);
+}
+.crash-dump-request-copy { display: grid; gap: 3px; min-width: 0; }
+.crash-dump-request-copy > strong { color: var(--text); font-size: 13px; }
+.crash-dump-request-copy > span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.crash-dump-request-copy > .crash-dump-request-error { color: var(--danger); }
+.crash-dump-request-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.crash-dump-settings { display: grid; gap: 0; min-width: 0; }
+.crash-dump-effective { color: var(--text); font-weight: 600; }
+.crash-report-code { color: var(--text); font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
+.crash-report-file-label { color: var(--muted); margin-inline-end: 6px; }
+.crash-report-path,
+.crash-report-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  text-align: start;
+  text-decoration: underline;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.crash-report-path { font-family: Consolas, "Cascadia Mono", monospace; }
+.crash-report-path:focus-visible,
+.crash-report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.crash-report-link:disabled { color: var(--muted); cursor: default; }
+.crash-report-history { display: grid; gap: 8px; min-width: 0; }
+.crash-report-empty { margin: 0; color: var(--muted); font-size: 13px; }
+.crash-report-list,
+.crash-report-dialog-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.crash-report-item,
+.crash-report-dialog-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.crash-report-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12px; }
+.crash-report-facts > dt { color: var(--muted); }
+.crash-report-facts > dd { min-width: 0; margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.crash-report-warning { display: block; margin-top: 2px; color: var(--warn); }
+.crash-report-actions,
+.crash-report-dialog-item-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.crash-report-dialog-body { display: grid; gap: 12px; }
+.crash-report-dialog-body > p { margin: 0; color: var(--muted); font-size: 13px; }
+.crash-report-dialog-item > span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.crash-report-dialog-item > .crash-report-link { justify-self: start; }
+@media (max-width: 720px) {
+  .crash-dump-request { grid-template-columns: minmax(0, 1fr); }
+  .crash-dump-request-actions { justify-content: flex-start; }
+  .crash-report-facts { grid-template-columns: minmax(0, 1fr); }
+}

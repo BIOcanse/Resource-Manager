@@ -99,7 +99,8 @@ pub const Config = struct {
     reader_bytes: usize,
     worker_arena_bytes: usize,
     /// Maximum combined owner/cause bytes retained for one decision reason.
-    reason_text_capacity: usize = 256,
+    /// The host passes it (backend business_blocks.reason_text_capacity); no default.
+    reason_text_capacity: usize,
     shutdown_item: u32,
     host_blocks: []const u32,
 };

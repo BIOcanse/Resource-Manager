@@ -11,6 +11,8 @@ internal static class FiFi
         MemoryProtectionTitle = "Isäntäkoneen muistisuojaus toimi",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) lopetettiin. Vedoksen koko: {2}. Avaa Resource Manager napsauttamalla.",
         MemoryProtectionTreeMessageFormat = "Prosessin {0} (PID {1}) alainen prosessipuu lopetettiin. Prosessit: {2}; vedoksen koko: {3}. Avaa Resource Manager napsauttamalla.",
+        CrashReportTitle = "Kaatumisraportti",
+        CrashReportMessage = "Resource Manager toipui juuri kaatumisesta ja tallensi kaatumisvedoksen. Avaa Resource Manager napsauttamalla.",
         AppName = "Resurssienhallinta",
         WindowTitleFormat = "Resurssienhallinta - {0}",
         TrayTooltipFormat = "Resurssienhallinta - {0}",

@@ -11,6 +11,8 @@ internal static class ThTh
         MemoryProtectionTitle = "การป้องกันหน่วยความจำของโฮสต์ได้ดำเนินการ",
         MemoryProtectionProcessMessageFormat = "สิ้นสุด {0} (PID {1}) แล้ว ขนาดดัมพ์: {2} คลิกเพื่อเปิด Resource Manager",
         MemoryProtectionTreeMessageFormat = "สิ้นสุดแผนผังกระบวนการภายใต้ {0} (PID {1}) แล้ว กระบวนการ: {2} ขนาดดัมพ์: {3} คลิกเพื่อเปิด Resource Manager",
+        CrashReportTitle = "รายงานการขัดข้อง",
+        CrashReportMessage = "Resource Manager เพิ่งกู้คืนจากการขัดข้องและบันทึกไฟล์ดัมพ์การขัดข้องแล้ว คลิกเพื่อเปิด Resource Manager",
         AppName = "ตัวจัดการทรัพยากร",
         WindowTitleFormat = "ตัวจัดการทรัพยากร - {0}",
         TrayTooltipFormat = "ตัวจัดการทรัพยากร - {0}",

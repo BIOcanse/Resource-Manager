@@ -39,9 +39,10 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         IOptimizationSoftwareIssueSignalSource,
         IAsyncDisposable
 {
-    private const int SampleIntervalSeconds = 10;
-    private static readonly TimeSpan SampleInterval =
-        TimeSpan.FromSeconds(SampleIntervalSeconds);
+    // Interim poll period: the owner waits SampleInterval and reads its holders' current values. Its holders'
+    // SubscribeAsync publications should replace the wait, and a report-status subscription the frontend refresh.
+    private static readonly TimeSpan SampleInterval = OptimizationSettings.ProductDefaults.ReportSampleInterval;
+    private static readonly int SampleIntervalSeconds = checked((int)SampleInterval.TotalSeconds);
 
     private readonly SemaphoreSlim executionGate = new(1, 1);
     private readonly HostManagerStrayProcessReportFactProjector strayProjector = new();

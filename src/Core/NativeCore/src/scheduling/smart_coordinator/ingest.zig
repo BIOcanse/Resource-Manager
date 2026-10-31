@@ -1,3 +1,4 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const std = @import("std");
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
@@ -606,14 +607,14 @@ fn higherRuntimeState(left: u8, right: u8) u8 {
     return if (runtimeRank(right) > runtimeRank(left)) right else left;
 }
 
-fn runtimeRank(value: u8) u8 {
+fn runtimeRank(value: u8) u32 {
     return switch (@as(protocol.RuntimeState, @enumFromInt(value))) {
-        .foreground_focused => 5,
-        .foreground_unfocused => 4,
-        .background_window => 3,
-        .tray_only => 2,
-        .background_process => 1,
-        .unknown, .not_running => 0,
+        .foreground_focused => policy.runtime_rank_focused,
+        .foreground_unfocused => policy.runtime_rank_unfocused,
+        .background_window => policy.runtime_rank_background_window,
+        .tray_only => policy.runtime_rank_tray,
+        .background_process => policy.runtime_rank_background_process,
+        .unknown, .not_running => policy.runtime_rank_not_running,
     };
 }
 

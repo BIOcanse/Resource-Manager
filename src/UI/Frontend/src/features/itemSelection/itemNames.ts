@@ -22,6 +22,14 @@ export function itemName(kind: ItemKind, id: string): string {
 }
 
 /**
+ * 取不到值的原因码的文字：录制缺口、浮层项和选择器里的“不适用 / 没有来源”共用浮层的原因表
+ * （performanceOverlay.itemReasons，原生壳浮层也用这份表）。认不出的原因原样显示代码。
+ */
+export function itemReasonText(reason: string): string {
+  return (uiText.performanceOverlay.itemReasons as Record<string, string | undefined>)[reason] ?? reason;
+}
+
+/**
  * 来源的名称：自动选择、资源细分用文案；整机指标的具体来源是“字段@设备”，写成字段名加设备标识
  * （和监视页的来源名一样是“名称 · 设备”）；其他来源原样显示。
  */

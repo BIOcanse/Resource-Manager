@@ -35,6 +35,9 @@ public sealed partial class WindowsPresentFrameFieldOwner : IDisposable
     {
         this.source = source ?? throw new ArgumentNullException(nameof(source));
         Query = query ?? throw new ArgumentNullException(nameof(query));
+        // The window budget is the source's declared ledger retention (frame_pipeline retention_ms).
+        if (query.Window > source.Retention)
+            throw new ArgumentOutOfRangeException(nameof(query), $"Window must be within (0, {source.Retention}].");
         this.clock = clock ?? TimeProvider.System;
         current = CreateInitialCurrent(Query, this.clock.GetUtcNow());
         backend = new(ReadInformation, CaptureAllAsync,
@@ -85,7 +88,7 @@ public sealed partial class WindowsPresentFrameFieldOwner : IDisposable
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (borrow is null)
-                    directSourceLease ??= source.AcquireSubscription();
+                    directSourceLease ??= source.AcquireSubscription(new([Query.ProcessId], FrameDetail.None));
                 else
                     EnsureBorrowLease(borrow);
 

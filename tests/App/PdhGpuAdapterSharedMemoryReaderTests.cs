@@ -142,12 +142,12 @@ public sealed class PdhGpuAdapterSharedMemoryReaderTests
                 Value = new PdhFmtCounterValue { CStatus = 0, LargeValue = 4096 }
             }, buffer, false);
 
-            Assert.True(PdhGpuAdapterSharedMemoryArrayDecoder.TryDecode(buffer, allocatedBytes, allocatedBytes,
+            Assert.True(PdhFormattedCounterArrayDecoder.TryDecode(buffer, allocatedBytes, allocatedBytes,
                 1, out var values));
             var value = Assert.Single(values);
             Assert.Equal(instanceName, value.InstanceName);
             Assert.Equal(4096, value.LargeValue);
-            Assert.False(PdhGpuAdapterSharedMemoryArrayDecoder.TryDecode(buffer, allocatedBytes,
+            Assert.False(PdhFormattedCounterArrayDecoder.TryDecode(buffer, allocatedBytes,
                 allocatedBytes + 1, 1, out _));
 
             Marshal.StructureToPtr(new PdhFmtCounterValueItem
@@ -155,7 +155,7 @@ public sealed class PdhGpuAdapterSharedMemoryReaderTests
                 Name = IntPtr.Add(buffer, itemSize - sizeof(char)),
                 Value = new PdhFmtCounterValue { CStatus = 0, LargeValue = 4096 }
             }, buffer, false);
-            Assert.False(PdhGpuAdapterSharedMemoryArrayDecoder.TryDecode(buffer, allocatedBytes,
+            Assert.False(PdhFormattedCounterArrayDecoder.TryDecode(buffer, allocatedBytes,
                 allocatedBytes, 1, out _));
         }
         finally { Marshal.FreeHGlobal(buffer); }
@@ -342,20 +342,20 @@ public sealed class PdhGpuAdapterSharedMemoryReaderTests
         => new(index, $"GPU {index}", 0x1002, 0x164E, 0,
             new AdapterLuid { LowPart = lowLuid }, software, 0, WindowsGpuAdapterKind.Integrated);
 
-    private static PdhGpuAdapterSharedMemoryCounterValue Valid(string instance, long value)
+    private static PdhFormattedCounterValue Valid(string instance, long value)
         => new(instance, 0, value);
 
     private static InvalidOperationException Unselected()
         => new("The source callback was not selected.");
 
-    private sealed class RecordedPdhApi : IPdhGpuAdapterSharedMemoryApi
+    private sealed class RecordedPdhApi : IPdhFormattedCounterArrayApi
     {
         public int OpenStatus { get; init; }
         public int AddStatus { get; init; }
         public int CollectStatus { get; init; }
         public int ArrayStatus { get; init; }
         public int CloseStatus { get; init; }
-        public IReadOnlyList<PdhGpuAdapterSharedMemoryCounterValue> Values { get; init; } = [];
+        public IReadOnlyList<PdhFormattedCounterValue> Values { get; init; } = [];
         public int OpenCalls { get; private set; }
         public int CollectCalls { get; private set; }
         public int CloseCalls { get; private set; }
@@ -382,7 +382,7 @@ public sealed class PdhGpuAdapterSharedMemoryReaderTests
         }
 
         public int GetFormattedCounterArray(IntPtr counter, uint format,
-            out IReadOnlyList<PdhGpuAdapterSharedMemoryCounterValue> values)
+            out IReadOnlyList<PdhFormattedCounterValue> values)
         {
             values = Values;
             return ArrayStatus;

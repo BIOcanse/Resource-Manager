@@ -41,7 +41,8 @@ public static class TargetedRecordingSyncPrecisions
 public static class TargetedRecordingProfileDefaults
 {
     public const string DefaultProfileId = "default";
-    public const string DefaultProfileName = "默认";
+    /// <summary>The 默认 profile's name, from the default_profile field of the targeted_recording freedom point.</summary>
+    public static string DefaultProfileName => DefaultProfileOptions.Name;
     public const string FramesItemId = "frames.present";
     // Overlay-only frame statistics over the overlay frame window, in FPS; a recording stores the frames themselves.
     public const string FramesFpsItemId = "frames.fps";
@@ -50,38 +51,22 @@ public static class TargetedRecordingProfileDefaults
     public static readonly IReadOnlyList<string> FramesItemIds =
         [FramesItemId, FramesFpsItemId, FramesOnePercentLowItemId, FramesPointOnePercentLowItemId];
     public const string AutoSource = "auto";
-    public const int DefaultIntervalMs = 1000;
+    /// <summary>The 默认 profile's default interval; also the interval of a request's own item list.</summary>
+    public static int DefaultIntervalMs => DefaultProfileOptions.DefaultIntervalMs;
     public const int MinimumIntervalMs = 100;
     public const int MaximumIntervalMs = 60_000;
     public const int MaximumNameLength = 64;
     public const int MaximumProfiles = 64;
     public const int MaximumItems = 256;
 
-    /// <summary>The item set the recorder used before profiles existed: application frames, the target's
-    /// resource breakdown shares and the system readings that were written into every sample.</summary>
-    public static TargetedRecordingProfile CreateDefaultProfile() => new(
-        DefaultProfileId,
-        DefaultProfileName,
-        DefaultIntervalMs,
-        [
-            new(TargetedRecordingItemKinds.Frames, FramesItemId),
-            new(TargetedRecordingItemKinds.Software, "cpu.usage"),
-            new(TargetedRecordingItemKinds.Software, "memory.usage"),
-            new(TargetedRecordingItemKinds.Software, "virtualMemory.usage"),
-            new(TargetedRecordingItemKinds.Software, "disk.read"),
-            new(TargetedRecordingItemKinds.Software, "disk.write"),
-            new(TargetedRecordingItemKinds.Software, "network.receive"),
-            new(TargetedRecordingItemKinds.Software, "network.send"),
-            new(TargetedRecordingItemKinds.Software, "gpu.0.usage"),
-            new(TargetedRecordingItemKinds.Software, "gpu.0.vram"),
-            new(TargetedRecordingItemKinds.Metric, "cpu.usage"),
-            new(TargetedRecordingItemKinds.Metric, "cpu.temperature"),
-            new(TargetedRecordingItemKinds.Metric, "cpu.frequency"),
-            new(TargetedRecordingItemKinds.Metric, "memory.usage"),
-            new(TargetedRecordingItemKinds.Metric, "gpu.0.usage"),
-            new(TargetedRecordingItemKinds.Metric, "gpu.0.temperature"),
-            new(TargetedRecordingItemKinds.Metric, "gpu.0.vram")
-        ]);
+    private static RuntimeSpecialization.TargetedRecordingDefaultProfileOptions DefaultProfileOptions
+        => Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.TargetedRecording.DefaultProfile!;
+
+    /// <summary>The 默认 profile, declared by the default_profile field of the targeted_recording freedom point:
+    /// application frames; the target's CPU, memory, commit, disk read and write, network receive and send and its
+    /// totals over every GPU (gpu.usage, gpu.vram); the system CPU usage, temperature and clock, memory, and the
+    /// readings of the GPU the target uses most (gpu.target.usage/temperature/vram).</summary>
+    public static TargetedRecordingProfile CreateDefaultProfile() => DefaultProfileOptions.ToProfile();
 
     public static AppTargetedRecordingSettings Create() => new([CreateDefaultProfile()]);
 }

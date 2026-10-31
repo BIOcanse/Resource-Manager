@@ -90,6 +90,61 @@
     }
   },
   "reasons": {
+    "breakdown-bar-missing": {
+      "zh-CN": "资源细分没有这一项",
+      "zh-TW": "資源細分沒有此項",
+      "en-US": "Not in the resource breakdown",
+      "ja-JP": "リソース内訳にこの項目がありません",
+      "ko-KR": "리소스 세부 내역에 이 항목 없음",
+      "fr-FR": "Absent de la répartition des ressources",
+      "de-DE": "Nicht in der Ressourcenaufschlüsselung",
+      "es-ES": "No está en el desglose de recursos",
+      "ru-RU": "Нет в разбивке ресурсов"
+    },
+    "breakdown-failed": {
+      "zh-CN": "资源细分采样失败",
+      "zh-TW": "資源細分取樣失敗",
+      "en-US": "Resource breakdown sampling failed",
+      "ja-JP": "リソース内訳のサンプリングに失敗",
+      "ko-KR": "리소스 세부 내역 샘플링 실패",
+      "fr-FR": "Échec de l’échantillonnage de la répartition des ressources",
+      "de-DE": "Abtastung der Ressourcenaufschlüsselung fehlgeschlagen",
+      "es-ES": "Error al muestrear el desglose de recursos",
+      "ru-RU": "Сбой выборки разбивки ресурсов"
+    },
+    "breakdown-unavailable": {
+      "zh-CN": "资源细分读数不可用",
+      "zh-TW": "資源細分讀數無法使用",
+      "en-US": "Resource breakdown reading unavailable",
+      "ja-JP": "リソース内訳の読み取り値を利用できません",
+      "ko-KR": "리소스 세부 내역 판독값을 사용할 수 없음",
+      "fr-FR": "Mesure de la répartition des ressources indisponible",
+      "de-DE": "Messwert der Ressourcenaufschlüsselung nicht verfügbar",
+      "es-ES": "Lectura del desglose de recursos no disponible",
+      "ru-RU": "Показание разбивки ресурсов недоступно"
+    },
+    "breakdown-unsupported": {
+      "zh-CN": "资源细分不支持这一项",
+      "zh-TW": "資源細分不支援此項",
+      "en-US": "Not supported by the resource breakdown",
+      "ja-JP": "リソース内訳はこの項目をサポートしていません",
+      "ko-KR": "리소스 세부 내역이 이 항목을 지원하지 않음",
+      "fr-FR": "Non pris en charge par la répartition des ressources",
+      "de-DE": "Von der Ressourcenaufschlüsselung nicht unterstützt",
+      "es-ES": "No compatible con el desglose de recursos",
+      "ru-RU": "Не поддерживается разбивкой ресурсов"
+    },
+    "breakdown-warming": {
+      "zh-CN": "资源细分正在准备",
+      "zh-TW": "資源細分準備中",
+      "en-US": "Resource breakdown warming up",
+      "ja-JP": "リソース内訳を準備中",
+      "ko-KR": "리소스 세부 내역 준비 중",
+      "fr-FR": "Répartition des ressources en préparation",
+      "de-DE": "Ressourcenaufschlüsselung wird vorbereitet",
+      "es-ES": "Desglose de recursos en preparación",
+      "ru-RU": "Разбивка ресурсов подготавливается"
+    },
     "frame-events-lost": {
       "zh-CN": "帧事件丢失",
       "zh-TW": "影格事件遺失",
@@ -100,6 +155,17 @@
       "de-DE": "Bildereignisse verloren",
       "es-ES": "Eventos de fotogramas perdidos",
       "ru-RU": "События кадров потеряны"
+    },
+    "gpu-dedicated-memory-metrics-unsupported": {
+      "zh-CN": "此 GPU 没有独立显存计量",
+      "zh-TW": "此 GPU 沒有專用記憶體計量",
+      "en-US": "No dedicated GPU memory metrics",
+      "ja-JP": "この GPU には専用メモリの計測がありません",
+      "ko-KR": "이 GPU에는 전용 메모리 측정이 없음",
+      "fr-FR": "Pas de mesure de mémoire GPU dédiée",
+      "de-DE": "Keine Messung des dedizierten GPU-Speichers",
+      "es-ES": "Sin medición de memoria dedicada de GPU",
+      "ru-RU": "Нет учёта выделенной памяти ГП"
     },
     "metric-unavailable": {
       "zh-CN": "读数不可用",
@@ -112,6 +178,39 @@
       "es-ES": "Lectura no disponible",
       "ru-RU": "Показание недоступно"
     },
+    "metric-unknown": {
+      "zh-CN": "读数没有对应字段",
+      "zh-TW": "讀數沒有對應欄位",
+      "en-US": "Reading has no bound field",
+      "ja-JP": "読み取り値に対応するフィールドがありません",
+      "ko-KR": "판독값에 연결된 필드 없음",
+      "fr-FR": "Mesure sans champ associé",
+      "de-DE": "Messwert ohne zugeordnetes Feld",
+      "es-ES": "Lectura sin campo asociado",
+      "ru-RU": "Показание без привязанного поля"
+    },
+    "metric-unsupported": {
+      "zh-CN": "读数不受支持",
+      "zh-TW": "讀數不受支援",
+      "en-US": "Reading not supported",
+      "ja-JP": "読み取り値はサポートされていません",
+      "ko-KR": "판독값을 지원하지 않음",
+      "fr-FR": "Mesure non prise en charge",
+      "de-DE": "Messwert nicht unterstützt",
+      "es-ES": "Lectura no compatible",
+      "ru-RU": "Показание не поддерживается"
+    },
+    "metric-warming": {
+      "zh-CN": "读数正在准备",
+      "zh-TW": "讀數準備中",
+      "en-US": "Reading warming up",
+      "ja-JP": "読み取り値を準備中",
+      "ko-KR": "판독값 준비 중",
+      "fr-FR": "Mesure en préparation",
+      "de-DE": "Messwert wird vorbereitet",
+      "es-ES": "Lectura en preparación",
+      "ru-RU": "Показание подготавливается"
+    },
     "no-frame-data": {
       "zh-CN": "无帧数据",
       "zh-TW": "無影格資料",
@@ -122,6 +221,28 @@
       "de-DE": "Keine Bilddaten",
       "es-ES": "Sin datos de fotogramas",
       "ru-RU": "Нет данных о кадрах"
+    },
+    "no-source": {
+      "zh-CN": "本机没有来源",
+      "zh-TW": "本機沒有來源",
+      "en-US": "No source on this machine",
+      "ja-JP": "このマシンにソースがありません",
+      "ko-KR": "이 컴퓨터에 소스 없음",
+      "fr-FR": "Aucune source sur cette machine",
+      "de-DE": "Keine Quelle auf diesem Rechner",
+      "es-ES": "Sin fuente en este equipo",
+      "ru-RU": "Нет источника на этом компьютере"
+    },
+    "not-applicable": {
+      "zh-CN": "此设备不适用",
+      "zh-TW": "此裝置不適用",
+      "en-US": "Not applicable to this device",
+      "ja-JP": "このデバイスには適用されません",
+      "ko-KR": "이 장치에는 해당하지 않음",
+      "fr-FR": "Sans objet pour cet appareil",
+      "de-DE": "Für dieses Gerät nicht zutreffend",
+      "es-ES": "No aplicable a este dispositivo",
+      "ru-RU": "Неприменимо к этому устройству"
     },
     "process-cpu-unavailable": {
       "zh-CN": "进程 CPU 不可用",
@@ -144,6 +265,28 @@
       "de-DE": "Prozessmesswert nicht verfügbar",
       "es-ES": "Lectura del proceso no disponible",
       "ru-RU": "Показание процесса недоступно"
+    },
+    "source-not-refreshed": {
+      "zh-CN": "来源未刷新",
+      "zh-TW": "來源未更新",
+      "en-US": "Source not refreshed",
+      "ja-JP": "ソースが更新されていません",
+      "ko-KR": "소스가 갱신되지 않음",
+      "fr-FR": "Source non actualisée",
+      "de-DE": "Quelle nicht aktualisiert",
+      "es-ES": "Fuente no actualizada",
+      "ru-RU": "Источник не обновлялся"
+    },
+    "target-gpu-unresolved": {
+      "zh-CN": "目标未在使用任何 GPU",
+      "zh-TW": "目標未使用任何 GPU",
+      "en-US": "Target is not using a GPU",
+      "ja-JP": "対象は GPU を使用していません",
+      "ko-KR": "대상이 GPU를 사용하지 않음",
+      "fr-FR": "La cible n’utilise aucun GPU",
+      "de-DE": "Ziel verwendet keine GPU",
+      "es-ES": "El destino no usa ninguna GPU",
+      "ru-RU": "Цель не использует ГП"
     },
     "target-not-running": {
       "zh-CN": "目标未运行",

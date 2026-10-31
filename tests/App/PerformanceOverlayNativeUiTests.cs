@@ -5,6 +5,7 @@ using System.Text.Json;
 using ResourceManager.Shared.Localization;
 using ResourceManager.NativeUi.Overlay;
 using ResourceManager.NativeUi.Preferences;
+using ResourceManager.App.Infrastructure.Monitoring.TargetedRecording;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -165,7 +166,10 @@ public sealed class PerformanceOverlayNativeUiTests
             Assert.Equal($"{expectedLabels[language]}  100 FPS", OverlayBitmapRenderer.FormatLine(item, language));
             // Every reason the backend sends has text in every language.
             foreach (var reason in new[] { "target-not-running", "frame-events-lost", "no-frame-data", "metric-unavailable",
-                "process-cpu-unavailable", "process-metric-unavailable" })
+                "process-cpu-unavailable", "process-metric-unavailable", "gpu-dedicated-memory-metrics-unsupported" }
+                .Concat(TargetedRecordingReadReasons.All)
+                .Concat(TargetedRecordingGapReasons.All.Except(["item-unavailable", "value-unavailable", "size-limit",
+                    "frames-incomplete", "frames-window-skipped"])))
                 Assert.NotEqual(reason, OverlayItemLabels.ForReason(reason, language));
         }
         Assert.DoesNotContain("labels", JsonSerializer.Serialize(snapshot), StringComparison.OrdinalIgnoreCase);

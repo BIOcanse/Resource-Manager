@@ -125,7 +125,44 @@ public sealed record AppSystemIntegrationSettings(
     bool AutoStartEnabled = false,
     bool RestartAfterCrashEnabled = true,
     int CrashRestartDelaySeconds = 10,
-    int CrashRestartCount = 3);
+    int CrashRestartCount = 3)
+{
+    // 崩溃转储 (docs/crash_dumps_2026-10-31.md). An older settings file without it reads the defaults.
+    public AppCrashDumpSettings CrashDumps { get; init; } = new();
+}
+
+/// <summary>崩溃转储: <see cref="Mode"/> <c>default</c> follows the release channel (backend freedom point
+/// <c>service_recovery.crash_reports</c>: beta resolves to on, stable to ask); <c>ask</c> writes no dumps and
+/// the frontend shows the request card; <c>on</c> writes WER LocalDumps keys for RM's images; <c>off</c> removes them.
+/// <see cref="KeepCount"/> is the per-program count of dumps and crash records kept.</summary>
+public sealed record AppCrashDumpSettings(
+    string Mode = AppCrashDumpModes.Default,
+    string DumpType = AppCrashDumpTypes.Mini,
+    int KeepCount = AppCrashDumpSettings.DefaultKeepCount)
+{
+    public const int DefaultKeepCount = 5;
+}
+
+public static class AppCrashDumpModes
+{
+    public const string Default = "default";
+    public const string Ask = "ask";
+    public const string On = "on";
+    public const string Off = "off";
+
+    public static bool IsSupported(string? mode) => mode is Default or Ask or On or Off;
+
+    // The values a channel default may resolve to.
+    public static bool IsResolved(string? mode) => mode is Ask or On or Off;
+}
+
+public static class AppCrashDumpTypes
+{
+    public const string Mini = "mini";
+    public const string Full = "full";
+
+    public static bool IsSupported(string? type) => type is Mini or Full;
+}
 
 public sealed record AppEditableHotkeySettings(
     string ActionId,
@@ -197,6 +234,8 @@ public sealed record AppSettingsUpdateResult(
     public string? RuntimeFailurePath { get; init; }
 
     public ServiceRecoveryDiagnostics? ServiceRecovery { get; init; }
+
+    public CrashDumpDiagnostics? CrashDumps { get; init; }
 }
 
 public static class AppSettingsRuntimeApplicationDisposition

@@ -19,6 +19,9 @@ internal sealed record NativeText
     public required string MemoryProtectionTitle { get; init; }
     public required string MemoryProtectionProcessMessageFormat { get; init; }
     public required string MemoryProtectionTreeMessageFormat { get; init; }
+    // 崩溃报告的托盘通知（docs/crash_dumps_2026-10-31.md）：服务启动时登记了新的崩溃记录；点击打开主窗口，崩溃提示弹窗在那里显示。
+    public required string CrashReportTitle { get; init; }
+    public required string CrashReportMessage { get; init; }
 
     // 可用性面板
     public required string AvailabilityPanelName { get; init; }

@@ -20,6 +20,7 @@
 //! written ended, then each region unmapped once its borrows end. A writer's own
 //! stop never ends or unmaps a region.
 const std = @import("std");
+const policy = @import("../configuration/NativePolicy.g.zig");
 const windows = std.os.windows;
 const ntdll = windows.ntdll;
 const ss = @import("rm_shared_section");
@@ -28,13 +29,11 @@ const Section = @import("section.zig").Section;
 
 extern "kernel32" fn GetTickCount64() callconv(.winapi) u64;
 
-/// Default for `Settings.borrow_drain_timeout_ms`.
-pub const default_borrow_drain_timeout_ms: u32 = 5000;
-
 pub const Settings = extern struct {
     /// How long `apply` and `stop` wait for a replaced or stopped region's
     /// borrows to end before refusing with `Borrowed`. Zero: do not wait.
-    borrow_drain_timeout_ms: u32 = default_borrow_drain_timeout_ms,
+    /// The native fallback and host default both come from the same declaration.
+    borrow_drain_timeout_ms: u32 = policy.data_area_borrow_drain_timeout_ms,
     reserved: u32 = 0,
 };
 

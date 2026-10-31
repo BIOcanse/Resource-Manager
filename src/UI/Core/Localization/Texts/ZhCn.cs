@@ -11,6 +11,8 @@ internal static class ZhCn
         MemoryProtectionTitle = "主机内存保护已处理",
         MemoryProtectionProcessMessageFormat = "已结束 {0}（PID {1}），转储量 {2}。点击打开资源管理器。",
         MemoryProtectionTreeMessageFormat = "已结束 {0}（PID {1}）下的进程树，涉及 {2} 个进程，转储量 {3}。点击打开资源管理器。",
+        CrashReportTitle = "崩溃报告",
+        CrashReportMessage = "资源管理器刚从崩溃中恢复，已保存崩溃转储。点击打开资源管理器。",
         AppName = "资源管理器",
         WindowTitleFormat = "资源管理器 - {0}",
         TrayTooltipFormat = "资源管理器 - {0}",

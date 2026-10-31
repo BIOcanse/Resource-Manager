@@ -11,6 +11,8 @@ internal static class RoRo
         MemoryProtectionTitle = "Protecția memoriei gazdei a intervenit",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) a fost oprit. Dimensiunea dump-ului: {2}. Faceți clic pentru a deschide Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Arborele de procese de sub {0} (PID {1}) a fost oprit. Procese: {2}; dimensiunea dump-ului: {3}. Faceți clic pentru a deschide Resource Manager.",
+        CrashReportTitle = "Raport de blocare",
+        CrashReportMessage = "Resource Manager tocmai și-a revenit după o blocare și a salvat un dump de blocare. Faceți clic pentru a deschide Resource Manager.",
         AppName = "Manager de resurse",
         WindowTitleFormat = "Manager de resurse - {0}",
         TrayTooltipFormat = "Manager de resurse - {0}",

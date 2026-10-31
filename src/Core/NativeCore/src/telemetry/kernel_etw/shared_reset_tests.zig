@@ -10,7 +10,7 @@ const fileio = @import("fileio.zig");
 fn config() shared.Config {
     return .{
         .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 1, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 },
-        .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 },
+        .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 },
         .byte_cap = 8 * 1024 * 1024, .disk_byte_cap = 512 * 1024, .network_byte_cap = 512 * 1024,
         .file_byte_cap = 256 * 1024, .history_byte_cap = 256 * 1024,
         .maximum_disk_pairs = 32, .maximum_disks = 16, .maximum_cached_processes = 16,
@@ -19,7 +19,7 @@ fn config() shared.Config {
         .maximum_path_units = 128, .maximum_namespace_entries = 16,
         .maximum_commands = 8, .maximum_command_name_bytes = 128, .publication_banks = 3,
         .window_ms = 2000, .retention_ms = 8000, .disk_bucket_ms = 100, .started_tick_ms = 0,
-        .maximum_pending_events = 128, .maximum_pending_path_units = 4096, .maximum_renderer_processes = 64,
+        .maximum_pending_events = 128, .maximum_pending_path_units = 4096, .maximum_renderer_processes = 64, .network_initial_events = 256,
     };
 }
 

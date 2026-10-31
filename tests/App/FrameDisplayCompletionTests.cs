@@ -90,7 +90,7 @@ public sealed class FrameDisplayCompletionTests
         ledger.ProcessStarted(ProcessId, ProcessBirth);
         ledger.Present(ProcessId, FramePresentSource.Dxgi, SwapChain,
             EpochTicks, ThreadId, FirstQpc, QpcFrequency);
-        ledger.UnsupportedDisplayPath(ProcessId, ThreadId);
+        ledger.UnsupportedDisplayPath(ProcessId, ThreadId, FrameTimingReasons.MultiplaneOverlayNotParsed);
 
         var firstRead = ledger.ReadDisplayStreams(
             EpochTicks + TimeSpan.FromMilliseconds(10).Ticks, TimeSpan.FromMilliseconds(10));
@@ -279,7 +279,7 @@ public sealed class FrameDisplayCompletionTests
         mpoLedger.ProcessStarted(ProcessId, ProcessBirth);
         mpoLedger.Present(ProcessId, FramePresentSource.Dxgi, SwapChain,
             EpochTicks, ThreadId, FirstQpc, QpcFrequency);
-        mpoLedger.UnsupportedDisplayPath(ProcessId, ThreadId, vidPnSourceId: 2);
+        mpoLedger.UnsupportedDisplayPath(ProcessId, ThreadId, FrameTimingReasons.MultiplaneOverlayNotParsed, vidPnSourceId: 2);
         var mpo = Assert.Single(mpoLedger.ReadDisplayStreams(EpochTicks + TimeSpan.FromMilliseconds(10).Ticks,
             TimeSpan.FromMilliseconds(10)));
         Assert.False(mpo.Complete);
@@ -288,7 +288,8 @@ public sealed class FrameDisplayCompletionTests
         Assert.Equal<uint?>(2, Assert.Single(mpo.Frames).VidPnSourceId);
     }
 
-    private static PresentFrameLedger CreateLedger() => new(static _ => ProcessBirth);
+    private static PresentFrameLedger CreateLedger() => new(static _ => ProcessBirth,
+        ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.LedgerLimits);
 
     private static void RecordLegacyFlip(PresentFrameLedger ledger, int processId, int threadId,
         int startMilliseconds, long startQpc, uint submitSequence)
@@ -335,6 +336,9 @@ public sealed class FrameDisplayCompletionTests
             Acquisitions++;
             return new Lease();
         }
+
+        public TimeSpan Retention => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.Retention;
+        public IFrameSubscriptionLease AcquireSubscription(FrameSubscriptionRequest request) => new FrameLeaseAdapter(AcquireSubscription());
 
         public FrameTimingSnapshot? Read(TimeSpan window)
         {

@@ -47,29 +47,33 @@ public sealed partial class PresentFrameEtwSource
                     run.Started.TrySetResult();
                     return;
                 }
-                var name = ResourceManagerEtwSessionNames.Create(
-                    ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner);
-                var current = createSession(name);
-                run.Session = current;
-                lock (gate)
+                else
                 {
-                    observedEventsLost = 0;
-                }
-                current.BindUsage(data =>
-                {
-                    return Volatile.Read(ref run.Accepting) != 0
-                        && ReferenceEquals(Volatile.Read(ref activeRun), run) && OnEvent(data);
-                });
-                Volatile.Write(ref frameLeases, frameSubscriptions.Count);
-                UpdateProviders(current, null);
-                run.Processing = DedicatedEtwConsumerThread.Start(BlockUids.PresentFrameEtwSource, name, () =>
-                {
-                    try { current.Process(); }
-                    catch (OperationCanceledException) when (stopNotification.IsCancellationRequested) { }
-                }, out run.ConsumerThread, consumerThreadObserver);
-                run.FlushTimer = timeProvider.CreateTimer(_ => Flush(current), null, FlushInterval, FlushInterval);
-                context.ReportRunning();
-                run.Started.TrySetResult();
+                    var name = ResourceManagerEtwSessionNames.Create(
+                        ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner);
+                    var current = createSession(name);
+                    run.Session = current;
+                    lock (gate)
+                    {
+                        observedEventsLost = 0;
+                    }
+                    current.BindUsage(data =>
+                    {
+                        return Volatile.Read(ref run.Accepting) != 0
+                            && ReferenceEquals(Volatile.Read(ref activeRun), run) && OnEvent(data);
+                    });
+                    Volatile.Write(ref frameLeases, frameSubscriptions.Count);
+                    UpdateProviders(current, null);
+                    run.Processing = DedicatedEtwConsumerThread.Start(BlockUids.PresentFrameEtwSource, name, () =>
+                    {
+                        try { current.Process(); }
+                        catch (OperationCanceledException) when (stopNotification.IsCancellationRequested) { }
+                    }, out run.ConsumerThread, consumerThreadObserver);
+                    var flushInterval = Pipeline.FlushInterval;
+                    run.FlushTimer = timeProvider.CreateTimer(_ => Flush(current), null, flushInterval, flushInterval);
+                    context.ReportRunning();
+                    run.Started.TrySetResult();
+                    }
             }
             stage = BusinessBlockFailureStage.Run;
             await Task.WhenAny(run.Processing!, run.Failure.Task, stop.Task).ConfigureAwait(false);
@@ -86,6 +90,7 @@ public sealed partial class PresentFrameEtwSource
         }
         catch (Exception error)
         {
+            lock (gate) captureFailure = GpuFailureReason(error);
             ObserveSessionFailure(error);
             run.Started.TrySetException(error);
             InvalidateCurrent();
@@ -135,16 +140,19 @@ public sealed partial class PresentFrameEtwSource
                     if (result.Outcome == BusinessBlockOutcome.Failed)
                     {
                         hasFrameCurrent = false;
-                        ledger = new PresentFrameLedger(ReadProcessStartKey);
+                        ledger = null;
                         foreach (var subscription in graphicsApiSubscriptions) subscription.Api = null;
                     }
                     else
                     {
                         if (hasFrameCurrent && frameStoppedAt == 0) frameStoppedAt = timeProvider.GetUtcNow().UtcTicks;
-                        ledger.ReleaseCorrelationState();
+                        ledger?.ReleaseCorrelationState();
                     }
+                    if (ledger is not null) ledger.GpuFrames = null;
                 }
                 activeRun = null;
+                gpuTracker = null;
+                gpuEventsEnabled = false;
                 diagnostics.RecordResult(BlockUids.PresentFrameEtwSource, result);
                 run.Completed.TrySetResult();
             }
@@ -189,7 +197,8 @@ public sealed partial class PresentFrameEtwSource
         lock (lifecycle)
         {
             var wasActive = HasActiveSubscriptions;
-            if (!frameSubscriptions.Remove(subscription)) return;
+            lock (gate)
+                if (!frameSubscriptions.Remove(subscription)) return;
             var previous = frameLeases;
             Volatile.Write(ref frameLeases, frameSubscriptions.Count);
             UpdateOutputProviders(previous);
@@ -223,10 +232,32 @@ public sealed partial class PresentFrameEtwSource
         internal Dictionary<Guid, ProviderSelection> Providers { get; } = [];
     }
 
-    private sealed class FrameSubscription(PresentFrameEtwSource source, long id) : IDisposable
+    private void Update(FrameSubscription subscription, FrameSubscriptionRequest request)
+    {
+        request = SnapshotRequest(request);
+        lock (lifecycle)
+        {
+            lock (gate)
+            {
+                if (!frameSubscriptions.Contains(subscription)) return;
+                subscription.Request = request;
+            }
+            UpdateOutputProviders(frameLeases);
+            HoldersChanged?.Invoke();
+        }
+    }
+
+    private sealed class FrameSubscription(PresentFrameEtwSource source, long id, FrameSubscriptionRequest request) : IFrameSubscriptionLease
     {
         internal string Id { get; } = $"present-frame:{id}";
         private PresentFrameEtwSource? owner = source;
+        // Written under the source's gate; read under it by provider selection and Read.
+        internal FrameSubscriptionRequest Request { get; set; } = request;
+        public void Update(FrameSubscriptionRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            Volatile.Read(ref owner)?.Update(this, request);
+        }
         public void Dispose() => Interlocked.Exchange(ref owner, null)?.Release(this);
     }
 

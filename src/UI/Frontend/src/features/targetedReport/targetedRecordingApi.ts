@@ -39,7 +39,11 @@ export interface RecordingHeader {
 export interface RecordingGap {
   fromMs: number;
   toMs: number;
-  /** item-unavailable、value-unavailable、size-limit、frames-incomplete、frames-window-skipped；认不出的原样显示。 */
+  /**
+   * 具体原因（docs/targeted_recording_views_2026-10-30.md §3.5）：源给出的原因码原样带入；not-applicable、no-source
+   * （整段）；source-not-refreshed；target-gpu-unresolved；读取方给的 metric-*、breakdown-*；size-limit、
+   * frames-incomplete、frames-window-skipped；item-unavailable、value-unavailable 只在源没给原因时出现。认不出的原样显示。
+   */
   reason: string;
 }
 
@@ -251,7 +255,10 @@ export const itemCatalogDecoder = defineResponseDecoder<CatalogEntry[]>("targete
       naturalIntervalMs: nullableInteger(row.naturalIntervalMs, `${path}.naturalIntervalMs`),
       // 用途：recording、overlay（docs/targeted_recording_views_2026-10-30.md §3.9）；选择器按它过滤。
       uses: requireArray(row.uses, `${path}.uses`).map((use, useIndex) =>
-        requireOneOf(use, `${path}.uses[${useIndex}]`, itemUses))
+        requireOneOf(use, `${path}.uses[${useIndex}]`, itemUses)),
+      // 这台机器上不适用（not-applicable）或没有来源（no-source）时的原因，录制整段记缺口；可用时为空（或旧后端不发）。
+      unavailableReason: row.unavailableReason === undefined ? null
+        : requireNullable(row.unavailableReason, `${path}.unavailableReason`, requireNonEmptyString)
     };
   }));
 

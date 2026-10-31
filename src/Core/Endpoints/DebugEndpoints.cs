@@ -58,18 +58,22 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(new GpuRendererConfirmationPayload("graphics-kernel-client", rows));
         }).AddEndpointFilter(SamplingCapacityFailure);
 
-        // 订阅 N 秒（默认 5，允许 1–30）后返回各进程的帧统计，用来在真实程序上核对帧率。
+        // A scoped diagnostic lease; GPU frame tracing is opt-in, including for the cost measurement script.
         app.MapGet("/api/debug/frame-timing", async (HttpResponse response, IFrameTimingObservationSource frames,
-            int? seconds, CancellationToken cancellation) =>
+            int? seconds, bool? gpuFrames, bool? outputResolution,
+            [Microsoft.AspNetCore.Mvc.FromQuery] int[]? processIds, CancellationToken cancellation) =>
         {
             response.Headers.CacheControl = "no-store";
-            if (seconds is < 1 or > 30)
+            var window = seconds is { } specified ? TimeSpan.FromSeconds(specified)
+                : Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.DiagnosticWindow;
+            if (window <= TimeSpan.Zero || window > frames.Retention || processIds?.Any(static pid => pid <= 0) == true)
             {
-                return Results.BadRequest(new EndpointErrorPayload("seconds must be between 1 and 30."));
+                return Results.BadRequest(new EndpointErrorPayload("A positive window within frame retention and positive processIds are required."));
             }
 
-            var window = TimeSpan.FromSeconds(seconds ?? 5);
-            using var lease = frames.AcquireSubscription();
+            var detail = (gpuFrames == true ? FrameDetail.GpuFrames : FrameDetail.None)
+                | (outputResolution == true ? FrameDetail.OutputResolution : FrameDetail.None);
+            using var lease = frames.AcquireSubscription(new(processIds is { Length: > 0 } ? processIds : null, detail));
             await Task.Delay(window, cancellation);
             var snapshot = frames.Read(window);
             return snapshot is null ? Results.Ok(new RunningStatePayload(false)) : Results.Ok(new FrameTimingStatePayload(true, snapshot));

@@ -10,6 +10,9 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
 {
+    private static readonly double DeclaredHighTierMinimumBaseScore =
+        HostManagerTestPlanFactory.CreatePlan().HotPublish.MemoryCleanup.HighTierMinimumBaseScore;
+
     [Theory]
     [InlineData(80, 81, 1)]
     [InlineData(81, 81, 2)]
@@ -37,7 +40,7 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             fixture.Current,
             currentMaximumBaseScore: fixture.Candidate.BaseScore,
             HostManagerRuntimeStates.BackgroundProcess,
-            memorySchedulingExcluded: false);
+            memorySchedulingExcluded: false, DeclaredHighTierMinimumBaseScore);
 
         Assert.Equal(HostManagerMemoryCleanupCandidateAdmissionStatus.Eligible, result);
     }
@@ -55,7 +58,7 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             fixture.Current,
             fixture.Candidate.BaseScore,
             runtimeState,
-            memorySchedulingExcluded: false);
+            memorySchedulingExcluded: false, DeclaredHighTierMinimumBaseScore);
 
         Assert.Equal(HostManagerMemoryCleanupCandidateAdmissionStatus.KnownIneligible, result);
     }
@@ -75,7 +78,7 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             fixture.Current,
             fixture.Candidate.BaseScore,
             HostManagerRuntimeStates.BackgroundProcess,
-            memorySchedulingExcluded: false);
+            memorySchedulingExcluded: false, DeclaredHighTierMinimumBaseScore);
 
         Assert.Equal(HostManagerMemoryCleanupCandidateAdmissionStatus.KnownIneligible, result);
     }
@@ -121,7 +124,7 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             fixture.Current,
             fixture.Candidate.BaseScore,
             HostManagerRuntimeStates.BackgroundProcess,
-            memorySchedulingExcluded: true);
+            memorySchedulingExcluded: true, DeclaredHighTierMinimumBaseScore);
 
         Assert.Equal(HostManagerMemoryCleanupCandidateAdmissionStatus.KnownIneligible, result);
     }
@@ -173,7 +176,7 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
                 current,
                 currentMaximumBaseScore ?? fixture.Candidate.BaseScore,
                 HostManagerRuntimeStates.BackgroundProcess,
-                memorySchedulingExcluded: false));
+                memorySchedulingExcluded: false, DeclaredHighTierMinimumBaseScore));
 
     private static AdmissionFixture CreateFixture()
     {

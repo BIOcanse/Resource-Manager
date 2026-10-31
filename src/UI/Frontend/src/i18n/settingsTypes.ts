@@ -1,5 +1,5 @@
 import type { KnownAccessScope } from "../features/trustedAccess/trustedAccessTypes.ts";
-import type { AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppResourceBarFrameRateMode, AppUiStyle, AppUpdateMode, ByteUnitMode, SettingsSection } from "../types.ts";
+import type { AppCrashDumpMode, AppCrashDumpType, AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppResourceBarFrameRateMode, AppUiStyle, AppUpdateMode, ByteUnitMode, SettingsSection } from "../types.ts";
 import type { AnimationStyleId } from "../presentation/animationStyle.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
@@ -60,7 +60,7 @@ export interface CreditCatalogItem {
 }
 
 /** 设置页“通知”列出的种类。 */
-export type NotificationKindKey = "memoryProtection" | "update" | "accessRequest";
+export type NotificationKindKey = "memoryProtection" | "update" | "accessRequest" | "crashReport";
 
 export interface NotificationsSettingsCopy {
   intro: string;
@@ -79,9 +79,93 @@ export interface NotificationsSettingsCopy {
   accessRequestNoticeOpen: string;
 }
 
+/**
+ * 崩溃转储（docs/crash_dumps_2026-10-31.md）：设置 · 系统集成里的设置和历史记录、请求卡片、崩溃提示弹窗、
+ * crash-report 通知的界面提示。
+ */
+export interface CrashDumpsCopy {
+  title: string;
+  description: string;
+  modeTitle: string;
+  modeDescription: string;
+  modeOptions: Record<AppCrashDumpMode, { label: string; description: string }>;
+  /** 实际生效的模式和它的来源，例如“当前：已开启（beta 版默认开启）”。 */
+  effective: (mode: string, source: string) => string;
+  effectiveModes: Record<"ask" | "on" | "off", string>;
+  sourceUser: string;
+  channelNames: Record<"beta" | "stable", string>;
+  defaultModeNames: Record<"ask" | "on" | "off", string>;
+  channelDefault: (channel: string, mode: string) => string;
+  turnOff: string;
+  turnOffDescription: string;
+  dumpTypeTitle: string;
+  dumpTypeDescription: string;
+  dumpTypeOptions: Record<AppCrashDumpType, { label: string; description: string }>;
+  keepCountTitle: string;
+  keepCountDescription: string;
+  statusTitle: string;
+  status: Record<"notApplied" | "applied" | "mismatch" | "failed" | "skipped", string>;
+  skipReasons: Record<"not-running-as-installed-service", string>;
+  skipReasonOther: (reason: string) => string;
+  writeFailed: (error: string) => string;
+  readFailed: (error: string) => string;
+  imageStates: Record<"written" | "absent" | "foreign", string>;
+  /** 注册表里一个映像的实际键：类型、保留份数和目录。 */
+  actualDetail: (dumpType: string, count: number | null, folder: string) => string;
+  dumpTypeOther: (value: number) => string;
+  historyTitle: string;
+  historyDescription: string;
+  historyEmpty: string;
+  dumpFolderLabel: string;
+  roles: Record<"service" | "window" | "resident", string>;
+  program: (program: string, role: string) => string;
+  timeLabel: string;
+  versionLabel: string;
+  versionUnknown: string;
+  faultLabel: string;
+  faultUnknown: string;
+  dumpLabel: string;
+  dumpNotEnabled: string;
+  dumpMissing: string;
+  sizeLabel: string;
+  reportedLabel: string;
+  reported: string;
+  notReported: string;
+  packageLabel: string;
+  /** Both values are formatted storage sizes with units, rather than integer counts. */
+  packageExceeds: (packageSizeText: string, attachmentLimitText: string) => string;
+  openFolder: string;
+  buildPackage: string;
+  reportOnGitHub: string;
+  delete: string;
+  deleteConfirmTitle: string;
+  deleteConfirmMessage: (program: string, time: string) => string;
+  revealFailed: string;
+  openFailed: string;
+  actionFailed: string;
+  requestTitle: string;
+  requestWhat: string;
+  requestWhere: (folder: string) => string;
+  requestSize: string;
+  requestContent: string;
+  requestEnable: string;
+  requestDecline: string;
+  requestFailed: string;
+  dialogTitle: string;
+  dialogIntro: string;
+  dialogCrashed: (program: string, time: string) => string;
+  dialogIssueLink: string;
+  dialogLocalPath: string;
+  dialogLater: string;
+  noticeTitle: string;
+  noticeMessage: string;
+  noticeOpen: string;
+}
+
 export interface SettingsCopy {
   updates: UpdatesCopy;
   notifications: NotificationsSettingsCopy;
+  crashDumps: CrashDumpsCopy;
   navigationLabel: string;
   sections: Record<SettingsSection, string>;
   saveState: {

@@ -406,7 +406,7 @@ test "diagnostic sampling requires the exact acknowledged ticket window and new 
     const d = @import("thread_diagnostics.zig");
     const cfg: shared.Config = .{
         .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 16, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 },
-        .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 },
+        .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 },
         .byte_cap = 4 * 1024 * 1024,
         .disk_byte_cap = 512 * 1024,
         .network_byte_cap = 512 * 1024,
@@ -431,7 +431,7 @@ test "diagnostic sampling requires the exact acknowledged ticket window and new 
         .started_tick_ms = 0,
         .maximum_pending_events = 128,
         .maximum_pending_path_units = 4096,
-        .maximum_renderer_processes = 4096,
+        .maximum_renderer_processes = 4096, .network_initial_events = 256,
     };
     const memory = try std.testing.allocator.alloc(u8, cfg.byte_cap);
     defer std.testing.allocator.free(memory);
@@ -473,7 +473,7 @@ test "diagnostic sampling requires the exact acknowledged ticket window and new 
 
 test "shared x64 ABI layouts match the managed boundary declarations" {
     if (@sizeOf(usize) != 8) return error.UnsupportedPlatform;
-    try std.testing.expectEqual(@as(usize, 280), @sizeOf(shared.Config));
+    try std.testing.expectEqual(@as(usize, 288), @sizeOf(shared.Config));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(host.Callbacks));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(counters.Config));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(counters.Pair));

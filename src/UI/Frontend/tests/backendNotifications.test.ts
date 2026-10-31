@@ -124,11 +124,21 @@ for (const invalid of [
     null, null]);
 }
 
+// crash-report (docs/crash_dumps_2026-10-31.md): count and the newest new record's id, program and role.
+{
+  const crash = (sequence: number, facts: Record<string, unknown>) => ({ sequence, kind: "crash-report", occurredAt: "2026-10-31T10:00:00Z", facts });
+  const facts = { count: 2, latestReportId: "20261030T152506Z-ResourceManager.exe-12345", program: "ResourceManager.exe", role: "service" };
+  const frame = decode({ notifications: [crash(1, facts), crash(2, { ...facts, role: "helper" }), crash(3, { ...facts, latestReportId: "" }),
+    crash(4, { ...facts, count: -1 })] });
+  assert.deepEqual(frame.notifications.map(knownBackendNotification), [{ kind: "crash-report", sequence: 1, ...facts }, null, null, null]);
+}
+
 // Settings: a kind shows in the interface only while its "show" switch and its in-app switch are both on;
 // the Windows switch belongs to the tray. Before the preference cache is read nothing shows.
 {
   const all = pointPreferences().notifications;
-  const kinds = [["memory-protection.action", "memoryProtection"], ["update-available", "update"], ["access-request", "accessRequest"]] as const;
+  const kinds = [["memory-protection.action", "memoryProtection"], ["update-available", "update"], ["access-request", "accessRequest"],
+    ["crash-report", "crashReport"]] as const;
   for (const [kind, prefix] of kinds) {
     assert.equal(showsInApp(kind, all), true, kind);
     assert.equal(showsInApp(kind, { ...all, [`${prefix}Notify`]: "off" }), false, `${kind}: show switch off`);

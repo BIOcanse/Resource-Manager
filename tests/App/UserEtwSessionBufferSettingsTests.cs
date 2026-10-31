@@ -73,7 +73,8 @@ public sealed class UserEtwSessionBufferSettingsTests
     public void PresentSessionIsCreatedWithTheDeclaredPoolInsteadOfAFixedSixteenMib()
     {
         var name = "ResourceManager.UserEtwSessionBufferSettingsTests." + Guid.NewGuid().ToString("N");
-        var wrapper = new TraceEventPresentFrameEtwSession(name, new EtwSessionBuffers(64, 48), NullLogger.Instance);
+        var wrapper = new TraceEventPresentFrameEtwSession(name, new EtwSessionBuffers(64, 48), NullLogger.Instance,
+            ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline);
         var session = (TraceEventSession)typeof(TraceEventPresentFrameEtwSession)
             .GetField("session", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(wrapper)!;
         // No provider was enabled, so no native session exists; nothing here starts or stops one.

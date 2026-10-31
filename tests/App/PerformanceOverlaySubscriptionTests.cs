@@ -421,7 +421,8 @@ public sealed class PerformanceOverlaySubscriptionTests
             statistics.OnePercentLowFps, statistics.PointOnePercentLowFps, null
         }, values.Select(static value => value.Value));
         Assert.Equal(new[] { "ms", "FPS", "FPS", "FPS" }, values.Take(4).Select(static value => value.Unit));
-        Assert.Equal("metric-unavailable", values[4].Reason);
+        // gpu.9.usage has no field binding in the publication: the reader names that, not a generic reason.
+        Assert.Equal(TargetedRecordingReadReasons.MetricUnknown, values[4].Reason);
 
         frames.Snapshot = frames.Snapshot with { Complete = false };
         Assert.All(Update(frames).Take(4), static value => Assert.Equal("frame-events-lost", value.Reason));
@@ -601,6 +602,9 @@ public sealed class PerformanceOverlaySubscriptionTests
     {
         private int activeCount;
         public int ActiveCount => Volatile.Read(ref activeCount);
+        public TimeSpan Retention => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.Retention;
+        public IFrameSubscriptionLease AcquireSubscription(FrameSubscriptionRequest request) => new FrameLeaseAdapter(AcquireSubscription());
+
         public IDisposable AcquireSubscription()
         {
             Interlocked.Increment(ref activeCount);

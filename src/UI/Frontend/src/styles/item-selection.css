@@ -297,6 +297,10 @@
   overflow-wrap: anywhere;
 }
 
+.item-picker-entry-name .item-picker-entry-reason {
+  color: var(--warn);
+}
+
 .item-picker-added {
   color: var(--muted);
   font-size: 12px;

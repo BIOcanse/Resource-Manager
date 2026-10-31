@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using System.Buffers;
 using System.Security.Cryptography;
 using ResourceManager.App.Infrastructure.NativeCore;
@@ -85,14 +86,14 @@ internal sealed class WindowsHostManagerAuthorityRetirementStorage
 
 internal sealed class HostManagerAuthorityRetirementManager : IDisposable
 {
-    private const int MaximumPendingRetirements = 64;
-    private const int MaximumOrphanTemporaryFiles = 64;
-    private const int MaximumRetirementDirectoryEntries =
-        1 + MaximumPendingRetirements + MaximumOrphanTemporaryFiles;
-    private const int MaximumCanonicalTemporaryFiles = 64;
-    private const int MaximumPayloadEntries = 4096;
-    private const long MaximumPayloadInventoryBytes = 16L * 1024 * 1024 * 1024;
-    private const int IoBufferSize = 64 * 1024;
+    private static readonly AuthorityRetirementOptions Limits = OptimizationSettings.ProductDefaults.AuthorityRetirement;
+    private static readonly int MaximumPendingRetirements = Limits.MaximumPendingRetirements;
+    private static readonly int MaximumOrphanTemporaryFiles = Limits.MaximumOrphanTemporaryFiles;
+    private static readonly int MaximumRetirementDirectoryEntries = Limits.MaximumRetirementDirectoryEntries;
+    private static readonly int MaximumCanonicalTemporaryFiles = Limits.MaximumCanonicalTemporaryFiles;
+    private static readonly int MaximumPayloadEntries = Limits.MaximumPayloadEntries;
+    private static readonly long MaximumPayloadInventoryBytes = Limits.MaximumPayloadInventoryBytes;
+    private static readonly int IoBufferSize = OptimizationSettings.ProductDefaults.StorageLimits.IoBufferBytes;
     private const string RetirementDirectoryName =
         "AuthorityRetirement/generation-00000001";
     private const string OwnerLeaseFileName = "retirement.owner.lock";

@@ -1,15 +1,18 @@
 import type { ConcreteAppLanguageMode, SettingsCopy, SettingsCopyPatch, SettingsCopyPatchObject } from "./settingsTypes.ts";
 import { enUpdatesCopy, zhCnUpdatesCopy } from "./settingsUpdateCopy.ts";
+import { enCrashDumpsCopy, zhCnCrashDumpsCopy } from "./crashDumpsCopy.ts";
 import { plural } from "./plural.ts";
 
 const zhCnSettingsCopy: SettingsCopy = {
   updates: zhCnUpdatesCopy,
+  crashDumps: zhCnCrashDumpsCopy,
   notifications: {
     intro: "按类别设置通知是否弹出、经哪些途径弹出。Windows 通知由托盘发出，软件内提示在界面显示时出现。",
     kinds: {
       memoryProtection: { title: "主机内存保护", description: "主机内存保护结束一个进程或一棵进程树后通知，写明处理对象、进程数和转储量。" },
       update: { title: "新版本", description: "发现可用的新版本后通知。" },
-      accessRequest: { title: "访问请求", description: "有新的可信访问请求等待批准时通知，写明请求方的名称和程序。" }
+      accessRequest: { title: "访问请求", description: "有新的可信访问请求等待批准时通知，写明请求方的名称和程序。" },
+      crashReport: { title: "崩溃报告", description: "资源管理器从崩溃中恢复后通知；点开后可查看崩溃记录并上传转储。" }
     },
     notifyTitle: "弹出通知",
     notifyDescription: "关闭后这一类通知不经任何途径弹出；两条途径各自的选择保留。",
@@ -441,12 +444,14 @@ const zhCnSettingsCopy: SettingsCopy = {
 
 const enSettingsCopy: SettingsCopy = {
   updates: enUpdatesCopy,
+  crashDumps: enCrashDumpsCopy,
   notifications: {
     intro: "Choose for each kind of notification whether it appears and through which channels. Windows notifications come from the tray; in-app notices appear while the interface is shown.",
     kinds: {
       memoryProtection: { title: "Host memory protection", description: "Notifies after host memory protection ends a process or a process tree, stating the target, the number of processes and the amount dumped." },
       update: { title: "New version", description: "Notifies when a new version is available." },
-      accessRequest: { title: "Access requests", description: "Notifies when a new trusted-access request awaits approval, stating the requester's name and program." }
+      accessRequest: { title: "Access requests", description: "Notifies when a new trusted-access request awaits approval, stating the requester's name and program." },
+      crashReport: { title: "Crash reports", description: "Notifies after Resource Manager recovers from a crash; open it to view the crash records and upload the dump." }
     },
     notifyTitle: "Show notifications",
     notifyDescription: "When off, this kind of notification appears through no channel; the choices for both channels are kept.",

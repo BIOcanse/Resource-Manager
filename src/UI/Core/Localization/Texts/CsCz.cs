@@ -11,6 +11,8 @@ internal static class CsCz
         MemoryProtectionTitle = "Ochrana paměti hostitele zasáhla",
         MemoryProtectionProcessMessageFormat = "Proces {0} (PID {1}) byl ukončen. Velikost výpisu: {2}. Kliknutím otevřete Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Strom procesů pod {0} (PID {1}) byl ukončen. Procesy: {2}; velikost výpisu: {3}. Kliknutím otevřete Resource Manager.",
+        CrashReportTitle = "Hlášení o selhání",
+        CrashReportMessage = "Resource Manager se právě zotavil ze selhání a uložil výpis paměti. Kliknutím otevřete Resource Manager.",
         AppName = "Správce prostředků",
         WindowTitleFormat = "Správce prostředků - {0}",
         TrayTooltipFormat = "Správce prostředků - {0}",

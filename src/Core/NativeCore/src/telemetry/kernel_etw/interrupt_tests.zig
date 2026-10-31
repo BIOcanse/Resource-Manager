@@ -2,7 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 const interrupts = @import("interrupts.zig");
 const u = std.unicode.utf8ToUtf16LeStringLiteral;
-const config: interrupts.Config = .{ .max_modules = 32, .max_identities = 32, .max_slices = 128, .max_slice_drivers = 256 };
+const config: interrupts.Config = .{ .max_modules = 32, .max_path_units = 32768, .max_identities = 32, .max_slices = 128, .max_slice_drivers = 256, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16 };
 
 test "native IRQ normalized admission preserves five receives and four managed rejection reasons" {
     const counters = @import("admission_counters.zig");
@@ -50,10 +50,10 @@ test "native IRQ normalized admission preserves five receives and four managed r
 test "address index allocates by occupied ranges instead of its compiled cap" {
     const Budget = @import("budget.zig").Budget;
     var budget: Budget = .{ .backing = testing.allocator, .cap = 1024 * 1024 };
-    var map = try interrupts.ModuleMap.init(budget.allocator(), .{
-        .max_modules = 1 << 20,
-        .max_path_units = 128,
-    });
+    var wide = config;
+    wide.max_modules = 1 << 20;
+    wide.max_path_units = 128;
+    var map = try interrupts.ModuleMap.init(budget.allocator(), wide);
     defer map.deinit();
     try testing.expectEqual(@as(usize, 0), budget.current);
     try testing.expectEqual(@as(usize, 0), map.ranges.len);
@@ -78,6 +78,9 @@ test "IRQ metadata starts small and reset returns all duration storage" {
         .max_identities = 65536,
         .max_slices = 4096,
         .max_slice_drivers = 1 << 20,
+        .bucket_ms = 10000,
+        .bucket_count = 6,
+        .reported_drivers = 16,
     }, 1, 0, 0);
     defer owner.deinit();
     try testing.expect(budget.current < 4096);
@@ -369,7 +372,7 @@ test "maximum identity survives unload and differently cased driver reuse" {
 }
 
 test "owner cap failures invalidate until reset while map failure is atomic" {
-    const small: interrupts.Config = .{ .max_modules = 1, .max_identities = 2, .max_slices = 1, .max_slice_drivers = 1, .max_path_units = 8 };
+    const small: interrupts.Config = .{ .max_modules = 1, .max_identities = 2, .max_slices = 1, .max_slice_drivers = 1, .max_path_units = 8, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16 };
     var map = try interrupts.ModuleMap.init(testing.allocator, small);
     defer map.deinit();
     try map.upsert(100, 10, u("a.sys"));
@@ -420,3 +423,44 @@ test "every allocation failure unwinds with no leaks" {
     try testing.checkAllAllocationFailures(testing.allocator, allocationScenario, .{});
 }
 
+
+test "bucket width, bucket count and reported drivers come from the configuration" {
+    var custom = config;
+    custom.bucket_ms = 5000;
+    custom.bucket_count = 3;
+    custom.reported_drivers = 1;
+    try testing.expectError(error.InvalidConfig, interrupts.Owner.init(testing.allocator, blk: {
+        var invalid = custom;
+        invalid.bucket_ms = 1500;
+        break :blk invalid;
+    }, 1, 0, 0));
+    var owner = try interrupts.Owner.init(testing.allocator, custom, 1, 10000, 0);
+    defer owner.deinit();
+    try owner.upsertImage(100, 100, u("a.sys"), 10000);
+    try owner.upsertImage(1000, 100, u("b.sys"), 10000);
+    try owner.observe(.isr, 8, 101, 11001);
+    try owner.observe(.dpc, 4, 1001, 24000);
+    var early = try owner.publish(testing.allocator, 14000, 1);
+    defer early.deinit();
+    // Not yet one complete bucket: data are not available.
+    try testing.expect(!early.available);
+    try testing.expectEqual(@as(u32, 0), early.bucket_count);
+    var snapshot = try owner.publish(testing.allocator, 25500, 1);
+    defer snapshot.deinit();
+    try testing.expect(snapshot.available);
+    try testing.expectEqual(@as(i64, 15000), snapshot.window_ms);
+    try testing.expectEqual(@as(u32, 3), snapshot.bucket_count);
+    try testing.expectEqual(@as(i64, 10500), snapshot.buckets[0].started_tick_ms);
+    try testing.expectEqual(@as(i64, 25500), snapshot.buckets[2].ended_tick_ms);
+    try testing.expectEqual(@as(u64, 1), snapshot.buckets[0].event_count);
+    try testing.expectEqual(@as(u64, 1), snapshot.buckets[2].event_count);
+    try testing.expectEqual(@as(usize, 1), snapshot.drivers.len);
+    try testing.expectEqual(@as(f64, 8), snapshot.drivers[0].total_duration_ms);
+}
+
+test "interrupt window overflow is rejected before construction" {
+    var overflowing = config;
+    overflowing.bucket_ms = 4_000_000_000;
+    overflowing.bucket_count = 4_000_000_000;
+    try testing.expectError(error.InvalidConfig, interrupts.Owner.init(testing.allocator, overflowing, 1, 0, 0));
+}

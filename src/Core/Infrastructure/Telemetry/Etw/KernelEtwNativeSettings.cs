@@ -55,7 +55,8 @@ internal static class KernelEtwNativeSettings
                 MaximumModules = limits.MaximumModules, MaximumPathUnits = limits.MaximumPathUnits,
                 MaximumIdentities = limits.MaximumModuleIdentities,
                 MaximumSlices = limits.MaximumInterruptSlices, MaximumSliceDrivers = limits.MaximumInterruptDrivers,
-                ByteCap = limits.InterruptBytes
+                BucketMilliseconds = limits.InterruptBucketMilliseconds, BucketCount = limits.InterruptBucketCount,
+                ReportedDrivers = limits.InterruptReportedDrivers, ByteCap = limits.InterruptBytes
             },
             MaximumDiskPairs = limits.MaximumDiskPairs, MaximumDisks = limits.MaximumDisks,
             MaximumCachedProcesses = limits.MaximumCachedProcesses,
@@ -68,7 +69,8 @@ internal static class KernelEtwNativeSettings
             DiskBucketMilliseconds = limits.DiskBucketMilliseconds,
             MaximumPendingEvents = limits.MaximumPendingEvents,
             MaximumPendingPathUnits = limits.MaximumPendingPathUnits,
-            MaximumRendererProcesses = limits.MaximumRendererProcesses
+            MaximumRendererProcesses = limits.MaximumRendererProcesses,
+            NetworkInitialEvents = limits.NetworkInitialEvents
         };
     }
 }

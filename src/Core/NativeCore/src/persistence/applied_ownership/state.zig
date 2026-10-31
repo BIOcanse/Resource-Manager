@@ -1,3 +1,4 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const bank_module = @import("bank.zig");
@@ -21,7 +22,7 @@ pub const Session = struct {
         config: *const protocol.CreateConfig,
         allocator: std.mem.Allocator,
     ) !*Session {
-        return createWithContentCapacity(config, allocator, @min(config.record_capacity, 16));
+        return createWithContentCapacity(config, allocator, @min(config.record_capacity, policy.initial_record_capacity));
     }
 
     pub fn createWithContentCapacity(

@@ -1,4 +1,5 @@
 using System.Globalization;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using System.Security.Cryptography;
 using System.Text;
 using ResourceManager.Adapter;
@@ -195,15 +196,15 @@ public sealed partial class HostManagerSmartCoordinator
             }
         }
 
-        private static int RuntimeStateRank(string runtimeState)
+        private static uint RuntimeStateRank(string runtimeState)
             => runtimeState switch
             {
-                HostManagerRuntimeStates.ForegroundFocused => 5,
-                HostManagerRuntimeStates.ForegroundUnfocused => 4,
-                HostManagerRuntimeStates.BackgroundWindow => 3,
-                HostManagerRuntimeStates.TrayOnly => 2,
-                HostManagerRuntimeStates.BackgroundProcess => 1,
-                _ => 0
+                HostManagerRuntimeStates.ForegroundFocused => NativeBuildPolicySettings.ProductDefaults.RuntimeRankFocused,
+                HostManagerRuntimeStates.ForegroundUnfocused => NativeBuildPolicySettings.ProductDefaults.RuntimeRankUnfocused,
+                HostManagerRuntimeStates.BackgroundWindow => NativeBuildPolicySettings.ProductDefaults.RuntimeRankBackgroundWindow,
+                HostManagerRuntimeStates.TrayOnly => NativeBuildPolicySettings.ProductDefaults.RuntimeRankTray,
+                HostManagerRuntimeStates.BackgroundProcess => NativeBuildPolicySettings.ProductDefaults.RuntimeRankBackgroundProcess,
+                _ => NativeBuildPolicySettings.ProductDefaults.RuntimeRankNotRunning
             };
     }
 

@@ -12,6 +12,8 @@ public sealed record CpuAffinityPlan(
 
 public static class CpuAffinityPlanner
 {
+    private static ResourceManager.App.Domain.RuntimeSpecialization.LegacyAffinityOptions Defaults =>
+        ResourceManager.App.Infrastructure.Optimization.OptimizationSettings.ProductDefaults.LegacyAffinity;
     public static CpuAffinityPlan CreateExplicitLogicalProcessorPlan(
         int logicalProcessorCount,
         long affinityMask,
@@ -96,7 +98,7 @@ public static class CpuAffinityPlanner
 
     public static CpuAffinityPlan CreateRearLogicalProcessorPlan(int logicalProcessorCount)
     {
-        if (logicalProcessorCount < 6)
+        if (logicalProcessorCount < Defaults.MinimumLogicalProcessors)
         {
             return Disabled(logicalProcessorCount, "RearLogicalProcessors", "逻辑处理器数量过少，暂不做 affinity 迁移。");
         }
@@ -122,7 +124,7 @@ public static class CpuAffinityPlanner
 
     public static CpuAffinityPlan CreatePrimaryLogicalProcessorPlan(int logicalProcessorCount)
     {
-        if (logicalProcessorCount < 6)
+        if (logicalProcessorCount < Defaults.MinimumLogicalProcessors)
         {
             return Disabled(logicalProcessorCount, "PrimaryLogicalProcessors", "逻辑处理器数量过少，暂不做 A2 affinity 迁移。");
         }
@@ -134,7 +136,7 @@ public static class CpuAffinityPlanner
 
         var reservedCount = ResolveProcessorCount(logicalProcessorCount);
         var takeCount = logicalProcessorCount - reservedCount;
-        if (takeCount < 4)
+        if (takeCount < Defaults.MinimumPrimaryProcessors)
         {
             return Disabled(logicalProcessorCount, "PrimaryLogicalProcessors", "可用主运行逻辑处理器过少，暂不做 A2 affinity 迁移。");
         }
@@ -183,17 +185,18 @@ public static class CpuAffinityPlanner
 
     private static int ResolveProcessorCount(int logicalProcessorCount)
     {
-        if (logicalProcessorCount <= 8)
+        if (logicalProcessorCount <= Defaults.SmallMachineMaximumProcessors)
         {
-            return 2;
+            return Defaults.SmallMachineReservedProcessors;
         }
 
-        if (logicalProcessorCount <= 16)
+        if (logicalProcessorCount <= Defaults.MediumMachineMaximumProcessors)
         {
-            return 4;
+            return Defaults.MediumMachineReservedProcessors;
         }
 
-        return Math.Max(4, logicalProcessorCount / 2);
+        return Math.Max(Defaults.LargeMachineMinimumReservedProcessors,
+            logicalProcessorCount / Defaults.LargeMachineReservationDivisor);
     }
 
     private static long BuildMask(IEnumerable<int> processorIds)

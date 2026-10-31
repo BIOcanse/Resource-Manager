@@ -329,6 +329,39 @@
     "es-ES": "Porcentaje del ventilador {index}",
     "ru-RU": "Доля вентилятора {index}"
   },
+  "gpu.target.temperature": {
+    "zh-CN": "目标所用 GPU 温度",
+    "zh-TW": "目標所用 GPU 溫度",
+    "en-US": "Target's GPU temperature",
+    "ja-JP": "対象が使う GPU の温度",
+    "ko-KR": "대상이 쓰는 GPU 온도",
+    "fr-FR": "Température du GPU de la cible",
+    "de-DE": "Temperatur der Ziel-GPU",
+    "es-ES": "Temperatura de la GPU del destino",
+    "ru-RU": "Температура ГП цели"
+  },
+  "gpu.target.usage": {
+    "zh-CN": "目标所用 GPU 占用率",
+    "zh-TW": "目標所用 GPU 佔用率",
+    "en-US": "Target's GPU utilization",
+    "ja-JP": "対象が使う GPU の使用率",
+    "ko-KR": "대상이 쓰는 GPU 사용률",
+    "fr-FR": "Utilisation du GPU de la cible",
+    "de-DE": "Auslastung der Ziel-GPU",
+    "es-ES": "Uso de la GPU del destino",
+    "ru-RU": "Загрузка ГП цели"
+  },
+  "gpu.target.vram": {
+    "zh-CN": "目标所用 GPU 显存（实际驻留）",
+    "zh-TW": "目標所用 GPU 視訊記憶體（實際駐留）",
+    "en-US": "Target's GPU resident VRAM",
+    "ja-JP": "対象が使う GPU の VRAM（実常駐量）",
+    "ko-KR": "대상이 쓰는 GPU VRAM 실제 상주량",
+    "fr-FR": "VRAM résidente du GPU de la cible",
+    "de-DE": "VRAM der Ziel-GPU (resident)",
+    "es-ES": "VRAM residente de la GPU del destino",
+    "ru-RU": "Резидентная видеопамять ГП цели"
+  },
   "gpu.{index}.boardPower": {
     "zh-CN": "GPU{index} 总板功耗",
     "zh-TW": "GPU{index} 總板功耗",

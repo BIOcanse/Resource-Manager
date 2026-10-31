@@ -23,10 +23,12 @@ public sealed class NativeKernelEtwSessionRuntimeTests
     public void SharedConfigurationMatchesTheNativeAbiLayout()
     {
         Assert.Equal(64, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwResidencyConfig>());
-        Assert.Equal(64, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwInterruptConfig>());
+        // The interrupt bucket width, bucket count and reported drivers replace the reserved word (+8 B).
+        Assert.Equal(72, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwInterruptConfig>());
         // 4004bd25 grew the embedded residency config by 8 B (processor count, reserved word, processor pointer replace
-        // bucket_ms and max_cells), so the shared config is 280 B; shared_abi.zig asserts the same size for shared.Config.
-        Assert.Equal(280, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwSessionConfig>());
+        // bucket_ms and max_cells) and the interrupt config added 8 B, so the shared config is 288 B (network_initial_events
+        // took the former reserved3 word); shared_abi.zig asserts the same size for shared.Config.
+        Assert.Equal(288, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwSessionConfig>());
     }
 
     [Fact]

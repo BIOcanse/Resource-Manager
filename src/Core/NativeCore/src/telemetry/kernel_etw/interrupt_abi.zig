@@ -14,7 +14,9 @@ pub const Config = extern struct {
     max_identities: u32,
     max_slices: u32,
     max_slice_drivers: u32,
-    reserved: u32 = 0,
+    bucket_ms: u32,
+    bucket_count: u32,
+    reported_drivers: u32,
     byte_cap: u64,
     generation: u64,
     started_tick_ms: i64,
@@ -77,7 +79,7 @@ pub const Session = struct {
     external_region_bytes: usize = 0,
 
     pub fn create(backing: std.mem.Allocator, cfg: *const Config) !*Session {
-        if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or cfg.reserved != 0 or cfg.byte_cap < @sizeOf(Session)) return error.InvalidConfig;
+        if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or cfg.byte_cap < @sizeOf(Session)) return error.InvalidConfig;
         const self = try backing.create(Session);
         errdefer backing.destroy(self);
         self.* = .{ .backing = backing, .budget = .{ .backing = backing, .cap = @intCast(cfg.byte_cap), .current = @sizeOf(Session), .peak = @sizeOf(Session) }, .owner = undefined };
@@ -87,6 +89,9 @@ pub const Session = struct {
             .max_identities = cfg.max_identities,
             .max_slices = cfg.max_slices,
             .max_slice_drivers = cfg.max_slice_drivers,
+            .bucket_ms = cfg.bucket_ms,
+            .bucket_count = cfg.bucket_count,
+            .reported_drivers = cfg.reported_drivers,
         }, cfg.generation, cfg.started_tick_ms, cfg.events_lost);
         return self;
     }
@@ -94,7 +99,7 @@ pub const Session = struct {
     /// The caller retains the whole ledger lease until destroy succeeds.
     /// The Session, allocator metadata, working state and views all stay inside.
     pub fn createExternal(span: []u8, cfg: *const Config) !*Session {
-        if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or cfg.reserved != 0 or
+        if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or
             cfg.byte_cap < @sizeOf(Session) or span.len > cfg.byte_cap) return error.InvalidConfig;
         const address = @intFromPtr(span.ptr);
         const aligned = (try std.math.add(usize, address, @alignOf(Session) - 1)) & ~(@as(usize, @alignOf(Session)) - 1);
@@ -112,6 +117,9 @@ pub const Session = struct {
             .max_identities = cfg.max_identities,
             .max_slices = cfg.max_slices,
             .max_slice_drivers = cfg.max_slice_drivers,
+            .bucket_ms = cfg.bucket_ms,
+            .bucket_count = cfg.bucket_count,
+            .reported_drivers = cfg.reported_drivers,
         }, cfg.generation, cfg.started_tick_ms, cfg.events_lost);
         return self;
     }
@@ -298,7 +306,7 @@ pub export fn rm_kernel_etw_interrupt_query_usage(handle: ?*anyopaque, output: ?
 }
 
 test "interrupt ABI publication lease survives loss and releases all bytes" {
-    const cfg: Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
+    const cfg: Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
     const self = try Session.create(std.testing.allocator, &cfg);
     defer self.destroy();
     const name = std.unicode.utf8ToUtf16LeStringLiteral("driver.sys");
@@ -328,7 +336,7 @@ test "interrupt external region contains state and immutable view until explicit
     const capacity = 128 * 1024;
     const memory = try std.testing.allocator.alloc(u8, capacity + 1);
     defer std.testing.allocator.free(memory);
-    const cfg: Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = capacity, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
+    const cfg: Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = capacity, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
     var handle: ?*anyopaque = null;
     try std.testing.expectEqual(code(.ok), rm_kernel_etw_interrupt_create_in_region(&cfg, memory.ptr + 1, capacity, &handle));
     const self = session(handle).?;
@@ -393,7 +401,7 @@ test "interrupt external region contains state and immutable view until explicit
 
 test "interrupt external region rejects undersized and over-cap backing" {
     var memory: [32]u8 = undefined;
-    const cfg: Config = .{ .max_modules = 1, .max_path_units = 16, .max_identities = 2, .max_slices = 1, .max_slice_drivers = 1, .byte_cap = 4096, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
+    const cfg: Config = .{ .max_modules = 1, .max_path_units = 16, .max_identities = 2, .max_slices = 1, .max_slice_drivers = 1, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16, .byte_cap = 4096, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
     var output: ?*anyopaque = null;
     try std.testing.expectEqual(code(.invalid_argument), rm_kernel_etw_interrupt_create_in_region(&cfg, &memory, memory.len, &output));
     try std.testing.expectEqual(@as(?*anyopaque, null), output);

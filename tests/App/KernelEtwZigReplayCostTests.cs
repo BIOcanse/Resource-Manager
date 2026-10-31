@@ -390,7 +390,8 @@ public sealed class KernelEtwZigReplayCostTests
             {
                 Size = (uint)Marshal.SizeOf<NativeInterruptConfiguration>(), Version = 0x10000,
                 MaximumModules = 16384, MaximumPathUnits = 4096, MaximumIdentities = 32768,
-                MaximumSlices = 128, MaximumSliceDrivers = 65536, ByteCap = 64UL * 1024 * 1024,
+                MaximumSlices = 128, MaximumSliceDrivers = 65536, BucketMilliseconds = 10000, BucketCount = 6, ReportedDrivers = 16,
+                ByteCap = 64UL * 1024 * 1024,
                 Generation = 7, StartedTick = 1000, EventsLost = metadata.InitialEventsLost
             };
             nint residencyOwner;
@@ -1079,7 +1080,7 @@ public sealed class KernelEtwZigReplayCostTests
     private struct NativeInterruptConfiguration
     {
         public uint Size, Version, MaximumModules, MaximumPathUnits, MaximumIdentities,
-            MaximumSlices, MaximumSliceDrivers, Reserved;
+            MaximumSlices, MaximumSliceDrivers, BucketMilliseconds, BucketCount, ReportedDrivers;
         public ulong ByteCap, Generation;
         public long StartedTick;
         public ulong EventsLost;

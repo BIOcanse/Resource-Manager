@@ -21,7 +21,7 @@ public sealed class ServiceRecoverySettingsTests
         var control = new Control();
         var plan = Plan(1, enabled, delay, count);
         plans.Publish(plan);
-        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true), control, new TestLogger());
+        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true), control, CrashReportTestSupport.DumpSettings(), new CrashReportTestSupport.RecordingOwner(), new TestLogger());
         await service.StartAsync(default);
         var written = Assert.Single(control.Writes);
         Assert.False(written.FailureActionsOnNonCrashFailures);
@@ -43,7 +43,7 @@ public sealed class ServiceRecoverySettingsTests
     {
         var plans = Plans();
         var control = new Control();
-        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true), control, new TestLogger());
+        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true), control, CrashReportTestSupport.DumpSettings(), new CrashReportTestSupport.RecordingOwner(), new TestLogger());
         await service.StartAsync(default);
         Assert.Empty(control.Writes);
         Assert.Empty(plans.Publish(Plan(1, true, 30, 2)).DeliveryFailures);
@@ -63,13 +63,14 @@ public sealed class ServiceRecoverySettingsTests
         var plans = Plans();
         var control = new Control { SkipReason = reason };
         var log = new TestLogger();
-        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(isService, true), control, log);
+        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(isService, true), control, CrashReportTestSupport.DumpSettings(), new CrashReportTestSupport.RecordingOwner(), log);
         await service.StartAsync(default);
         plans.Publish(Plan(1, true, 10, 3));
         plans.Publish(Plan(2, false, 10, 3));
         Assert.Empty(control.Writes);
         Assert.Equal(0, control.Reads);
-        Assert.Equal(isService ? 2 : 0, control.IdentityChecks);
+        // Recovery checks once per changed preference; the crash dump state checks once, for its unchanged first attempt.
+        Assert.Equal(isService ? 3 : 0, control.IdentityChecks);
         Assert.Equal("skipped", service.Diagnostics.State);
         Assert.NotNull(service.Diagnostics.SkipReason);
         Assert.Single(log.Entries, entry => entry.Level == LogLevel.Information);
@@ -84,7 +85,7 @@ public sealed class ServiceRecoverySettingsTests
         plans.Publish(plan);
         var control = new Control { FailWrite = true, Actual = new(42, [], false) };
         var log = new TestLogger();
-        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true), control, log);
+        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true), control, CrashReportTestSupport.DumpSettings(), new CrashReportTestSupport.RecordingOwner(), log);
         await service.StartAsync(default);
         Assert.Equal("failed", service.Diagnostics.State);
         Assert.Equal("write denied", service.Diagnostics.WriteError);
@@ -103,7 +104,7 @@ public sealed class ServiceRecoverySettingsTests
         var plans = Plans();
         var control = new Control { FailRead = true };
         var log = new TestLogger();
-        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true), control, log);
+        var service = new ServiceRecoverySettings(plans, BackendHostEnvironment.Compile(true, true), control, CrashReportTestSupport.DumpSettings(), new CrashReportTestSupport.RecordingOwner(), log);
         await service.StartAsync(default);
         plans.Publish(Plan(1, true, 10, 3));
         Assert.Equal("failed", service.Diagnostics.State);

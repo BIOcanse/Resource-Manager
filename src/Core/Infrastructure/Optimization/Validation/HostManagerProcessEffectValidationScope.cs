@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using static ResourceManager.App.Infrastructure.Optimization.ProcessEffectValidationScopeDocuments;
 using System.Collections.Frozen;
 using System.Security.Cryptography;
@@ -163,8 +164,10 @@ public sealed partial class HostManagerProcessEffectValidationScopeAuthority
     private const string OpeningCleanupPendingFault =
         "effect-scope-open-cleanup-pending";
     private const string ClosingPendingFault = "effect-scope-close-pending";
-    private static readonly TimeSpan MinimumLease = TimeSpan.FromMinutes(1);
-    private static readonly TimeSpan MaximumLease = TimeSpan.FromHours(2);
+    private static readonly TimeSpan MinimumLease =
+        TimeSpan.FromMilliseconds(OptimizationSettings.ProductDefaults.EffectValidationLease.MinimumMilliseconds);
+    private static readonly TimeSpan MaximumLease =
+        TimeSpan.FromMilliseconds(OptimizationSettings.ProductDefaults.EffectValidationLease.MaximumMilliseconds);
     private static readonly JsonSerializerOptions JsonOptions = new HostManagerProcessEffectValidationScopeAuthorityJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -301,7 +304,7 @@ public sealed partial class HostManagerProcessEffectValidationScopeAuthority
             if (request.RunNonce == Guid.Empty
                 || !IsValidationJobName(request.JobName)
                 || string.IsNullOrWhiteSpace(request.ReleaseToken)
-                || request.ReleaseToken.Length is < 32 or > 512
+                || request.ReleaseToken.Length < OptimizationSettings.ProductDefaults.EffectValidationLease.MinimumReleaseTokenCharacters || request.ReleaseToken.Length > OptimizationSettings.ProductDefaults.EffectValidationLease.MaximumReleaseTokenCharacters
                 || request.ExpiresAt <= now + MinimumLease
                 || request.ExpiresAt > now + MaximumLease
                 || request.AllowedProcesses is null

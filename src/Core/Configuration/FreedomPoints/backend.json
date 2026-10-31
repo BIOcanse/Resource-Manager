@@ -105,7 +105,7 @@
                 "consumers": [
                   "MonitoringSettings.Compile"
                 ],
-                "description": "Targeted recording. default_maximum_duration_seconds applies when a request names no duration; maximum_duration_limit_seconds is the largest accepted duration; sample_interval_ms is the cadence of the target process check while recording (items carry their own intervals); maximum_report_kib caps the stored bytes of one report (a start whose estimate exceeds it is rejected, a running report stops storing and records a size-limit gap); exit_confirmation_ticks is how many consecutive checks must find every known target process gone before the recording ends with all-processes-exited; no_process_ticks is how many consecutive ready checks without any target process end it with no-process.",
+                "description": "Targeted recording. default_maximum_duration_seconds applies when a request names no duration; maximum_duration_limit_seconds is the largest accepted duration; sample_interval_ms is the interval of the recording's process-check subscription, whose publications drive the process merge, the exit checks, the frame reads and the storing of item points (items are their own subscriptions at their own intervals); maximum_report_kib caps the stored bytes of one report (a start whose estimate exceeds it is rejected, a running report stops storing and records a size-limit gap); exit_confirmation_ticks is how many consecutive checks must find every known target process gone before the recording ends with all-processes-exited; no_process_ticks is how many consecutive ready checks without any target process end it with no-process; not_refreshed_interval_percent: an item whose source publishes no new observation for longer than this percent of the item interval gets a gap (the source's own reason, else source-not-refreshed); Frame read window and lag belong to frame_pipeline; frame_tail_delay_ms is how long the end of a recording waits for the last present events before the final frame read; actual_interval_samples bounds how many point spacings of one item the reported actual interval (their median) is taken from; default_profile is the content of the 默认 profile (name, default_interval_ms, items of kind and id with optional source, interval_ms, sync_precision), which a settings file without a targetedRecording section reads as.",
                 "id": "targeted_recording",
                 "value_type": "object",
                 "value": {
@@ -114,7 +114,33 @@
                   "sample_interval_ms": 1000,
                   "maximum_report_kib": 2048,
                   "exit_confirmation_ticks": 2,
-                  "no_process_ticks": 3
+                  "no_process_ticks": 3,
+                  "not_refreshed_interval_percent": 150,
+                  "frame_tail_delay_ms": 300,
+                  "actual_interval_samples": 8192,
+                  "default_profile": {
+                    "name": "默认",
+                    "default_interval_ms": 1000,
+                    "items": [
+                      { "kind": "frames", "id": "frames.present" },
+                      { "kind": "software", "id": "cpu.usage" },
+                      { "kind": "software", "id": "memory.usage" },
+                      { "kind": "software", "id": "virtualMemory.usage" },
+                      { "kind": "software", "id": "disk.read" },
+                      { "kind": "software", "id": "disk.write" },
+                      { "kind": "software", "id": "network.receive" },
+                      { "kind": "software", "id": "network.send" },
+                      { "kind": "software", "id": "gpu.usage" },
+                      { "kind": "software", "id": "gpu.vram" },
+                      { "kind": "metric", "id": "cpu.usage" },
+                      { "kind": "metric", "id": "cpu.temperature" },
+                      { "kind": "metric", "id": "cpu.frequency" },
+                      { "kind": "metric", "id": "memory.usage" },
+                      { "kind": "metric", "id": "gpu.target.usage" },
+                      { "kind": "metric", "id": "gpu.target.temperature" },
+                      { "kind": "metric", "id": "gpu.target.vram" }
+                    ]
+                  }
                 },
                 "status": "active",
                 "update_class": "rebuild_backend"
@@ -122,7 +148,7 @@
               {
                 "id": "kernel_etw_limits",
                 "index": 4,
-                "description": "Bounded native kernel ETW working state and immutable publications, plus the real-time kernel session's ETW buffer pool (session_buffer_kib per buffer, session_minimum_buffers at start; TraceEvent sets the maximum to 5/4 of the minimum plus 10, and ETW raises the minimum to 2 per logical processor). Capacity exhaustion is a reported failure.",
+                "description": "Bounded native kernel ETW working state and immutable publications (the interrupt publication reports interrupt_bucket_count buckets of interrupt_bucket_milliseconds and its interrupt_reported_drivers longest drivers, and is available once one bucket is complete; the network owner reserves network_initial_events before its first growth), plus the real-time kernel session's ETW buffer pool (session_buffer_kib per buffer, session_minimum_buffers at start; TraceEvent sets the maximum to 5/4 of the minimum plus 10, and ETW raises the minimum to 2 per logical processor). Capacity exhaustion is a reported failure.",
                 "value_type": "object",
                 "value_source": "registry",
                 "status": "active",
@@ -162,6 +188,10 @@
                   "maximum_pending_events": 16384,
                   "maximum_pending_path_units": 1048576,
                   "maximum_renderer_processes": 4096,
+                  "interrupt_bucket_milliseconds": 10000,
+                  "interrupt_bucket_count": 6,
+                  "interrupt_reported_drivers": 16,
+                  "network_initial_events": 256,
                   "session_buffer_kib": 64,
                   "session_minimum_buffers": 64
                 }
@@ -198,6 +228,73 @@
                 "update_class": "rebuild_backend",
                 "consumers": ["MonitoringSettings.Compile"],
                 "value": { "buffer_kib": 32, "minimum_buffers": 64 }
+              },
+              {
+                "index": 8,
+                "id": "native_build_policy",
+                "description": "Rebuild-time native allocation and admission limits, timeout milliseconds, parser byte caps, and runtime-state preference ranks; positive counts/bytes/divisors, timeout and ranks nonnegative. Defaults preserve current behavior.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {
+                  "data_area_borrow_drain_timeout_ms": 5000,
+                  "initial_record_capacity": 16,
+                  "initial_operation_capacity": 16,
+                  "display_initial_text_bytes": 256,
+                  "display_initial_diff_entries": 16,
+                  "adapter_lease_maximum_capacity": 65536,
+                  "adapter_lease_id_attempts": 8,
+                  "maximum_network_interfaces": 1024,
+                  "maximum_gpu_engine_rows": 262144,
+                  "calibration_maximum_corpus_bytes": 8388608,
+                  "calibration_maximum_row_bytes": 256,
+                  "selected_source_limit": 1024,
+                  "shared_read_retry_limit": 1000,
+                  "interrupt_initial_capacity": 4,
+                  "interrupt_growth_factor": 2,
+                  "etw_allocator_cap_divisor": 16,
+                  "etw_allocator_requested_divisor": 2,
+                  "etw_allocator_alignment_divisor": 4,
+                  "etw_initial_pending_path_units": 64,
+                  "diagnostic_minimum_inventory_bytes": 65536,
+                  "residency_ring_chunk_bytes": 65536,
+                  "query_dos_device_units": 2048,
+                  "runtime_rank_focused": 5,
+                  "runtime_rank_unfocused": 4,
+                  "runtime_rank_background_window": 3,
+                  "runtime_rank_tray": 2,
+                  "runtime_rank_background_process": 1,
+                  "runtime_rank_not_running": 0
+                },
+                "consumers": [
+                  "NativeBuildPolicySettings.Compile"
+                ]
+              },
+              {
+                "id": "frame_pipeline",
+                "index": 9,
+                "description": "Every behaviour value of the Present frame pipeline. retention_ms: how long the frame ledger keeps Presents and the largest read window. present_rate_capacity_hz: the Present rate one stream keeps for a whole retention; the per-stream cap is ceil(rate x retention) + 1 predecessor endpoint, memory grows only with Presents actually seen, and a faster stream overwrites its oldest Presents and reports frame-ledger-present-rate-capacity. stream_capacity: process/source/swap-chain streams kept at once (frame-ledger-stream-capacity beyond it). flush_interval_ms: real-time session flush period, bounding event delivery delay. recording_frame_window_ms and recording_frame_read_lag_ms: the targeted recording's frame read window and how far behind now it reads; window plus lag must fit in retention_ms. process_filter_capacity: DXGI/D3D9 Present is filtered by PID while every frame lease names targets and their union stays within this many (0-8, the ETW limit; 0 never filters). Event payloads are checked by provider, event id, header version and minimum payload length; unknown versions and short payloads are dropped with the concrete fixed-layout/provider/id/version/reason diagnostic. gpu_object_capacity, gpu_pending_packet_capacity, gpu_pending_frame_capacity: GPU frame tier caps on tracked devices/contexts/nodes/process accumulators, in-flight DMA packets and pending Present queue boundaries globally (gpu-frame-tracker-capacity beyond them). diagnostic_window_ms: default diagnostic lease window. provider_enable_timeout_ms and session_release_timeout_ms: bounded native provider enable and session release.",
+                "value_type": "object",
+                "value_source": "registry",
+                "status": "active",
+                "update_class": "rebuild_backend",
+                "consumers": ["MonitoringSettings.Compile"],
+                "value": {
+                  "retention_ms": 30000,
+                  "present_rate_capacity_hz": 1000,
+                  "stream_capacity": 256,
+                  "flush_interval_ms": 250,
+                  "recording_frame_window_ms": 29000,
+                  "recording_frame_read_lag_ms": 250,
+                  "process_filter_capacity": 8,
+                  "gpu_object_capacity": 8192,
+                  "gpu_pending_packet_capacity": 16384,
+                  "gpu_pending_frame_capacity": 16,
+                  "diagnostic_window_ms": 5000,
+                  "provider_enable_timeout_ms": 2000,
+                  "session_release_timeout_ms": 2000
+                }
               }
             ]
           },
@@ -259,6 +356,109 @@
                 "value": 5000,
                 "consumers": ["HostManagerPlanCompiler.CompileSchedulerSamplingInterval"]
               }
+            ],
+            "complex": [
+              {
+                "index": 0,
+                "id": "rollback_state_store",
+                "description": "Rollback state store: a changed rollback state is checkpointed to disk at most every checkpoint_interval_ms; maximum_canonical_bytes bounds the canonical state it writes and reads.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {"checkpoint_interval_ms": 60000, "maximum_canonical_bytes": 4194304},
+                "consumers": ["OptimizationSettings.Compile"]
+              },
+              {
+                "index": 1,
+                "id": "authority_retirement",
+                "description": "Authority retirement generation directory: pending retirements, orphan and canonical temporary files, payload entries and payload bytes one generation may hold. Exceeding a bound is a reported failure; nothing is evicted.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {"maximum_pending_retirements": 64, "maximum_orphan_temporary_files": 64, "maximum_canonical_temporary_files": 64, "maximum_payload_entries": 4096, "maximum_payload_inventory_bytes": 17179869184},
+                "consumers": ["OptimizationSettings.Compile"]
+              },
+              {
+                "index": 2,
+                "id": "ideal_processor_workspace",
+                "description": "Ideal-processor workspace trim: a workspace above trim_minimum_capacity whose live rows stay at or below capacity / trim_usage_divisor for low_usage_calls_before_trim completed calls is trimmed to max(trimmed_minimum_capacity, live rows * trimmed_headroom_factor).",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {"low_usage_calls_before_trim": 4, "trim_minimum_capacity": 128, "trim_usage_divisor": 4, "trimmed_minimum_capacity": 32, "trimmed_headroom_factor": 2},
+                "consumers": ["OptimizationSettings.Compile"]
+              },
+              {
+                "index": 3,
+                "id": "normal_restoration",
+                "description": "Normal-mode restoration when Smart stops: the time limit for restoring through the receipts and transaction journal, and the action and feedback budget it restores with.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {"timeout_ms": 10000, "maximum_actions": 4096},
+                "consumers": ["OptimizationSettings.Compile"]
+              },
+              {
+                "index": 4,
+                "id": "effect_validation_lease",
+                "description": "Process-effect validation scope: the shortest and longest lease a validation scope may request.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {"minimum_ms": 60000, "maximum_ms": 7200000, "minimum_release_token_characters": 32, "maximum_release_token_characters": 512},
+                "consumers": ["OptimizationSettings.Compile"]
+              },
+              {
+                "index": 5,
+                "id": "memory_cleanup_validation_evidence",
+                "description": "Memory-cleanup validation evidence ledger: pending batches and actions per batch it accepts. Exceeding a bound rejects the batch.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {"maximum_batch_count": 256, "maximum_action_count": 4096},
+                "consumers": ["OptimizationSettings.Compile"]
+              },
+              {
+                "index": 6,
+                "id": "smart_record_history",
+                "description": "Smart decision-record history: the most rows one page request may ask for.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {"maximum_page_rows": 500},
+                "consumers": ["OptimizationSettings.Compile"]
+              },
+                {
+                  "index": 7,
+                  "id": "optimization_storage_limits",
+                  "description": "Optimization storage limits: positive IO buffer bytes, maximum JSON nesting depth, and retirement tombstone image and relative-path byte limits. Defaults preserve existing limits; all values must be positive.",
+                  "value_type": "object", "update_class": "rebuild_backend", "status": "active", "value_source": "registry",
+                  "value": {"io_buffer_bytes": 65536, "maximum_json_depth": 32, "retirement_maximum_image_bytes": 8192, "retirement_maximum_relative_path_bytes": 1024},
+                  "consumers": ["OptimizationSettings.Compile"]
+                },
+                {
+                  "index": 8,
+                  "id": "legacy_affinity",
+                  "description": "Legacy primary/rear affinity plan processor counts: positive minimum machine and primary counts, small/medium machine boundaries and reservation counts, and large-machine minimum reserved count and divisor. Single-group 64-bit affinity remains the Windows ABI bound; defaults preserve existing plans.",
+                  "value_type": "object", "update_class": "rebuild_backend", "status": "active", "value_source": "registry",
+                  "value": {"minimum_logical_processors": 6, "minimum_primary_processors": 4, "small_machine_maximum_processors": 8, "small_machine_reserved_processors": 2, "medium_machine_maximum_processors": 16, "medium_machine_reserved_processors": 4, "large_machine_minimum_reserved_processors": 4, "large_machine_reservation_divisor": 2},
+                  "consumers": ["OptimizationSettings.Compile"]
+                },
+                {
+                  "index": 9,
+                  "id": "optimization_runtime_limits",
+                  "description": "Optimization runtime limits: positive maximum base importance (score units), nonnegative stack character/UTF8 byte thresholds, positive startup catalog subscription period in milliseconds, nonnegative byte-display large-value boundary and decimal digit counts. Defaults preserve current scoring, storage strategy, subscription and display.",
+                  "value_type": "object", "update_class": "rebuild_backend", "status": "active", "value_source": "registry",
+                  "value": {"maximum_base_importance": 100, "stack_input_character_limit": 256, "stack_utf8_byte_limit": 1024, "startup_catalog_subscription_ms": 1000, "format_large_value_threshold": 10, "format_byte_digits": 0, "format_large_value_digits": 1, "format_small_value_digits": 2},
+                  "consumers": ["OptimizationSettings.Compile"]
+                }
             ]
           },
           "children": [
@@ -362,6 +562,50 @@
                     "value_source": "registry",
                     "value": { "maximum_window_count": 16, "cleanup_reserve_ms": 1000, "maximum_frame_bytes": 80, "pipe_buffer_bytes": 4096, "preparation_maximum_frame_bytes": 590312 },
                     "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
+                  },
+                  {
+                    "index": 1,
+                    "id": "process_history",
+                    "description": "GPU placement process history: processes kept per software; an unchanged last-seen time is persisted at most every last_seen_persist_interval_ms; one observation attempt lasts observation_window_ms; stopping waits at most stop_cleanup_timeout_ms for attempt cleanup; an observed process starts at confidence_without_path or confidence_with_path and gains confidence_corroboration_bonus (capped at 100) when more than one evidence source agrees.",
+                    "value_type": "object",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": {"maximum_processes_per_software": 64, "last_seen_persist_interval_ms": 600000, "observation_window_ms": 30000, "stop_cleanup_timeout_ms": 5000, "confidence_without_path": 55, "confidence_with_path": 85, "confidence_corroboration_bonus": 10},
+                    "consumers": ["GpuPlacementSettings.Compile"]
+                  },
+                  {
+                    "index": 2,
+                    "id": "external_gpu_runtime",
+                    "description": "External GPU controller runtime: recovery and completion waits, the controller pipe connect limit, the controller file poll period, the verified Qt presents that confirm a placement, retained diagnostic summaries, and the resident observation refresh with its publication poll period. The two poll periods are interim until the controller signals readiness by event and the resident observation waits on its publication signal.",
+                    "value_type": "object",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": {"recovery_timeout_ms": 10000, "completion_wait_ms": 1000, "controller_connect_timeout_ms": 5000, "controller_poll_ms": 50, "qt_minimum_verified_presents": 30, "diagnostic_summary_limit": 32, "resident_refresh_ms": 1000, "resident_poll_ms": 50},
+                    "consumers": ["GpuPlacementSettings.Compile"]
+                  },
+                  {
+                    "index": 3,
+                    "id": "gpu_injection",
+                    "description": "GPU placement injection: attempts and the wait between attempts to find a loaded module, and attempts to take a module snapshot while the target is loading or unloading modules.",
+                    "value_type": "object",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": {"module_find_attempts": 20, "module_find_retry_ms": 25, "module_snapshot_attempts": 10, "maximum_renderer_qualification_rows": 4096},
+                    "consumers": ["GpuPlacementSettings.Compile"]
+                  },
+                  {
+                    "index": 4,
+                    "id": "gpu_launch_reports",
+                    "description": "GPU launch interception: execution reports kept, newest first.",
+                    "value_type": "object",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": {"maximum_reports": 256},
+                    "consumers": ["GpuPlacementSettings.Compile"]
                   }
                 ]
               },
@@ -411,6 +655,17 @@
                 "value_source": "registry",
                 "value": { "kind": "free_capacity_welfare_bonus", "base_score": 100 },
                 "consumers": ["HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish"]
+              },
+              {
+                "index": 1,
+                "id": "software_kind_base_scores",
+                "description": "Type-default base score of each software kind (0 to 100), the lowest layer below catalog groups, catalog processes and user scores. other covers every kind not listed.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {"game": 95, "high_performance": 85, "adapted": 80, "windows_system": 60, "windows_component": 60, "windows_service": 60, "controlled": 45, "managed": 42, "unattributed": 30, "other": 35},
+                "consumers": ["OptimizationSettings.Compile"]
               }
             ]
           },
@@ -445,6 +700,17 @@
                     "value_source": "registry",
                     "value": { "kind": "fixed_logical_processor_share" },
                     "consumers": ["HostManagerPlanCompiler.CompileCpuCoreResidency"]
+                  },
+                  {
+                    "index": 1,
+                    "id": "core_class_scores",
+                    "description": "Relative capacity score of each CPU core class in the model presets: performance cores are the reference; amd_compact is the Zen 5c core of AMD hybrid parts.",
+                    "value_type": "object",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": {"performance": 100, "efficient": 65, "low_power_efficient": 45, "amd_compact": 82},
+                    "consumers": ["OptimizationSettings.Compile"]
                   }
                 ]
               },
@@ -541,6 +807,51 @@
                 "value_source": "registry",
                 "value": 86400,
                 "consumers": ["HostManagerPlanCompiler.CompileServiceRecovery"]
+              }
+            ],
+            "complex": [
+              {
+                "value_source": "registry",
+                "index": 0,
+                "consumers": [
+                  "HostManagerPlanCompiler.CompileCrashReports"
+                ],
+                "description": "Crash dumps and crash reports (docs/crash_dumps_2026-10-31.md). The settings mode 'default' resolves to beta_default_mode when the build version contains beta_version_marker, otherwise to stable_default_mode. images are the executables whose WER LocalDumps keys RM owns, with the role the crash list names. Dumps go to <package>/UserData/<folder_name>; the record list and report packages go to <package>/UserData/<reports_folder_name>, which users cannot write; users_may_write_dumps grants interactive users create-file access there so the window process can write its own dump. mini_dump_custom_flags is the WER CustomDumpFlags of a mini dump (data segments, handles, indirect memory, unloaded modules, thread data). keep_count_maximum caps the per-program keep count of the settings; record_capacity caps all records; subscriber_capacity caps active crash-list readers. A scan lists at most dump_scan_max_entries files. Application log events of the same image within event_match_window_seconds of a dump belong to it; 1000 and 1026 events within event_merge_window_seconds are one crash; at most event_query_max_events are read per query; the very first scan looks back first_scan_event_lookback_seconds. Packages hold the service log from service_log_before_seconds before to service_log_after_seconds after the crash, at most service_log_max_entries entries; a package over issue_attachment_limit_bytes (GitHub's 25 MB non-image attachment limit) is reported, never truncated. The issue link opens issue_new_url, stays within issue_url_max_chars and quotes at most issue_stack_max_lines stack lines.",
+                "id": "crash_reports",
+                "value_type": "object",
+                "value": {
+                  "beta_default_mode": "on",
+                  "stable_default_mode": "ask",
+                  "beta_version_marker": "-beta",
+                  "images": [
+                    { "image": "ResourceManager.exe", "role": "service" },
+                    { "image": "ResourceManager.NativeUi.exe", "role": "window" },
+                    { "image": "ResourceManager.Desktop.exe", "role": "resident" }
+                  ],
+                  "folder_name": "crash-dumps",
+                  "reports_folder_name": "CrashReports",
+                  "users_may_write_dumps": true,
+                  "mini_dump_custom_flags": 4453,
+                  "keep_count_maximum": 50,
+                  "record_capacity": 256,
+                  "subscriber_capacity": 64,
+                  "dump_scan_max_entries": 256,
+                  "event_match_window_seconds": 120,
+                  "event_merge_window_seconds": 10,
+                  "event_query_max_events": 64,
+                  "first_scan_event_lookback_seconds": 86400,
+                  "managed_stack_max_chars": 8000,
+                  "service_log_before_seconds": 600,
+                  "service_log_after_seconds": 120,
+                  "service_log_max_entries": 500,
+                  "version_history_capacity": 32,
+                  "issue_attachment_limit_bytes": 26214400,
+                  "issue_new_url": "https://github.com/BIOcanse/Resource-Manager/issues/new",
+                  "issue_url_max_chars": 8000,
+                  "issue_stack_max_lines": 15
+                },
+                "status": "active",
+                "update_class": "rebuild_backend"
               }
             ]
           }
@@ -748,6 +1059,43 @@
                 "value_source": "registry",
                 "value": 16384,
                 "consumers": [ "HostManagerPlanCompiler.Compile" ]
+              },
+              {
+                "index": 1,
+                "id": "report_sample_interval_ms",
+                "description": "Optimization report sampling cadence; the report status sends it to the frontend as its refresh period. Interim poll period until the report coordinator consumes its holders' publications and a report-status subscription replaces the frontend refresh.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 10000,
+                "consumers": ["OptimizationSettings.Compile"]
+              }
+            ],
+            "complex": [
+              {
+                "index": 0,
+                "id": "report_rule_limits",
+                "description": "User report-rule limits: the largest required consecutive hit or miss count, the highest zero-activity threshold in percent, and the executable names one rule may list. Executable name characters are also a positive declared bound (default 260).",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {
+                  "maximum_consecutive_count": 1000, "maximum_zero_activity_percent": 10, "maximum_executable_names": 256, "maximum_executable_name_characters": 260,
+                  "threshold_ranges": {
+                    "CpuTemperatureCelsius": {"unit": "celsius", "scale": 1, "step": 1, "minimum": 40, "maximum": 110},
+                    "CpuUsagePercent": {"unit": "percent", "scale": 1, "step": 1, "minimum": 1, "maximum": 100},
+                    "CpuFrequencyPercent": {"unit": "percent", "scale": 1, "step": 1, "minimum": 1, "maximum": 200},
+                    "InterruptMaximumSingleDurationMilliseconds": {"unit": "milliseconds", "scale": 1, "step": 0.1, "minimum": 0.1, "maximum": 1000},
+                    "InterruptCpuCapacityPercent": {"unit": "percent", "scale": 1, "step": 0.1, "minimum": 0.1, "maximum": 100},
+                    "SoftwareMemorySystemPercent": {"unit": "percent", "scale": 1, "step": 0.5, "minimum": 1, "maximum": 100},
+                    "SoftwareMemoryBytes": {"unit": "gibibytes", "scale": 1073741824, "step": 0.25, "minimum": 268435456, "maximum": 1099511627776},
+                    "ProcessMemoryBytes": {"unit": "mebibytes", "scale": 1048576, "step": 1, "minimum": 1048576, "maximum": 68719476736},
+                    "ProcessIdleMilliseconds": {"unit": "minutes", "scale": 60000, "step": 1, "minimum": 60000, "maximum": 86400000}
+                  }
+                },
+                "consumers": ["OptimizationSettings.Compile"]
               }
             ]
           },
@@ -1165,6 +1513,26 @@
                 "consumers": [
                   "MemoryCpuTierTable.Compile"
                 ]
+              }
+            ]
+          },
+          "children": []
+        },
+        {
+          "id": "persistence",
+          "description": "Disk writes and disk usage of the service's own stores.",
+          "build": {
+            "complex": [
+              {
+                "index": 0,
+                "id": "sqlite_vacuum",
+                "description": "SQLite maintenance: a pending VACUUM runs only on a database of at least minimum_database_bytes whose free pages are at least minimum_free_page_ratio of its pages.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": {"minimum_database_bytes": 33554432, "minimum_free_page_ratio": 0.1},
+                "consumers": ["PersistenceSettings.Compile"]
               }
             ]
           },

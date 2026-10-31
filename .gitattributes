@@ -13,6 +13,8 @@
 *.json text
 *.xml text
 src/Shared/StateItems/state-items.json text eol=lf
+/src/Core/NativeCore/src/configuration/NativePolicy.g.zig text eol=lf
+/src/Shared/SharedSection/src/NativePolicy.g.zig text eol=lf
 
 /tools/catalog-validation/software-metadata/Inputs/*.json text eol=lf
 /tools/catalog-validation/software-metadata/Generated/*.json text eol=lf
@@ -20,6 +22,9 @@ src/Shared/StateItems/state-items.json text eol=lf
 /src/UI/Frontend/index.html text eol=lf
 /src/UI/Core/Overlay/metric-labels.json text eol=lf
 /src/UI/Core/Overlay/overlay-item-labels.json text eol=lf
+/src/Core/Configuration/FreedomPoints/backend.groups.json text eol=lf
+/src/UI/Core/Preferences/Generated/FrontendPoints.Structure.g.cs text eol=lf
+/src/UI/Frontend/src/preferences/generated/frontendPoints.structure.ts text eol=lf
 
 # SDK payloads and their manifests/notices are verified as delivered bytes.
 # Text normalization would invalidate provider hashes, including mixed line endings.

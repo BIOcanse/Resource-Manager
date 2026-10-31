@@ -6,34 +6,19 @@ namespace Resource_Manager_APP.Tests;
 public sealed class OptimizationRuntimeScoringDefaultsTests
 {
     [Fact]
-    public void BaseScoreForKind_CoversEverySoftwareKindAndUnknownSoftware()
+    public void BaseScoreForKind_ReadsTheDeclaredKindScoresAndOtherForUnknownSoftware()
     {
+        var declared = HostManagerTestPlanFactory.CreatePlan().Optimization!.SoftwareKindBaseScores;
         var kinds = typeof(SoftwareKinds)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(static field => field.IsLiteral && !field.IsInitOnly)
             .Select(static field => Assert.IsType<string>(field.GetRawConstantValue()))
             .ToArray();
 
-        Assert.All(kinds, kind => Assert.True(
-            OptimizationRuntimeScoringDefaults.BaseScoreForKind(kind) >=
-                OptimizationRuntimeScoringDefaults.MiddleTierMinimumBaseScore,
-            $"Software kind '{kind}' must default to the middle or high base-score tier."));
+        Assert.All(kinds, kind => Assert.Equal(declared.ForKind(kind), OptimizationRuntimeScoringDefaults.BaseScoreForKind(kind)));
+        Assert.Equal(declared.Other, OptimizationRuntimeScoringDefaults.BaseScoreForKind("UnknownFutureKind"));
+        // The declared defaults are today's values.
+        Assert.Equal(95d, OptimizationRuntimeScoringDefaults.BaseScoreForKind(SoftwareKinds.Game));
         Assert.Equal(35d, OptimizationRuntimeScoringDefaults.BaseScoreForKind("UnknownFutureKind"));
-        Assert.Equal(
-            HostManagerBaseScoreTier.Middle,
-            OptimizationRuntimeScoringDefaults.ResolveBaseScoreTier(
-                OptimizationRuntimeScoringDefaults.BaseScoreForKind("UnknownFutureKind")));
-    }
-
-    [Theory]
-    [InlineData(20, HostManagerBaseScoreTier.Low)]
-    [InlineData(21, HostManagerBaseScoreTier.Middle)]
-    [InlineData(80, HostManagerBaseScoreTier.Middle)]
-    [InlineData(81, HostManagerBaseScoreTier.High)]
-    public void ExplicitBaseScoreResolvesAtExactGlobalTierBoundaries(
-        double baseScore,
-        HostManagerBaseScoreTier expected)
-    {
-        Assert.Equal(expected, OptimizationRuntimeScoringDefaults.ResolveBaseScoreTier(baseScore));
     }
 }

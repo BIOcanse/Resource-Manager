@@ -1,3 +1,4 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const std = @import("std");
 const Region = @import("region_allocator.zig").RegionAllocator;
 
@@ -150,8 +151,8 @@ pub const Context = struct {
         // Growth is bounded by a sixteenth of this owner's declared cap: an
         // unoccupied speculative chunk must not be what crosses that cap, and
         // one surviving small object pins at most that much.
-        const step = @max(self.callbacks.page_size, self.accounting.cap / 16);
-        const target = @max(minimum, @min(self.small_requested / 2, step));
+        const step = @max(self.callbacks.page_size, self.accounting.cap / policy.etw_allocator_cap_divisor);
+        const target = @max(minimum, @min(self.small_requested / policy.etw_allocator_requested_divisor, step));
         const bytes = self.rounded(@max(self.callbacks.page_size, target)) orelse return null;
         if (!self.accounting.admit(bytes)) { self.fail(.byte_cap); return null; }
         const raw = self.callbacks.allocate.?(self.callbacks.context, self.tag, bytes, @intFromEnum(std.mem.Alignment.fromByteUnits(@alignOf(Page)))) orelse {
@@ -173,7 +174,7 @@ pub const Context = struct {
         // table an independent Ledger identity exhausts the structural slot
         // table long before this owner's byte cap. Co-locate page-sized objects
         // with the same owner/scope; the chunks never move with live objects.
-        if (len <= self.callbacks.page_size and alignment.toByteUnits() <= self.callbacks.page_size / 4) {
+        if (len <= self.callbacks.page_size and alignment.toByteUnits() <= self.callbacks.page_size / policy.etw_allocator_alignment_divisor) {
             var node = self.pages;
             var remaining = self.accounting.cap / self.callbacks.page_size + 1;
             while (node) |page| {

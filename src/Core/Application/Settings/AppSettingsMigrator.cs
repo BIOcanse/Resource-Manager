@@ -77,7 +77,10 @@ public static class AppSettingsMigrator
                 ReadBoolean(root, "systemIntegration", "autoStartEnabled", false),
                 ReadBoolean(root, "systemIntegration", "restartAfterCrashEnabled", true),
                 ReadInt32(root, "systemIntegration", "crashRestartDelaySeconds", 10),
-                ReadInt32(root, "systemIntegration", "crashRestartCount", 3)),
+                ReadInt32(root, "systemIntegration", "crashRestartCount", 3))
+            {
+                CrashDumps = ReadCrashDumps(root)
+            },
             new AppDebugSettings(
                 ReadBoolean(root, "debug", "debugModeEnabled", defaults.Debug.DebugModeEnabled),
                 ReadBoolean(root, "debug", "debugLogEnabled", defaults.Debug.DebugLogEnabled),
@@ -108,12 +111,19 @@ public static class AppSettingsMigrator
         return AppSettingsNormalizer.Normalize(settings);
     }
 
-    // An older settings file has no targetedRecording section: it reads as the single 默认 profile.
+    // An older settings file has no targetedRecording section: it reads as the single 默认 profile. A stored
+    // profile equal to the pre-2026-10-31 default is replaced once (TargetedRecordingDefaultMigration).
     private static AppTargetedRecordingSettings ReadTargetedRecording(JsonElement root)
         => root.TryGetProperty("targetedRecording", out var section) && section.ValueKind == JsonValueKind.Object
-            ? section.Deserialize<AppTargetedRecordingSettings>(WebJsonOptions)
-                ?? throw new JsonException("targetedRecording must be an object.")
+            ? TargetedRecordingDefaultMigration.Apply(section.Deserialize<AppTargetedRecordingSettings>(WebJsonOptions)
+                ?? throw new JsonException("targetedRecording must be an object."))
             : TargetedRecordingProfileDefaults.Create();
+
+    // COMPAT with TargetedRecordingDefaultMigration: a file holding the old default is rewritten once.
+    private static bool HoldsOldTargetedRecordingDefault(JsonElement root)
+        => root.TryGetProperty("targetedRecording", out var section) && section.ValueKind == JsonValueKind.Object
+            && section.Deserialize<AppTargetedRecordingSettings>(WebJsonOptions)?.Profiles is { } profiles
+            && profiles.Any(TargetedRecordingDefaultMigration.IsOldDefault);
 
     private static HostMemoryProtectionSettings ReadMemoryProtection(JsonElement root)
     {
@@ -141,10 +151,21 @@ public static class AppSettingsMigrator
                 ? new AppReportSettings(overrides.Deserialize<AppReportRuleOverride[]>(WebJsonOptions) ?? [])
                 : new AppReportSettings([]);
 
-    private static readonly JsonSerializerOptions WebJsonOptions = new AppSettingsJsonContext(new(JsonSerializerDefaults.Web)).Options;
+    // An older settings file has no systemIntegration.crashDumps: it reads as the defaults (mode "default").
+    private static AppCrashDumpSettings ReadCrashDumps(JsonElement root)
+    {
+        if (!root.TryGetProperty("systemIntegration", out var integration) || integration.ValueKind != JsonValueKind.Object
+            || !integration.TryGetProperty("crashDumps", out var section) || section.ValueKind != JsonValueKind.Object)
+            return new AppCrashDumpSettings();
+        try { return section.Deserialize<AppCrashDumpSettings>(WebJsonOptions) ?? new AppCrashDumpSettings(); }
+        catch (JsonException) { return new AppCrashDumpSettings(); }
+    }
+
+    private static readonly JsonSerializerOptions WebJsonOptions =new AppSettingsJsonContext(new(JsonSerializerDefaults.Web)).Options;
 
     public static bool RequiresRewrite(JsonElement root)
     {
+        if (HoldsOldTargetedRecordingDefault(root)) return true;
         if (!root.TryGetProperty("memoryProtection", out var protection) || protection.ValueKind != JsonValueKind.Object
             || !protection.TryGetProperty("minimumProcessGrowthBytes", out var minimum) || minimum.ValueKind != JsonValueKind.Number || !minimum.TryGetInt64(out var growth) || growth <= 0
             || !protection.TryGetProperty("protectedProcesses", out var protectedProcesses) || protectedProcesses.ValueKind != JsonValueKind.Array) return true;
@@ -158,6 +179,15 @@ public static class AppSettingsMigrator
             || !integration.TryGetProperty("crashRestartCount", out var count)
             || count.ValueKind != JsonValueKind.Number
             || !count.TryGetInt32(out var restarts) || restarts is < 1 or > 10) return true;
+        // A file without crashDumps reads the defaults and is written whole on the next save; a present but invalid
+        // section is rewritten now.
+        if (integration.TryGetProperty("crashDumps", out var crashDumps) && (crashDumps.ValueKind != JsonValueKind.Object
+            || !crashDumps.TryGetProperty("mode", out var dumpMode) || dumpMode.ValueKind != JsonValueKind.String
+            || !AppCrashDumpModes.IsSupported(dumpMode.GetString())
+            || !crashDumps.TryGetProperty("dumpType", out var dumpType) || dumpType.ValueKind != JsonValueKind.String
+            || !AppCrashDumpTypes.IsSupported(dumpType.GetString())
+            || !crashDumps.TryGetProperty("keepCount", out var keepCount) || keepCount.ValueKind != JsonValueKind.Number
+            || !keepCount.TryGetInt32(out var kept) || kept < 1)) return true;
         if (!root.TryGetProperty("control", out var control) || control.ValueKind != JsonValueKind.Object
             || !control.TryGetProperty("reassertionIntervalSeconds", out var interval)
             || interval.ValueKind != JsonValueKind.Number || !interval.TryGetInt32(out var seconds) || seconds is < 1 or > 86400) return true;

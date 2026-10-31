@@ -1,3 +1,4 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const std = @import("std");
 const calibration = @import("calibration.zig");
 const corpus = @import("calibration_corpus.zig");
@@ -5,7 +6,7 @@ const corpus = @import("calibration_corpus.zig");
 pub const schema_header =
     "case_id\tobservation_id\tdomain\tfree_ratio_units\tweight\toutcome";
 pub const maximum_input_bytes: usize = corpus.maximum_corpus_bytes;
-pub const maximum_row_bytes: usize = 256;
+pub const maximum_row_bytes: usize = policy.calibration_maximum_row_bytes;
 pub const minimum_canonical_row_bytes: usize = 30;
 
 pub const Outcome = enum(u8) {

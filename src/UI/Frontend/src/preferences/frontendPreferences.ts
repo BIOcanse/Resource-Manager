@@ -58,7 +58,8 @@ export function pointPreferences(): FrontendPreferencesCache {
     notifications: { updateNotify: points.UpdateNotify, updateInApp: points.UpdateInApp, updateSystem: points.UpdateSystem,
       accessRequestNotify: points.AccessRequestNotify, accessRequestInApp: points.AccessRequestInApp,
       accessRequestSystem: points.AccessRequestSystem, memoryProtectionNotify: points.MemoryProtectionNotify,
-      memoryProtectionInApp: points.MemoryProtectionInApp, memoryProtectionSystem: points.MemoryProtectionSystem },
+      memoryProtectionInApp: points.MemoryProtectionInApp, memoryProtectionSystem: points.MemoryProtectionSystem,
+      crashReportNotify: points.CrashReportNotify, crashReportInApp: points.CrashReportInApp, crashReportSystem: points.CrashReportSystem },
     overlays: {}, dashboard: null, targetedReportViewTemplates: null
   };
 }

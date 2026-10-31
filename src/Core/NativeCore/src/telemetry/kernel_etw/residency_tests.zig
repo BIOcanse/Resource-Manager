@@ -7,12 +7,19 @@ const one_processor = [_]i32{0};
 const two_processors = [_]i32{ 0, 1 };
 const record_chunk_bytes = residency.records_per_chunk * residency.pair_record_bytes;
 
+/// Test limits (the former Config field defaults); each test overrides the fields it exercises.
+fn residencyConfig(fields: anytype) residency.Config {
+    var config: residency.Config = .{ .qpc_frequency = 0, .window_ms = 5000, .max_pairs = 65536, .max_processes = 32768, .max_threads = 131072, .max_processors = 4096, .max_name_bytes = 8 * 1024 * 1024 };
+    inline for (@typeInfo(@TypeOf(fields)).@"struct".field_names) |name| @field(config, name) = @field(fields, name);
+    return config;
+}
+
 /// W = 100 QPC (1000 QPC/s, 100 ms), finite window, processor 0.
 fn owner() !Owner {
-    return Owner.init(a, .{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 32, .processors = &one_processor });
+    return Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 32, .processors = &one_processor }));
 }
 fn owner2() !Owner {
-    return Owner.init(a, .{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 32, .processors = &two_processors });
+    return Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 32, .processors = &two_processors }));
 }
 fn seed(o: *Owner, pid: i32, tid: i32) !void {
     try o.seedProcess(pid, 100 + pid, " process ");
@@ -243,7 +250,7 @@ test "inventory cannot attach unverified birth to event process or seed stale pr
 }
 
 test "handled pair capacity keeps pre-reset facts and the failing switch starts a fresh window" {
-    var o = try Owner.init(a, .{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 1, .processors = &one_processor });
+    var o = try Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 1, .processors = &one_processor }));
     defer o.deinit();
     try seed(&o, 10, 20);
     try o.seedThread(10, 21);
@@ -274,9 +281,9 @@ test "handled pair capacity keeps pre-reset facts and the failing switch starts 
 }
 
 test "the expected processor set is validated and stored for the capture" {
-    try std.testing.expectError(error.InvalidConfig, Owner.init(a, .{ .qpc_frequency = 1000, .processors = &.{ 0, 0 } }));
-    try std.testing.expectError(error.InvalidConfig, Owner.init(a, .{ .qpc_frequency = 1000, .processors = &.{-1} }));
-    var o = try Owner.init(a, .{ .qpc_frequency = 1000, .window_ms = 100, .max_processors = 2 });
+    try std.testing.expectError(error.InvalidConfig, Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .processors = &.{ 0, 0 } })));
+    try std.testing.expectError(error.InvalidConfig, Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .processors = &.{-1} })));
+    var o = try Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .window_ms = 100, .max_processors = 2 }));
     defer o.deinit();
     try std.testing.expectError(error.InvalidConfig, o.setProcessors(&.{}));
     try std.testing.expectError(error.CapacityExceeded, o.setProcessors(&.{ 0, 1, 2 }));
@@ -370,7 +377,7 @@ test "clear restarts identity IDs QPC floor and window mode but invalidates inve
 }
 
 test "configured identity processor and name capacities return errors" {
-    var o = try Owner.init(a, .{ .qpc_frequency = 1000, .max_processes = 1, .max_threads = 1, .max_processors = 1, .max_name_bytes = 4, .processors = &one_processor });
+    var o = try Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .max_processes = 1, .max_threads = 1, .max_processors = 1, .max_name_bytes = 4, .processors = &one_processor }));
     defer o.deinit();
     try o.seedProcess(10, 100, "name");
     try std.testing.expectError(error.CapacityExceeded, o.seedProcess(11, 100, "x"));
@@ -381,7 +388,7 @@ test "configured identity processor and name capacities return errors" {
 }
 
 test "seed capacity failure invalidates a previously complete publication window" {
-    var o = try Owner.init(a, .{ .qpc_frequency = 1000, .window_ms = 100, .max_processes = 1, .processors = &one_processor });
+    var o = try Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .window_ms = 100, .max_processes = 1, .processors = &one_processor }));
     defer o.deinit();
     try seed(&o, 10, 20);
     try cs(&o, 0, 0, 0, 0, 10, 20);
@@ -461,7 +468,7 @@ test "continuous snapshots report the last n complete slots and slide one slot a
 }
 
 test "continuous storage stays bounded over a long run with thread churn" {
-    var o = try Owner.init(a, .{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 64, .max_threads = 256, .processors = &one_processor });
+    var o = try Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 64, .max_threads = 256, .processors = &one_processor }));
     defer o.deinit();
     try o.beginWindowAt(0, 4);
     try o.seedProcess(10, 110, "churn");
@@ -496,7 +503,7 @@ test "pair records are 24 bytes and N pairs occupy exact chunk bytes" {
     try std.testing.expectEqual(@as(usize, 393_120), Owner.windowStorageBytes(13_800, 0));
     // n = 5: R = 12 cells of 16 B, 341 rings per 64 KiB chunk.
     try std.testing.expectEqual(@as(usize, 65_520 + 65_472), Owner.windowStorageBytes(1, 12));
-    var o = try Owner.init(a, .{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 4096, .max_threads = 4096, .processors = &one_processor });
+    var o = try Owner.init(a, residencyConfig(.{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 4096, .max_threads = 4096, .processors = &one_processor }));
     defer o.deinit();
     try o.seedProcess(10, 110, "many");
     var tid: i32 = 1;
@@ -517,7 +524,7 @@ test "all allocation failures unwind owner and snapshot without leaks" {
     try std.testing.checkAllAllocationFailures(a, allocationFailureCase, .{});
 }
 fn allocationFailureCase(allocator: std.mem.Allocator) !void {
-    var o = try Owner.init(allocator, .{ .qpc_frequency = 1000, .window_ms = 100, .processors = &one_processor });
+    var o = try Owner.init(allocator, residencyConfig(.{ .qpc_frequency = 1000, .window_ms = 100, .processors = &one_processor }));
     defer o.deinit();
     try o.seedProcess(10, 100, "p");
     try o.seedThread(10, 20);
@@ -531,7 +538,7 @@ test "separate window allocator failures return all window and metadata allocati
     try std.testing.checkAllAllocationFailures(a, windowAllocationFailureCase, .{});
 }
 fn windowAllocationFailureCase(window_allocator: std.mem.Allocator) !void {
-    var o = try Owner.initWithWindowAllocator(a, window_allocator, .{ .qpc_frequency = 1000, .window_ms = 100, .processors = &one_processor });
+    var o = try Owner.initWithWindowAllocator(a, window_allocator, residencyConfig(.{ .qpc_frequency = 1000, .window_ms = 100, .processors = &one_processor }));
     defer o.deinit();
     try o.beginWindowAt(0, 2);
     try seed(&o, 10, 20);

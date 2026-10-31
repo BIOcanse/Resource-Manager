@@ -251,6 +251,21 @@ let backendNotificationList = [];
 function publishBackendNotifications(subscriber) {
   subscriber.write({ notifications: structuredClone(backendNotificationList) });
 }
+// /api/crash-reports/subscribe（docs/crash_dumps_2026-10-31.md）：订阅时一次整份列表，之后每次变化一次整份列表。
+// 默认没有记录；测试经 crashReports 补丁给出记录（字段同后端 CrashReport）。
+const crashReportSubscribers = new Set();
+const emptyCrashReportList = () => ({ reports: [], dumpFolder: "F:\\MockUserData\\crash-dumps", issueAttachmentLimitBytes: 26214400 });
+let crashReportList = emptyCrashReportList();
+function publishCrashReports(subscriber) {
+  subscriber.write(structuredClone(crashReportList));
+}
+function changeCrashReport(id, change) {
+  const report = crashReportList.reports.find(item => item.id === id);
+  if (!report) return null;
+  change(report);
+  for (const subscriber of [...crashReportSubscribers]) publishCrashReports(subscriber);
+  return structuredClone(report);
+}
 const kernelLeakReportSubscribers = new Set();
 // POST /api/kernel-leaks/history/clear 之后，当前场景的帧不再带历史条目（后端删除后发布新帧）；换场景或重置时恢复。
 let kernelLeakHistoryCleared = false;
@@ -346,6 +361,7 @@ const appSettingsResult = (runtimeApplicationDisposition = appSettingsRuntimeDis
     settings,
     updatedAt: "2026-10-27T05:00:00Z",
     serviceRecovery: null,
+    crashDumps: scenario.crashDumpDiagnostics ?? null,
     storagePath: "F:\\MockUserData\\settings.local.json",
     source: { kind: 255, sourceVersion: settings.version, inputSha256: scenario.settingsRevision,
       effectiveSha256: scenario.settingsRevision, rewritePerformed: false, recoveryDisposition: "none",
@@ -940,6 +956,43 @@ async function handleApi(request, response, url) {
     const removedCount = memoryProtection.clearRecordHistory();
     publishMemoryProtectionFrame({ type: "records", ...memoryProtection.records() });
     return json(response, 200, { removedCount });
+  }
+  if (path === "/api/crash-reports" && request.method === "GET") {
+    return json(response, 200, structuredClone(crashReportList));
+  }
+  const crashReportRoute = /^\/api\/crash-reports\/([^/]+)(?:\/(package|issue-link|acknowledge))?$/.exec(path);
+  if (crashReportRoute) {
+    const id = decodeURIComponent(crashReportRoute[1]);
+    const action = crashReportRoute[2] ?? null;
+    if (action === null && request.method === "DELETE") {
+      const before = crashReportList.reports.length;
+      crashReportList.reports = crashReportList.reports.filter(item => item.id !== id);
+      if (crashReportList.reports.length === before) return json(response, 404, { error: "crash-report-not-found" });
+      for (const subscriber of [...crashReportSubscribers]) publishCrashReports(subscriber);
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    if (action !== null && request.method === "POST") {
+      if (action === "package") {
+        const report = changeCrashReport(id, item => {
+          const sizeBytes = (item.dump?.sizeBytes ?? 0) + 4096;
+          item.package = { path: `F:\\MockPackage\\UserData\\CrashReports\\packages\\${item.id}.zip`, sizeBytes,
+            createdAt: "2026-10-31T08:00:00Z", exceedsIssueLimit: sizeBytes > crashReportList.issueAttachmentLimitBytes };
+        });
+        return report ? json(response, 200, { report, package: report.package,
+          reason: report.package.exceedsIssueLimit ? "exceedsIssueAttachmentLimit" : null })
+          : json(response, 404, { error: "crash-report-not-found" });
+      }
+      if (action === "issue-link") {
+        const report = changeCrashReport(id, item => { item.reported = true; });
+        return report ? json(response, 200, { report,
+          url: `https://github.com/BIOcanse/Resource-Manager/issues/new?title=${encodeURIComponent(report.program)}` })
+          : json(response, 404, { error: "crash-report-not-found" });
+      }
+      const report = changeCrashReport(id, item => { item.acknowledged = true; });
+      return report ? json(response, 200, { report }) : json(response, 404, { error: "crash-report-not-found" });
+    }
   }
   if (path === "/api/notifications" && request.method === "GET") {
     return json(response, 200, { notifications: structuredClone(backendNotificationList) });
@@ -1805,6 +1858,11 @@ function applyScenarioPatch(patch) {
     publishMemoryProtectionFrame(record === null ? { type: "records", ...memoryProtection.records() } : { type: "record", record });
   }
   // 测试用：通知所有者的整份列表（docs/notifications_2026-10-29.md，从旧到新，序号由测试给），订阅随即收到整份列表。
+  // 测试用：崩溃记录的整份列表（{ reports, dumpFolder?, issueAttachmentLimitBytes? }），订阅随即收到。
+  if (Object.hasOwn(patch, "crashReports")) {
+    crashReportList = { ...emptyCrashReportList(), ...structuredClone(patch.crashReports) };
+    for (const subscriber of [...crashReportSubscribers]) publishCrashReports(subscriber);
+  }
   if (Object.hasOwn(patch, "backendNotifications")) {
     backendNotificationList = structuredClone(patch.backendNotifications);
     for (const subscriber of [...backendNotificationSubscribers]) publishBackendNotifications(subscriber);
@@ -3689,8 +3747,9 @@ async function subscriptionChannelStream(request, response) {
     const kernelLeakReport = requestUrl.pathname === "/api/kernel-leaks/subscribe";
     const memoryProtectionStatus = requestUrl.pathname === "/api/memory-protection/subscribe";
     const backendNotifications = requestUrl.pathname === "/api/notifications/subscribe";
+    const crashReports = requestUrl.pathname === "/api/crash-reports/subscribe";
     const eventOnly = operation || managementInventoryRevision || productUpdateStatus || kernelLeakReport || memoryProtectionStatus
-      || backendNotifications;
+      || backendNotifications || crashReports;
     let createPayload;
     try { createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl, item.fields); }
     catch { return json(response, 400, { error: "One or more subscription queries are invalid." }); }
@@ -3706,6 +3765,7 @@ async function subscriptionChannelStream(request, response) {
       kernelLeakReport,
       memoryProtectionStatus,
       backendNotifications,
+      crashReports,
       createPayload
     });
   }
@@ -3762,6 +3822,21 @@ async function subscriptionChannelStream(request, response) {
       replayMemoryProtectionTo(subscriber);
       releases.push(() => {
         memoryProtectionSubscribers.delete(subscriber);
+        releaseTelemetry();
+      });
+      continue;
+    }
+
+    if (subscription.crashReports) {
+      const subscriber = {
+        response,
+        requestUrl: subscription.requestUrl,
+        write: (value) => writeSubscriptionChannelFrame(response, subscription.id, value)
+      };
+      crashReportSubscribers.add(subscriber);
+      publishCrashReports(subscriber);
+      releases.push(() => {
+        crashReportSubscribers.delete(subscriber);
         releaseTelemetry();
       });
       continue;
@@ -3900,7 +3975,8 @@ const subscriptionChannelSelectors = new Set([
   "/api/updates/product/status/subscribe",
   "/api/kernel-leaks/subscribe",
   "/api/memory-protection/subscribe",
-  "/api/notifications/subscribe"
+  "/api/notifications/subscribe",
+  "/api/crash-reports/subscribe"
 ]);
 
 // 调度段的 failure 与事实排除，形状同后端 tests/App/Fixtures/Optimization/smart-status.json 的三例

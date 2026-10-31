@@ -31,8 +31,9 @@ public sealed record PresentFrameFieldQuery
         if (processId <= 0) throw new ArgumentOutOfRangeException(nameof(processId));
         if (processStartFileTimeUtc <= 0) throw new ArgumentOutOfRangeException(nameof(processStartFileTimeUtc));
         if (!Enum.IsDefined(source)) throw new ArgumentOutOfRangeException(nameof(source));
-        if (window <= TimeSpan.Zero || window > PresentFrameLedger.Retention)
-            throw new ArgumentOutOfRangeException(nameof(window), $"Window must be within (0, {PresentFrameLedger.Retention}].");
+        // The upper bound is the borrowed source's retention, checked when an owner binds this query.
+        if (window <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(window), "Window must be positive.");
         if (!Enum.IsDefined(percentile)) throw new ArgumentOutOfRangeException(nameof(percentile));
         ProcessId = processId;
         ProcessStartFileTimeUtc = processStartFileTimeUtc;

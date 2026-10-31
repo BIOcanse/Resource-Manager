@@ -92,6 +92,9 @@ interface SettingsPageProps {
   onAutoStartChange: (enabled: boolean) => void;
   onServiceRecoveryChange: (enabled: boolean, delay: number, count: number) => void;
   serviceRecovery?: import("../../types").ServiceRecoveryDiagnostics;
+  crashDumps?: import("../../types").CrashDumpDiagnostics;
+  onCrashDumpsChange: (crashDumps: import("../../types").AppCrashDumpSettings) => void;
+  onChooseCrashDumpMode: (mode: import("../../types").AppCrashDumpMode) => Promise<void>;
   productUpdates: import("../../stores/productUpdateStore").ProductUpdateStore;
   /** 已保存的更新设置：下次检查时间这一行按它说明“未开启”，草稿里未保存的改动不改变后端状态。 */
   committedUpdateSettings: import("../../types").AppUpdateSettings | undefined;
@@ -403,6 +406,9 @@ export function SettingsPage(props: SettingsPageProps) {
               onAutoStartChange={props.onAutoStartChange}
               onServiceRecoveryChange={props.onServiceRecoveryChange}
               serviceRecovery={props.serviceRecovery}
+              crashDumps={props.crashDumps}
+              onCrashDumpsChange={props.onCrashDumpsChange}
+              onChooseCrashDumpMode={props.onChooseCrashDumpMode}
               onEditableHotkeyChange={props.onEditableHotkeyChange}
             />
           </Show>

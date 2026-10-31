@@ -5,8 +5,8 @@ namespace ResourceManager.App.Infrastructure.Persistence;
 
 internal static class SqliteDatabaseMaintenance
 {
-    private const long MinimumDatabaseBytesForVacuum = 32L * 1024 * 1024;
-    private const double MinimumFreePageRatioForVacuum = 0.10;
+    private static readonly long MinimumDatabaseBytesForVacuum = PersistenceSettings.ProductDefaults.SqliteVacuum.MinimumDatabaseBytes;
+    private static readonly double MinimumFreePageRatioForVacuum = PersistenceSettings.ProductDefaults.SqliteVacuum.MinimumFreePageRatio;
 
     public static async Task RunPendingAsync(
         SqliteConnection connection,

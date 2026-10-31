@@ -6,6 +6,7 @@ import { createCreditGroups } from "./settingsCredits.ts";
 import { resolveLanguageMode } from "./settingsLanguages.ts";
 import { createSettingsLocale } from "./settingsLocaleFactory.ts";
 import { loadingUpdatesCopy } from "./settingsUpdateCopy.ts";
+import { enCrashDumpsCopy } from "./crashDumpsCopy.ts";
 import { createLanguageBundleLoader } from "./languageBundleLoader.ts";
 import type { ConcreteAppLanguageMode, SettingsCopy, SettingsTextBundle } from "./settingsTypes.ts";
 
@@ -50,9 +51,10 @@ const localeLoaders = {
 export const loadingSettingsText: SettingsTextBundle = {
   updates: loadingUpdatesCopy,
   notifications: { intro: "", kinds: { memoryProtection: { title: "", description: "" }, update: { title: "", description: "" },
-    accessRequest: { title: "", description: "" } }, notifyTitle: "", notifyDescription: "", systemTitle: "", systemDescription: "",
+    accessRequest: { title: "", description: "" }, crashReport: { title: "", description: "" } }, notifyTitle: "", notifyDescription: "", systemTitle: "", systemDescription: "",
     inAppTitle: "", inAppDescription: "", switchLabel: () => "", accessRequestNoticeTitle: "",
     accessRequestNoticeMessage: () => "", accessRequestNoticeOpen: "" },
+  crashDumps: blankCopy(enCrashDumpsCopy),
   language: "zh-CN",
   navigationLabel: "",
   sections: { runtimePolicy: "", memory: "", memoryCpuTier: "", memoryProtection: "", hardwareControl: "", reportRules: "", appearance: "", performanceOverlay: "", systemIntegration: "", publicServices: "", trustedAccess: "", notifications: "", updates: "", debug: "", credits: "" },
@@ -421,4 +423,24 @@ function createSettingsTextBundle(language: ConcreteAppLanguageMode, copy: Setti
       .map(([id, option]) => ({ id, label: option.label, description: option.description })),
     creditGroups: createCreditGroups(copy)
   };
+}
+
+/** 加载中的占位文案：形状同给定的文案，文字为空，函数返回空串（显式栈遍历，不递归）。 */
+function blankCopy<T extends object>(source: T): T {
+  const root = Array.isArray(source) ? [] : {} as Record<string, unknown>;
+  const pending: Array<{ from: Record<string, unknown>; to: Record<string, unknown> }> = [
+    { from: source as Record<string, unknown>, to: root as Record<string, unknown> }];
+  while (pending.length > 0) {
+    const { from, to } = pending.pop()!;
+    for (const [key, value] of Object.entries(from)) {
+      if (typeof value === "function") to[key] = () => "";
+      else if (typeof value === "string") to[key] = "";
+      else if (value !== null && typeof value === "object") {
+        const next = Array.isArray(value) ? [] : {};
+        to[key] = next;
+        pending.push({ from: value as Record<string, unknown>, to: next as Record<string, unknown> });
+      } else to[key] = value;
+    }
+  }
+  return root as T;
 }

@@ -101,7 +101,7 @@ public sealed class NotificationAccessTests
         var list = new NotificationList(NotificationKinds.All.Select((kind, index) => new NotificationItem(index + 1, kind.Name,
             DateTimeOffset.UnixEpoch, JsonDocument.Parse("{}").RootElement)).ToArray());
         var keylessLocal = new TrustedAccessAuthorizationContext(null, null, IsAdministrator: false, IsKeylessLocalCaller: true);
-        Assert.Equal([MemoryKind, UpdateKind],
+        Assert.Equal([MemoryKind, UpdateKind, NotificationKinds.CrashReport.Name],
             ResourceManagerEndpointRouteBuilderExtensions.VisibleNotifications(list, keylessLocal).Notifications.Select(item => item.Kind));
         var keylessAdministrator = new TrustedAccessAuthorizationContext(null, null, IsAdministrator: true, IsKeylessLocalCaller: false);
         Assert.Same(list, ResourceManagerEndpointRouteBuilderExtensions.VisibleNotifications(list, keylessAdministrator));

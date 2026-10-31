@@ -1,16 +1,26 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const std = @import("std");
 
 pub const Kind = enum(u32) { isr = 1, dpc = 2, threaded_dpc = 3, timer_dpc = 4 };
 pub fn isKernelAddress(address: u64) bool {
     return address >= 0xFFFF800000000000;
 }
+/// Every value comes from the host's kernel_etw_limits declaration; there are no field defaults.
 pub const Config = struct {
-    max_modules: u32 = 4096,
-    max_path_units: u32 = 32768,
-    max_identities: u32 = 4096,
-    max_slices: u32 = 128,
-    max_slice_drivers: u32 = 16384,
+    max_modules: u32,
+    max_path_units: u32,
+    max_identities: u32,
+    max_slices: u32,
+    max_slice_drivers: u32,
+    /// Width of one published bucket. Data are reported available once one bucket is complete.
+    bucket_ms: u32,
+    /// Buckets a publication reports; the publication window is bucket_ms * bucket_count.
+    bucket_count: u32,
+    /// Drivers a publication reports, longest total duration first.
+    reported_drivers: u32,
 };
+/// Slices are keyed by whole seconds of the owner clock.
+const slice_ms: i64 = 1000;
 pub const Error = error{ CapacityExceeded, InvalidConfig, Invalidated };
 
 /// No localized unknown label crosses this boundary. A null path/name is unknown.
@@ -95,7 +105,7 @@ pub const ModuleMap = struct {
     fn ensureCapacity(self: *ModuleMap, required: usize) !void {
         if (required > self.max_modules) return Error.CapacityExceeded;
         if (required <= self.ranges.len) return;
-        const next = @min(self.max_modules, @max(required, @max(@as(usize, 4), self.ranges.len * 2)));
+        const next = @min(self.max_modules, @max(required, @max(@as(usize, policy.interrupt_initial_capacity), self.ranges.len * policy.interrupt_growth_factor)));
         const leaves = std.math.ceilPowerOfTwo(usize, next) catch return Error.InvalidConfig;
         const ranges = try self.allocator.alloc(Range, next);
         errdefer self.allocator.free(ranges);
@@ -285,12 +295,13 @@ pub const Snapshot = struct {
     event_count: u64 = 0,
     long_event_count: u64 = 0,
     cpu_capacity_percent: f64 = 0,
-    buckets: [6]Bucket = undefined,
+    buckets: []Bucket = &.{},
     bucket_count: u32 = 0,
 
     pub fn deinit(self: *Snapshot) void {
         self.allocator.free(self.strings);
         self.allocator.free(self.drivers);
+        self.allocator.free(self.buckets);
         self.* = undefined;
     }
 };
@@ -329,7 +340,12 @@ pub const Owner = struct {
     bound: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, config: Config, generation: u64, started_tick_ms: i64, events_lost: u64) !Owner {
-        if (config.max_identities < 1 or config.max_slices < 1 or config.max_slice_drivers < 1 or config.max_path_units > std.math.maxInt(c_int)) return Error.InvalidConfig;
+        if (config.max_identities < 1 or config.max_slices < 1 or config.max_slice_drivers < 1 or config.max_path_units > std.math.maxInt(c_int) or
+            @as(i64, config.bucket_ms) < slice_ms or @mod(@as(i64, config.bucket_ms), slice_ms) != 0 or config.bucket_count < 1 or config.reported_drivers < 1) return Error.InvalidConfig;
+        // Publications retain one extra slice beyond the configured window.
+        // Reject unrepresentable declarations before any owner state is allocated.
+        const span = std.math.mul(i64, config.bucket_ms, config.bucket_count) catch return Error.InvalidConfig;
+        _ = std.math.add(i64, span, slice_ms) catch return Error.InvalidConfig;
         var modules = try ModuleMap.init(allocator, config);
         errdefer modules.deinit();
         const identities = try allocator.alloc(StoredIdentity, 1);
@@ -415,7 +431,7 @@ pub const Owner = struct {
         errdefer self.allocator.free(copy);
         if (index == self.identities.len) {
             const previous_len = self.identities.len;
-            const next = @min(self.config.max_identities, @max(index + 1, previous_len * 2));
+            const next = @min(self.config.max_identities, @max(index + 1, previous_len * policy.interrupt_growth_factor));
             self.identities = try self.allocator.realloc(self.identities, next);
             @memset(self.identities[previous_len..], .{});
         }
@@ -448,7 +464,7 @@ pub const Owner = struct {
         errdefer self.invalidated = true;
         if (!std.math.isFinite(duration_ms) or duration_ms <= 0 or observed_tick_ms < self.started_tick_ms) return;
         const relative = std.math.sub(i64, observed_tick_ms, self.started_tick_ms) catch return Error.InvalidConfig;
-        const second = @divTrunc(relative, 1000);
+        const second = @divTrunc(relative, slice_ms);
         const module = self.modules.resolve(routine) orelse Identity{};
         const key = CellKey{ .second = second, .driver = self.identities[module.tag].group };
         const old_slice = self.slice_index.get(second);
@@ -456,13 +472,13 @@ pub const Owner = struct {
         if (old_slice == null) {
             if (self.slice_len == self.config.max_slices) return Error.CapacityExceeded;
             if (self.slice_len == self.slices.len)
-                self.slices = try self.allocator.realloc(self.slices, @min(self.config.max_slices, @max(@as(usize, 4), self.slices.len * 2)));
+                self.slices = try self.allocator.realloc(self.slices, @min(self.config.max_slices, @max(@as(usize, policy.interrupt_initial_capacity), self.slices.len * policy.interrupt_growth_factor)));
             try self.slice_index.ensureUnusedCapacity(self.allocator, 1);
         }
         if (old_cell == null) {
             if (self.cell_len == self.config.max_slice_drivers) return Error.CapacityExceeded;
             if (self.cell_len == self.cells.len)
-                self.cells = try self.allocator.realloc(self.cells, @min(self.config.max_slice_drivers, @max(@as(usize, 4), self.cells.len * 2)));
+                self.cells = try self.allocator.realloc(self.cells, @min(self.config.max_slice_drivers, @max(@as(usize, policy.interrupt_initial_capacity), self.cells.len * policy.interrupt_growth_factor)));
             try self.cell_index.ensureUnusedCapacity(self.allocator, 1);
         }
         const slice_id = old_slice orelse block: {
@@ -513,7 +529,7 @@ pub const Owner = struct {
     fn prune(self: *Owner, cutoff: i64) void {
         var kept: usize = 0;
         self.slice_index.clearRetainingCapacity();
-        for (self.slices[0..self.slice_len]) |slice| if (slice.key * 1000 >= cutoff) {
+        for (self.slices[0..self.slice_len]) |slice| if (slice.key * slice_ms >= cutoff) {
             self.slices[kept] = slice;
             self.slice_index.putAssumeCapacity(slice.key, @intCast(kept));
             kept += 1;
@@ -547,14 +563,16 @@ pub const Owner = struct {
 
     /// now_tick_ms is the same monotonic clock used for input. Snapshot bounds
     /// are absolute; bucket UTC conversion belongs to the caller. Publication
-    /// does not reset valid totals and prunes only slices older than 61 seconds.
+    /// does not reset valid totals and prunes only slices older than the publication window plus one slice.
     pub fn publish(self: *Owner, output: std.mem.Allocator, now_tick_ms: i64, processor_count: u32) !Snapshot {
         if (self.invalidated) return Error.Invalidated;
         errdefer self.invalidated = true;
         const relative = std.math.sub(i64, now_tick_ms, self.started_tick_ms) catch return Error.InvalidConfig;
-        const start = @max(@as(i64, 0), relative -| 60000);
+        const bucket_ms: i64 = self.config.bucket_ms;
+        const span = bucket_ms * @as(i64, self.config.bucket_count);
+        const start = @max(@as(i64, 0), relative -| span);
         const window = @max(@as(i64, 0), relative - start);
-        self.prune(relative -| 61000);
+        self.prune(relative -| (span + slice_ms));
         std.mem.sort(Slice, self.slices[0..self.slice_len], {}, sliceLess);
         self.slice_index.clearRetainingCapacity();
         for (self.slices[0..self.slice_len], 0..) |slice, i| self.slice_index.putAssumeCapacity(slice.key, @intCast(i));
@@ -569,7 +587,7 @@ pub const Owner = struct {
         var driver_count: usize = 0;
         // Slice order is significant for equal maxima and floating-point sums.
         for (self.slices[0..self.slice_len]) |slice| {
-            const at = slice.key * 1000;
+            const at = slice.key * slice_ms;
             if (at < start or at > relative) continue;
             if (maximum_kind == null or slice.totals.maximum_ms > total.maximum_ms) {
                 maximum_kind = slice.maximum_kind;
@@ -594,7 +612,7 @@ pub const Owner = struct {
             kept += 1;
         };
         std.mem.sort(Aggregate, aggregates[0..kept], self, driverLess);
-        driver_count = @min(driver_count, 16);
+        driver_count = @min(driver_count, self.config.reported_drivers);
         const drivers = try output.alloc(Driver, driver_count);
         errdefer output.free(drivers);
         var string_units: usize = 0;
@@ -607,27 +625,28 @@ pub const Owner = struct {
         const strings = try output.alloc(u16, string_units);
         errdefer output.free(strings);
         var cursor: usize = 0;
-        var snapshot = Snapshot{ .allocator = output, .strings = strings, .drivers = drivers, .generation = self.generation, .events_lost = self.events_lost, .started_tick_ms = self.started_tick_ms + start, .ended_tick_ms = now_tick_ms, .window_ms = window, .processor_count = @max(1, processor_count), .available = window >= 10000, .total_duration_ms = total.duration_ms, .maximum_single_duration_ms = total.maximum_ms, .maximum_kind = maximum_kind, .event_count = total.event_count, .long_event_count = total.long_event_count, .cpu_capacity_percent = capacity(total.duration_ms, window, processor_count) };
+        var snapshot = Snapshot{ .allocator = output, .strings = strings, .drivers = drivers, .generation = self.generation, .events_lost = self.events_lost, .started_tick_ms = self.started_tick_ms + start, .ended_tick_ms = now_tick_ms, .window_ms = window, .processor_count = @max(1, processor_count), .available = window >= bucket_ms, .total_duration_ms = total.duration_ms, .maximum_single_duration_ms = total.maximum_ms, .maximum_kind = maximum_kind, .event_count = total.event_count, .long_event_count = total.long_event_count, .cpu_capacity_percent = capacity(total.duration_ms, window, processor_count) };
         for (aggregates[0..driver_count], drivers) |a, *driver| {
             driver.* = .{ .module = copyIdentity(self.identities[a.tag].path, a.tag, strings, &cursor), .total_duration_ms = a.totals.duration_ms, .maximum_single_duration_ms = a.totals.maximum_ms, .event_count = a.totals.event_count, .long_event_count = a.totals.long_event_count, .cpu_capacity_percent = capacity(a.totals.duration_ms, window, processor_count) };
         }
         if (maximum_kind != null) snapshot.maximum_module = copyIdentity(self.identities[maximum_tag].path, maximum_tag, strings, &cursor);
-        const complete: i64 = @min(@as(i64, 6), @divTrunc(window, 10000));
+        const complete: i64 = @min(@as(i64, self.config.bucket_count), @divTrunc(window, bucket_ms));
+        snapshot.buckets = try output.alloc(Bucket, @intCast(complete));
         snapshot.bucket_count = @intCast(complete);
-        const first_end = start + @divTrunc(window, 10000) * 10000 - (complete - 1) * 10000;
+        const first_end = start + @divTrunc(window, bucket_ms) * bucket_ms - (complete - 1) * bucket_ms;
         var i: usize = 0;
         while (i < snapshot.bucket_count) : (i += 1) {
-            const end = first_end + @as(i64, @intCast(i)) * 10000;
-            const begin = end - 10000;
+            const end = first_end + @as(i64, @intCast(i)) * bucket_ms;
+            const begin = end - bucket_ms;
             var bucket = Bucket{ .started_tick_ms = self.started_tick_ms + begin, .ended_tick_ms = self.started_tick_ms + end };
             for (self.slices[0..self.slice_len]) |slice| {
-                const at = slice.key * 1000;
+                const at = slice.key * slice_ms;
                 if (at >= start and at <= relative and at >= begin and at < end) {
                     bucket.total_duration_ms += slice.totals.duration_ms;
                     bucket.event_count += slice.totals.event_count;
                 }
             }
-            bucket.cpu_capacity_percent = capacity(bucket.total_duration_ms, 10000, processor_count);
+            bucket.cpu_capacity_percent = capacity(bucket.total_duration_ms, bucket_ms, processor_count);
             snapshot.buckets[i] = bucket;
         }
         return snapshot;
@@ -650,7 +669,7 @@ test "IRQ publication returns round scratch while immutable output islands remai
     defer region.deinit();
     var owner_budget: Budget = .{ .backing = region.allocator(), .cap = backing.len };
     var other_budget: Budget = .{ .backing = region.allocator(), .cap = 1024 * 1024 };
-    var owner = try Owner.init(owner_budget.allocator(), .{ .max_modules = 8, .max_path_units = 128, .max_identities = 32768, .max_slices = 8, .max_slice_drivers = 16 }, 1, 0, 0);
+    var owner = try Owner.init(owner_budget.allocator(), .{ .max_modules = 8, .max_path_units = 128, .max_identities = 32768, .max_slices = 8, .max_slice_drivers = 16, .bucket_ms = 10000, .bucket_count = 6, .reported_drivers = 16 }, 1, 0, 0);
     defer owner.deinit();
     try owner.upsertImage(100, 16, std.unicode.utf8ToUtf16LeStringLiteral("Z:\\driver.sys"), 0);
     try owner.observe(.isr, 1, 101, 1);

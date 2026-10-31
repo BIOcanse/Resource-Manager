@@ -11,6 +11,8 @@ internal static class JaJp
         MemoryProtectionTitle = "ホストのメモリ保護が処理を実行しました",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) を終了しました。ダンプ量: {2}。クリックして Resource Manager を開きます。",
         MemoryProtectionTreeMessageFormat = "{0} (PID {1}) 以下のプロセス ツリーを終了しました。プロセス数: {2}、ダンプ量: {3}。クリックして Resource Manager を開きます。",
+        CrashReportTitle = "クラッシュ報告",
+        CrashReportMessage = "Resource Manager はクラッシュから復旧し、クラッシュ ダンプを保存しました。クリックして Resource Manager を開きます。",
         AppName = "リソース マネージャー",
         WindowTitleFormat = "リソース マネージャー - {0}",
         TrayTooltipFormat = "リソース マネージャー - {0}",

@@ -24,6 +24,9 @@ import {
   backendNotificationListDecoder, backendNotificationsSubscriptionPath, type BackendNotificationList
 } from "../../data/notifications/backendNotifications.ts";
 import {
+  crashReportListDecoder, crashReportsSubscriptionPath, type CrashReportList
+} from "../../data/crashReports/crashReports.ts";
+import {
   buildLocalSystemStatusSubscriptionUrl,
   type LocalSystemStatus
 } from "../../data/localSystem/localSystemStatusApi.ts";
@@ -214,6 +217,8 @@ export interface FrontendSources {
   readonly kernelLeakReport: CurrentValueSource<KernelLeakReport>;
   /** 后端通知列表（docs/notifications_2026-10-29.md）；界面可见时由界面提示订阅。 */
   readonly backendNotifications: CurrentValueSource<BackendNotificationList>;
+  /** 崩溃记录（docs/crash_dumps_2026-10-31.md）；界面可见时订阅，订阅时和每次变化后都是整份列表。 */
+  readonly crashReports: CurrentValueSource<CrashReportList>;
   readonly cpuTopology: PushValueSource<CpuTopologySnapshot | null>;
   readonly cpuResidency: PushValueSource<CpuObservationResult<CpuCoreResidencySnapshot>>;
   readonly smartCoordinatorState: PushValueSource<HostManagerRollbackStateDocument>;
@@ -354,6 +359,12 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: () => backendNotificationsSubscriptionPath,
       decoder: backendNotificationListDecoder
+    }),
+    crashReports: new BackendCurrentValueSource<CrashReportList>({
+      key: "crash-reports.list",
+      channel: subscriptionChannel,
+      buildUrl: () => crashReportsSubscriptionPath,
+      decoder: crashReportListDecoder
     }),
     managementInventoryRevision: new BackendCurrentValueSource<ManagementInventoryRevisionSnapshot>({
       key: "management.inventory-revision",

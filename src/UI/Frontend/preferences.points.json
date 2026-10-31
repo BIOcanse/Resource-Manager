@@ -18,6 +18,7 @@
     {"group":1,"name":"refresh-auto_foreground_preset","symbol":"AutoForegroundPreset","type":"choice","options":["responsive","balanced","lowPower","quiet"],"value":"responsive"},
     {"group":1,"name":"refresh-visibility_cooldown_ms","symbol":"VisibilityCooldownMs","type":"integer","min":0,"max":60000,"value":5000},
     {"group":1,"name":"refresh-kept_pages","symbol":"KeptPages","type":"choiceSet","options":["monitor","components","optimization","diskUsage","control","details","settings"],"value":["monitor"]},
+    {"group":1,"name":"refresh-shell_open_timeout_ms","symbol":"ShellOpenTimeoutMs","type":"integer","min":1,"max":2147483647,"value":10000},
     {"group":2,"name":"overlay-font_size_px","symbol":"FontSizePx","type":"integer","min":8,"max":72,"value":14},
     {"group":2,"name":"overlay-region_width_ratio","symbol":"RegionWidthRatio","type":"decimal","min":0.05,"max":1,"value":0.25},
     {"group":2,"name":"overlay-region_height_ratio","symbol":"RegionHeightRatio","type":"decimal","min":0.05,"max":1,"value":0.2},
@@ -78,6 +79,9 @@
     {"group":4,"name":"notification-access_request_notify","symbol":"AccessRequestNotify","type":"choice","options":["on","off"],"value":"on"},
     {"group":4,"name":"notification-access_request_in_app","symbol":"AccessRequestInApp","type":"choice","options":["on","off"],"value":"on"},
     {"group":4,"name":"notification-memory_protection_notify","symbol":"MemoryProtectionNotify","type":"choice","options":["on","off"],"value":"on"},
-    {"group":4,"name":"notification-memory_protection_in_app","symbol":"MemoryProtectionInApp","type":"choice","options":["on","off"],"value":"on"}
+    {"group":4,"name":"notification-memory_protection_in_app","symbol":"MemoryProtectionInApp","type":"choice","options":["on","off"],"value":"on"},
+    {"group":4,"name":"notification-crash_report_notify","symbol":"CrashReportNotify","type":"choice","options":["on","off"],"value":"on"},
+    {"group":4,"name":"notification-crash_report_system","symbol":"CrashReportSystem","type":"choice","options":["on","off"],"value":"on"},
+    {"group":4,"name":"notification-crash_report_in_app","symbol":"CrashReportInApp","type":"choice","options":["on","off"],"value":"on"}
   ]
 }

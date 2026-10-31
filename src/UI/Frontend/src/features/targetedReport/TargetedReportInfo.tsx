@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
 import { currentLanguage, uiText } from "../../text.ts";
-import { itemName, sourceName } from "../itemSelection/itemNames.ts";
+import { itemName, itemReasonText, sourceName } from "../itemSelection/itemNames.ts";
 import type { RecordingGap, RecordingHeader } from "./targetedRecordingApi.ts";
 
 /*
@@ -125,7 +125,8 @@ function originText(origin: string) {
   }
 }
 
-// 空缺：相对录制开始的秒数范围和原因。认不出的原因原样显示代码。
+// 空缺：相对录制开始的秒数范围和原因。录制自己的原因用报告文案；源和读取方给的具体原因（不适用、没有来源、
+// 源未刷新、目标 GPU 未确定、metric-*、breakdown-* 等）和浮层共用一份原因表；认不出的原因原样显示代码。
 export function gapText(gap: RecordingGap) {
   const copy = uiText.targetedReport.reportInfo;
   const seconds = (ms: number) => (ms / 1000).toFixed(1);
@@ -135,7 +136,7 @@ export function gapText(gap: RecordingGap) {
     : gap.reason === "size-limit" ? reasons.sizeLimit
     : gap.reason === "frames-incomplete" ? reasons.framesIncomplete
     : gap.reason === "frames-window-skipped" ? reasons.framesWindowSkipped
-    : gap.reason;
+    : itemReasonText(gap.reason);
   return `${copy.gapRange(seconds(gap.fromMs), seconds(gap.toMs))} · ${reason}`;
 }
 

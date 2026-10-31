@@ -49,7 +49,20 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
       "no-frame-data": "No frame data",
       "metric-unavailable": "Reading unavailable",
       "process-cpu-unavailable": "Process CPU unavailable",
-      "process-metric-unavailable": "Process reading unavailable"
+      "process-metric-unavailable": "Process reading unavailable",
+      "not-applicable": "Not applicable to this device",
+      "no-source": "No source on this machine",
+      "source-not-refreshed": "Source not refreshed",
+      "target-gpu-unresolved": "Target is not using a GPU",
+      "gpu-dedicated-memory-metrics-unsupported": "No dedicated GPU memory metrics",
+      "metric-unknown": "Reading has no bound field",
+      "metric-warming": "Reading warming up",
+      "metric-unsupported": "Reading not supported",
+      "breakdown-warming": "Resource breakdown warming up",
+      "breakdown-failed": "Resource breakdown sampling failed",
+      "breakdown-bar-missing": "Not in the resource breakdown",
+      "breakdown-unsupported": "Not supported by the resource breakdown",
+      "breakdown-unavailable": "Resource breakdown reading unavailable"
     },
     picker: {
       available: "Available items",

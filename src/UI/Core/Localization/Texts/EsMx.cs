@@ -11,6 +11,8 @@ internal static class EsMx
         MemoryProtectionTitle = "La protección de memoria del equipo actuó",
         MemoryProtectionProcessMessageFormat = "Se terminó {0} (PID {1}). Tamaño del volcado: {2}. Haz clic para abrir Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Se terminó el árbol de procesos bajo {0} (PID {1}). Procesos: {2}; tamaño del volcado: {3}. Haz clic para abrir Resource Manager.",
+        CrashReportTitle = "Informe de bloqueo",
+        CrashReportMessage = "Resource Manager acaba de recuperarse de un bloqueo y guardó un volcado. Haz clic para abrir Resource Manager.",
         AppName = "Administrador de recursos",
         WindowTitleFormat = "Administrador de recursos - {0}",
         TrayTooltipFormat = "Administrador de recursos - {0}",

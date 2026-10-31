@@ -99,11 +99,15 @@ internal sealed record FrontendNotifications
     public string MemoryProtectionNotify { get; init; } = FrontendPoints.MemoryProtectionNotify;
     public string MemoryProtectionInApp { get; init; } = FrontendPoints.MemoryProtectionInApp;
     public string MemoryProtectionSystem { get; init; } = FrontendPoints.MemoryProtectionSystem;
+    public string CrashReportNotify { get; init; } = FrontendPoints.CrashReportNotify;
+    public string CrashReportInApp { get; init; } = FrontendPoints.CrashReportInApp;
+    public string CrashReportSystem { get; init; } = FrontendPoints.CrashReportSystem;
 
     internal void Validate()
     {
         if (new[] { UpdateNotify, UpdateInApp, UpdateSystem, AccessRequestNotify, AccessRequestInApp, AccessRequestSystem,
-                MemoryProtectionNotify, MemoryProtectionInApp, MemoryProtectionSystem }.Any(value => value is not ("on" or "off")))
+                MemoryProtectionNotify, MemoryProtectionInApp, MemoryProtectionSystem,
+                CrashReportNotify, CrashReportInApp, CrashReportSystem }.Any(value => value is not ("on" or "off")))
             throw new InvalidDataException("Invalid frontend notification cache.");
     }
 }

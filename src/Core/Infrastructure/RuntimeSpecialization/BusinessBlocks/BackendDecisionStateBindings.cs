@@ -167,7 +167,8 @@ internal sealed class BackendDecisionStateBindings(IServiceProvider services,
                     // Catalog discovery is an ordinary finite subscription. Its producer's
                     // decision node observes it through the same subscription core as any reader.
                     using var catalog = services.GetService<IMetricSnapshotObservationSource>()?.AcquireSubscription(
-                        "control.startup.catalog", MetricSampleRequest.CatalogProbe, TimeSpan.FromSeconds(1));
+                        "control.startup.catalog", MetricSampleRequest.CatalogProbe,
+                        TimeSpan.FromMilliseconds(ResourceManager.App.Infrastructure.Optimization.OptimizationSettings.ProductDefaults.RuntimeLimits.StartupCatalogSubscriptionMilliseconds));
                     await plane.InitializeAsync(cancellationToken).ConfigureAwait(false);
                 }, token));
             await Task.WhenAll(owners).ConfigureAwait(false);

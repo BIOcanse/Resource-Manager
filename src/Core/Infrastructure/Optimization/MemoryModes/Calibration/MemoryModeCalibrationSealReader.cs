@@ -9,7 +9,7 @@ internal static class MemoryModeCalibrationSealReader
     internal const int EncodedLength = 156;
     internal const uint SchemaVersion = 1;
     internal const uint RatioUnitsMaximum = 10_000;
-    internal const ulong CorpusLengthMaximum = 8UL * 1024 * 1024;
+    internal static readonly ulong CorpusLengthMaximum = ResourceManager.App.Infrastructure.RuntimeSpecialization.NativeBuildPolicySettings.ProductDefaults.CalibrationMaximumCorpusBytes;
 
     private static readonly byte[] ArtifactDigestNamespace =
         Encoding.ASCII.GetBytes("rm-memory-mode-calibration-seal-v1");
@@ -93,7 +93,7 @@ internal static class MemoryModeCalibrationSealReader
         var domain = (MemoryModeCalibrationDomain)bytes[12];
 
         var corpusLength = ReadUInt64(bytes, 16);
-        if (corpusLength is 0 or > CorpusLengthMaximum)
+        if (corpusLength == 0 || corpusLength > CorpusLengthMaximum)
         {
             throw Failure("corpus-length-invalid", "The calibration corpus length is invalid.");
         }

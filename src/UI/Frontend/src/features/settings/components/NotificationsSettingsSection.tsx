@@ -9,7 +9,8 @@ type NotificationPath = keyof AppNotificationSettings;
 const notificationKinds: ReadonlyArray<{ kind: NotificationKindKey; notify: NotificationPath; system: NotificationPath; inApp: NotificationPath }> = [
   { kind: "memoryProtection", notify: "memoryProtectionNotify", system: "memoryProtectionSystem", inApp: "memoryProtectionInApp" },
   { kind: "update", notify: "updateNotify", system: "updateSystem", inApp: "updateInApp" },
-  { kind: "accessRequest", notify: "accessRequestNotify", system: "accessRequestSystem", inApp: "accessRequestInApp" }
+  { kind: "accessRequest", notify: "accessRequestNotify", system: "accessRequestSystem", inApp: "accessRequestInApp" },
+  { kind: "crashReport", notify: "crashReportNotify", system: "crashReportSystem", inApp: "crashReportInApp" }
 ];
 
 /**

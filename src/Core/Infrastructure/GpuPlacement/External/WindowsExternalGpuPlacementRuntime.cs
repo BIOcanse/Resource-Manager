@@ -89,10 +89,11 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
     public async Task RecoverAsync(CancellationToken cancellationToken)
     {
         await ExternalGpuControllerRecovery.RecoverAsync(evidenceRoot, [executable, rendererExecutable],
-            TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
+            TimeSpan.FromMilliseconds(GpuPlacementSettings.ProductDefaults.ExternalRuntime.RecoveryTimeoutMilliseconds), cancellationToken).ConfigureAwait(false);
         Task? completion;
         lock (gate) completion = activeCompletion;
-        if (completion is not null) await completion.WaitAsync(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+        if (completion is not null) await completion.WaitAsync(
+            TimeSpan.FromMilliseconds(GpuPlacementSettings.ProductDefaults.ExternalRuntime.CompletionWaitMilliseconds), cancellationToken).ConfigureAwait(false);
         if (HasUnreleasedControl) throw new InvalidOperationException("External GPU cleanup still owns a controller; recovery evidence has been retained.");
     }
 
@@ -298,7 +299,8 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
                 if (qt && File.Exists(Path.Combine(directory, "controller.presentation-observed"))) break;
                 if (!qt && events.Replacement is { } replacement
                     && events.CanReleaseChromium(observations.Read(replacement), plan.Request.TargetAdapterKey)) break;
-                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+                // Interim poll: the controller should signal readiness by a named event or pipe message.
+                await Task.Delay(GpuPlacementSettings.ProductDefaults.ExternalRuntime.ControllerPollMilliseconds, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception exception) { error = exception.Message; }
@@ -318,7 +320,8 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
         var finalIdentity = qt ? expected.GpuProcess : events.Replacement;
         var controllerSucceeded = clean && events.ExitCode == 0 && summary!.Passed && error is null && events.Error is null
             && finalIdentity is not null
-            && (!qt || events.QtSubmissionObserved && events.Presentation is { Verified: true, Count: >= 30 } presentation
+            && (!qt || events.QtSubmissionObserved && events.Presentation is { Verified: true } presentation
+                && presentation.Count >= GpuPlacementSettings.ProductDefaults.ExternalRuntime.QtMinimumVerifiedPresents
                 && presentation.AdapterKey == plan.Request.TargetAdapterKey);
         var confirmationStartedAtUtcTicks = DateTime.UtcNow.Ticks;
         if (controllerSucceeded)

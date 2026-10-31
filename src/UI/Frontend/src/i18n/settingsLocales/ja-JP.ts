@@ -1,4 +1,5 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
+import { cjkText } from "../cjkSpacing.ts";
 
 export default createSettingsLocale("ja-JP", {
   "notifications": {
@@ -6,7 +7,8 @@ export default createSettingsLocale("ja-JP", {
     "kinds": {
       "memoryProtection": { "title": "ホスト メモリ保護", "description": "ホスト メモリ保護がプロセスまたはプロセス ツリーを終了したときに通知し、対象、プロセス数、ダンプ量を示します。" },
       "update": { "title": "新しいバージョン", "description": "新しいバージョンが利用可能になったときに通知します。" },
-      "accessRequest": { "title": "アクセス要求", "description": "承認待ちの新しい信頼済みアクセス要求があるときに通知し、要求元の名前とプログラムを示します。" }
+      "accessRequest": { "title": "アクセス要求", "description": "承認待ちの新しい信頼済みアクセス要求があるときに通知し、要求元の名前とプログラムを示します。" },
+      "crashReport": { "title": "クラッシュ報告", "description": "Resource Manager がクラッシュから復旧した後に通知します。開くとクラッシュ記録を確認し、ダンプをアップロードできます。" }
     },
     "notifyTitle": "通知を表示",
     "notifyDescription": "オフにすると、この種類の通知はどの経路でも表示されません。両方の経路の選択は保持されます。",
@@ -568,5 +570,115 @@ export default createSettingsLocale("ja-JP", {
       "license": "ライセンス",
       "source": "入手先"
     }
+  },
+  "crashDumps": {
+    "title": "クラッシュ ダンプ",
+    "description": "Resource Manager 自身のプログラム（バックグラウンド サービス、ウィンドウ プロセス、常駐トレイ プロセス）がクラッシュしたとき、Windows がプロセスのメモリをダンプ ファイルに書き出し、障害の特定に使います。ダンプはこのコンピューターにのみ保存され、自動でアップロードされることはありません。",
+    "modeTitle": "クラッシュ ダンプの書き込み",
+    "modeDescription": "クラッシュ時にダンプを保存するかどうかを選択します。「リリース チャネルに従う」は beta 版でオン、正式版では先に確認します。",
+    "modeOptions": {
+      "default": { "label": "リリース チャネルに従う", "description": "beta 版はオン、正式版は先に確認します。" },
+      "ask": { "label": "先に確認する", "description": "当面ダンプを書き込まず、オンにするかどうかを画面で確認します。" },
+      "on": { "label": "オン", "description": "クラッシュ時にダンプを保存します。" },
+      "off": { "label": "オフ", "description": "ダンプを保存せず、イベント ログからのみクラッシュ記録を登録します。" }
+    },
+    "effective": (mode: string, source: string) => `現在: ${mode}（${source}）`,
+    "effectiveModes": {
+      "ask": "未決定のため書き込みなし",
+      "on": "オン",
+      "off": "オフ"
+    },
+    "sourceUser": "ユーザーの選択",
+    "channelNames": {
+      "beta": "beta 版",
+      "stable": "正式版"
+    },
+    "defaultModeNames": {
+      "on": "既定でオン",
+      "ask": "既定で先に確認",
+      "off": "既定でオフ"
+    },
+    "channelDefault": (channel: string, mode: string) => cjkText`${channel}は${mode}`,
+    "turnOff": "クラッシュ ダンプをオフにする",
+    "turnOffDescription": "すぐにオフにして保存します。",
+    "dumpTypeTitle": "ダンプの種類",
+    "dumpTypeDescription": "ミニダンプでほとんどの障害を特定でき、通常は GitHub issue に添付できます。",
+    "dumpTypeOptions": {
+      "mini": { "label": "ミニダンプ", "description": "スレッド スタックとデータ セグメントを含み、通常は数 MB です。" },
+      "full": { "label": "完全ダンプ", "description": "プロセスのメモリ全体を含み、数百 MB になることがあります。ローカルでの分析向けです。" }
+    },
+    "keepCountTitle": "プログラムごとの保持数",
+    "keepCountDescription": "プログラムごとに保持するクラッシュ記録とダンプの最大数です。超えた分は古いものから削除します。",
+    "statusTitle": "実際の状態",
+    "status": {
+      "notApplied": "クラッシュ ダンプの構成はまだ書き込まれていません。",
+      "applied": "Windows エラー報告のダンプ構成は選択した設定と一致しています。",
+      "mismatch": "Windows エラー報告の実際の構成が選択した設定と異なります。",
+      "failed": "Windows エラー報告のダンプ構成を書き込めませんでした。",
+      "skipped": "Windows エラー報告のダンプ構成は書き込まれていません。"
+    },
+    "skipReasons": {
+      "not-running-as-installed-service": "インストール済みのサービスとして実行されていないため、レジストリは変更しません。"
+    },
+    "skipReasonOther": (reason: string) => `理由: ${reason}`,
+    "writeFailed": (error: string) => `書き込みに失敗しました: ${error}`,
+    "readFailed": (error: string) => `実際の構成を読み取れませんでした: ${error}`,
+    "imageStates": {
+      "written": "書き込み済み",
+      "absent": "未書き込み",
+      "foreign": "他のプログラムが構成済み"
+    },
+    "actualDetail": (dumpType: string, count: number | null, folder: string) => `${dumpType}、保持数 ${count ?? "—"}、フォルダー ${folder}`,
+    "dumpTypeOther": (value: number) => `種類 ${value}`,
+    "historyTitle": "クラッシュ記録",
+    "historyDescription": "Resource Manager のプログラムがクラッシュした後、次にサービスが起動したとき、または画面を開いたときに登録された記録です。",
+    "historyEmpty": "クラッシュ記録はありません。",
+    "dumpFolderLabel": "ダンプ フォルダー",
+    "roles": {
+      "service": "バックグラウンド サービス",
+      "window": "ウィンドウ プロセス",
+      "resident": "常駐トレイ プロセス"
+    },
+    "program": (program: string, role: string) => `${program}（${role}）`,
+    "timeLabel": "日時",
+    "versionLabel": "バージョン",
+    "versionUnknown": "不明",
+    "faultLabel": "障害",
+    "faultUnknown": "イベント ログに対応する障害の記録がありません。",
+    "dumpLabel": "ダンプ ファイル",
+    "dumpNotEnabled": "クラッシュ ダンプはオフでした",
+    "dumpMissing": "ダンプ ファイルはもう存在しません",
+    "sizeLabel": "サイズ",
+    "reportedLabel": "報告",
+    "reported": "報告済み",
+    "notReported": "未報告",
+    "packageLabel": "レポート パッケージ",
+    "packageExceeds": (packageSizeText: string, attachmentLimitText: string) => `レポート パッケージは ${packageSizeText} で、GitHub issue の添付上限 ${attachmentLimitText} を超えているため直接添付できません。ダンプは切り詰めていません。`,
+    "openFolder": "保存先のフォルダーを開く",
+    "buildPackage": "レポート パッケージを作成",
+    "reportOnGitHub": "GitHub で報告",
+    "delete": "削除",
+    "deleteConfirmTitle": "このクラッシュ記録を削除しますか?",
+    "deleteConfirmMessage": (program: string, time: string) => `${program} の ${time} のクラッシュ記録を、そのダンプ ファイルとレポート パッケージとともに削除します。`,
+    "revealFailed": "このファイルをエクスプローラーで表示できませんでした。",
+    "openFailed": "GitHub のページを開けませんでした。",
+    "actionFailed": "操作に失敗しました。",
+    "requestTitle": "クラッシュ ダンプをオンにしますか?",
+    "requestWhat": "Resource Manager 自身のプログラムがクラッシュしたとき、Windows はプロセスのメモリをダンプ ファイルに書き出し、障害の場所を特定できるようにします。",
+    "requestWhere": (folder: string) => `ダンプは ${folder} に保存されます。設定 · システム統合で確認、削除、オフにできます。`,
+    "requestSize": "ミニダンプは通常数 MB で GitHub issue に添付できます。完全ダンプは数百 MB になることがあります。",
+    "requestContent": "ダンプにはクラッシュ時のプロセスのメモリが含まれ、ファイル パスやユーザー名などが入っていることがあります。ダンプが自動でアップロードされることはなく、提出するかどうかはユーザーが決めます。",
+    "requestEnable": "オンにする",
+    "requestDecline": "オンにしない",
+    "requestFailed": "この設定を保存できませんでした。もう一度お試しください。",
+    "dialogTitle": "Resource Manager が異常終了しました",
+    "dialogIntro": "以下のプログラムがクラッシュしました。レポート パッケージを GitHub issue にアップロードすると原因の特定に役立ちます。「GitHub で報告」を選ぶと、レポート パッケージを作成し、入力済みの issue ページをブラウザーで開き、エクスプローラーでパッケージを選択します。それを issue にドラッグしてください。",
+    "dialogCrashed": (program: string, time: string) => `${program} が ${time} にクラッシュしました`,
+    "dialogIssueLink": "入力済みの GitHub issue ページを開く",
+    "dialogLocalPath": "ローカル ファイル",
+    "dialogLater": "後で",
+    "noticeTitle": "クラッシュ報告",
+    "noticeMessage": "Resource Manager はクラッシュから復旧し、クラッシュ ダンプを保存しました。",
+    "noticeOpen": "クラッシュ記録を表示"
   }
 });

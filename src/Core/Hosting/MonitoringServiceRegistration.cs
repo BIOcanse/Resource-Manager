@@ -308,6 +308,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockDiagnosticsRegistry>(),
             provider.GetRequiredService<NativeEtwSessionAvailability>(),
             () => ReadPublishedMonitoring(provider).PresentSessionBuffers,
+            () => ReadPublishedMonitoring(provider).FramePipeline,
             provider.GetService<ResourceManager.ReadWrite.Windows.Processes.Etw.IEtwConsumerThreadObserver>()));
         services.AddSingleton<IFrameTimingObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         services.AddSingleton<DxgkrnlVidMmEtwResidualBreakdownProvider>();

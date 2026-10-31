@@ -11,6 +11,8 @@ internal static class ElGr
         MemoryProtectionTitle = "Η προστασία μνήμης του κεντρικού υπολογιστή ενήργησε",
         MemoryProtectionProcessMessageFormat = "Η διεργασία {0} (PID {1}) τερματίστηκε. Μέγεθος αποτύπωσης: {2}. Κάντε κλικ για να ανοίξετε το Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Το δέντρο διεργασιών κάτω από {0} (PID {1}) τερματίστηκε. Διεργασίες: {2}· μέγεθος αποτύπωσης: {3}. Κάντε κλικ για να ανοίξετε το Resource Manager.",
+        CrashReportTitle = "Αναφορά σφάλματος",
+        CrashReportMessage = "Το Resource Manager μόλις ανέκαμψε από σφάλμα και αποθήκευσε ένα αρχείο ένδειξης σφαλμάτων. Κάντε κλικ για να ανοίξετε το Resource Manager.",
         AppName = "Διαχείριση πόρων",
         WindowTitleFormat = "Διαχείριση πόρων - {0}",
         TrayTooltipFormat = "Διαχείριση πόρων - {0}",

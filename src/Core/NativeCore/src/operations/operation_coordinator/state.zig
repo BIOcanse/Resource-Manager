@@ -1,3 +1,4 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const windows = std.os.windows;
@@ -51,7 +52,7 @@ pub const Session = struct {
         if (resident > config.resident_byte_budget) return error.InvalidConfiguration;
 
         const allocator = std.heap.page_allocator;
-        const initial = try bank_module.sizedConfig(config, @min(16, config.maximum_operation_count));
+        const initial = try bank_module.sizedConfig(config, @min(policy.initial_operation_capacity, config.maximum_operation_count));
         const initial_buffers = try std.math.mul(u64, try bank_module.committedByteCount(&initial, page_size), 2);
         const initial_resident = try std.math.add(u64, session_resident, initial_buffers);
         const self = try allocator.create(Session);

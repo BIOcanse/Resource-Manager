@@ -72,8 +72,22 @@ export interface AccessRequestNotification {
   readonly observedExecutablePath: string;
 }
 
+/**
+ * 服务启动时登记了新的崩溃记录（docs/crash_dumps_2026-10-31.md）：count 是这次新登记的条数，
+ * latestReportId、program、role 是其中最新一条的。
+ */
+export interface CrashReportNotification {
+  readonly kind: "crash-report";
+  readonly sequence: number;
+  readonly count: number;
+  readonly latestReportId: string;
+  readonly program: string;
+  readonly role: "service" | "window" | "resident";
+}
+
 /** 界面认识的通知。新种类先登记在合同里，再加在这里。 */
-export type KnownBackendNotification = MemoryProtectionActionNotification | UpdateAvailableNotification | AccessRequestNotification;
+export type KnownBackendNotification = MemoryProtectionActionNotification | UpdateAvailableNotification | AccessRequestNotification
+  | CrashReportNotification;
 
 /** 认识的种类且事实完整时给出它；不认识的种类、事实写错时给 null，调用方跳过这一条。只读界面要显示的事实。 */
 export function knownBackendNotification(notification: BackendNotification): KnownBackendNotification | null {
@@ -97,6 +111,13 @@ export function knownBackendNotification(notification: BackendNotification): Kno
         requestId: requireNonEmptyString(facts.requestId, "$.facts.requestId"),
         name: requireNonEmptyString(facts.name, "$.facts.name"),
         observedExecutablePath: requireNonEmptyString(facts.observedExecutablePath, "$.facts.observedExecutablePath")
+      });
+      case "crash-report": return Object.freeze({
+        kind: "crash-report", sequence,
+        count: requireNonNegativeSafeInteger(facts.count, "$.facts.count"),
+        latestReportId: requireNonEmptyString(facts.latestReportId, "$.facts.latestReportId"),
+        program: requireNonEmptyString(facts.program, "$.facts.program"),
+        role: requireOneOf(facts.role, "$.facts.role", ["service", "window", "resident"] as const)
       });
       default: return null;
     }

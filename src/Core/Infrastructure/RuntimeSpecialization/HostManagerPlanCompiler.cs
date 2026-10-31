@@ -60,12 +60,17 @@ public sealed partial class HostManagerPlanCompiler
         var kernelEtwLimits = global::ResourceManager.App.Infrastructure.Telemetry.Etw.KernelEtwNativeSettings.Compile(freedom);
         var schedulerSamplingInterval = CompileSchedulerSamplingInterval(freedom);
         var serviceRecoveryReset = CompileServiceRecovery(freedom);
+        var crashReports = CompileCrashReports(freedom);
         var trustedAccessRequestLifetime = CompileTrustedAccessRequestLifetime(freedom);
         var hardwareBridgeAvailabilityCheckInterval = CompileHardwareBridgeAvailabilityCheckInterval(freedom);
         var memoryCpuTiers = ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.Compile(freedom);
         var backendControlSettings = BackendControlSettings.Compile(freedom);
         var hardwareControlSettings = ResourceManager.App.Infrastructure.Control.HardwareControlSettings.Compile(freedom);
         var monitoringSettings = ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.Compile(freedom);
+        var optimizationSettings = ResourceManager.App.Infrastructure.Optimization.OptimizationSettings.Compile(freedom);
+        var gpuPlacementSettings = ResourceManager.App.Infrastructure.GpuPlacement.GpuPlacementSettings.Compile(freedom);
+        var persistenceSettings = ResourceManager.App.Infrastructure.Persistence.PersistenceSettings.Compile(freedom);
+        var nativeBuildPolicy = NativeBuildPolicySettings.Compile(freedom);
 
         var buildSpecialize = CompileBuildSpecialize(
             profile.BuildSpecialize ?? throw Missing("build_specialize"));
@@ -549,10 +554,15 @@ public sealed partial class HostManagerPlanCompiler
             HardwareBridgeAvailabilityCheckInterval = hardwareBridgeAvailabilityCheckInterval,
             MemoryCpuTiers = memoryCpuTiers,
             ServiceRecoveryResetPeriodSeconds = serviceRecoveryReset,
+            CrashReports = crashReports,
             TrustedAccessRequestLifetimeMilliseconds = trustedAccessRequestLifetime,
             BackendControlSettings = backendControlSettings,
             HardwareControl = hardwareControlSettings,
             Monitoring = monitoringSettings,
+            Optimization = optimizationSettings,
+            GpuPlacement = gpuPlacementSettings,
+            Persistence = persistenceSettings,
+            NativeBuildPolicy = nativeBuildPolicy,
             FreedomPoints = freedomPoints
         };
     }

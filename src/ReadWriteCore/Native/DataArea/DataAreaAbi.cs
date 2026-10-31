@@ -12,7 +12,7 @@ internal static unsafe partial class DataAreaAbi
     // An absent index (SharedSection `none`).
     internal const uint None = uint.MaxValue;
     // The owner's default when DataAreaSettings is not passed.
-    internal const uint DefaultBorrowDrainTimeoutMilliseconds = 5000;
+    internal static uint DefaultBorrowDrainTimeoutMilliseconds => global::ResourceManager.App.Infrastructure.Telemetry.Etw.NativePolicyDefaults.SelectedBorrowDrainTimeoutMilliseconds;
     // SharedSection data_kind of each region, for a reader's decoder check.
     internal const uint NormalDataKind = 0x4441_0001;
     internal const uint AdministratorDataKind = 0x4441_0002;

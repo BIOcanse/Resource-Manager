@@ -7,7 +7,8 @@ export default createSettingsLocale("de-DE", {
     "kinds": {
       "memoryProtection": { "title": "Speicherschutz des Hosts", "description": "Benachrichtigt, nachdem der Speicherschutz des Hosts einen Prozess oder einen Prozessbaum beendet hat, mit Ziel, Anzahl der Prozesse und Abbildgröße." },
       "update": { "title": "Neue Version", "description": "Benachrichtigt, wenn eine neue Version verfügbar ist." },
-      "accessRequest": { "title": "Zugriffsanfragen", "description": "Benachrichtigt, wenn eine neue Anfrage für vertrauenswürdigen Zugriff auf Genehmigung wartet, mit Name und Programm der anfragenden Seite." }
+      "accessRequest": { "title": "Zugriffsanfragen", "description": "Benachrichtigt, wenn eine neue Anfrage für vertrauenswürdigen Zugriff auf Genehmigung wartet, mit Name und Programm der anfragenden Seite." },
+      "crashReport": { "title": "Absturzberichte", "description": "Benachrichtigt, nachdem Resource Manager sich von einem Absturz erholt hat; öffnen Sie sie, um die Absturzeinträge anzuzeigen und das Speicherabbild hochzuladen." }
     },
     "notifyTitle": "Benachrichtigungen anzeigen",
     "notifyDescription": "Wenn ausgeschaltet, erscheint diese Art von Benachrichtigung über keinen Weg; die Auswahl für beide Wege bleibt erhalten.",
@@ -569,5 +570,115 @@ export default createSettingsLocale("de-DE", {
       "license": "Lizenz",
       "source": "Quelle"
     }
+  },
+  "crashDumps": {
+    "title": "Absturzabbilder",
+    "description": "Stürzt ein Programm von Resource Manager ab (Hintergrunddienst, Fensterprozess oder residenter Infobereichsprozess), schreibt Windows den Prozessspeicher in eine Abbilddatei, mit der sich der Fehler eingrenzen lässt. Abbilder bleiben auf diesem Computer und werden nie automatisch hochgeladen.",
+    "modeTitle": "Absturzabbilder schreiben",
+    "modeDescription": "Legen Sie fest, ob bei einem Absturz ein Abbild gespeichert wird. „Veröffentlichungskanal folgen“ ist in Beta-Versionen eingeschaltet und fragt in stabilen Versionen zuerst nach.",
+    "modeOptions": {
+      "default": { "label": "Veröffentlichungskanal folgen", "description": "In Beta-Versionen ein; in stabilen Versionen wird zuerst gefragt." },
+      "ask": { "label": "Zuerst fragen", "description": "Schreibt vorerst keine Abbilder und fragt in der Oberfläche, ob sie eingeschaltet werden sollen." },
+      "on": { "label": "Ein", "description": "Speichert bei einem Absturz ein Abbild." },
+      "off": { "label": "Aus", "description": "Speichert kein Abbild; Abstürze werden nur aus dem Ereignisprotokoll erfasst." }
+    },
+    "effective": (mode: string, source: string) => `Aktuell: ${mode} (${source})`,
+    "effectiveModes": {
+      "ask": "noch nicht entschieden, keine Abbilder",
+      "on": "eingeschaltet",
+      "off": "ausgeschaltet"
+    },
+    "sourceUser": "Ihre Auswahl",
+    "channelNames": {
+      "beta": "Beta-Version",
+      "stable": "stabile Version"
+    },
+    "defaultModeNames": {
+      "on": "standardmäßig eingeschaltet",
+      "ask": "fragt standardmäßig zuerst",
+      "off": "standardmäßig ausgeschaltet"
+    },
+    "channelDefault": (channel: string, mode: string) => `${channel}, ${mode}`,
+    "turnOff": "Absturzabbilder ausschalten",
+    "turnOffDescription": "Schaltet sie aus und speichert sofort.",
+    "dumpTypeTitle": "Abbildtyp",
+    "dumpTypeDescription": "Ein Minidump genügt, um die meisten Fehler einzugrenzen, und passt in der Regel als Anhang in ein GitHub-Issue.",
+    "dumpTypeOptions": {
+      "mini": { "label": "Minidump", "description": "Thread-Stapel und Datensegmente; meist einige MB." },
+      "full": { "label": "Vollständiges Abbild", "description": "Der gesamte Prozessspeicher; kann mehrere hundert MB groß sein und eignet sich nur für die lokale Analyse." }
+    },
+    "keepCountTitle": "Aufbewahrte Kopien je Programm",
+    "keepCountDescription": "Höchstzahl der Absturzeinträge und Abbilder je Programm; darüber hinaus werden die ältesten gelöscht.",
+    "statusTitle": "Tatsächlicher Zustand",
+    "status": {
+      "notApplied": "Die Konfiguration der Absturzabbilder wurde noch nicht geschrieben.",
+      "applied": "Die Abbildkonfiguration der Windows-Fehlerberichterstattung entspricht Ihren Einstellungen.",
+      "mismatch": "Die tatsächliche Konfiguration der Windows-Fehlerberichterstattung weicht von Ihren Einstellungen ab.",
+      "failed": "Die Abbildkonfiguration der Windows-Fehlerberichterstattung konnte nicht geschrieben werden.",
+      "skipped": "Die Abbildkonfiguration der Windows-Fehlerberichterstattung wurde nicht geschrieben."
+    },
+    "skipReasons": {
+      "not-running-as-installed-service": "Läuft nicht als installierter Dienst; die Registrierung bleibt unverändert."
+    },
+    "skipReasonOther": (reason: string) => `Grund: ${reason}`,
+    "writeFailed": (error: string) => `Schreiben fehlgeschlagen: ${error}`,
+    "readFailed": (error: string) => `Die tatsächliche Konfiguration konnte nicht gelesen werden: ${error}`,
+    "imageStates": {
+      "written": "geschrieben",
+      "absent": "nicht geschrieben",
+      "foreign": "von einem anderen Programm konfiguriert"
+    },
+    "actualDetail": (dumpType: string, count: number | null, folder: string) => `${dumpType}, ${count === null ? "— aufbewahrt" : plural("de-DE", count, { one: "{count} Kopie aufbewahrt", other: "{count} Kopien aufbewahrt" })}, Ordner ${folder}`,
+    "dumpTypeOther": (value: number) => `Typ ${value}`,
+    "historyTitle": "Absturzeinträge",
+    "historyDescription": "Einträge, die nach dem Absturz eines Programms von Resource Manager beim nächsten Start des Dienstes oder Öffnen der Oberfläche erfasst wurden.",
+    "historyEmpty": "Keine Absturzeinträge.",
+    "dumpFolderLabel": "Abbildordner",
+    "roles": {
+      "service": "Hintergrunddienst",
+      "window": "Fensterprozess",
+      "resident": "residenter Infobereichsprozess"
+    },
+    "program": (program: string, role: string) => `${program} (${role})`,
+    "timeLabel": "Zeitpunkt",
+    "versionLabel": "Version",
+    "versionUnknown": "Unbekannt",
+    "faultLabel": "Fehler",
+    "faultUnknown": "Das Ereignisprotokoll enthält keinen passenden Fehlereintrag.",
+    "dumpLabel": "Abbilddatei",
+    "dumpNotEnabled": "Absturzabbilder waren ausgeschaltet",
+    "dumpMissing": "Die Abbilddatei ist nicht mehr vorhanden",
+    "sizeLabel": "Größe",
+    "reportedLabel": "Gemeldet",
+    "reported": "Gemeldet",
+    "notReported": "Nicht gemeldet",
+    "packageLabel": "Berichtspaket",
+    "packageExceeds": (packageSizeText: string, attachmentLimitText: string) => `Das Berichtspaket ist ${packageSizeText} groß und überschreitet die Anhangsgrenze von GitHub-Issues (${attachmentLimitText}); es kann nicht direkt angehängt werden. Das Abbild wurde nicht gekürzt.`,
+    "openFolder": "Enthaltenden Ordner öffnen",
+    "buildPackage": "Berichtspaket erstellen",
+    "reportOnGitHub": "Auf GitHub melden",
+    "delete": "Löschen",
+    "deleteConfirmTitle": "Diesen Absturzeintrag löschen?",
+    "deleteConfirmMessage": (program: string, time: string) => `Der Absturzeintrag von ${program} vom ${time} wird zusammen mit seiner Abbilddatei und seinem Berichtspaket gelöscht.`,
+    "revealFailed": "Diese Datei konnte im Datei-Explorer nicht angezeigt werden.",
+    "openFailed": "Die GitHub-Seite konnte nicht geöffnet werden.",
+    "actionFailed": "Die Aktion ist fehlgeschlagen.",
+    "requestTitle": "Absturzabbilder einschalten?",
+    "requestWhat": "Stürzt ein Programm von Resource Manager ab, kann Windows den Prozessspeicher in eine Abbilddatei schreiben, mit der sich die Fehlerstelle finden lässt.",
+    "requestWhere": (folder: string) => `Abbilder werden in ${folder} gespeichert. Unter Einstellungen · Systemintegration können Sie sie ansehen, löschen oder ausschalten.`,
+    "requestSize": "Ein Minidump ist meist einige MB groß und kann an ein GitHub-Issue angehängt werden; ein vollständiges Abbild kann mehrere hundert MB groß sein.",
+    "requestContent": "Ein Abbild enthält den Prozessspeicher zum Zeitpunkt des Absturzes und kann Dateipfade und Ihren Benutzernamen enthalten. Abbilder werden nie automatisch hochgeladen; ob Sie eines einreichen, entscheiden Sie.",
+    "requestEnable": "Einschalten",
+    "requestDecline": "Nicht einschalten",
+    "requestFailed": "Die Einstellung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+    "dialogTitle": "Resource Manager wurde unerwartet beendet",
+    "dialogIntro": "Die folgenden Programme sind abgestürzt. Das Hochladen des Berichtspakets in ein GitHub-Issue hilft, die Ursache zu finden: „Auf GitHub melden“ erstellt das Paket, öffnet eine vorausgefüllte Issue-Seite im Browser und markiert das Paket im Datei-Explorer, sodass Sie es in das Issue ziehen können.",
+    "dialogCrashed": (program: string, time: string) => `${program} ist am ${time} abgestürzt`,
+    "dialogIssueLink": "Vorausgefüllte GitHub-Issue-Seite öffnen",
+    "dialogLocalPath": "Lokale Datei",
+    "dialogLater": "Später",
+    "noticeTitle": "Absturzbericht",
+    "noticeMessage": "Resource Manager hat sich gerade von einem Absturz erholt und ein Absturzabbild gespeichert.",
+    "noticeOpen": "Absturzeinträge anzeigen"
   }
 });

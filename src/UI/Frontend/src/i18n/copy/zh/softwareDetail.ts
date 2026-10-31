@@ -50,7 +50,20 @@ export const zhSoftwareDetailCopy = {
       "no-frame-data": "无帧数据",
       "metric-unavailable": "读数不可用",
       "process-cpu-unavailable": "进程 CPU 不可用",
-      "process-metric-unavailable": "进程读数不可用"
+      "process-metric-unavailable": "进程读数不可用",
+      "not-applicable": "此设备不适用",
+      "no-source": "本机没有来源",
+      "source-not-refreshed": "来源未刷新",
+      "target-gpu-unresolved": "目标未在使用任何 GPU",
+      "gpu-dedicated-memory-metrics-unsupported": "此 GPU 没有独立显存计量",
+      "metric-unknown": "读数没有对应字段",
+      "metric-warming": "读数正在准备",
+      "metric-unsupported": "读数不受支持",
+      "breakdown-warming": "资源细分正在准备",
+      "breakdown-failed": "资源细分采样失败",
+      "breakdown-bar-missing": "资源细分没有这一项",
+      "breakdown-unsupported": "资源细分不支持这一项",
+      "breakdown-unavailable": "资源细分读数不可用"
     },
     /** 浮层用的项选择器里，替换“录制项”说法的几段文字。 */
     picker: {

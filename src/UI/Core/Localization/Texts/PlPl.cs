@@ -11,6 +11,8 @@ internal static class PlPl
         MemoryProtectionTitle = "Ochrona pamięci hosta zadziałała",
         MemoryProtectionProcessMessageFormat = "Zakończono {0} (PID {1}). Rozmiar zrzutu: {2}. Kliknij, aby otworzyć Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Zakończono drzewo procesów pod {0} (PID {1}). Procesy: {2}; rozmiar zrzutu: {3}. Kliknij, aby otworzyć Resource Manager.",
+        CrashReportTitle = "Raport o awarii",
+        CrashReportMessage = "Resource Manager właśnie wznowił działanie po awarii i zapisał zrzut awaryjny. Kliknij, aby otworzyć Resource Manager.",
         AppName = "Menedżer zasobów",
         WindowTitleFormat = "Menedżer zasobów - {0}",
         TrayTooltipFormat = "Menedżer zasobów - {0}",

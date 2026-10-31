@@ -136,6 +136,11 @@ internal static class TrustedAccessHttpPolicy
             "DELETE /api/gpu/performance-overrides",
             "DELETE /api/optimization/protection/entries/{protectionId}",
             "PATCH /api/settings/app",
+            // Crash report actions take the permission of the settings writes (docs/crash_dumps_2026-10-31.md).
+            "POST /api/crash-reports/{id}/package",
+            "POST /api/crash-reports/{id}/issue-link",
+            "POST /api/crash-reports/{id}/acknowledge",
+            "DELETE /api/crash-reports/{id}",
             "PATCH /api/memory-protection",
             "POST /api/memory-protection/reserve/rebuild",
             "POST /api/components/{id}/install",
@@ -248,6 +253,7 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/index/software/{softwareId}",
             "GET /api/local-system/status",
             "GET /api/notifications",
+            "GET /api/crash-reports",
             "GET /api/operations",
             "GET /api/operations/{id}",
             "GET /api/optimization/protection",
@@ -423,6 +429,7 @@ internal static class TrustedAccessHttpPolicy
             "/api/updates/product/status/subscribe" => [AccessKeyScopes.Read],
             "/api/access-requests/subscribe" => [AccessKeyScopes.KeysManage],
             "/api/notifications/subscribe" => [AccessKeyScopes.Read],
+            "/api/crash-reports/subscribe" => [AccessKeyScopes.Read],
             _ => null
         };
         requiredScopes = scopes ?? [];

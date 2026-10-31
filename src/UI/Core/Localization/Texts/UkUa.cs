@@ -11,6 +11,8 @@ internal static class UkUa
         MemoryProtectionTitle = "Захист пам’яті вузла вжив заходів",
         MemoryProtectionProcessMessageFormat = "Процес {0} (PID {1}) завершено. Обсяг дампу: {2}. Натисніть, щоб відкрити Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Дерево процесів під {0} (PID {1}) завершено. Процесів: {2}; обсяг дампу: {3}. Натисніть, щоб відкрити Resource Manager.",
+        CrashReportTitle = "Звіт про збій",
+        CrashReportMessage = "Resource Manager щойно відновився після збою та зберіг аварійний дамп. Натисніть, щоб відкрити Resource Manager.",
         AppName = "Диспетчер ресурсів",
         WindowTitleFormat = "Диспетчер ресурсів - {0}",
         TrayTooltipFormat = "Диспетчер ресурсів - {0}",

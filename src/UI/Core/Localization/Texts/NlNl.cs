@@ -11,6 +11,8 @@ internal static class NlNl
         MemoryProtectionTitle = "Geheugenbeveiliging van de host heeft ingegrepen",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) is beëindigd. Dumpgrootte: {2}. Klik om Resource Manager te openen.",
         MemoryProtectionTreeMessageFormat = "De procesboom onder {0} (PID {1}) is beëindigd. Processen: {2}; dumpgrootte: {3}. Klik om Resource Manager te openen.",
+        CrashReportTitle = "Crashrapport",
+        CrashReportMessage = "Resource Manager is zojuist hersteld van een crash en heeft een crashdump opgeslagen. Klik om Resource Manager te openen.",
         AppName = "Resourcebeheer",
         WindowTitleFormat = "Resourcebeheer - {0}",
         TrayTooltipFormat = "Resourcebeheer - {0}",

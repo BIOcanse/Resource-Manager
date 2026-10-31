@@ -11,7 +11,8 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRollbackStateStore, IDisposable
 {
-    internal static readonly TimeSpan DefaultCheckpointInterval = TimeSpan.FromMinutes(1);
+    internal static readonly TimeSpan DefaultCheckpointInterval =
+        TimeSpan.FromMilliseconds(OptimizationSettings.ProductDefaults.RollbackStateStore.CheckpointIntervalMilliseconds);
     private const string DurableStoreKind = "rollback-state";
 
     private static readonly JsonSerializerOptions JsonOptions = new HostManagerRollbackStateStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)

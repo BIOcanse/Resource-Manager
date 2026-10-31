@@ -23,7 +23,8 @@ public sealed partial class WindowsResourceBreakdownSampler
         NativePdhReadResult? pdhRead,
         ProcessMetricFieldSnapshot? validatedEngineFields,
         GpuAllocationReading? allocations,
-        HardwareMetricSnapshot? hardware)
+        HardwareMetricSnapshot? hardware,
+        ProcessGpuSharedSystemMemoryRead? sharedSystemMemory = null)
     {
         var births = samples.Where(static sample => sample.ProcessId > 0 && sample.StartKey is > 0)
             .GroupBy(static sample => sample.ProcessId).Where(static group => group.Count() == 1)
@@ -42,8 +43,11 @@ public sealed partial class WindowsResourceBreakdownSampler
             var adapterMatches = exactAdapters.Contains((field.GpuIndex!.Value, field.GpuAdapterLuid!.Value));
             var part = field.GpuEngine is not null
                 ? CreateGpuEngineResourceFact(field, births, adapterMatches ? pdhRead : null, validatedEngineFields)
-                : CreateGpuResidentResourceFact(field, births, adapterMatches ? allocations : null,
-                    adapterMatches ? hardware : null);
+                : field.Code == ProcessMetricFieldCode.GpuSharedSystemMemoryBytes
+                    ? CreateGpuSharedSystemMemoryFact(field, births, adapterMatches ? sharedSystemMemory : null,
+                        adapterMatches ? hardware : null)
+                    : CreateGpuResidentResourceFact(field, births, adapterMatches ? allocations : null,
+                        adapterMatches ? hardware : null);
             facts.Add(part.Fact);
             parts.Add(part.Fields);
         }
@@ -129,6 +133,37 @@ public sealed partial class WindowsResourceBreakdownSampler
             .DefaultIfEmpty(null).Max();
         return (fact, new(fieldCapturedAt, milliseconds, [field], rows)
         { Sources = [new(field.SourceId, fieldCapturedAt, milliseconds)] });
+    }
+
+    /// <summary>One process value per validated instance that PDH reported on this adapter. A process with no
+    /// PDH instance, or whose PID was reused during the read, gets no row and reads as unavailable.
+    /// The total is the system shared-memory metric only when the holder's hardware snapshot already has it current.</summary>
+    private static (ProcessMemoryFact Fact, ProcessMetricFieldSnapshot Fields) CreateGpuSharedSystemMemoryFact(
+        ProcessMetricFieldDefinition field, IReadOnlyDictionary<int, long> births,
+        ProcessGpuSharedSystemMemoryRead? read, HardwareMetricSnapshot? hardware)
+    {
+        var luid = field.GpuAdapterLuid!.Value;
+        var current = read?.Availability == NativePdhProviderAvailability.Available;
+        var capturedAt = current ? read!.ObservedAt : null;
+        var values = new List<ProcessMemoryValue>();
+        var rows = new List<ProcessMetricFieldValues>();
+        if (current)
+            foreach (var ((adapterLuid, pid, startKey), value) in read!.Bytes)
+            {
+                if (adapterLuid != luid || !births.TryGetValue(pid, out var birth)
+                    || birth <= 0 || (ulong)birth != startKey || !double.IsFinite(value)) continue;
+                values.Add(new(pid, birth, value));
+                rows.Add(new(pid, birth.ToString(CultureInfo.InvariantCulture), [new(field.Name, null, value)]));
+            }
+        var totalId = field.ResourceFactTotalMetricId!;
+        double? total = hardware is not null && TryGetCurrentHardwareMetric(hardware, totalId, out var reading)
+            ? reading.NumericValue ?? (double?)(double)reading.IntegerValue!.Value.ToBigInteger() : null;
+        return (new(field.Name, totalId, total, null, values.Sum(static value => value.Value), values)
+        {
+            Unit = field.Unit,
+            AdditiveAcrossProcesses = true,
+            CapturedAt = capturedAt
+        }, new(capturedAt, null, [field], rows) { Sources = [new(field.SourceId, capturedAt, null)] });
     }
 
     private static (ProcessMemoryFact Fact, ProcessMetricFieldSnapshot Fields) CreateGpuResidentResourceFact(

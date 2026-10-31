@@ -47,8 +47,9 @@ public sealed partial class HostManagerSmartCoordinator
 
     internal static string CreateStableId(string value)
     {
-        const int StackInputCharacterLimit = 256;
-        const int StackUtf8ByteLimit = 1024;
+        var limits = OptimizationSettings.ProductDefaults.RuntimeLimits;
+        var StackInputCharacterLimit = limits.StackInputCharacterLimit;
+        var StackUtf8ByteLimit = limits.StackUtf8ByteLimit;
         const string HexDigits = "0123456789abcdef";
 
         char[]? uppercaseBuffer = null;
@@ -98,7 +99,9 @@ public sealed partial class HostManagerSmartCoordinator
             unit++;
         }
 
-        var digits = unit == 0 ? 0 : size >= 10 ? 1 : 2;
+        var limits = OptimizationSettings.ProductDefaults.RuntimeLimits;
+        var digits = unit == 0 ? limits.FormatByteDigits : size >= limits.FormatLargeValueThreshold
+            ? limits.FormatLargeValueDigits : limits.FormatSmallValueDigits;
         return $"{size.ToString($"F{digits}")} {units[unit]}";
     }
 }

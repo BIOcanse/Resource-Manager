@@ -476,7 +476,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ["/api/notifications/subscribe"] = new((subscription, services, _) =>
                 CompileNotificationSubscription(
                     subscription,
-                    services.GetRequiredService<Application.Notifications.INotificationOwner>()))
+                    services.GetRequiredService<Application.Notifications.INotificationOwner>())),
+            // EventDriven: the list after a rescan on subscribe, then the whole list after every change.
+            ["/api/crash-reports/subscribe"] = new((subscription, services, _) =>
+                CompileCrashReportSubscription(
+                    subscription,
+                    services.GetRequiredService<Application.CrashReports.ICrashReportOwner>()))
         };
 
     internal static IEnumerable<string> SubscriptionSelectors => SubscriptionSourceRoutes.Keys;

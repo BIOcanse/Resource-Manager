@@ -2,37 +2,45 @@
 namespace ResourceManager.ReadWrite.Windows.Frames;
 
 /// <summary>
-/// 帧时间戳账本：按进程实例（PID 加启动时间）和帧流保存最近的 Present 时间戳。
+/// 帧账本：按进程实例（PID 加启动时间）和帧流保存最近的 Present（起止时刻、显示结果、输出尺寸）。
 /// 不碰 ETW，由 the Host PresentFrameEtwSource 在事件线程上调用；调用方负责加锁。
+/// 上限和保留时长来自 frame_pipeline 自由点（<see cref="PresentFrameLedgerLimits"/>）。
 /// </summary>
-internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
+internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey, PresentFrameLedgerLimits limits)
 {
-    public const int MaximumTimestampsPerStream = 16384;
-    public const int MaximumStreams = 256;
-    public static readonly TimeSpan Retention = TimeSpan.FromSeconds(30);
     private const uint QueuePacketMmioFlip = 3;
     private const uint QueuePacketSoftware = 7;
 
     // 0 表示读不到启动时间：这个 PID 的帧先丢弃，直到进程启动或退出事件更新它。
     private readonly Dictionary<int, long> startKeys = [];
-    private readonly Dictionary<StreamKey, Queue<long>> streams = [];
-    // Keep a stopped process's last timestamps for cursor readers until normal retention expires.
+    private readonly Dictionary<StreamKey, PresentTimeline> streams = [];
+    // Keep a stopped process's last Presents for cursor readers until normal retention expires.
     // Window statistics continue to see only live streams.
-    private readonly Dictionary<StreamKey, Queue<long>> retiredStreams = [];
+    private readonly Dictionary<StreamKey, PresentTimeline> retiredStreams = [];
+    // A runtime Present waiting for its stop on the same thread.
+    private readonly Dictionary<ThreadKey, (StreamKey Stream, long Sequence)> pendingStops = [];
     private readonly Dictionary<StreamKey, Queue<DisplayFrameState>> displayFrames = [];
     private readonly Dictionary<ThreadKey, DisplayFrameState> currentPresentsByThread = [];
     private readonly Dictionary<uint, List<DisplayFrameState>> presentsBySubmitSequence = [];
     private readonly Dictionary<Win32kTokenKey, DisplayFrameState> presentsByWin32kToken = [];
     private readonly Dictionary<StreamKey, long> displayOverflowAtUtcTicks = [];
-    private long incompleteThroughUtcTicks;
+    private readonly Dictionary<(int ProcessId, long ProcessStartKey, ulong SwapChain), FrameOutputResolution> swapChainSizes = [];
+    private readonly Dictionary<StreamKey, FrameOutputResolution> compositionSizes = [];
+    private long streamCapacityThroughUtcTicks;
+    private long presentRateCapacityThroughUtcTicks;
 
+    public PresentFrameLedgerLimits Limits { get; } = limits.Validate();
     public int StreamCount => streams.Count;
+
+    /// <summary>Set by the owner while the GPU frame tier runs; Present stops close GPU frames through it.</summary>
+    public IGpuFrameBoundary? GpuFrames { get; set; }
 
     // Keep the bounded output history, release the indexes used only to correlate
     // incoming events. A stopped producer can still return its current values.
     public void ReleaseCorrelationState()
     {
         startKeys.Clear();
+        pendingStops.Clear();
         currentPresentsByThread.Clear();
         presentsBySubmitSequence.Clear();
         presentsByWin32kToken.Clear();
@@ -46,14 +54,28 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         startKeys.Clear();
         foreach (var frame in displayFrames.Values.SelectMany(static frames => frames))
         {
-            if (frame.Outcome == FrameTimingDisplayOutcome.Unknown) frame.Ambiguous = true;
+            if (frame.Outcome == FrameTimingDisplayOutcome.Unknown)
+            {
+                frame.Ambiguous = true;
+                frame.LostEvents = true;
+            }
         }
+        pendingStops.Clear();
         currentPresentsByThread.Clear();
         presentsBySubmitSequence.Clear();
         presentsByWin32kToken.Clear();
     }
 
-    public bool IsComplete(long afterUtcTicks) => incompleteThroughUtcTicks < afterUtcTicks;
+    public bool IsComplete(long afterUtcTicks) => IncompleteReasons(afterUtcTicks).Count == 0;
+
+    /// <summary>Ledger-owned reasons a range starting at <paramref name="afterUtcTicks"/> is incomplete.</summary>
+    public IReadOnlyList<string> IncompleteReasons(long afterUtcTicks)
+    {
+        var reasons = new List<string>(2);
+        if (streamCapacityThroughUtcTicks >= afterUtcTicks) reasons.Add(FrameTimingReasons.StreamCapacity);
+        if (presentRateCapacityThroughUtcTicks >= afterUtcTicks) reasons.Add(FrameTimingReasons.PresentRateCapacity);
+        return reasons;
+    }
 
     public void ProcessStarted(int processId, long processStartKey)
     {
@@ -70,10 +92,13 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
     }
 
     public void Present(int processId, FramePresentSource source, ulong swapChain, long timestampUtcTicks)
+        => _ = Append(processId, source, swapChain, timestampUtcTicks);
+
+    private (StreamKey Key, long Sequence)? Append(int processId, FramePresentSource source, ulong swapChain, long timestampUtcTicks)
     {
         if (processId <= 0)
         {
-            return;
+            return null;
         }
 
         if (!startKeys.TryGetValue(processId, out var startKey))
@@ -84,50 +109,48 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
 
         if (startKey == 0)
         {
-            return;
+            return null;
         }
 
         var key = new StreamKey(processId, startKey, source, swapChain);
-        if (!streams.TryGetValue(key, out var timestamps))
+        if (!streams.TryGetValue(key, out var timeline))
         {
-            if (streams.Count >= MaximumStreams)
+            if (streams.Count >= Limits.MaximumStreams)
             {
-                incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, timestampUtcTicks);
-                return;
+                streamCapacityThroughUtcTicks = Math.Max(streamCapacityThroughUtcTicks, timestampUtcTicks);
+                return null;
             }
 
-            streams[key] = timestamps = new Queue<long>();
+            streams[key] = timeline = new PresentTimeline(Limits.PresentsPerStream);
         }
 
-        if (timestamps.Count == MaximumTimestampsPerStream)
+        var sequence = timeline.Append(timestampUtcTicks, out var overwritten);
+        if (overwritten is { } lost)
         {
-            incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, timestamps.Dequeue());
-            // The replacement timestamp also loses its predecessor interval.
-            incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, timestamps.Peek());
+            presentRateCapacityThroughUtcTicks = Math.Max(presentRateCapacityThroughUtcTicks, lost);
+            // The new oldest Present also loses its predecessor interval.
+            presentRateCapacityThroughUtcTicks = Math.Max(presentRateCapacityThroughUtcTicks, timeline.FirstStart);
         }
 
-        timestamps.Enqueue(timestampUtcTicks);
+        return (key, sequence);
     }
 
     public void Present(int processId, FramePresentSource source, ulong swapChain,
         long timestampUtcTicks, int threadId, long timestampQpc, long qpcFrequency)
     {
-        Present(processId, source, swapChain, timestampUtcTicks);
-        if (threadId <= 0 || swapChain == 0
-            || !startKeys.TryGetValue(processId, out var processStartKey) || processStartKey == 0)
+        var appended = Append(processId, source, swapChain, timestampUtcTicks);
+        if (threadId <= 0 || swapChain == 0 || appended is not { } entry)
         {
             return;
         }
 
-        var key = new StreamKey(processId, processStartKey, source, swapChain);
-        if (!streams.ContainsKey(key))
-        {
-            return;
-        }
+        var (key, sequence) = entry;
 
+        var threadKey = new ThreadKey(processId, key.ProcessStartKey, threadId);
+        pendingStops[threadKey] = (key, sequence);
         if (!displayFrames.TryGetValue(key, out var frames))
         {
-            if (displayFrames.Count >= MaximumStreams)
+            if (displayFrames.Count >= Limits.MaximumStreams)
             {
                 return;
             }
@@ -135,20 +158,19 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
             displayFrames[key] = frames = new Queue<DisplayFrameState>();
         }
 
-        if (frames.Count == MaximumTimestampsPerStream)
+        if (frames.Count == Limits.PresentsPerStream)
         {
             var retired = frames.Dequeue();
             RemoveCorrelation(retired);
             displayOverflowAtUtcTicks[key] = timestampUtcTicks;
         }
 
-        var frame = new DisplayFrameState(key, threadId, timestampUtcTicks,
+        var frame = new DisplayFrameState(key, threadId, sequence, timestampUtcTicks,
             timestampQpc, qpcFrequency)
         {
             Ambiguous = timestampQpc <= 0 || qpcFrequency <= 0
         };
         frames.Enqueue(frame);
-        var threadKey = new ThreadKey(processId, processStartKey, threadId);
         if (currentPresentsByThread.TryGetValue(threadKey, out var previous))
         {
             MarkAmbiguous(previous);
@@ -161,7 +183,8 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
     public void LegacyFlip(int processId, int threadId, bool mmioFlip, long timestampQpc)
     {
         if (!TryGetCurrent(processId, threadId, out var frame)) return;
-        if (frame.UnsupportedMode || frame.LegacyFlipSeen || timestampQpc <= frame.PresentStartQpc)
+        frame.PathSeen = true;
+        if (frame.UnsupportedReason is not null || frame.LegacyFlipSeen || timestampQpc <= frame.PresentStartQpc)
         {
             MarkAmbiguous(frame);
             return;
@@ -169,7 +192,7 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
 
         if (!mmioFlip)
         {
-            frame.UnsupportedMode = true;
+            frame.UnsupportedReason = FrameTimingReasons.LegacyFlipWithoutMmioNotParsed;
             return;
         }
 
@@ -183,7 +206,7 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         var relevantPacket = isPresentPacket
             || packetType is QueuePacketMmioFlip or QueuePacketSoftware;
         if (!relevantPacket || context == 0 || !TryGetCurrent(processId, threadId, out var frame)) return;
-        if (frame.UnsupportedMode || !frame.LegacyFlipSeen || frame.QueuePacketSeen
+        if (frame.UnsupportedReason is not null || !frame.LegacyFlipSeen || frame.QueuePacketSeen
             || submitSequence == 0 || timestampQpc <= frame.LegacyFlipQpc)
         {
             MarkAmbiguous(frame);
@@ -211,7 +234,7 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
     public void MmioFlip(uint submitSequence, long timestampUtcTicks, long timestampQpc, bool flipImmediate)
     {
         if (!TryGetUniqueSubmitSequence(submitSequence, out var frame)) return;
-        if (!frame.QueuePacketSeen || frame.UnsupportedMode || frame.Ambiguous
+        if (!frame.QueuePacketSeen || frame.UnsupportedReason is not null || frame.Ambiguous
             || timestampQpc <= frame.QueuePacketQpc)
         {
             MarkAmbiguous(frame);
@@ -230,7 +253,7 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
     {
         if (!TryGetUniqueSubmitSequence(submitSequence, out var frame)) return;
         if (!frame.LegacyFlipSeen || !frame.QueuePacketSeen || !frame.MmioFlipSeen
-            || frame.UnsupportedMode || frame.Ambiguous
+            || frame.UnsupportedReason is not null || frame.Ambiguous
             || timestampQpc <= frame.MmioFlipQpc || timestampQpc <= frame.PresentStartQpc
             || frame.QpcFrequency <= 0)
         {
@@ -244,6 +267,14 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
     public void PresentStopped(int processId, int threadId, long timestampUtcTicks,
         long timestampQpc, int result)
     {
+        if (processId > 0 && threadId > 0 && startKeys.TryGetValue(processId, out var processStartKey)
+            && pendingStops.Remove(new ThreadKey(processId, processStartKey, threadId), out var pending)
+            && streams.TryGetValue(pending.Stream, out var timeline)
+            && timeline.TrySetStop(pending.Sequence, timestampUtcTicks))
+        {
+            // CPU completion is independent of GPU completion (the Present queue packet closes GPU work).
+        }
+
         if (!TryGetCurrent(processId, threadId, out var frame)) return;
         if (result < 0)
         {
@@ -251,14 +282,37 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         }
         else
         {
+            // Every parsed path logs its first event inside the Present call; none means blit, DWM or independent flip.
+            if (!frame.PathSeen) frame.NoParsedPath = true;
             RemoveCurrent(frame);
         }
     }
 
+    /// <summary>Called by the GPU frame tier when every packet of a closed frame completed.</summary>
+    internal void SetGpuFrame(StreamKey stream, long sequence, PresentGpuRecord record)
+    {
+        if (streams.TryGetValue(stream, out var timeline) || retiredStreams.TryGetValue(stream, out timeline))
+            timeline.TrySetGpu(sequence, record);
+    }
+
+    internal GpuFrameOwner? CurrentGpuOwner(int processId, int threadId)
+        => startKeys.TryGetValue(processId, out var birth)
+            && pendingStops.TryGetValue(new ThreadKey(processId, birth, threadId), out var pending)
+                ? new GpuFrameOwner(this, pending.Stream, pending.Sequence) : null;
+
     public void TrackWin32kToken(int processId, int threadId,
-        ulong compositionSurfaceLuid, ulong presentCount, ulong bindId)
+        ulong compositionSurfaceLuid, ulong presentCount, ulong bindId,
+        long timestampUtcTicks = 0, uint destWidth = 0, uint destHeight = 0)
     {
         if (!TryGetCurrent(processId, threadId, out var frame)) return;
+        frame.PathSeen = true;
+        if (destWidth > 0 && destHeight > 0 && destWidth <= int.MaxValue && destHeight <= int.MaxValue
+            && (compositionSizes.ContainsKey(frame.Stream) || compositionSizes.Count < Limits.MaximumStreams))
+        {
+            compositionSizes[frame.Stream] = new FrameOutputResolution(FrameOutputResolutionSource.Win32kCompositionToken,
+                (int)destWidth, (int)destHeight, new DateTimeOffset(timestampUtcTicks, TimeSpan.Zero));
+        }
+
         var key = new Win32kTokenKey(compositionSurfaceLuid, presentCount, bindId);
         if (frame.Win32kToken is { } currentToken)
         {
@@ -266,7 +320,8 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
             return;
         }
 
-        frame.UnsupportedMode = true;
+        frame.UnsupportedReason = FrameTimingReasons.ComposedScreenTimeNotParsed;
+        frame.ComposedFlip = true;
         frame.CompositionSurfaceLuid = compositionSurfaceLuid;
         if (presentsByWin32kToken.TryGetValue(key, out var previous) && !ReferenceEquals(previous, frame))
         {
@@ -306,11 +361,32 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         }
     }
 
-    public void UnsupportedDisplayPath(int processId, int threadId, uint? vidPnSourceId = null)
+    /// <summary>A display path whose screen time the ledger does not parse; the frame keeps the concrete reason.</summary>
+    public void UnsupportedDisplayPath(int processId, int threadId, string reason, uint? vidPnSourceId = null)
     {
         if (!TryGetCurrent(processId, threadId, out var frame)) return;
-        frame.UnsupportedMode = true;
+        frame.PathSeen = true;
+        frame.UnsupportedReason = reason;
+        if (reason == FrameTimingReasons.MultiplaneOverlayNotParsed) frame.MultiplaneOverlay = true;
         frame.VidPnSourceId = vidPnSourceId;
+    }
+
+    /// <summary>DXGI SwapChain_Start / DC_Start (10/12) or a successful ResizeBuffers_Stop (46).</summary>
+    public void SwapChainSize(int processId, ulong swapChain, uint width, uint height, long timestampUtcTicks)
+    {
+        if (processId <= 0 || swapChain == 0 || width == 0 || height == 0
+            || width > int.MaxValue || height > int.MaxValue) return;
+        if (!startKeys.TryGetValue(processId, out var startKey))
+        {
+            startKey = readProcessStartKey(processId) is > 0 and var read ? read : 0;
+            startKeys[processId] = startKey;
+        }
+
+        if (startKey == 0) return;
+        var key = (processId, startKey, swapChain);
+        if (!swapChainSizes.ContainsKey(key) && swapChainSizes.Count >= Limits.MaximumStreams) return;
+        swapChainSizes[key] = new FrameOutputResolution(FrameOutputResolutionSource.DxgiSwapChain,
+            (int)width, (int)height, new DateTimeOffset(timestampUtcTicks, TimeSpan.Zero));
     }
 
     public IReadOnlyList<FrameTimingDisplayStream> ReadDisplayStreams(long nowUtcTicks, TimeSpan window)
@@ -320,7 +396,7 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
             throw new ArgumentOutOfRangeException(nameof(window));
         }
 
-        Prune(nowUtcTicks - Retention.Ticks);
+        Prune(nowUtcTicks - Limits.Retention.Ticks);
         var windowStart = nowUtcTicks - window.Ticks;
         var result = new List<FrameTimingDisplayStream>();
         foreach (var (key, queue) in displayFrames)
@@ -335,48 +411,54 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
                 continue;
             }
 
-            var allOutcomesKnown = frames.All(frame => !frame.Ambiguous && frame.Outcome is
-                FrameTimingDisplayOutcome.Displayed or FrameTimingDisplayOutcome.Discarded);
-            var commonFrequency = frames.Select(static frame => frame.QpcFrequency).Distinct().Take(2).ToArray();
-            var complete = window <= Retention
-                && (!displayOverflowAtUtcTicks.TryGetValue(key, out var overflowAt)
-                    || overflowAt < windowStart || overflowAt > nowUtcTicks)
-                && allOutcomesKnown
-                && commonFrequency.Length == 1
-                && commonFrequency[0] > 0;
+            var reasons = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var frame in frames)
+            {
+                if (Reason(frame) is { } reason) reasons.Add(reason);
+            }
 
+            var commonFrequency = frames.Select(static frame => frame.QpcFrequency).Distinct().Take(2).ToArray();
+            if (commonFrequency.Length != 1 || commonFrequency[0] <= 0) reasons.Add(FrameTimingReasons.QpcFrequencyMismatch);
+            if (displayOverflowAtUtcTicks.TryGetValue(key, out var overflowAt)
+                && overflowAt >= windowStart && overflowAt <= nowUtcTicks) reasons.Add(FrameTimingReasons.DisplayCapacity);
+            var complete = window <= Limits.Retention && reasons.Count == 0;
+
+            var cpuStarts = CpuStarts(key, windowStart - Limits.Retention.Ticks, nowUtcTicks);
+            var measured = new Dictionary<DisplayFrameState, DisplayedValues>();
             FrameIntervalStatistics? statistics = null;
+            FrameDurationStatistics? displayedTime = null;
+            FrameDurationStatistics? displayLatency = null;
             if (complete)
             {
                 var displayed = frames.Where(frame => frame.Outcome == FrameTimingDisplayOutcome.Displayed
-                        && frame.OutcomeAtUtcTicks is { } ended && ended <= nowUtcTicks)
+                        && frame.OutcomeAtUtcTicks is { } ended && ended <= nowUtcTicks && frame.OutcomeQpc is not null)
                     .OrderBy(static frame => frame.OutcomeQpc)
                     .ToArray();
-                var inWindow = displayed.Where(frame => frame.OutcomeAtUtcTicks is { } ended && ended >= windowStart).ToArray();
-                if (inWindow.Length > 0)
+                var frequency = commonFrequency[0];
+                var between = new List<double>();
+                var shown = new List<double>();
+                var latencies = new List<double>();
+                for (var index = 0; index < displayed.Length; index++)
                 {
-                    var previous = displayed.LastOrDefault(frame =>
-                        frame.OutcomeAtUtcTicks is { } ended && ended < windowStart);
-                    DisplayFrameState[] samples = previous is null
-                        ? inWindow
-                        : [previous, .. inWindow];
-                    var intervals = new double[Math.Max(0, samples.Length - 1)];
-                    var intervalCount = 0;
-                    for (var index = 1; index < samples.Length; index++)
-                    {
-                        if (samples[index].OutcomeQpc is { } currentQpc
-                            && samples[index - 1].OutcomeQpc is { } previousQpc)
-                        {
-                            var qpcDelta = currentQpc - previousQpc;
-                            if (qpcDelta > 0)
-                            {
-                                intervals[intervalCount++] = qpcDelta * 1000d / commonFrequency[0];
-                            }
-                        }
-                    }
-
-                    statistics = FrameIntervalStatistics.Compute(intervals.AsSpan(0, intervalCount));
+                    var frame = displayed[index];
+                    if (frame.OutcomeAtUtcTicks < windowStart) continue;
+                    var screen = frame.OutcomeQpc!.Value;
+                    double? betweenMs = index > 0 && screen > displayed[index - 1].OutcomeQpc
+                        ? (screen - displayed[index - 1].OutcomeQpc!.Value) * 1000d / frequency : null;
+                    double? shownMs = index + 1 < displayed.Length && displayed[index + 1].OutcomeQpc > screen
+                        ? (displayed[index + 1].OutcomeQpc!.Value - screen) * 1000d / frequency : null;
+                    double? untilMs = screen > frame.PresentStartQpc ? (screen - frame.PresentStartQpc) * 1000d / frequency : null;
+                    double? latencyMs = cpuStarts.TryGetValue(frame.Sequence, out var cpuStart)
+                        ? TimeSpan.FromTicks(Math.Max(0, frame.OutcomeAtUtcTicks!.Value - cpuStart)).TotalMilliseconds : null;
+                    measured[frame] = new DisplayedValues(betweenMs, shownMs, untilMs, latencyMs);
+                    if (betweenMs is { } b) between.Add(b);
+                    if (shownMs is { } s) shown.Add(s);
+                    if (latencyMs is { } l) latencies.Add(l);
                 }
+
+                statistics = FrameIntervalStatistics.Compute(between.ToArray());
+                displayedTime = FrameDurationStatistics.Compute(shown.ToArray());
+                displayLatency = FrameDurationStatistics.Compute(latencies.ToArray());
             }
 
             var droppedCount = complete
@@ -386,16 +468,53 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
             var returnedFrames = frames.Where(frame =>
                     (frame.PresentStartedAtUtcTicks >= windowStart && frame.PresentStartedAtUtcTicks <= nowUtcTicks)
                     || (frame.OutcomeAtUtcTicks is { } ended && ended >= windowStart && ended <= nowUtcTicks))
-                .Select(ToDisplayFrame)
+                .Select(frame => ToDisplayFrame(frame, measured.TryGetValue(frame, out var values) ? values : default))
                 .ToArray();
             result.Add(new FrameTimingDisplayStream(key.ProcessId, key.ProcessStartKey, key.Source,
-                key.SwapChain, complete, statistics, droppedCount, returnedFrames));
+                key.SwapChain, complete, statistics, droppedCount, returnedFrames)
+            {
+                DisplayedTime = displayedTime,
+                DisplayLatency = displayLatency,
+                IncompleteReasons = complete ? [] : [.. reasons]
+            });
         }
 
         return result;
     }
 
-    private static FrameTimingDisplayFrame ToDisplayFrame(DisplayFrameState frame)
+    // cpuStart of each Present = the previous Present's stop on the same stream (PresentMon 2.x).
+    private Dictionary<long, long> CpuStarts(StreamKey key, long fromTicks, long throughTicks)
+    {
+        var result = new Dictionary<long, long>();
+        if (!streams.TryGetValue(key, out var timeline) && !retiredStreams.TryGetValue(key, out timeline)) return result;
+        var records = timeline.Snapshot(fromTicks, throughTicks);
+        for (var index = 1; index < records.Length; index++)
+        {
+            if (records[index - 1].StopTicks != 0) result[records[index].Sequence] = records[index - 1].StopTicks;
+        }
+
+        return result;
+    }
+
+    private static string? Reason(DisplayFrameState frame)
+    {
+        if (!frame.Ambiguous && frame.Outcome is FrameTimingDisplayOutcome.Displayed or FrameTimingDisplayOutcome.Discarded)
+            return null;
+        if (frame.Outcome == FrameTimingDisplayOutcome.Failed) return FrameTimingReasons.PresentFailed;
+        if (frame.UnsupportedReason is { } unsupported) return unsupported;
+        if (frame.LostEvents) return FrameTimingReasons.EventsLost;
+        if (frame.Ambiguous) return FrameTimingReasons.DisplayCorrelationAmbiguous;
+        if (frame.NoParsedPath) return FrameTimingReasons.DisplayPathNotParsed;
+        return FrameTimingReasons.DisplayOutcomePending;
+    }
+
+    private static FramePresentMode Mode(DisplayFrameState frame)
+        => frame.ComposedFlip ? FramePresentMode.ComposedFlip
+            : frame.MultiplaneOverlay ? FramePresentMode.Unknown
+            : frame.LegacyFlipSeen ? FramePresentMode.HardwareLegacyFlip
+            : FramePresentMode.Unknown;
+
+    private static FrameTimingDisplayFrame ToDisplayFrame(DisplayFrameState frame, DisplayedValues values)
         => new(new DateTimeOffset(frame.PresentStartedAtUtcTicks, TimeSpan.Zero), frame.Outcome,
             frame.OutcomeAtUtcTicks is { } ended ? new DateTimeOffset(ended, TimeSpan.Zero) : null,
             frame.PresentStartQpc,
@@ -405,7 +524,15 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
             null,
             null,
             frame.VidPnSourceId,
-            frame.CompositionSurfaceLuid);
+            frame.CompositionSurfaceLuid)
+        {
+            PresentMode = Mode(frame),
+            UnavailableReason = Reason(frame),
+            BetweenDisplayChangeMs = values.BetweenMs,
+            DisplayedTimeMs = values.DisplayedMs,
+            UntilDisplayedMs = values.UntilMs,
+            DisplayLatencyMs = values.LatencyMs
+        };
 
     private bool TryGetCurrent(int processId, int threadId, out DisplayFrameState frame)
     {
@@ -499,6 +626,10 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         {
             currentPresentsByThread.Remove(key);
         }
+        foreach (var key in pendingStops.Keys.Where(key => key.ProcessId == processId).ToArray())
+        {
+            pendingStops.Remove(key);
+        }
         foreach (var (sequence, candidates) in presentsBySubmitSequence.ToArray())
         {
             candidates.RemoveAll(frame => frame.Stream.ProcessId == processId);
@@ -539,7 +670,7 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
             throw new ArgumentOutOfRangeException(nameof(window));
         }
 
-        Prune(nowUtcTicks - Retention.Ticks);
+        Prune(nowUtcTicks - Limits.Retention.Ticks);
         var windowStart = nowUtcTicks - window.Ticks;
         var processes = new List<FrameTimingProcess>();
         foreach (var process in streams.GroupBy(pair => (pair.Key.ProcessId, pair.Key.ProcessStartKey)))
@@ -568,20 +699,17 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
             throw new ArgumentOutOfRangeException(nameof(window));
         }
 
-        Prune(nowUtcTicks - Retention.Ticks);
+        Prune(nowUtcTicks - Limits.Retention.Ticks);
         var windowStart = nowUtcTicks - window.Ticks;
         return streams
-            .Select(pair => (pair.Key, Last: pair.Value
-                .Where(timestamp => timestamp >= windowStart && timestamp <= nowUtcTicks)
-                .DefaultIfEmpty(long.MinValue)
-                .Max()))
-            .Where(item => item.Last != long.MinValue)
+            .Select(pair => (pair.Key, Records: pair.Value.Snapshot(windowStart, nowUtcTicks)))
+            .Where(item => item.Records.Length > 0)
             .OrderBy(item => item.Key.ProcessId)
             .ThenBy(item => item.Key.ProcessStartKey)
             .ThenBy(item => item.Key.Source)
             .ThenBy(item => item.Key.SwapChain)
             .Select(item => new FrameTimingPresent(item.Key.ProcessId, item.Key.ProcessStartKey,
-                item.Key.Source, item.Key.SwapChain, new DateTimeOffset(item.Last, TimeSpan.Zero)))
+                item.Key.Source, item.Key.SwapChain, new DateTimeOffset(item.Records[^1].StartTicks, TimeSpan.Zero)))
             .ToArray();
     }
 
@@ -592,28 +720,27 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
             return [];
         }
 
-        Prune(throughUtcTicks - Retention.Ticks);
+        Prune(throughUtcTicks - Limits.Retention.Ticks);
         var result = new List<FrameIntervalSample>();
         foreach (var process in streams.Concat(retiredStreams)
             .GroupBy(pair => (pair.Key.ProcessId, pair.Key.ProcessStartKey)))
         {
             // Match Read's runtime-over-kernel rule within the requested interval.
-            var candidates = process.Select(pair => (pair.Key, Timestamps: pair.Value
-                .Where(timestamp => timestamp <= throughUtcTicks && timestamp >= afterUtcTicks - Retention.Ticks)
-                .Order().ToArray())).ToArray();
+            var candidates = process.Select(pair => (pair.Key,
+                Records: pair.Value.Snapshot(afterUtcTicks - Limits.Retention.Ticks, throughUtcTicks))).ToArray();
             var hasRuntime = candidates.Any(item => item.Key.Source != FramePresentSource.GraphicsKernel
-                && item.Timestamps.Length > 1 && item.Timestamps[^1] > afterUtcTicks);
-            foreach (var (key, timestamps) in candidates)
+                && item.Records.Length > 1 && item.Records[^1].StartTicks > afterUtcTicks);
+            foreach (var (key, records) in candidates)
             {
                 if (hasRuntime && key.Source == FramePresentSource.GraphicsKernel)
                 {
                     continue;
                 }
 
-                for (var index = 1; index < timestamps.Length; index++)
+                for (var index = 1; index < records.Length; index++)
                 {
-                    var endedAt = timestamps[index];
-                    var durationTicks = endedAt - timestamps[index - 1];
+                    var endedAt = records[index].StartTicks;
+                    var durationTicks = endedAt - records[index - 1].StartTicks;
                     if (endedAt <= afterUtcTicks || durationTicks <= 0)
                     {
                         continue;
@@ -622,7 +749,16 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
                     result.Add(new FrameIntervalSample(key.ProcessId, key.ProcessStartKey,
                         key.Source, key.SwapChain,
                         new DateTimeOffset(endedAt, TimeSpan.Zero),
-                        TimeSpan.FromTicks(durationTicks).TotalMilliseconds));
+                        TimeSpan.FromTicks(durationTicks).TotalMilliseconds)
+                    {
+                        Cpu = Cpu(records[index - 1], records[index]),
+                        Gpu = MeasureGpu(key, records[index - 1], records[index]),
+                        CpuUnavailableReason = Cpu(records[index - 1], records[index]) is not null ? null
+                            : key.Source == FramePresentSource.GraphicsKernel ? FrameTimingReasons.GraphicsKernelHasNoPresentStop
+                            : FrameTimingReasons.PresentStopNotObserved,
+                        GpuUnavailableReason = MeasureGpu(key, records[index - 1], records[index]) is not null ? null
+                            : GpuFrames?.UnavailableReason(key.ProcessId, key.ProcessStartKey) ?? FrameTimingReasons.GpuTierNotRequested
+                    });
                 }
             }
         }
@@ -631,104 +767,169 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         return result;
     }
 
-    private static FrameTimingStream? Measure(
-        StreamKey key, Queue<long> timestamps, long windowStart, long windowEnd)
+    // PresentMon 2.x: cpuStart = previous stop; busy = start - cpuStart, clamped at 0 when Presents overlap;
+    // wait = this Present's time in the call.
+    internal static FrameCpuTiming? Cpu(PresentRecord previous, PresentRecord current)
+        => previous.StopTicks == 0 || current.StopTicks == 0
+            ? null
+            : new FrameCpuTiming(
+                TimeSpan.FromTicks(Math.Max(0, current.StartTicks - previous.StopTicks)).TotalMilliseconds,
+                TimeSpan.FromTicks(current.StopTicks - current.StartTicks).TotalMilliseconds);
+
+    // PresentMon 2.x: latency = gpuStart - cpuStart; frame time = ready - gpuStart; wait = max(0, frame time - busy).
+    internal static FrameGpuTiming? Gpu(PresentRecord previous, PresentRecord current)
     {
-        // 实时会话按 CPU 缓冲投递，换核的渲染线程可能乱序到达，先排序再取间隔。
-        var inWindow = timestamps.Where(timestamp => timestamp >= windowStart && timestamp <= windowEnd).ToArray();
+        if (current.Gpu is not { } gpu || previous.StopTicks == 0) return null;
+        var frameTicks = Math.Max(0, gpu.ReadyTicks - gpu.GpuStartTicks);
+        return new FrameGpuTiming(
+            TimeSpan.FromTicks(Math.Max(0, gpu.GpuStartTicks - previous.StopTicks)).TotalMilliseconds,
+            TimeSpan.FromTicks(gpu.BusyTicks).TotalMilliseconds,
+            TimeSpan.FromTicks(Math.Max(0, frameTicks - gpu.BusyTicks)).TotalMilliseconds,
+            TimeSpan.FromTicks(frameTicks).TotalMilliseconds,
+            gpu.VideoBusyTicks is { } video ? TimeSpan.FromTicks(video).TotalMilliseconds : null);
+    }
+
+    private FrameGpuTiming? MeasureGpu(StreamKey key, PresentRecord previous, PresentRecord current)
+        => GpuFrames?.UnavailableReason(key.ProcessId, key.ProcessStartKey) == FrameTimingReasons.GpuWorkNotObserved
+            ? Gpu(previous, current) : null;
+
+    private FrameTimingStream? Measure(
+        StreamKey key, PresentTimeline timeline, long windowStart, long windowEnd)
+    {
+        var inWindow = timeline.Snapshot(windowStart, windowEnd);
         if (inWindow.Length < 2)
         {
             return null;
         }
 
-        Array.Sort(inWindow);
         var intervals = new double[inWindow.Length - 1];
+        var busy = new List<double>(inWindow.Length);
+        var wait = new List<double>(inWindow.Length);
+        var cpuFrame = new List<double>(inWindow.Length);
+        var gpuLatency = new List<double>();
+        var gpuBusy = new List<double>();
+        var gpuWait = new List<double>();
+        var gpuFrame = new List<double>();
+        var videoBusy = new List<double>();
         var count = 0;
         for (var index = 1; index < inWindow.Length; index++)
         {
-            var ticks = inWindow[index] - inWindow[index - 1];
+            var ticks = inWindow[index].StartTicks - inWindow[index - 1].StartTicks;
             if (ticks > 0)
             {
                 intervals[count++] = TimeSpan.FromTicks(ticks).TotalMilliseconds;
             }
+
+            if (Cpu(inWindow[index - 1], inWindow[index]) is { } cpu)
+            {
+                busy.Add(cpu.BusyMs);
+                wait.Add(cpu.WaitMs);
+                cpuFrame.Add(cpu.FrameTimeMs);
+            }
+
+            if (MeasureGpu(key, inWindow[index - 1], inWindow[index]) is { } gpu)
+            {
+                gpuLatency.Add(gpu.LatencyMs);
+                gpuBusy.Add(gpu.BusyMs);
+                gpuWait.Add(gpu.WaitMs);
+                gpuFrame.Add(gpu.FrameTimeMs);
+                if (gpu.VideoBusyMs is { } video) videoBusy.Add(video);
+            }
         }
 
         var statistics = FrameIntervalStatistics.Compute(intervals.AsSpan(0, count));
-        return statistics is null
-            ? null
-            : new FrameTimingStream(key.Source, key.SwapChain, new DateTimeOffset(inWindow[^1], TimeSpan.Zero), statistics)
-            {
-                PresentCount = inWindow.Length
-            };
+        if (statistics is null) return null;
+        var cpuStatistics = busy.Count == 0 ? null : new FrameCpuStatistics(
+            FrameDurationStatistics.Compute(busy.ToArray())!,
+            FrameDurationStatistics.Compute(wait.ToArray())!,
+            FrameDurationStatistics.Compute(cpuFrame.ToArray())!);
+        var gpuStatistics = gpuBusy.Count == 0 ? null : new FrameGpuStatistics(
+            FrameDurationStatistics.Compute(gpuLatency.ToArray())!,
+            FrameDurationStatistics.Compute(gpuBusy.ToArray())!,
+            FrameDurationStatistics.Compute(gpuWait.ToArray())!,
+            FrameDurationStatistics.Compute(gpuFrame.ToArray())!,
+            FrameDurationStatistics.Compute(videoBusy.ToArray()));
+        var resolutions = new List<FrameOutputResolution>(2);
+        if (swapChainSizes.TryGetValue((key.ProcessId, key.ProcessStartKey, key.SwapChain), out var swapChainSize))
+            resolutions.Add(swapChainSize);
+        if (compositionSizes.TryGetValue(key, out var compositionSize)) resolutions.Add(compositionSize);
+        return new FrameTimingStream(key.Source, key.SwapChain, new DateTimeOffset(inWindow[^1].StartTicks, TimeSpan.Zero), statistics)
+        {
+            PresentCount = inWindow.Length,
+            Cpu = cpuStatistics,
+            CpuUnavailableReason = cpuStatistics is not null ? null
+                : key.Source == FramePresentSource.GraphicsKernel ? FrameTimingReasons.GraphicsKernelHasNoPresentStop
+                : FrameTimingReasons.PresentStopNotObserved,
+            Gpu = gpuStatistics,
+            GpuUnavailableReason = gpuStatistics is not null ? null
+                : GpuFrames?.UnavailableReason(key.ProcessId, key.ProcessStartKey) ?? FrameTimingReasons.GpuTierNotRequested,
+            OutputResolutions = resolutions,
+            OutputResolutionUnavailableReason = resolutions.Count == 0 ? FrameTimingReasons.OutputSizeNotObserved : null
+        };
     }
 
     private void Prune(long oldestKeptTicks)
     {
         PruneDisplay(oldestKeptTicks);
-        foreach (var (key, timestamps) in streams.ToArray())
+        PruneTimelines(streams, oldestKeptTicks);
+        PruneTimelines(retiredStreams, oldestKeptTicks);
+        foreach (var key in compositionSizes.Keys.Where(key => !streams.ContainsKey(key)).ToArray())
+            compositionSizes.Remove(key);
+    }
+
+    private static void PruneTimelines(Dictionary<StreamKey, PresentTimeline> timelines, long oldestKeptTicks)
+    {
+        foreach (var (key, timeline) in timelines.ToArray())
         {
-            while (timestamps.Count > 0 && timestamps.Peek() < oldestKeptTicks)
+            while (timeline.Count > 0 && timeline.FirstStart < oldestKeptTicks)
             {
-                timestamps.Dequeue();
+                timeline.RemoveFirst();
             }
 
-            if (timestamps.Count == 0)
+            if (timeline.Count == 0)
             {
-                streams.Remove(key);
-            }
-        }
-        foreach (var (key, timestamps) in retiredStreams.ToArray())
-        {
-            while (timestamps.Count > 0 && timestamps.Peek() < oldestKeptTicks)
-            {
-                timestamps.Dequeue();
-            }
-            if (timestamps.Count == 0)
-            {
-                retiredStreams.Remove(key);
+                timelines.Remove(key);
             }
         }
     }
 
     private void RemoveProcess(int processId)
     {
+        foreach (var key in swapChainSizes.Keys.Where(key => key.ProcessId == processId).ToArray())
+            swapChainSizes.Remove(key);
         foreach (var key in streams.Keys.Where(key => key.ProcessId == processId).ToArray())
         {
-            if (retiredStreams.Count < MaximumStreams)
+            if (retiredStreams.Count < Limits.MaximumStreams)
             {
                 if (retiredStreams.TryGetValue(key, out var retained))
                 {
-                    foreach (var timestamp in streams[key])
-                    {
-                        if (retained.Count == MaximumTimestampsPerStream)
-                        {
-                            retained.Dequeue();
-                            incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, retained.Peek());
-                        }
-                        retained.Enqueue(timestamp);
-                    }
+                    if (retained.AppendFrom(streams[key]) is { } lostThrough)
+                        presentRateCapacityThroughUtcTicks = Math.Max(presentRateCapacityThroughUtcTicks, lostThrough);
                 }
                 else retiredStreams[key] = streams[key];
             }
             else if (streams[key].Count > 0)
-                incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, streams[key].Max());
+                streamCapacityThroughUtcTicks = Math.Max(streamCapacityThroughUtcTicks, streams[key].MaxStart());
             streams.Remove(key);
         }
     }
 
-    private readonly record struct StreamKey(int ProcessId, long ProcessStartKey, FramePresentSource Source, ulong SwapChain);
+    internal readonly record struct StreamKey(int ProcessId, long ProcessStartKey, FramePresentSource Source, ulong SwapChain);
     private readonly record struct ThreadKey(int ProcessId, long ProcessStartKey, int ThreadId);
     private readonly record struct Win32kTokenKey(ulong CompositionSurfaceLuid, ulong PresentCount, ulong BindId);
+    private readonly record struct DisplayedValues(double? BetweenMs, double? DisplayedMs, double? UntilMs, double? LatencyMs);
 
     private sealed class DisplayFrameState(
         StreamKey stream,
         int threadId,
+        long sequence,
         long presentStartedAtUtcTicks,
         long presentStartQpc,
         long qpcFrequency)
     {
         public StreamKey Stream { get; } = stream;
         public int ThreadId { get; } = threadId;
+        public long Sequence { get; } = sequence;
         public long PresentStartedAtUtcTicks { get; } = presentStartedAtUtcTicks;
         public long PresentStartQpc { get; } = presentStartQpc;
         public long QpcFrequency { get; } = qpcFrequency;
@@ -746,7 +947,26 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         public bool QueuePacketSeen { get; set; }
         public bool MmioFlipSeen { get; set; }
         public bool Win32kSeenInFrame { get; set; }
-        public bool UnsupportedMode { get; set; }
+        // A display path whose screen time this ledger does not parse (FrameTimingReasons value).
+        public string? UnsupportedReason { get; set; }
+        public bool ComposedFlip { get; set; }
+        public bool MultiplaneOverlay { get; set; }
+        // Any parsed path event arrived inside the Present call.
+        public bool PathSeen { get; set; }
+        public bool NoParsedPath { get; set; }
+        public bool LostEvents { get; set; }
         public bool Ambiguous { get; set; }
     }
+}
+
+/// <summary>Identifies the Present a GPU frame belongs to, so its record can be written back when complete.</summary>
+internal readonly record struct GpuFrameOwner(PresentFrameLedger Ledger, PresentFrameLedger.StreamKey Stream, long Sequence)
+{
+    public void Complete(PresentGpuRecord record) => Ledger.SetGpuFrame(Stream, Sequence, record);
+}
+
+/// <summary>The GPU frame tier as the ledger sees it: Present stops close frames, and it names why a process has no GPU frames.</summary>
+internal interface IGpuFrameBoundary
+{
+    string UnavailableReason(int processId, long processStartKey);
 }

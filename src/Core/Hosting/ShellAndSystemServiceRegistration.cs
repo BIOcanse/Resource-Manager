@@ -1,5 +1,7 @@
 using BlockUids = ResourceManager.App.StateItems.BlockUids;
+using ResourceManager.App.Application.CrashReports;
 using ResourceManager.App.Application.LocalSystem;
+using ResourceManager.App.Infrastructure.CrashReports;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Infrastructure.LocalSystem;
 using ResourceManager.App.Infrastructure.Operations;
@@ -16,6 +18,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
     {
         services.AddBusinessBlockLifetime<ServiceAutoStartSettings>(BlockUids.ServiceAutoStartSettings);
         services.AddSingleton<IServiceRecoveryControl, WindowsServiceRecoveryControl>();
+        // 崩溃转储 (docs/crash_dumps_2026-10-31.md): applied and discovered by the ServiceRecoverySettings block.
+        services.AddSingleton(provider => CrashReportEnvironment.Create(provider.GetRequiredService<IHostEnvironment>()));
+        services.AddSingleton<ICrashDumpRegistry, WindowsCrashDumpRegistry>();
+        services.AddSingleton<ICrashEventSource, WindowsCrashEventSource>();
+        services.AddSingleton<CrashDumpSettings>();
+        services.AddSingleton<ICrashReportOwner, CrashReportOwner>();
         services.AddSingleton<ServiceRecoverySettings>();
         services.AddBusinessBlockLifetime<ServiceRecoverySettings>(BlockUids.ServiceRecoverySettings,
             provider => provider.GetRequiredService<ServiceRecoverySettings>());

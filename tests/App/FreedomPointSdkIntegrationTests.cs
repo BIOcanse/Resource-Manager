@@ -21,7 +21,7 @@ public sealed class FreedomPointSdkIntegrationTests
         Assert.Equal(registry.ContractFingerprint, groups["contractFingerprint"]!.GetValue<string>());
         var monitoring = groups["groups"]!.AsArray().Single(group => group!["key"]!.GetValue<string>() == "resource-manager/backend/monitoring");
         Assert.Equal(["0001000200040001", "0001000200040002", "0001000200050000", "0001000200050001", "0001000200050002",
-                "0001000200050003", "0001000200050004", "0001000200050005", "0001000200050006", "0001000200050007"],
+                "0001000200050003", "0001000200050004", "0001000200050005", "0001000200050006", "0001000200050007", "0001000200050008", "0001000200050009"],
             monitoring!["points"]!.AsArray().Select(point => point!.GetValue<string>()));
         var tiers = groups["groups"]!.AsArray().Single(group => group!["key"]!.GetValue<string>() == "resource-manager/backend/memory_cpu_tiers");
         Assert.Equal(Enumerable.Range(0, 12).Select(static index => $"00010002003500{index:X2}"),
@@ -45,10 +45,15 @@ public sealed class FreedomPointSdkIntegrationTests
                 .GetProperties(BindingFlags.NonPublic | BindingFlags.Static)
                 .SelectMany(static member => member.GetCustomAttributes<FreedomPointBindingAttribute>()
                     .Select(attribute => (Member: member, Path: PointPath.FromRaw(attribute.Path)))))
+            .Concat(typeof(ResourceManager.App.Infrastructure.Telemetry.Etw.NativeKernelEtwSession).Assembly
+                .GetType("ResourceManager.App.Infrastructure.Telemetry.Etw.NativePolicyDefaults", throwOnError: true)!
+                .GetProperties(BindingFlags.NonPublic | BindingFlags.Static)
+                .SelectMany(static member => member.GetCustomAttributes<FreedomPointBindingAttribute>()
+                    .Select(attribute => (Member: member, Path: PointPath.FromRaw(attribute.Path)))))
             .ToArray();
-        // 55 active points, one bound twice (kernel_etw_limits also binds KernelEtwNativeDefaults.SelectedLimits).
-        Assert.Equal(56, members.Length);
-        Assert.Equal(55, members.Select(static m => m.Path).Distinct().Count());
+        // Kernel ETW and native policy each have one managed SDK projection in addition to their plan binding.
+        Assert.Equal(79, members.Length);
+        Assert.Equal(77, members.Select(static m => m.Path).Distinct().Count());
         Assert.All(registry.Points, point =>
         {
             if (point.Status == DeclarationStatus.Active)
@@ -99,8 +104,8 @@ public sealed class FreedomPointSdkIntegrationTests
         var host = FreedomPointRegistry.LoadEmbedded();
         var cpu = new CompiledCpuScoringPlan(1.25, CompiledCpuCoreWeights.Empty);
         var compilation = host.BeginCompilation(Profile(), cpu);
-        // 55 active declarations, including the three user-mode ETW session buffer pools.
-        Assert.Equal(55, compilation.Facts.Items.Length);
+        // Includes build-selected optimization, persistence and native policy declarations.
+        Assert.Equal(77, compilation.Facts.Items.Length);
         // The native kernel owner adds one active compiled limits declaration.
         _ = compilation.Facts.Require(host.Sdk.RequirePath(BackendFreedomPointPaths.KernelEtwLimits));
         var availability = host.Sdk.RequirePath(BackendFreedomPointPaths.HardwareBridgeAvailabilityCheckInterval);

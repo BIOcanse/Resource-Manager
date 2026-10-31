@@ -7,7 +7,8 @@ export default createSettingsLocale("fr-FR", {
     "kinds": {
       "memoryProtection": { "title": "Protection de la mémoire de l’hôte", "description": "Notifie lorsque la protection de la mémoire de l’hôte arrête un processus ou une arborescence de processus, en indiquant la cible, le nombre de processus et la taille du vidage." },
       "update": { "title": "Nouvelle version", "description": "Notifie lorsqu’une nouvelle version est disponible." },
-      "accessRequest": { "title": "Demandes d’accès", "description": "Notifie lorsqu’une nouvelle demande d’accès approuvé attend une validation, en indiquant le nom et le programme du demandeur." }
+      "accessRequest": { "title": "Demandes d’accès", "description": "Notifie lorsqu’une nouvelle demande d’accès approuvé attend une validation, en indiquant le nom et le programme du demandeur." },
+      "crashReport": { "title": "Rapports de plantage", "description": "Notifie après la reprise de Resource Manager à la suite d’un plantage ; ouvrez-la pour consulter les enregistrements et téléverser le vidage." }
     },
     "notifyTitle": "Afficher les notifications",
     "notifyDescription": "Désactivé, ce type de notification ne s’affiche par aucune voie ; le choix des deux voies est conservé.",
@@ -569,5 +570,115 @@ export default createSettingsLocale("fr-FR", {
       "license": "Licence",
       "source": "Source"
     }
+  },
+  "crashDumps": {
+    "title": "Vidages sur plantage",
+    "description": "Lorsqu’un programme de Resource Manager (le service d’arrière-plan, le processus de fenêtre ou le processus résident de la zone de notification) plante, Windows écrit sa mémoire dans un fichier de vidage qui aide à localiser l’erreur. Les vidages restent sur cet ordinateur et ne sont jamais téléversés automatiquement.",
+    "modeTitle": "Écrire les vidages sur plantage",
+    "modeDescription": "Choisissez si un vidage est enregistré lors d’un plantage. « Suivre le canal de publication » est activé dans les versions bêta et demande d’abord dans les versions stables.",
+    "modeOptions": {
+      "default": { "label": "Suivre le canal de publication", "description": "Activé dans les versions bêta ; demande d’abord dans les versions stables." },
+      "ask": { "label": "Demander d’abord", "description": "N’écrit aucun vidage pour l’instant et demande dans l’interface s’il faut les activer." },
+      "on": { "label": "Activé", "description": "Enregistre un vidage lors d’un plantage." },
+      "off": { "label": "Désactivé", "description": "N’enregistre aucun vidage ; les plantages sont enregistrés uniquement à partir du journal des événements." }
+    },
+    "effective": (mode: string, source: string) => `Actuellement : ${mode} (${source})`,
+    "effectiveModes": {
+      "ask": "non décidé, aucun vidage écrit",
+      "on": "activé",
+      "off": "désactivé"
+    },
+    "sourceUser": "votre choix",
+    "channelNames": {
+      "beta": "version bêta",
+      "stable": "version stable"
+    },
+    "defaultModeNames": {
+      "on": "activé par défaut",
+      "ask": "demande d’abord par défaut",
+      "off": "désactivé par défaut"
+    },
+    "channelDefault": (channel: string, mode: string) => `${channel}, ${mode}`,
+    "turnOff": "Désactiver les vidages sur plantage",
+    "turnOffDescription": "Les désactive et enregistre immédiatement.",
+    "dumpTypeTitle": "Type de vidage",
+    "dumpTypeDescription": "Un mini-vidage suffit à localiser la plupart des erreurs et peut généralement être joint à une issue GitHub.",
+    "dumpTypeOptions": {
+      "mini": { "label": "Mini-vidage", "description": "Piles des threads et segments de données ; généralement quelques Mo." },
+      "full": { "label": "Vidage complet", "description": "Toute la mémoire du processus ; peut atteindre plusieurs centaines de Mo et ne convient qu’à l’analyse locale." }
+    },
+    "keepCountTitle": "Copies conservées par programme",
+    "keepCountDescription": "Nombre maximal d’enregistrements de plantage et de vidages conservés pour chaque programme ; au-delà, les plus anciens sont supprimés.",
+    "statusTitle": "État réel",
+    "status": {
+      "notApplied": "La configuration des vidages sur plantage n’a pas encore été écrite.",
+      "applied": "La configuration des vidages du rapport d’erreurs Windows correspond à vos réglages.",
+      "mismatch": "La configuration réelle du rapport d’erreurs Windows diffère de vos réglages.",
+      "failed": "L’écriture de la configuration des vidages du rapport d’erreurs Windows a échoué.",
+      "skipped": "La configuration des vidages du rapport d’erreurs Windows n’a pas été écrite."
+    },
+    "skipReasons": {
+      "not-running-as-installed-service": "Ne s’exécute pas en tant que service installé ; le Registre n’est pas modifié."
+    },
+    "skipReasonOther": (reason: string) => `Raison : ${reason}`,
+    "writeFailed": (error: string) => `Échec de l’écriture : ${error}`,
+    "readFailed": (error: string) => `Échec de la lecture de la configuration réelle : ${error}`,
+    "imageStates": {
+      "written": "écrite",
+      "absent": "non écrite",
+      "foreign": "configurée par un autre programme"
+    },
+    "actualDetail": (dumpType: string, count: number | null, folder: string) => `${dumpType}, ${count === null ? "— conservés" : plural("fr-FR", count, { one: "{count} copie conservée", many: "{count} de copies conservées", other: "{count} copies conservées" })}, dossier ${folder}`,
+    "dumpTypeOther": (value: number) => `type ${value}`,
+    "historyTitle": "Enregistrements de plantage",
+    "historyDescription": "Enregistrements créés après le plantage d’un programme de Resource Manager, au démarrage suivant du service ou à l’ouverture suivante de l’interface.",
+    "historyEmpty": "Aucun enregistrement de plantage.",
+    "dumpFolderLabel": "Dossier des vidages",
+    "roles": {
+      "service": "service d’arrière-plan",
+      "window": "processus de fenêtre",
+      "resident": "processus résident de la zone de notification"
+    },
+    "program": (program: string, role: string) => `${program} (${role})`,
+    "timeLabel": "Date",
+    "versionLabel": "Version",
+    "versionUnknown": "Inconnue",
+    "faultLabel": "Erreur",
+    "faultUnknown": "Le journal des événements ne contient aucune erreur correspondante.",
+    "dumpLabel": "Fichier de vidage",
+    "dumpNotEnabled": "Les vidages sur plantage étaient désactivés",
+    "dumpMissing": "Le fichier de vidage n’existe plus",
+    "sizeLabel": "Taille",
+    "reportedLabel": "Signalé",
+    "reported": "Signalé",
+    "notReported": "Non signalé",
+    "packageLabel": "Paquet de rapport",
+    "packageExceeds": (packageSizeText: string, attachmentLimitText: string) => `Le paquet de rapport fait ${packageSizeText}, au-delà de la limite des pièces jointes des issues GitHub (${attachmentLimitText}) ; il ne peut pas être joint directement. Le vidage n’a pas été tronqué.`,
+    "openFolder": "Ouvrir le dossier contenant",
+    "buildPackage": "Créer le paquet de rapport",
+    "reportOnGitHub": "Signaler sur GitHub",
+    "delete": "Supprimer",
+    "deleteConfirmTitle": "Supprimer cet enregistrement de plantage ?",
+    "deleteConfirmMessage": (program: string, time: string) => `L’enregistrement du plantage de ${program} du ${time} sera supprimé avec son fichier de vidage et son paquet de rapport.`,
+    "revealFailed": "Impossible d’afficher ce fichier dans l’Explorateur de fichiers.",
+    "openFailed": "Impossible d’ouvrir la page GitHub.",
+    "actionFailed": "L’action a échoué.",
+    "requestTitle": "Activer les vidages sur plantage ?",
+    "requestWhat": "Lorsqu’un programme de Resource Manager plante, Windows peut écrire sa mémoire dans un fichier de vidage qui aide à trouver l’emplacement de l’erreur.",
+    "requestWhere": (folder: string) => `Les vidages sont enregistrés dans ${folder}. Vous pouvez les consulter, les supprimer ou les désactiver dans Paramètres · Intégration système.`,
+    "requestSize": "Un mini-vidage fait généralement quelques Mo et peut être joint à une issue GitHub ; un vidage complet peut atteindre plusieurs centaines de Mo.",
+    "requestContent": "Un vidage contient la mémoire du processus au moment du plantage et peut inclure des chemins de fichiers et votre nom d’utilisateur. Les vidages ne sont jamais téléversés automatiquement ; vous décidez de les soumettre ou non.",
+    "requestEnable": "Activer",
+    "requestDecline": "Ne pas activer",
+    "requestFailed": "Le réglage n’a pas pu être enregistré. Veuillez réessayer.",
+    "dialogTitle": "Resource Manager s’est arrêté de façon inattendue",
+    "dialogIntro": "Les programmes ci-dessous ont planté. Téléverser le paquet de rapport dans une issue GitHub aide à en trouver la cause : « Signaler sur GitHub » crée le paquet, ouvre une page d’issue préremplie dans le navigateur et sélectionne le paquet dans l’Explorateur de fichiers, prêt à être glissé dans l’issue.",
+    "dialogCrashed": (program: string, time: string) => `${program} a planté le ${time}`,
+    "dialogIssueLink": "Ouvrir la page d’issue GitHub préremplie",
+    "dialogLocalPath": "Fichier local",
+    "dialogLater": "Plus tard",
+    "noticeTitle": "Rapport de plantage",
+    "noticeMessage": "Resource Manager vient de reprendre après un plantage et a enregistré un vidage.",
+    "noticeOpen": "Voir les enregistrements de plantage"
   }
 });

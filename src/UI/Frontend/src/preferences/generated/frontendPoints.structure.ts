@@ -38,6 +38,7 @@ export namespace ResourceManager {
       readonly Language: __fpDeepReadonly<"system" | "zh-CN" | "zh-TW" | "en-US" | "ja-JP" | "ko-KR" | "fr-FR" | "de-DE" | "es-ES" | "es-MX" | "pt-BR" | "pt-PT" | "ru-RU" | "uk-UA" | "pl-PL" | "tr-TR" | "it-IT" | "nl-NL" | "sv-SE" | "fi-FI" | "da-DK" | "nb-NO" | "cs-CZ" | "hu-HU" | "ro-RO" | "el-GR" | "he-IL" | "ar-SA" | "hi-IN" | "id-ID" | "vi-VN" | "th-TH">;
       readonly ByteUnitMode: __fpDeepReadonly<"native" | "binary" | "decimal">;
       readonly VisibilityCooldownMs: number;
+      readonly ShellOpenTimeoutMs: number;
       readonly Monitor: __fpDeepReadonly<{ readonly mode: "aotu" | "preset" | "custom"; readonly preset: "responsive" | "balanced" | "lowPower" | "quiet"; readonly customValue: number }>;
       readonly ResourceTable: __fpDeepReadonly<{ readonly mode: "aotu" | "preset" | "custom"; readonly preset: "responsive" | "balanced" | "lowPower" | "quiet"; readonly customValue: number }>;
       readonly LocalSystem: __fpDeepReadonly<{ readonly mode: "aotu" | "preset" | "custom"; readonly preset: "responsive" | "balanced" | "lowPower" | "quiet"; readonly customValue: number }>;
@@ -64,6 +65,9 @@ export namespace ResourceManager {
       readonly AccessRequestInApp: __fpDeepReadonly<"on" | "off">;
       readonly MemoryProtectionNotify: __fpDeepReadonly<"on" | "off">;
       readonly MemoryProtectionInApp: __fpDeepReadonly<"on" | "off">;
+      readonly CrashReportNotify: __fpDeepReadonly<"on" | "off">;
+      readonly CrashReportSystem: __fpDeepReadonly<"on" | "off">;
+      readonly CrashReportInApp: __fpDeepReadonly<"on" | "off">;
     }
     export interface __fpRuntimeInitialValues {
     }

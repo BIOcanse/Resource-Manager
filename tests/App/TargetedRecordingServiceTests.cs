@@ -282,6 +282,75 @@ public sealed class TargetedRecordingServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EachDeliveredPublicationIsOnePointAtItsObservationTimeAndAStalledSourceLeavesAGap()
+    {
+        var rig = Create(FastOptions);
+        var published = new ConcurrentDictionary<long, bool>();
+        DateTimeOffset? frozen = null;
+        rig.Metrics.Publish = (address, index) =>
+        {
+            // The source observes a little before it publishes; publications 3-8 repeat one observation (a stall).
+            var observed = DateTimeOffset.UtcNow.AddMilliseconds(-7);
+            if (index is >= 3 and < 9) observed = frozen ??= observed;
+            published[observed.UtcTicks] = true;
+            return TargetedRecordingGapsTests.Publication(DateTimeOffset.UtcNow, address, index,
+                SamplingObservationStatus.Current, observed, null);
+        };
+        await rig.Service.StartAsync(CancellationToken.None);
+        var started = await rig.Service.BeginAsync("software", null,
+            [new(TargetedRecordingItemKinds.Metric, "cpu.usage", "auto", 100)], 2, CancellationToken.None);
+        var completed = await WaitForCompletionAsync(rig.Store, started.Id);
+        var metric = completed.Recording.Items.Single();
+        var rows = completed.ResourceSamples.Where(static row => row.System.ContainsKey("cpu.usage")).ToArray();
+        Assert.True(rows.Length >= 5, $"rows={rows.Length}");
+        Assert.Equal(metric.PointCount, rows.Length);
+        // Every row is one publication, stamped at the source's observation time, never twice.
+        Assert.All(rows, row => Assert.True(published.ContainsKey(row.CapturedAt.UtcTicks)));
+        Assert.Equal(rows.Length, rows.Select(static row => row.CapturedAt).Distinct().Count());
+        Assert.Contains(metric.Gaps, static gap => gap.Reason == TargetedRecordingGapReasons.SourceNotRefreshed
+            && gap.ToMs - gap.FromMs >= 300);
+        Assert.Equal(new[] { "load@cpu0" }, metric.ActualSources);
+        Assert.Equal(0, rig.Metrics.ActiveLeases);
+        Assert.Equal(0, rig.Breakdown.ActiveLeases);
+    }
+
+    [Fact]
+    public async Task TargetGpuItemsFollowTheGpuTheTargetUsesMostAndRecordUnresolvedSpans()
+    {
+        IReadOnlyList<TargetedRecordingCatalogItem> catalog =
+        [
+            new(TargetedRecordingItemKinds.Software, "gpu.0.usage", "%", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Software, "gpu.1.usage", "%", [TargetedRecordingItemCatalogRules.ResourceBreakdownSource], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Metric, "gpu.0.usage", "%", ["load@gpu.0.usage"], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Metric, "gpu.1.usage", "%", ["load@gpu.1.usage"], null, TargetedRecordingItemUses.Both),
+            new(TargetedRecordingItemKinds.Metric, "gpu.target.usage", "%", [], null, TargetedRecordingItemUses.Both)
+        ];
+        var rig = Create(FastOptions, catalog: catalog);
+        rig.Metrics.Publish = (address, index) => TargetedRecordingGapsTests.Publication(DateTimeOffset.UtcNow, address,
+            address == "gpu.1.usage" ? 80 : 20, SamplingObservationStatus.Current, DateTimeOffset.UtcNow, null, device: address);
+        rig.Breakdown.ExtraBars = [TargetedRecordingGapsTests.GpuBar(0, 0, "software"), TargetedRecordingGapsTests.GpuBar(1, 40, "software")];
+        await rig.Service.StartAsync(CancellationToken.None);
+        var started = await rig.Service.BeginAsync("software", null,
+            [new(TargetedRecordingItemKinds.Metric, "gpu.target.usage", "auto", 100)], 3, CancellationToken.None);
+        await Task.Delay(800);
+        rig.Breakdown.ExtraBars = [TargetedRecordingGapsTests.GpuBar(0, 30, "software"), TargetedRecordingGapsTests.GpuBar(1, 0, "software")];
+        await Task.Delay(800);
+        rig.Breakdown.ExtraBars = [TargetedRecordingGapsTests.GpuBar(0, 0, "software"), TargetedRecordingGapsTests.GpuBar(1, 0, "software")];
+        var completed = await WaitForCompletionAsync(rig.Store, started.Id);
+        var item = completed.Recording.Items.Single();
+        // Both adapters the target used are named, by field@device.
+        Assert.Equal(new[] { "load@gpu.0.usage", "load@gpu.1.usage" }, item.ActualSources);
+        var values = completed.ResourceSamples.Select(static row => row.System.GetValueOrDefault("gpu.target.usage")).ToArray();
+        Assert.Contains(80d, values);
+        Assert.Contains(20d, values);
+        Assert.Contains(item.Gaps, static gap => gap.Reason == TargetedRecordingGapReasons.TargetGpuUnresolved);
+        Assert.Contains(rig.Metrics.Holders, static holder => holder.EndsWith(":gpu.1.usage", StringComparison.Ordinal));
+        Assert.Contains(rig.Metrics.Holders, static holder => holder.EndsWith(":gpu.0.usage", StringComparison.Ordinal));
+        Assert.Equal(0, rig.Metrics.ActiveLeases);
+        Assert.Equal(0, rig.Breakdown.ActiveLeases);
+    }
+
+    [Fact]
     public void FrameChunkCodecRoundTripsInMicroseconds()
     {
         var at = new DateTimeOffset(2026, 10, 30, 12, 0, 0, TimeSpan.Zero);
@@ -311,8 +380,8 @@ public sealed class TargetedRecordingServiceTests : IDisposable
         => new(id, name, "game", "Running", [], [], new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"),
             role, SoftwareIdentityId: identity);
 
-    private Rig Create(TargetedRecordingOptions? options = null, IMetricSnapshotObservationSource? metrics = null,
-        IReadOnlyList<SoftwareRecord>? records = null)
+    private Rig Create(TargetedRecordingOptions? options = null, IMetricSnapshotPushSource? metrics = null,
+        IReadOnlyList<SoftwareRecord>? records = null, IReadOnlyList<TargetedRecordingCatalogItem>? catalog = null)
     {
         var store = new TargetedRecordingStore(new ResourceManagerDatabase(
             new TestHostEnvironment(Path.Combine(root, "Resource Manager-APP"))));
@@ -320,7 +389,7 @@ public sealed class TargetedRecordingServiceTests : IDisposable
         rig.Liveness.Alive[ProcessA] = true;
         rig.Service = new TargetedRecordingService(store,
             new FakeSoftware(records ?? [Record("software", "Example")]), rig.Frames, rig.Breakdown,
-            metrics ?? rig.Metrics, new FakeTargets(rig), new FakeCatalog(TestCatalog),
+            metrics ?? rig.Metrics, new FakeTargets(rig), new FakeCatalog(catalog ?? TestCatalog),
             NullLogger<TargetedRecordingService>.Instance, null, options, rig.Liveness);
         return rig;
     }
@@ -409,6 +478,9 @@ public sealed class TargetedRecordingServiceTests : IDisposable
     private sealed class FakeFrames : IFrameTimingObservationSource
     {
         public int ActiveLeases;
+        public TimeSpan Retention => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.FramePipeline.Retention;
+        public IFrameSubscriptionLease AcquireSubscription(FrameSubscriptionRequest request) => new FrameLeaseAdapter(AcquireSubscription());
+
         public IDisposable AcquireSubscription()
         {
             Interlocked.Increment(ref ActiveLeases);
@@ -420,34 +492,57 @@ public sealed class TargetedRecordingServiceTests : IDisposable
                 1, through, 10)]);
     }
 
-    private sealed class FakeBreakdown : IResourceBreakdownObservationSource
+    /// <summary>A breakdown subscription chain: each subscription is an active holder while enumerated and
+    /// publishes the current processes once per interval.</summary>
+    private sealed class FakeBreakdown : IResourceBreakdownPushSource
     {
         public int ActiveLeases;
         public ConcurrentBag<string> Holders { get; } = [];
         public volatile IReadOnlyList<(int Pid, long Key)> Processes = [ProcessA];
-        public IDisposable AcquireSubscription(string subscriptionId, ResourceBreakdownSampleRequest request,
-            TimeSpan refreshInterval)
+        /// <summary>Bars published in addition to the process bars (per-GPU usage for gpu.target.* tests).</summary>
+        public volatile IReadOnlyList<ResourceBreakdownBar> ExtraBars = [];
+        public async IAsyncEnumerable<ResourceBreakdownSnapshot> SubscribeAsync(string subscriptionId,
+            ResourceBreakdownSampleRequest request, TimeSpan interval,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
         {
             Holders.Add(subscriptionId);
             Interlocked.Increment(ref ActiveLeases);
-            return new Lease(() => Interlocked.Decrement(ref ActiveLeases));
+            try
+            {
+                while (true)
+                {
+                    await Task.Delay(interval, cancellationToken);
+                    var snapshot = Snapshot([("software", Processes)]);
+                    yield return snapshot with { Bars = [.. snapshot.Bars, .. ExtraBars] };
+                }
+            }
+            finally { Interlocked.Decrement(ref ActiveLeases); }
         }
-        public ResourceBreakdownSnapshot ReadLatest(ResourceBreakdownSampleRequest request)
-            => Snapshot([("software", Processes)]);
     }
 
-    private sealed class FakeMetrics : IMetricSnapshotObservationSource
+    /// <summary>A metric subscription chain that holds each subscription and publishes nothing unless a test sets
+    /// Publish (address, publication index) → publication or null.</summary>
+    private sealed class FakeMetrics : IMetricSnapshotPushSource
     {
         public int ActiveLeases;
         public ConcurrentBag<string> Holders { get; } = [];
-        public IDisposable AcquireSubscription(string subscriptionId, MetricSampleRequest request,
-            TimeSpan refreshInterval)
+        public Func<string, int, HardwareMetricSnapshot?>? Publish { get; set; }
+        public async IAsyncEnumerable<HardwareMetricSnapshot> SubscribeAsync(string subscriptionId,
+            MetricSampleRequest request, TimeSpan interval,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
         {
             Holders.Add(subscriptionId);
             Interlocked.Increment(ref ActiveLeases);
-            return new Lease(() => Interlocked.Decrement(ref ActiveLeases));
+            try
+            {
+                for (var index = 0; ; index++)
+                {
+                    await Task.Delay(interval, cancellationToken);
+                    if (Publish?.Invoke(request.Ids.First(), index) is { } publication) yield return publication;
+                }
+            }
+            finally { Interlocked.Decrement(ref ActiveLeases); }
         }
-        public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request) => null;
     }
 
     private sealed class Lease(Action dispose) : IDisposable

@@ -67,6 +67,9 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onAutoStartChange={settings.updateAutoStart}
         onServiceRecoveryChange={settings.updateServiceRecovery}
         serviceRecovery={settings.serviceRecovery()}
+        crashDumps={settings.crashDumps()}
+        onCrashDumpsChange={settings.updateCrashDumps}
+        onChooseCrashDumpMode={settings.chooseCrashDumpMode}
         productUpdates={props.productUpdates}
         committedUpdateSettings={settings.settings().update}
         onUpdateModeChange={settings.updateUpdateMode}

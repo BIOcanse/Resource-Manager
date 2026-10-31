@@ -338,6 +338,9 @@ export interface AppNotificationSettings {
   memoryProtectionNotify: "on" | "off";
   memoryProtectionInApp: "on" | "off";
   memoryProtectionSystem: "on" | "off";
+  crashReportNotify: "on" | "off";
+  crashReportInApp: "on" | "off";
+  crashReportSystem: "on" | "off";
 }
 
 export interface AppPerformanceSettings {
@@ -514,6 +517,20 @@ export interface AppSystemIntegrationSettings {
   autoStartEnabled: boolean;
   taskManagerShortcutReplacementEnabled: boolean;
   hotkeys: AppEditableHotkeySettings[];
+  crashDumps?: AppCrashDumpSettings;
+}
+
+/**
+ * 崩溃转储设置（docs/crash_dumps_2026-10-31.md，后端 systemIntegration.crashDumps）。mode 的 default 跟随发行通道：
+ * beta 版开启，正式版先询问；实际生效的值和来源由后端在 crashDumps 诊断里给出，前端不自己推算。
+ */
+export type AppCrashDumpMode = "default" | "ask" | "on" | "off";
+export type AppCrashDumpType = "mini" | "full";
+export interface AppCrashDumpSettings {
+  mode: AppCrashDumpMode;
+  dumpType: AppCrashDumpType;
+  /** 每个程序最多保留几份记录和转储，至少 1，上限由后端诊断的 keepCountMaximum 给出。 */
+  keepCount: number;
 }
 
 export interface AppEditableHotkeySettings {
@@ -550,6 +567,31 @@ export interface ServiceRecoveryDiagnostics {
   readError: string | null;
 }
 
+/** 崩溃转储的期望值和注册表实际值（后端随设置结果发出，形状见 crash-reports wire-contract.md）。 */
+export interface CrashDumpDiagnostics {
+  state: "notApplied" | "applied" | "mismatch" | "failed" | "skipped";
+  effectiveMode: "ask" | "on" | "off";
+  modeSource: "user" | "channelDefault";
+  defaultMode: "ask" | "on" | "off";
+  channel: "beta" | "stable";
+  dumpFolder: string;
+  /** keepCount 的上限（后端自由点 service_recovery.crash_reports.keep_count_maximum）。 */
+  keepCountMaximum: number;
+  images: readonly string[];
+  actual: readonly {
+    image: string;
+    present: boolean;
+    ownedByResourceManager: boolean;
+    dumpFolder: string | null;
+    dumpType: number | null;
+    customDumpFlags: number | null;
+    dumpCount: number | null;
+  }[] | null;
+  skipReason: string | null;
+  writeError: string | null;
+  readError: string | null;
+}
+
 export type BackendAppPerformanceSettings = Omit<AppPerformanceSettings,
   "monitorRefreshIntervalMs" | "resourceTableRefreshIntervalMs" | "localSystemRefreshIntervalMs">;
 export type BackendAppSettings = Omit<AppSettings, "appearance" | "performance"> & { performance?: BackendAppPerformanceSettings };
@@ -558,6 +600,7 @@ export type BackendAppSettings = Omit<AppSettings, "appearance" | "performance">
 export interface AppSettingsResult {
   updatedAt?: string;
   serviceRecovery?: ServiceRecoveryDiagnostics | null;
+  crashDumps?: CrashDumpDiagnostics | null;
   settings?: BackendAppSettings;
   revision?: string;
   storagePath?: string;

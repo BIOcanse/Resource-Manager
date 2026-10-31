@@ -52,6 +52,37 @@ public sealed class KernelEtwNativeSettingsTests
     }
 
     [Fact]
+    public void InterruptBucketsAndNetworkReserveFlowFromTheSelectedPointIntoNativeConfiguration()
+    {
+        var baseline = HostManagerTestPlanFactory.CreatePlan();
+        var defaults = KernelEtwNativeSettings.CreateConfiguration(baseline.KernelEtwLimits!, baseline.CpuCoreResidency, 2);
+        // The declared defaults are the former native literals.
+        Assert.Equal((10000u, 6u, 16u, 256u), (defaults.Interrupts.BucketMilliseconds, defaults.Interrupts.BucketCount,
+            defaults.Interrupts.ReportedDrivers, defaults.NetworkInitialEvents));
+        var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+        {
+            var value = FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.KernelEtwLimits)["value"]!;
+            value["interrupt_bucket_milliseconds"] = 5000;
+            value["interrupt_bucket_count"] = 12;
+            value["interrupt_reported_drivers"] = 8;
+            value["network_initial_events"] = 64;
+        });
+        var native = KernelEtwNativeSettings.CreateConfiguration(changed.KernelEtwLimits!, changed.CpuCoreResidency, 2);
+        Assert.Equal((5000u, 12u, 8u, 64u), (native.Interrupts.BucketMilliseconds, native.Interrupts.BucketCount,
+            native.Interrupts.ReportedDrivers, native.NetworkInitialEvents));
+        Assert.NotEqual(baseline.BuildSha256, changed.BuildSha256);
+    }
+
+    [Fact]
+    public void InterruptWindowThatOverflowsNativeClockIsRejectedBeforePublication()
+        => Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+        {
+            var value = FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.KernelEtwLimits)["value"]!;
+            value["interrupt_bucket_milliseconds"] = 4000000000u;
+            value["interrupt_bucket_count"] = 4000000000u;
+        }));
+
+    [Fact]
     public void NonDividingDiskBucketFlowsExactlyFromTheSelectedPointIntoNativeConfiguration()
     {
         var baseline = HostManagerTestPlanFactory.CreatePlan();
@@ -101,6 +132,11 @@ public sealed class KernelEtwNativeSettingsTests
     [InlineData("io_retention_milliseconds", 100)]
     [InlineData("disk_bucket_milliseconds", 0)]
     [InlineData("disk_bucket_milliseconds", -1)]
+    [InlineData("interrupt_bucket_milliseconds", 0)]
+    [InlineData("interrupt_bucket_milliseconds", 1500)] // Interrupt slices are whole seconds.
+    [InlineData("interrupt_bucket_count", 0)]
+    [InlineData("interrupt_reported_drivers", 0)]
+    [InlineData("network_initial_events", 0)]
     [InlineData("session_buffer_kib", 0)]
     [InlineData("session_minimum_buffers", 0)]
     [InlineData("session_minimum_buffers", 3)] // 3 x 64 KiB is not whole MiB.

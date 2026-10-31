@@ -21,8 +21,8 @@ internal sealed record HostManagerAuthorityRetirementRecord(
     long ManifestLength,
     byte[] ManifestSha256)
 {
-    internal const int MaximumImageLength = 8 * 1024;
-    internal const int MaximumRelativePathBytes = 1024;
+    internal static readonly int MaximumImageLength = OptimizationSettings.ProductDefaults.StorageLimits.RetirementMaximumImageBytes;
+    internal static readonly int MaximumRelativePathBytes = OptimizationSettings.ProductDefaults.StorageLimits.RetirementMaximumRelativePathBytes;
 
     private const uint SchemaVersion = 1;
     private const int FixedHeaderLength = 136;

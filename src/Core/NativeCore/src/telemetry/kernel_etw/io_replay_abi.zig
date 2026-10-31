@@ -32,6 +32,7 @@ pub const View = extern struct {
     disk_complete: u32, network_complete: u32, process_count: u32, disk_row_count: u32, disk_count: u32, network_count: u32,
     processes: [*]const DiskRow, disk_rows: [*]const DiskRow, disks: [*]const u32, networks: [*]const NetworkRow,
 };
+/// Replay harness limits for the equivalence tests: the former owner Config field defaults, not product limits.
 const max_pairs = 8192;
 const max_network = 65536;
 pub const Session = struct {
@@ -70,9 +71,9 @@ pub const Session = struct {
         self.callbacks = callbacks;
         self.backing = a;
         self.started = started;
-        self.disk_owner = try disk.Owner.init(a, .{ .byte_cap = 64 * 1024 * 1024 }, self.source());
+        self.disk_owner = try disk.Owner.init(a, .{ .byte_cap = 64 * 1024 * 1024, .window_ms = 2000, .retention_ms = 8000, .bucket_width_ms = 100, .maximum_active_pairs = 8192, .maximum_disks = 8192, .maximum_cached_processes = 8192 }, self.source());
         errdefer self.disk_owner.deinit();
-        self.network_owner = try network.Owner.init(a, .{ .byte_cap = 64 * 1024 * 1024 }, self.source());
+        self.network_owner = try network.Owner.init(a, .{ .byte_cap = 64 * 1024 * 1024, .window_ms = 2000, .retention_ms = 8000, .initial_event_capacity = 256, .maximum_retained_events = 262144, .maximum_processes = 65536 }, self.source());
         errdefer self.network_owner.deinit();
         self.disk_processes = try a.alloc(disk.ProcessRow, max_pairs);
         errdefer a.free(self.disk_processes);
@@ -290,7 +291,7 @@ const FileReplay = struct {
         self.budget = .{ .backing = a, .cap = 256 * 1024 * 1024, .current = @sizeOf(FileReplay), .peak = @sizeOf(FileReplay) };
         // The finite input has ~one million Create records whose recorded
         // lifetimes must remain queryable; the byte cap remains unchanged.
-        self.files = try fileio.FileIoState.init(self.budget.allocator(), .{ .byte_cap = 128 * 1024 * 1024, .max_entries = 131072, .max_versions = 2097152 }, .recorded);
+        self.files = try fileio.FileIoState.init(self.budget.allocator(), .{ .byte_cap = 128 * 1024 * 1024, .max_entries = 131072, .max_versions = 2097152, .max_name_units = 32768, .max_path_units = 32768 }, .recorded);
         errdefer self.files.deinit();
         self.paths = try PathMap.initDeferredWithLimits(self.budget.allocator(), 32768, 512);
         errdefer self.paths.deinit();

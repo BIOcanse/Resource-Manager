@@ -206,7 +206,7 @@ public sealed class SqliteHostManagerSmartRecordHistoryStore(ResourceManagerData
     {
         if (beforeSequence is <= 0)
             throw new ArgumentOutOfRangeException(nameof(beforeSequence));
-        if (limit is < 1 or > 500)
+        if (limit < 1 || limit > OptimizationSettings.ProductDefaults.SmartRecordHistory.MaximumPageRows)
             throw new ArgumentOutOfRangeException(nameof(limit));
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();

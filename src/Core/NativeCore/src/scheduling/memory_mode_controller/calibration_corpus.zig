@@ -1,10 +1,11 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const std = @import("std");
 const calibration = @import("calibration.zig");
 
 pub const schema_header =
     "sample_id\tdomain\tpartition\tfree_ratio_units\tweight\tunrestricted_safe\tnormal_sufficient\tstrongest_required";
-pub const maximum_corpus_bytes: usize = 8 * 1024 * 1024;
-pub const maximum_row_bytes: usize = 256;
+pub const maximum_corpus_bytes: usize = policy.calibration_maximum_corpus_bytes;
+pub const maximum_row_bytes: usize = policy.calibration_maximum_row_bytes;
 
 pub const ParseError = error{
     EmptyCorpus,

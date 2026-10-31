@@ -73,7 +73,8 @@ public sealed record CompiledHostManagerSamplingSubscriptionHotPublishPlan(
     ulong ConfigurationGeneration,
     ImmutableArray<CompiledHostManagerSamplingSubscriptionRoleHotPublishPlan> Roles)
 {
-    public long PhysicalMemoryResidualMinimumIntervalMilliseconds { get; init; } = 10000;
+    // From the profile (hot_publish.sampling_subscription); an unset value leaves the plan unpublished.
+    public long PhysicalMemoryResidualMinimumIntervalMilliseconds { get; init; }
 
     public bool IsPublished => PhysicalMemoryResidualMinimumIntervalMilliseconds > 0 && ConfigurationGeneration > 0
         && CompiledHostManagerSamplingSubscriptionPlan.HasExactRoles(Roles)

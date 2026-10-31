@@ -23,7 +23,7 @@ internal static class HostManagerMemoryCleanupPrePonrAdmission
         double currentMaximumBaseScore,
         string currentRuntimeState,
         bool memorySchedulingExcluded,
-        double highTierMinimumBaseScore = OptimizationRuntimeScoringDefaults.HighTierMinimumBaseScore)
+        double highTierMinimumBaseScore)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(baselineScore);

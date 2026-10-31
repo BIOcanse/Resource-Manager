@@ -11,6 +11,8 @@ internal static class SvSe
         MemoryProtectionTitle = "Värdens minnesskydd ingrep",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) avslutades. Dumpstorlek: {2}. Klicka för att öppna Resource Manager.",
         MemoryProtectionTreeMessageFormat = "Processträdet under {0} (PID {1}) avslutades. Processer: {2}; dumpstorlek: {3}. Klicka för att öppna Resource Manager.",
+        CrashReportTitle = "Kraschrapport",
+        CrashReportMessage = "Resource Manager har just återhämtat sig efter en krasch och sparat en kraschdump. Klicka för att öppna Resource Manager.",
         AppName = "Resurshanteraren",
         WindowTitleFormat = "Resurshanteraren - {0}",
         TrayTooltipFormat = "Resurshanteraren - {0}",

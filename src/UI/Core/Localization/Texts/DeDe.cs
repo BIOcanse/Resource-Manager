@@ -11,6 +11,8 @@ internal static class DeDe
         MemoryProtectionTitle = "Speicherschutz des Hosts hat eingegriffen",
         MemoryProtectionProcessMessageFormat = "{0} (PID {1}) wurde beendet. Abbildgröße: {2}. Klicken Sie, um Resource Manager zu öffnen.",
         MemoryProtectionTreeMessageFormat = "Der Prozessbaum unter {0} (PID {1}) wurde beendet. Prozesse: {2}; Abbildgröße: {3}. Klicken Sie, um Resource Manager zu öffnen.",
+        CrashReportTitle = "Absturzbericht",
+        CrashReportMessage = "Resource Manager hat sich gerade von einem Absturz erholt und ein Absturzabbild gespeichert. Klicken Sie, um Resource Manager zu öffnen.",
         AppName = "Ressourcen-Manager",
         WindowTitleFormat = "Ressourcen-Manager - {0}",
         TrayTooltipFormat = "Ressourcen-Manager - {0}",

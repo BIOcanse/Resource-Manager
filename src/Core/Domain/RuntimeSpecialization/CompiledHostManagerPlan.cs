@@ -43,6 +43,8 @@ public sealed record CompiledHostManagerPlan(
     public Application.MemoryProtection.HostMemoryProtectionRecordOptions? HostMemoryProtectionRecords { get; init; }
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.KernelEtwLimits)]
     public CompiledKernelEtwLimits? KernelEtwLimits { get; init; }
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.NativeBuildPolicy)]
+    public CompiledNativeBuildPolicy? NativeBuildPolicy { get; init; }
     public CompiledDataHistoryPlan DataHistory { get; init; } = CompiledDataHistoryPlan.Empty;
     public CompiledFreedomPointTree FreedomPoints { get; init; } = CompiledFreedomPointTree.Empty;
     public CompiledCpuCoreResidencyPlan CpuCoreResidency { get; init; } = CompiledCpuCoreResidencyPlan.Unpublished;
@@ -50,6 +52,9 @@ public sealed record CompiledHostManagerPlan(
     public CompiledBackendControlSettings BackendControlSettings { get; init; } = CompiledBackendControlSettings.Unpublished;
     public CompiledHardwareControlSettings? HardwareControl { get; init; }
     public CompiledMonitoringSettings? Monitoring { get; init; }
+    public CompiledOptimizationSettings? Optimization { get; init; }
+    public CompiledGpuPlacementSettings? GpuPlacement { get; init; }
+    public CompiledPersistenceSettings? Persistence { get; init; }
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SubscriptionIntervalMs)]
     public TimeSpan SchedulerSamplingInterval { get; init; }
 
@@ -61,6 +66,8 @@ public sealed record CompiledHostManagerPlan(
 
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.CrashCounterResetSeconds)]
     public int ServiceRecoveryResetPeriodSeconds { get; init; }
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.CrashReports)]
+    public Application.CrashReports.CrashReportOptions? CrashReports { get; init; }
 
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.RequestLifetimeMs)]
     public int TrustedAccessRequestLifetimeMilliseconds { get; init; }

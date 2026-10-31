@@ -320,6 +320,7 @@ public sealed class NativeEtwSessionAvailabilityTests
                     new GpuAllocationNamedPayload(key => throw new InvalidDataException($"GPU manifest has no {key} field.")), DateTime.UtcNow);
         }
         public void DisableProvider(Guid provider) { }
+        public void CaptureState(Guid provider, ulong keywords) { }
         public void Flush() { }
         public void CaptureState(Guid provider, ulong keywords, int[]? eventIds = null) { }
         public void BeginScan(string sessionName, long scan, long eventsLost)

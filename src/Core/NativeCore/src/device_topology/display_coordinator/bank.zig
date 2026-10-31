@@ -1,3 +1,4 @@
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const std = @import("std");
 const protocol = @import("protocol.zig");
 
@@ -73,7 +74,7 @@ pub const Bank = struct {
         errdefer allocator.free(facts);
         const texts = try allocator.alloc(TextSlot, config.maximum_text_binding_count);
         errdefer allocator.free(texts);
-        const text_bytes = try allocator.alloc(u8, @min(config.maximum_text_byte_count, 256));
+        const text_bytes = try allocator.alloc(u8, @min(config.maximum_text_byte_count, policy.display_initial_text_bytes));
         errdefer allocator.free(text_bytes);
         const text_index = try allocator.alloc(u32, config.text_index_capacity);
         errdefer allocator.free(text_index);
@@ -91,7 +92,7 @@ pub const Bank = struct {
             config.maximum_unresolved_count,
         );
         errdefer allocator.free(unresolved);
-        const diffs = try allocator.alloc(protocol.DiffEntry, @min(config.maximum_diff_entry_count, 16));
+        const diffs = try allocator.alloc(protocol.DiffEntry, @min(config.maximum_diff_entry_count, policy.display_initial_diff_entries));
         errdefer allocator.free(diffs);
         var bank = Bank{
             .allocator = allocator,

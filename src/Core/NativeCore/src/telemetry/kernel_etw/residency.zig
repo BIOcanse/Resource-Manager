@@ -1,22 +1,24 @@
 const std = @import("std");
+const policy = @import("../../configuration/NativePolicy.g.zig");
 const Allocator = std.mem.Allocator;
 
+/// Every limit comes from the host (cpu_residency observation window and kernel_etw_limits); no field defaults.
 pub const Config = struct {
     qpc_frequency: i64,
-    window_ms: i64 = 5000,
-    max_pairs: usize = 65536,
-    max_processes: usize = 32768,
-    max_threads: usize = 131072,
-    max_processors: usize = 4096,
-    max_name_bytes: usize = 8 * 1024 * 1024,
+    window_ms: i64,
+    max_pairs: usize,
+    max_processes: usize,
+    max_threads: usize,
+    max_processors: usize,
+    max_name_bytes: usize,
     /// Expected logical processors. Empty: the caller sets them with setProcessors.
     processors: []const i32 = &.{},
 };
-/// A continuous window keeps 2n + 2 ring cells per pair; 2047 keeps one ring within 64 KiB.
-pub const maximum_slots_per_window: u32 = 2047;
+/// A continuous window keeps 2n + 2 ring cells per pair, within the declared chunk size.
+pub const maximum_slots_per_window: u32 = ring_chunk_bytes / @sizeOf(RingCell) / 2 - 1;
 pub const pair_record_bytes: usize = @sizeOf(PairRecord);
-pub const records_per_chunk: usize = 2730;
-const ring_chunk_bytes: usize = 65536;
+pub const records_per_chunk: usize = ring_chunk_bytes / @sizeOf(PairRecord);
+const ring_chunk_bytes: usize = policy.residency_ring_chunk_bytes;
 pub const Record = struct {
     process_instance_id: i64,
     process_id: i32,

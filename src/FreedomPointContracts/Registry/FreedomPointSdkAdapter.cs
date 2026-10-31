@@ -148,12 +148,14 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.Notifications => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "Notifications"),
             BackendFreedomPointPositions.MemoryProtection => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "HostMemoryProtectionRecords"),
             BackendFreedomPointPositions.KernelEtwLimits => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "KernelEtwLimits"),
+            BackendFreedomPointPositions.NativeBuildPolicy => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "NativeBuildPolicy"),
             BackendFreedomPointPositions.MachineBaselineRatio => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuScoringPlan", "BaselineRatio"),
             BackendFreedomPointPositions.CorePerformanceWeights => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuScoringPlan", "CoreWeights"),
             BackendFreedomPointPositions.ObservationWindowMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuCoreResidencyPlan", "ObservationWindowMilliseconds"),
             BackendFreedomPointPositions.ExecutionTimeSource => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuCoreResidencyPlan", "ExecutionTimeSource"),
             BackendFreedomPointPositions.SmtAccounting => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuCoreResidencyPlan", "PhysicalCoreByLogicalProcessor"),
             BackendFreedomPointPositions.CrashCounterResetSeconds => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "ServiceRecoveryResetPeriodSeconds"),
+            BackendFreedomPointPositions.CrashReports => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "CrashReports"),
             BackendFreedomPointPositions.RequestLifetimeMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "TrustedAccessRequestLifetimeMilliseconds"),
             BackendFreedomPointPositions.AvailabilityCheckIntervalMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "HardwareBridgeAvailabilityCheckInterval"),
             BackendFreedomPointPositions.ObservationGrowthLimit => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerReportCoordinatorBuildPlan", "ObservationGrowthLimit"),
@@ -176,6 +178,7 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.VidmmSessionBuffers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "VidMmSessionBuffers"),
             BackendFreedomPointPositions.GpuAllocationSessionBuffers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "GpuAllocationSessionBuffers"),
             BackendFreedomPointPositions.PresentSessionBuffers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "PresentSessionBuffers"),
+            BackendFreedomPointPositions.FramePipeline => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "FramePipeline"),
             BackendFreedomPointPositions.HelperRequestTimeoutMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHardwareControlSettings", "HelperRequestTimeout"),
             BackendFreedomPointPositions.HelperProcessTiming => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHardwareControlSettings", "HelperProcessTiming"),
             BackendFreedomPointPositions.FanCurveFeed => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHardwareControlSettings", "FanCurveFeed"),
@@ -199,6 +202,25 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.SoftwareWelfare => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "WelfareBaseScore"),
             BackendFreedomPointPositions.StateMultipliers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "ProcessStateMultipliers"),
             BackendFreedomPointPositions.BaseScoreTiers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "BaseScoreTiers"),
+            BackendFreedomPointPositions.RollbackStateStore => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "RollbackStateStore"),
+            BackendFreedomPointPositions.AuthorityRetirement => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "AuthorityRetirement"),
+            BackendFreedomPointPositions.IdealProcessorWorkspace => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "IdealProcessorWorkspace"),
+            BackendFreedomPointPositions.NormalRestoration => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "NormalRestoration"),
+            BackendFreedomPointPositions.EffectValidationLease => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "EffectValidationLease"),
+            BackendFreedomPointPositions.MemoryCleanupValidationEvidence => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "MemoryCleanupValidationEvidence"),
+            BackendFreedomPointPositions.SmartRecordHistory => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "SmartRecordHistory"),
+              BackendFreedomPointPositions.OptimizationStorageLimits => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "StorageLimits"),
+              BackendFreedomPointPositions.LegacyAffinity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "LegacyAffinity"),
+              BackendFreedomPointPositions.OptimizationRuntimeLimits => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "RuntimeLimits"),
+            BackendFreedomPointPositions.SoftwareKindBaseScores => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "SoftwareKindBaseScores"),
+            BackendFreedomPointPositions.CoreClassScores => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "CoreClassScores"),
+            BackendFreedomPointPositions.ReportSampleIntervalMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "ReportSampleInterval"),
+            BackendFreedomPointPositions.ReportRuleLimits => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledOptimizationSettings", "ReportRuleLimits"),
+            BackendFreedomPointPositions.ProcessHistory => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledGpuPlacementSettings", "ProcessHistory"),
+            BackendFreedomPointPositions.ExternalGpuRuntime => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledGpuPlacementSettings", "ExternalRuntime"),
+            BackendFreedomPointPositions.GpuInjection => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledGpuPlacementSettings", "Injection"),
+            BackendFreedomPointPositions.GpuLaunchReports => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledGpuPlacementSettings", "LaunchReports"),
+            BackendFreedomPointPositions.SqliteVacuum => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledPersistenceSettings", "SqliteVacuum"),
             _ => throw new InvalidDataException($"Active freedom point '{point.Path}' has no compiled host member.")
         };
         var host = new GenerationTarget
@@ -207,6 +229,12 @@ internal sealed class FreedomPointSdkAdapter
             Form = point.Path.Family == PointFamily.Build ? GenerationForm.BuildConstant : GenerationForm.RuntimeImmutable,
             Scope = scope, Symbol = symbol
         };
+        if (point.Path.Raw == BackendFreedomPointPositions.NativeBuildPolicy)
+            return [host, new GenerationTarget
+            {
+                Language = GenerationLanguage.HostArtifact, Form = GenerationForm.BuildConstant,
+                Scope = "ResourceManager.App.Infrastructure.Telemetry.Etw.NativePolicyDefaults", Symbol = "SelectedBorrowDrainTimeoutMilliseconds"
+            }];
         return point.Path.Raw == BackendFreedomPointPositions.KernelEtwLimits
             ? [host, new GenerationTarget
             {

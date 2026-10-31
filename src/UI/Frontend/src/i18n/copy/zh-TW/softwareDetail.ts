@@ -48,7 +48,20 @@ export const zhSoftwareDetailCopy = {
       "no-frame-data": "無影格資料",
       "metric-unavailable": "讀數無法使用",
       "process-cpu-unavailable": "處理程序 CPU 無法使用",
-      "process-metric-unavailable": "處理程序讀數無法使用"
+      "process-metric-unavailable": "處理程序讀數無法使用",
+      "not-applicable": "此裝置不適用",
+      "no-source": "本機沒有來源",
+      "source-not-refreshed": "來源未更新",
+      "target-gpu-unresolved": "目標未使用任何 GPU",
+      "gpu-dedicated-memory-metrics-unsupported": "此 GPU 沒有專用記憶體計量",
+      "metric-unknown": "讀數沒有對應欄位",
+      "metric-warming": "讀數準備中",
+      "metric-unsupported": "讀數不受支援",
+      "breakdown-warming": "資源細分準備中",
+      "breakdown-failed": "資源細分取樣失敗",
+      "breakdown-bar-missing": "資源細分沒有此項",
+      "breakdown-unsupported": "資源細分不支援此項",
+      "breakdown-unavailable": "資源細分讀數無法使用"
     },
     picker: {
       available: "可顯示項目",

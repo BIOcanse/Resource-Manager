@@ -45,7 +45,7 @@ internal interface IHostManagerRollbackStateFileCommitter
 internal sealed class WindowsHostManagerRollbackStateFileCommitter
     : IHostManagerRollbackStateFileCommitter
 {
-    private const int IoBufferSize = 64 * 1024;
+    private static readonly int IoBufferSize = OptimizationSettings.ProductDefaults.StorageLimits.IoBufferBytes;
 
     internal static WindowsHostManagerRollbackStateFileCommitter Instance { get; } = new();
 
@@ -130,8 +130,8 @@ internal static partial class HostManagerRollbackStateEnvelopeCodec
 {
     internal const string Magic = "RMROLLBACK01";
     internal const uint SchemaVersion = 1;
-    internal const int MaximumCanonicalBytes = 4 * 1024 * 1024;
-    internal const int MaximumJsonDepth = 32;
+    internal static readonly int MaximumCanonicalBytes = OptimizationSettings.ProductDefaults.RollbackStateStore.MaximumCanonicalBytes;
+    internal static readonly int MaximumJsonDepth = OptimizationSettings.ProductDefaults.StorageLimits.MaximumJsonDepth;
 
     private static readonly JsonSerializerOptions JsonOptions = new HostManagerRollbackStateEnvelopeCodecJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
@@ -168,7 +168,7 @@ internal static partial class HostManagerRollbackStateEnvelopeCodec
 
     internal static HostManagerRollbackStateDecodedEnvelope Decode(ReadOnlySpan<byte> image)
     {
-        if (image.Length is <= 0 or > MaximumCanonicalBytes)
+        if (image.Length <= 0 || image.Length > MaximumCanonicalBytes)
         {
             throw new InvalidDataException(
                 "The Host Manager rollback state has an invalid canonical size.");

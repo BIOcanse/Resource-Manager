@@ -17,6 +17,7 @@ import {
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 
 import { decodeServiceRecovery } from "./serviceRecoveryDecoder.ts";
+import { decodeCrashDumpDiagnostics } from "./crashDumpDiagnosticsDecoder.ts";
 import { decodeReportSettings } from "./reportRuleSettingsDecoder.ts";
 import { decodeHostMemoryProtectionSettings } from "../memoryProtection/memoryProtectionDecoders.ts";
 import { decodeMemoryCpuTierSettings } from "../memoryCpuTier/memoryCpuTierDecoder.ts";
@@ -86,6 +87,10 @@ export const appSettingsResultDecoder =
       if (settingsRecord.memoryCpuTier !== undefined) {
         decodeMemoryCpuTierSettings(settingsRecord.memoryCpuTier, "$.settings.memoryCpuTier");
       }
+      if (settingsRecord.systemIntegration !== undefined) {
+        const crashDumps = (settingsRecord.systemIntegration as Record<string, unknown>).crashDumps;
+        if (crashDumps !== undefined) decodeCrashDumpSettings(crashDumps, "$.settings.systemIntegration.crashDumps");
+      }
       if (settingsRecord.memoryProtection !== undefined && settingsRecord.memoryProtection !== null) {
         decodeHostMemoryProtectionSettings(settingsRecord.memoryProtection, "$.settings.memoryProtection");
       }
@@ -94,6 +99,8 @@ export const appSettingsResultDecoder =
         updatedAt: optional(record.updatedAt, "$.updatedAt", requireString),
         serviceRecovery: record.serviceRecovery === undefined ? undefined
           : requireNullable(record.serviceRecovery, "$.serviceRecovery", decodeServiceRecovery),
+        crashDumps: record.crashDumps === undefined ? undefined
+          : requireNullable(record.crashDumps, "$.crashDumps", decodeCrashDumpDiagnostics),
         settings: deepFreezeClone(settingsRecord) as BackendAppSettings,
         revision: requireNonEmptyString(record.revision, "$.revision"),
         storagePath: optional(record.storagePath, "$.storagePath", requireString),
@@ -127,6 +134,15 @@ export const appSettingsResultDecoder =
       };
       return Object.freeze(result) as CommittedAppSettingsResult;
     });
+
+/** systemIntegration.crashDumps：mode、dumpType 只认合同里的值，keepCount 是至少 1 的整数（上限由后端收敛）。 */
+function decodeCrashDumpSettings(value: unknown, path: string): void {
+  const record = requireRecord(value, path);
+  requireOneOf(record.mode, path + ".mode", ["default", "ask", "on", "off"] as const);
+  requireOneOf(record.dumpType, path + ".dumpType", ["mini", "full"] as const);
+  const keepCount = requireSafeInteger(record.keepCount, path + ".keepCount");
+  if (keepCount < 1) throw new ResponseDecodeError(path + ".keepCount", "Expected at least 1");
+}
 
 function decodeSource(value: unknown): AppSettingsResult["source"] {
   if (value === undefined) {

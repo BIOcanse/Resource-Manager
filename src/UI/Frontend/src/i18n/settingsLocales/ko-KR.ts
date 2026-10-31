@@ -6,7 +6,8 @@ export default createSettingsLocale("ko-KR", {
     "kinds": {
       "memoryProtection": { "title": "호스트 메모리 보호", "description": "호스트 메모리 보호가 프로세스 또는 프로세스 트리를 종료하면 대상, 프로세스 수, 덤프 크기와 함께 알립니다." },
       "update": { "title": "새 버전", "description": "새 버전을 사용할 수 있으면 알립니다." },
-      "accessRequest": { "title": "액세스 요청", "description": "승인을 기다리는 새 신뢰된 액세스 요청이 있으면 요청자의 이름 및 프로그램과 함께 알립니다." }
+      "accessRequest": { "title": "액세스 요청", "description": "승인을 기다리는 새 신뢰된 액세스 요청이 있으면 요청자의 이름 및 프로그램과 함께 알립니다." },
+      "crashReport": { "title": "충돌 보고", "description": "Resource Manager가 충돌에서 복구된 후 알립니다. 열면 충돌 기록을 확인하고 덤프를 업로드할 수 있습니다." }
     },
     "notifyTitle": "알림 표시",
     "notifyDescription": "끄면 이 종류의 알림은 어떤 경로로도 표시되지 않으며, 두 경로의 선택은 유지됩니다.",
@@ -568,5 +569,115 @@ export default createSettingsLocale("ko-KR", {
       "license": "라이선스",
       "source": "출처"
     }
+  },
+  "crashDumps": {
+    "title": "충돌 덤프",
+    "description": "Resource Manager 자체 프로그램(백그라운드 서비스, 창 프로세스, 상주 트레이 프로세스)이 충돌하면 Windows가 프로세스 메모리를 덤프 파일로 기록하여 오류 위치를 찾는 데 사용합니다. 덤프는 이 컴퓨터에만 저장되며 자동으로 업로드되지 않습니다.",
+    "modeTitle": "충돌 덤프 기록",
+    "modeDescription": "충돌 시 덤프를 저장할지 선택합니다. ‘릴리스 채널 따르기’는 beta 버전에서 켜지고 정식 버전에서는 먼저 묻습니다.",
+    "modeOptions": {
+      "default": { "label": "릴리스 채널 따르기", "description": "beta 버전은 켜짐, 정식 버전은 먼저 묻습니다." },
+      "ask": { "label": "먼저 묻기", "description": "당분간 덤프를 기록하지 않고 화면에서 켤지 묻습니다." },
+      "on": { "label": "켜기", "description": "충돌 시 덤프를 저장합니다." },
+      "off": { "label": "끄기", "description": "덤프를 저장하지 않고 이벤트 로그에서만 충돌 기록을 등록합니다." }
+    },
+    "effective": (mode: string, source: string) => `현재: ${mode}(${source})`,
+    "effectiveModes": {
+      "ask": "결정되지 않아 기록하지 않음",
+      "on": "켜짐",
+      "off": "꺼짐"
+    },
+    "sourceUser": "사용자 선택",
+    "channelNames": {
+      "beta": "beta 버전",
+      "stable": "정식 버전"
+    },
+    "defaultModeNames": {
+      "on": "기본적으로 켜짐",
+      "ask": "기본적으로 먼저 묻기",
+      "off": "기본적으로 꺼짐"
+    },
+    "channelDefault": (channel: string, mode: string) => `${channel}, ${mode}`,
+    "turnOff": "충돌 덤프 끄기",
+    "turnOffDescription": "즉시 끄고 저장합니다.",
+    "dumpTypeTitle": "덤프 유형",
+    "dumpTypeDescription": "미니 덤프로 대부분의 오류를 찾을 수 있으며 보통 GitHub issue에 첨부할 수 있습니다.",
+    "dumpTypeOptions": {
+      "mini": { "label": "미니 덤프", "description": "스레드 스택과 데이터 세그먼트를 포함하며 보통 몇 MB입니다." },
+      "full": { "label": "전체 덤프", "description": "프로세스 메모리 전체를 포함하며 수백 MB가 될 수 있어 로컬 분석에만 적합합니다." }
+    },
+    "keepCountTitle": "프로그램별 보관 개수",
+    "keepCountDescription": "프로그램마다 보관할 충돌 기록과 덤프의 최대 개수입니다. 초과하면 가장 오래된 것부터 삭제합니다.",
+    "statusTitle": "실제 상태",
+    "status": {
+      "notApplied": "충돌 덤프 구성이 아직 기록되지 않았습니다.",
+      "applied": "Windows 오류 보고의 덤프 구성이 선택한 설정과 일치합니다.",
+      "mismatch": "Windows 오류 보고의 실제 구성이 선택한 설정과 다릅니다.",
+      "failed": "Windows 오류 보고의 덤프 구성을 기록하지 못했습니다.",
+      "skipped": "Windows 오류 보고의 덤프 구성을 기록하지 않았습니다."
+    },
+    "skipReasons": {
+      "not-running-as-installed-service": "설치된 서비스로 실행되고 있지 않아 레지스트리를 변경하지 않습니다."
+    },
+    "skipReasonOther": (reason: string) => `이유: ${reason}`,
+    "writeFailed": (error: string) => `기록 실패: ${error}`,
+    "readFailed": (error: string) => `실제 구성을 읽지 못했습니다: ${error}`,
+    "imageStates": {
+      "written": "기록됨",
+      "absent": "기록되지 않음",
+      "foreign": "다른 프로그램이 구성함"
+    },
+    "actualDetail": (dumpType: string, count: number | null, folder: string) => `${dumpType}, ${count ?? "—"}개 보관, 폴더 ${folder}`,
+    "dumpTypeOther": (value: number) => `유형 ${value}`,
+    "historyTitle": "충돌 기록",
+    "historyDescription": "Resource Manager 프로그램이 충돌한 후 다음에 서비스가 시작되거나 화면을 열 때 등록된 기록입니다.",
+    "historyEmpty": "충돌 기록이 없습니다.",
+    "dumpFolderLabel": "덤프 폴더",
+    "roles": {
+      "service": "백그라운드 서비스",
+      "window": "창 프로세스",
+      "resident": "상주 트레이 프로세스"
+    },
+    "program": (program: string, role: string) => `${program}(${role})`,
+    "timeLabel": "시간",
+    "versionLabel": "버전",
+    "versionUnknown": "알 수 없음",
+    "faultLabel": "오류",
+    "faultUnknown": "이벤트 로그에 해당하는 오류 기록이 없습니다.",
+    "dumpLabel": "덤프 파일",
+    "dumpNotEnabled": "충돌 덤프가 꺼져 있었습니다",
+    "dumpMissing": "덤프 파일이 더 이상 없습니다",
+    "sizeLabel": "크기",
+    "reportedLabel": "보고",
+    "reported": "보고됨",
+    "notReported": "보고되지 않음",
+    "packageLabel": "보고서 패키지",
+    "packageExceeds": (packageSizeText: string, attachmentLimitText: string) => `보고서 패키지가 ${packageSizeText}로 GitHub issue 첨부 한도 ${attachmentLimitText}을(를) 초과하여 바로 첨부할 수 없습니다. 덤프는 잘리지 않았습니다.`,
+    "openFolder": "포함된 폴더 열기",
+    "buildPackage": "보고서 패키지 만들기",
+    "reportOnGitHub": "GitHub에 보고",
+    "delete": "삭제",
+    "deleteConfirmTitle": "이 충돌 기록을 삭제할까요?",
+    "deleteConfirmMessage": (program: string, time: string) => `${time}에 발생한 ${program}의 충돌 기록과 해당 덤프 파일 및 보고서 패키지를 삭제합니다.`,
+    "revealFailed": "이 파일을 파일 탐색기에 표시할 수 없습니다.",
+    "openFailed": "GitHub 페이지를 열 수 없습니다.",
+    "actionFailed": "작업에 실패했습니다.",
+    "requestTitle": "충돌 덤프를 켤까요?",
+    "requestWhat": "Resource Manager 자체 프로그램이 충돌하면 Windows가 프로세스 메모리를 덤프 파일로 기록하여 오류 위치를 찾을 수 있습니다.",
+    "requestWhere": (folder: string) => `덤프는 ${folder}에 저장되며 설정 · 시스템 통합에서 확인, 삭제하거나 끌 수 있습니다.`,
+    "requestSize": "미니 덤프는 보통 몇 MB이며 GitHub issue에 첨부할 수 있습니다. 전체 덤프는 수백 MB가 될 수 있습니다.",
+    "requestContent": "덤프에는 충돌 당시의 프로세스 메모리가 들어 있으며 파일 경로나 사용자 이름 같은 정보가 포함될 수 있습니다. 덤프는 자동으로 업로드되지 않으며 제출 여부는 사용자가 결정합니다.",
+    "requestEnable": "켜기",
+    "requestDecline": "켜지 않기",
+    "requestFailed": "이 설정을 저장하지 못했습니다. 다시 시도하세요.",
+    "dialogTitle": "Resource Manager가 비정상적으로 종료되었습니다",
+    "dialogIntro": "아래 프로그램이 충돌했습니다. 보고서 패키지를 GitHub issue에 업로드하면 원인을 찾는 데 도움이 됩니다. ‘GitHub에 보고’를 선택하면 보고서 패키지를 만들고, 미리 채워진 issue 페이지를 브라우저에서 열고, 파일 탐색기에서 패키지를 선택합니다. 이를 issue로 끌어다 놓으면 됩니다.",
+    "dialogCrashed": (program: string, time: string) => `${program}이(가) ${time}에 충돌했습니다`,
+    "dialogIssueLink": "미리 채워진 GitHub issue 페이지 열기",
+    "dialogLocalPath": "로컬 파일",
+    "dialogLater": "나중에",
+    "noticeTitle": "충돌 보고",
+    "noticeMessage": "Resource Manager가 방금 충돌에서 복구되었으며 충돌 덤프를 저장했습니다.",
+    "noticeOpen": "충돌 기록 보기"
   }
 });

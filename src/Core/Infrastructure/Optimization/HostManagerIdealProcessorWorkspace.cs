@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using System.Runtime.InteropServices;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.CpuTopology;
@@ -39,7 +40,7 @@ internal sealed class HostManagerIdealProcessorStableIdentityComparer
 
 internal sealed class HostManagerIdealProcessorWorkspace
 {
-    private const int LowUsageCallsBeforeTrim = 4;
+    private static readonly IdealProcessorWorkspaceOptions Trim = OptimizationSettings.ProductDefaults.IdealProcessorWorkspace;
     private int lowUsageCalls;
 
     internal readonly List<HostManagerIdealProcessorInput> Inputs = [];
@@ -93,15 +94,15 @@ internal sealed class HostManagerIdealProcessorWorkspace
         capacity = Math.Max(capacity, Math.Max(Inputs.Capacity, OrderedInputs.Capacity));
         capacity = Math.Max(capacity, Math.Max(Plans.Capacity, Desired.Capacity));
         capacity = Math.Max(capacity, Math.Max(OrderedThreads.Capacity, StaleStableIdentities.Capacity));
-        if (capacity <= 128 || liveCount > capacity / 4)
+        if (capacity <= Trim.TrimMinimumCapacity || liveCount > capacity / Trim.TrimUsageDivisor)
         {
             lowUsageCalls = 0;
             return;
         }
-        if (++lowUsageCalls < LowUsageCallsBeforeTrim) return;
+        if (++lowUsageCalls < Trim.LowUsageCallsBeforeTrim) return;
 
         // Leave growth headroom, and count completed calls rather than the empty reset at call entry.
-        var targetCapacity = Math.Max(32, liveCount * 2);
+        var targetCapacity = Math.Max(Trim.TrimmedMinimumCapacity, liveCount * Trim.TrimmedHeadroomFactor);
         if (StableRecordIds.EnsureCapacity(0) > targetCapacity) StableRecordIds.TrimExcess(targetCapacity);
         if (ExistingRecords.EnsureCapacity(0) > targetCapacity) ExistingRecords.TrimExcess(targetCapacity);
         TrimList(Inputs, targetCapacity);
