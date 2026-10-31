@@ -195,7 +195,8 @@ export default async function creditsJourney(page, baseUrl) {
   assert(table.rows.some((row) => row[0] === "picocolors" && row[2] === "ISC"), "Permissive terms are not a reason to omit acknowledgement");
   assert(readFileSync(new URL("../../../../Core/ThirdPartyNotices/Picocolors.LICENSE.txt", import.meta.url), "utf8")
     === readFileSync(new URL("../../node_modules/picocolors/LICENSE", import.meta.url), "utf8"), "Retain picocolors' original acknowledgement and license text");
-  assert(table.rows.some((row) => row[0] === "Newtonsoft.Json"), "Transitive managed test dependencies are missing");
+  // The upgraded test platform no longer depends on Newtonsoft.Json; xunit still resolves this transitive package.
+  assert(table.rows.some((row) => row[0] === "xunit.abstractions" && row[1] === "2.0.3"), "Transitive managed test dependencies are missing");
   assert(table.buttonLefts.length === 1, `Dependency buttons are not in one column: ${table.buttonLefts}`);
   assert(table.numeric.every((value) => value.includes("tabular-nums")), `Versions and licenses need tabular numbers: ${table.numeric}`);
   assert(table.bullets === 0, "The dependency list still has bullets");
