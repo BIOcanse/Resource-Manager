@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 
 /**
  * 读屏语义与键盘，真实页面上逐项验收：
@@ -8,6 +9,7 @@ import assert from "node:assert/strict";
  */
 export default async function accessibilitySemanticsJourney(page, baseUrl) {
   const errors = [];
+  const settingsText = await loadSettingsText("zh-CN");
   page.on("pageerror", error => errors.push(String(error)));
   const processes = ["alpha.exe", "beta.exe", "gamma.exe"].map((processName, index) => ({
     processKey: `frontend-harness.software:${processName}`,
@@ -79,8 +81,13 @@ export default async function accessibilitySemanticsJourney(page, baseUrl) {
   // 下拉框的分组和空状态（强制结束快捷键的按键选择：按字符、功能键、小键盘等分组，可搜索）。
   await page.getByRole("navigation", { name: "页面切换" }).getByRole("button", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "系统集成", exact: true }).click();
-  const editor = page.locator(".settings-hotkey-editor");
+  // Both backend-owned bindings have editors here; scope the grouped key picker to the destructive action.
+  const editors = page.locator(".settings-hotkey-editor");
+  const editor = editors.filter({ has: page.getByRole("checkbox", { name: settingsText.systemIntegration.forceTerminateTitle, exact: true }) });
   await editor.waitFor();
+  assert.equal(await editors.count(), 2, "Both backend-owned hotkey actions must be editable in System Integration");
+  assert.equal(await editors.filter({ has: page.getByRole("checkbox", { name: settingsText.systemIntegration.performanceOverlayHotkeyTitle, exact: true }) }).count(), 1,
+    "The overlay toggle must have its own named editor");
   if (await editor.getByRole("button", { name: "按键 1", exact: true }).count() === 0) {
     await editor.getByRole("button", { name: "添加按键" }).click();
   }

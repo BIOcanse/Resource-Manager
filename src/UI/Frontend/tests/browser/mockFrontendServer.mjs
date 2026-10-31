@@ -329,6 +329,16 @@ const defaultAppSettings = {
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5, keepSmartRecordHistory: false },
   reports: { ruleOverrides: [] },
   control: { keepAlive: false, reassertionIntervalSeconds: 120 },
+  // The real backend expands both action bindings (AppSettingsDefaults / AppSettingsNormalizer).
+  // The frontend no longer creates hotkey settings that were absent from a backend response.
+  systemIntegration: {
+    taskManagerShortcutReplacementEnabled: false, autoStartEnabled: false,
+    restartAfterCrashEnabled: true, crashRestartDelaySeconds: 10, crashRestartCount: 3,
+    hotkeys: [
+      { actionId: "force-terminate-unresponsive-and-foreground", enabled: false, encoding: [0, 0, 0, 0, 0, 0, 0] },
+      { actionId: "toggle-performance-overlay-foreground", enabled: false, encoding: [0, 0, 0, 0, 0, 0, 0] }
+    ]
+  },
   debug: {
     debugModeEnabled: scenario.debugMode
   },
