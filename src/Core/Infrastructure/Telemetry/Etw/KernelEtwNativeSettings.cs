@@ -45,9 +45,8 @@ internal static class KernelEtwNativeSettings
             {
                 QpcFrequency = Stopwatch.Frequency,
                 WindowMilliseconds = checked((uint)cpu.ObservationWindowMilliseconds),
-                BucketMilliseconds = checked((uint)cpu.ExecutionTimeSource.BucketWidthMilliseconds),
                 MaximumPairs = checked((uint)cpu.ExecutionTimeSource.MaximumActivePairs),
-                MaximumCells = limits.MaximumCells, MaximumProcesses = limits.MaximumProcesses,
+                MaximumProcesses = limits.MaximumProcesses,
                 MaximumThreads = limits.MaximumThreads, MaximumProcessors = processorCount,
                 MaximumNameBytes = limits.MaximumProcessNameBytes, ByteCap = limits.CpuBytes
             },

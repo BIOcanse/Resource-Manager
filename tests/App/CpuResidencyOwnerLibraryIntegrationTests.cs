@@ -74,15 +74,13 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         var plan = Configuration();
         var config = NativeKernelEtwTestResource.SmallConfiguration(qpcFrequency: 1000, maximumProcessors: 2);
         config.Residency.MaximumPairs = checked((uint)plan.MaximumActivePairs);
-        config.Residency.MaximumCells = 4096;
         using var resource = new NativeKernelEtwTestResource(config, At.AddSeconds(-1));
         using var owner = new EtwCpuResidencyCaptureOwner(resource, () => plan);
-        owner.EnsureStarted(); owner.BeginWindow();
+        owner.EnsureStarted(); owner.BeginWindow(TimeSpan.FromSeconds(1));
         resource.Publish(0);
         resource.ProcessStart(0, At.AddSeconds(-1), 100, 11, 1000, "recorded");
         resource.ThreadStart(0, At.AddSeconds(-1), 100, 10);
-        resource.CSwitch(0, At.AddSeconds(-1), 0, 0, 0, 100, 10);
-        resource.CSwitch(0, At.AddSeconds(-1), 1, 0, 0, 0, 0);
+        // Both processors first switch at 250, so the window is [S, S + W) = [250, 1250).
         resource.CSwitch(250, At.AddMilliseconds(-750), 0, 100, 10, 0, 0);
         resource.CSwitch(250, At.AddMilliseconds(-750), 1, 0, 0, 100, 10);
         resource.CSwitch(1250, At.AddMilliseconds(250), 0, 0, 0, 0, 0);
@@ -214,7 +212,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Fact]
     public void PidOnlyStartCannotMergeAnInstanceOrGainBirthFromALaterInventory()
     {
-        var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1000, 1024);
+        var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1000, 1024, [0]);
         buffer.ObserveProcessStart(0, At, 100, 11, null, "unverified");
         Assert.Null(buffer.CaptureInventorySeed().SeedProcess(100, 1000, "later PID scan"));
         buffer.ObserveProcessStart(1, At, 200, 0, null, "first unknown");
@@ -242,22 +240,6 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     }
 
     [Fact]
-    public void EarlyInventoryCancellationDisposesEveryProcessAndThreadLeaseInItsOwnedArray()
-    {
-        var processes = new[] { new InventoryLease(), new InventoryLease(), new InventoryLease() };
-        var processVisits = 0;
-        Assert.False(EtwCpuResidencyCaptureOwner.VisitOwnedArray(processes, _ => ++processVisits < 2));
-        Assert.Equal(2, processVisits);
-        Assert.All(processes, process => Assert.True(process.Disposed));
-
-        var threads = new[] { new InventoryLease(), new InventoryLease(), new InventoryLease() };
-        var threadVisits = 0;
-        Assert.False(EtwCpuResidencyCaptureOwner.VisitOwnedArray(threads, _ => ++threadVisits < 2));
-        Assert.Equal(2, threadVisits);
-        Assert.All(threads, thread => Assert.True(thread.Disposed));
-    }
-
-    [Fact]
     public void RawOwnerStartsOnlyOnDemandAndStopPreservesBorrowedBrokerLifetime()
     {
         using var broker = new Broker();
@@ -266,7 +248,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         capture.EnsureStarted();
         Assert.Equal(1, broker.Acquires);
         Assert.Equal(KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread, broker.Keywords);
-        capture.BeginWindow(); capture.Collect();
+        capture.BeginWindow(TimeSpan.FromSeconds(1)); capture.Collect();
         Assert.Equal(2, broker.Acquires);
         Assert.Equal(KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread |
             KernelTraceEventParser.Keywords.ContextSwitch, broker.Keywords);
@@ -287,12 +269,10 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         {
             Assert.True(current());
             var scan = Interlocked.Increment(ref scans);
-            var process = inventory.SeedProcess(100, scan * 1000L, "inventory");
-            Assert.NotNull(process);
-            Assert.True(process.SeedThread(10)); Assert.True(process.SeedThread(11));
+            Assert.True(inventory.SeedProcess(100, scan * 1000L, "inventory", [10, 11]));
             if (scan == 1) first.TrySetResult(inventory); else reseeded.TrySetResult();
         });
-        capture.EnsureStarted(); capture.BeginWindow();
+        capture.EnsureStarted(); capture.BeginWindow(TimeSpan.FromSeconds(1));
         var oldInventory = await first.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var generation = broker.Resource.Generation;
         var end = NativeCpuReaderTestFeed.ClosedWindow(capture, [0, 1], 1000, firstTid: 10, seedIdentities: false);
@@ -302,7 +282,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         Assert.True(capture.Collect()); Assert.Null(capture.Read());
         Assert.Equal("Warming", capture.State);
         await reseeded.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Null(oldInventory.SeedProcess(999, 9999, "stale"));
+        Assert.False(oldInventory.SeedProcess(999, 9999, "stale", []));
         NativeCpuReaderTestFeed.ClosedWindow(capture, [0, 1], 1000, birth: 2000, firstTid: 10,
             previousEnd: end, seedIdentities: false);
         Assert.True(capture.Collect());
@@ -318,7 +298,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     public void StopOrPausePreservesPublishedWindowAndRejectsAnAlreadyCollectedWindow(bool pause)
     {
         using var broker = new Broker(); using var capture = Capture(broker);
-        capture.EnsureStarted(); capture.BeginWindow();
+        capture.EnsureStarted(); capture.BeginWindow(TimeSpan.FromSeconds(1));
         NativeCpuReaderTestFeed.ClosedWindow(capture, [0, 1], 1000, firstTid: 10);
         Assert.True(capture.Collect());
         Assert.NotNull(capture.Read());
@@ -336,9 +316,9 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         Assert.Same(published, capture.Read());
         Assert.Equal(pause, capture.HasSessionLease);
         Assert.Equal(pause ? 1 : 2, broker.Releases);
-        if (pause) capture.BeginWindow();
+        if (pause) capture.BeginWindow(TimeSpan.FromSeconds(1));
         capture.EnsureStarted();
-        capture.BeginWindow();
+        capture.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.Equal(pause ? 3 : 4, broker.Acquires);
         Assert.Same(published, capture.Read());
         Assert.True(capture.Collect()); // restarted capture is warming, with no old closed window
@@ -399,12 +379,12 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     public void HostedCurrentOnlyOwnerRejectsStandaloneCpuCaptureAndDisposedOwnerRejectsEntry()
     {
         using var hosted = new WindowsProcessFieldOwner(new ProcessFieldCurrentState());
-        Assert.Throws<InvalidOperationException>(hosted.StartCpuResidencyCapture);
+        Assert.Throws<InvalidOperationException>(() => hosted.StartCpuResidencyCapture());
         Assert.Throws<InvalidOperationException>(hosted.StopCpuResidencyCapture);
         using var broker = new Broker();
         var owner = Owner(broker);
         owner.Dispose();
-        Assert.Throws<ObjectDisposedException>(owner.StartCpuResidencyCapture);
+        Assert.Throws<ObjectDisposedException>(() => owner.StartCpuResidencyCapture());
         Assert.Throws<ObjectDisposedException>(owner.StopCpuResidencyCapture);
         Assert.Equal(0, broker.Acquires);
     }
@@ -511,11 +491,6 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         public bool TryReadCreationFileTime(out ulong created)
         { created = index < births.Length ? births[index++] : 0; return created != 0; }
         public void Dispose() { }
-    }
-    private sealed class InventoryLease : IDisposable
-    {
-        public bool Disposed { get; private set; }
-        public void Dispose() => Disposed = true;
     }
     private sealed class Permit(bool active = true) : IMetricPublicationPermit
     {

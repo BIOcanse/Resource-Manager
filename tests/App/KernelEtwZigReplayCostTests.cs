@@ -217,7 +217,7 @@ public sealed class KernelEtwZigReplayCostTests
             + $"cpuNsPerRawEvent={run.CpuNanosecondsPerRawEvent:F1}; "
             + $"recordedRate={run.RecordsPerCaptureSecond:F0}/s; "
             + $"cpuAtRecordedRate={run.CpuPercentAtRecordedRate:F3}% of one core; "
-            + $"ownerRetainedBucketBytes={run.Owner.RetainedBucketBytes}; ownerMaximumBucketBytes={run.Owner.MaximumBucketBytes}; "
+            + $"ownerWindowStorageBytes={run.Owner.WindowStorageBytes}; ownerMaximumWindowStorageBytes={run.Owner.MaximumWindowStorageBytes}; "
             + $"activePairs={run.Owner.ActivePairCount}; processes={run.Owner.CurrentProcessCount}; "
             + $"threads={run.Owner.CurrentThreadCount}; stop={run.StopReason}.");
     }
@@ -246,8 +246,8 @@ public sealed class KernelEtwZigReplayCostTests
             + $"threadCpuMs={run.ThreadCpuMilliseconds:F3}; wallMs={run.WallMilliseconds:F3}; "
             + $"cpuNsPerRawEvent={run.CpuNanosecondsPerRawEvent:F1}; recordedRate={run.RecordsPerCaptureSecond:F0}/s; "
             + $"cpuAtRecordedRate={run.CpuPercentAtRecordedRate:F3}% of one core; "
-            + $"residencyRetainedBucketBytes={run.Residency.RetainedBucketBytes}; "
-            + $"residencyMaximumBucketBytes={run.Residency.MaximumBucketBytes}; "
+            + $"residencyWindowStorageBytes={run.Residency.WindowStorageBytes}; "
+            + $"residencyMaximumWindowStorageBytes={run.Residency.MaximumWindowStorageBytes}; "
             + "interruptOwnerBytes=not-exposed-by-managed-owner; publication=excluded; "
             + $"eventTickOriginQpc={run.SessionStartQpc}; stop={run.StopReason}.");
     }
@@ -277,7 +277,7 @@ public sealed class KernelEtwZigReplayCostTests
             // TraceEvent initializes sessionStartTimeQPC during processing.
             // An independent raw pass defines this origin before dispatch.
             var sessionStartQpc = metadata.SessionStartQpc;
-            var residency = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, 50);
+            var residency = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, ProcessorIds(metadata));
             if (metadata.InitialEventsLost != 0) residency.ResetAfterEventLoss();
             var interrupts = new ManagedInterruptOwner(1000, metadata.InitialEventsLost);
             var parser = new KernelTraceEventParser(source);
@@ -381,8 +381,8 @@ public sealed class KernelEtwZigReplayCostTests
             var residencyConfiguration = new ResidencyConfiguration
             {
                 Size = (uint)Marshal.SizeOf<ResidencyConfiguration>(), Version = 0x10000,
-                Frequency = metadata.QpcFrequency, WindowMilliseconds = 5000, BucketMilliseconds = 50,
-                MaximumPairs = 65536, MaximumCells = 2_000_000, MaximumProcesses = 32768,
+                Frequency = metadata.QpcFrequency, WindowMilliseconds = 5000,
+                MaximumPairs = 65536, MaximumProcesses = 32768,
                 MaximumThreads = 131072, MaximumProcessors = 4096, MaximumNameBytes = 8 * 1024 * 1024,
                 ByteCap = 256UL * 1024 * 1024
             };
@@ -393,7 +393,14 @@ public sealed class KernelEtwZigReplayCostTests
                 MaximumSlices = 128, MaximumSliceDrivers = 65536, ByteCap = 64UL * 1024 * 1024,
                 Generation = 7, StartedTick = 1000, EventsLost = metadata.InitialEventsLost
             };
-            Assert.Equal(0, CreateResidency(ref residencyConfiguration, out var residencyOwner));
+            nint residencyOwner;
+            // The owner copies the expected processors at create; the pin only spans the call.
+            fixed (int* processors = ProcessorIds(metadata))
+            {
+                residencyConfiguration.ProcessorCount = metadata.ProcessorCount;
+                residencyConfiguration.Processors = (nint)processors;
+                Assert.Equal(0, CreateResidency(ref residencyConfiguration, out residencyOwner));
+            }
             Assert.NotEqual(nint.Zero, residencyOwner);
             nint interruptOwner = 0;
             nint trace = 0;
@@ -445,7 +452,7 @@ public sealed class KernelEtwZigReplayCostTests
             using var source = new ETWTraceEventSource(path);
             var frequency = ReadQpcFrequency(source);
             Assert.Equal(metadata.QpcFrequency, frequency);
-            var buffer = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, 50);
+            var buffer = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, ProcessorIds(metadata));
             if (metadata.InitialEventsLost != 0) buffer.ResetAfterEventLoss();
 
             var parser = new KernelTraceEventParser(source);
@@ -506,12 +513,18 @@ public sealed class KernelEtwZigReplayCostTests
             var configuration = new ResidencyConfiguration
             {
                 Size = (uint)Marshal.SizeOf<ResidencyConfiguration>(), Version = 0x10000,
-                Frequency = metadata.QpcFrequency, WindowMilliseconds = 5000, BucketMilliseconds = 50,
-                MaximumPairs = 65536, MaximumCells = 2_000_000, MaximumProcesses = 32768,
+                Frequency = metadata.QpcFrequency, WindowMilliseconds = 5000,
+                MaximumPairs = 65536, MaximumProcesses = 32768,
                 MaximumThreads = 131072, MaximumProcessors = 4096, MaximumNameBytes = 8 * 1024 * 1024,
                 ByteCap = 256UL * 1024 * 1024
             };
-            Assert.Equal(0, CreateResidency(ref configuration, out var ownerHandle));
+            nint ownerHandle;
+            fixed (int* processors = ProcessorIds(metadata))
+            {
+                configuration.ProcessorCount = metadata.ProcessorCount;
+                configuration.Processors = (nint)processors;
+                Assert.Equal(0, CreateResidency(ref configuration, out ownerHandle));
+            }
             Assert.NotEqual(nint.Zero, ownerHandle);
             nint traceHandle = 0;
             try
@@ -631,6 +644,10 @@ public sealed class KernelEtwZigReplayCostTests
             if ((mask & (1u << index)) != 0) names.Add(FamilyNames[index]);
         return names.Count == 0 ? "none" : string.Join(",", names);
     }
+
+    // The trace's logical processors 0..count-1 are the residency capture's expected set.
+    private static int[] ProcessorIds(InputMetadata metadata)
+        => Enumerable.Range(0, checked((int)metadata.ProcessorCount)).ToArray();
 
     private static InputMetadata ReadInputMetadata(string path)
     {
@@ -1031,9 +1048,11 @@ public sealed class KernelEtwZigReplayCostTests
     {
         public uint Size, Version;
         public long Frequency;
-        public uint WindowMilliseconds, BucketMilliseconds, MaximumPairs, MaximumCells,
+        public uint WindowMilliseconds, MaximumPairs,
             MaximumProcesses, MaximumThreads, MaximumProcessors, MaximumNameBytes;
         public ulong ByteCap;
+        public uint ProcessorCount, Reserved;
+        public nint Processors;
     }
 
     [StructLayout(LayoutKind.Sequential)]

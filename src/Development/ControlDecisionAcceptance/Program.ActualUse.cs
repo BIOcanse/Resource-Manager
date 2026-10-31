@@ -310,7 +310,7 @@ internal static partial class Program
                     var subscribedAt = DateTimeOffset.UtcNow;
                     residencyLease = residency.AcquireSubscription("actual-use:30s", residencyInterval);
                     var publications = new List<object>();
-                    var idleBucketSamples = new List<(DateTimeOffset At, long RetainedBucketBytes, int ActivePairCount)>();
+                    var idleWindowSamples = new List<(DateTimeOffset At, long WindowStorageBytes, int ActivePairCount)>();
                     var lastRevision = residency.CanonicalRevision;
                     try
                     {
@@ -346,8 +346,8 @@ internal static partial class Program
                             // Aggregation is internal to the independent capture library.
                             var aggregation = diagnostics.GetType().GetProperty("Aggregation")!.GetValue(diagnostics)
                                 ?? throw new InvalidDataException("Idle residency lost its run identity buffer.");
-                            idleBucketSamples.Add((DateTimeOffset.UtcNow,
-                                (long)aggregation.GetType().GetProperty("RetainedBucketBytes")!.GetValue(aggregation)!,
+                            idleWindowSamples.Add((DateTimeOffset.UtcNow,
+                                (long)aggregation.GetType().GetProperty("WindowStorageBytes")!.GetValue(aggregation)!,
                                 (int)aggregation.GetType().GetProperty("ActivePairCount")!.GetValue(aggregation)!));
                         }
                         if (windows.Count >= 3 && active && idle && diagnostics.State == "Idle") break;
@@ -356,15 +356,15 @@ internal static partial class Program
                     // anchored, so steady spacing is held to the interval within that grace on both sides.
                     var cadenceToleranceMilliseconds = residencyGrace.TotalMilliseconds;
                     await SaveAsync(evidence, "b-publications.json", new { windows, active, idle,
-                        idleBucketSamples = idleBucketSamples.Select(value => new { value.At, value.RetainedBucketBytes, value.ActivePairCount }).ToArray(),
+                        idleWindowSamples = idleWindowSamples.Select(value => new { value.At, value.WindowStorageBytes, value.ActivePairCount }).ToArray(),
                         requestedIntervalMilliseconds = 30000, cadenceToleranceMilliseconds,
                         coldStartBudget = residencyColdBudget, steadyWindowBudget = residencySteadyBudget,
                         measurementBudget = residencyMeasurementBudget, observationWindow = residencyWindow, deliveryGrace = residencyGrace,
                         diagnostics = residency.GetDiagnostics(),
                         coldStart = "The first due can fail warming/continuity. One cold cadence and complete window, followed by two steady periods; no additional retry allowance." });
                     if (windows.Count < 3) throw new InvalidDataException("Did not observe cold start plus two steady-state residency windows.");
-                    if (idleBucketSamples.Any(value => value.RetainedBucketBytes != 0 || value.ActivePairCount != 0))
-                        throw new InvalidDataException("Idle residency retained pair or bucket storage.");
+                    if (idleWindowSamples.Any(value => value.WindowStorageBytes != 0 || value.ActivePairCount != 0))
+                        throw new InvalidDataException("Idle residency retained pair or window storage.");
                     if (windows[0].SessionGeneration <= 0 || windows.Any(value => value.SessionGeneration != windows[0].SessionGeneration))
                         throw new InvalidDataException("Residency keyword window updates restarted the held kernel session.");
                     for (var index = 1; index < windows.Count; index++)
@@ -372,8 +372,8 @@ internal static partial class Program
                         var previous = windows[index - 1];
                         var current = windows[index];
                         var spacing = (current.MeasuredThrough - previous.MeasuredThrough).TotalMilliseconds;
-                        if (!idleBucketSamples.Any(value => value.At > previous.MeasuredThrough && value.At < current.MeasuredFrom))
-                            throw new InvalidDataException("No zero-bucket idle evidence between residency windows.");
+                        if (!idleWindowSamples.Any(value => value.At > previous.MeasuredThrough && value.At < current.MeasuredFrom))
+                            throw new InvalidDataException("No zero-storage idle evidence between residency windows.");
                         bool Active(ResidencyWindowEvidence window) => samples.Any(value => value.Phase == "b-residency"
                             && value.WindowActive && value.At >= window.MeasuredFrom && value.At <= window.MeasuredThrough
                             && (value.Native.Flags & (uint)KernelTraceEventParser.Keywords.ContextSwitch) != 0);

@@ -24,8 +24,8 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(continuous, 30000, 0, 100, 10, 100, 10);
         Switch(windowed, 30000, 0, 100, 10, 100, 10);
 
-        var expected = continuous.Snapshot([0]);
-        var actual = windowed.Snapshot([0]);
+        var expected = continuous.Snapshot();
+        var actual = windowed.Snapshot();
         Assert.True(expected.IsComplete);
         Assert.Equal(5000, Assert.Single(expected.Records).ExecutionTimeQpc);
         Assert.False(actual.IsComplete);
@@ -34,7 +34,7 @@ public sealed class CpuResidencyAggregationBufferTests
         // The first observed switch establishes continuity, rather than closing
         // the interval that was already running when capture opened.
         Switch(windowed, firstBoundary + 5000, 0, 100, 10, 0, 0);
-        var later = windowed.Snapshot([0]);
+        var later = windowed.Snapshot();
         Assert.True(later.IsComplete);
         Assert.NotEmpty(later.Records);
         Assert.Equal(firstBoundary, later.WindowStartQpc);
@@ -50,7 +50,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 600, 0, -1, 999, 100, 10);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
 
-        var snapshot = buffer.Snapshot([0]);
+        var snapshot = buffer.Snapshot();
         Assert.True(snapshot.IsComplete);
         var known = Assert.Single(snapshot.Records);
         Assert.Equal(100, known.ProcessId);
@@ -68,7 +68,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 900, 0, 100, 10, 200, 20);
         Switch(buffer, 1000, 0, 200, 20, 0, 0);
 
-        var snapshot = buffer.Snapshot([0]);
+        var snapshot = buffer.Snapshot();
         Assert.True(snapshot.IsComplete);
         Assert.Equal(900, Assert.Single(snapshot.Records, row => row.ProcessId == 100).ExecutionTimeQpc);
         Assert.Equal(100, Assert.Single(snapshot.Records, row => row.ProcessId == 200).ExecutionTimeQpc);
@@ -84,7 +84,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 0, 0, 0, 0, 100, 10);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
 
-        var row = Assert.Single(buffer.Snapshot([0]).Records);
+        var row = Assert.Single(buffer.Snapshot().Records);
         Assert.Equal(1000, row.ExecutionTimeQpc);
         Assert.Equal(100, row.ProcessId);
     }
@@ -100,7 +100,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 600, 0, -1, 0, 100, 10);
         Switch(buffer, 1000, 0, 100, 10, -1, 0);
 
-        var snapshot = buffer.Snapshot([0]);
+        var snapshot = buffer.Snapshot();
         Assert.True(snapshot.IsComplete);
         var row = Assert.Single(snapshot.Records);
         Assert.Equal(800, row.ExecutionTimeQpc);
@@ -114,8 +114,8 @@ public sealed class CpuResidencyAggregationBufferTests
         StartProcess(buffer, 0, 100, 1000, "Game", 10);
         Switch(buffer, 0, 0, 0, 0, 100, 10, DateTimeOffset.UnixEpoch.AddDays(10));
 
-        var first = buffer.Snapshot([0]);
-        var second = buffer.Snapshot([0]);
+        var first = buffer.Snapshot();
+        var second = buffer.Snapshot();
 
         Assert.False(first.IsComplete);
         Assert.Empty(first.Records);
@@ -123,16 +123,17 @@ public sealed class CpuResidencyAggregationBufferTests
     }
 
     [Fact]
-    public void SlidingWindowReusesBucketsAcrossWrapAndResetWhileSnapshotsStayIndependent()
+    public void ContinuousWindowReusesRingCellsAcrossWrapAndBeginWhileSnapshotsStayIndependent()
     {
         const int maximumActivePairs = 64;
         const int firstWarmThroughQpc = 256;
         const int measuredIterations = 2048;
         var buffer = CreateBuffer(windowMilliseconds: 8, maximumActivePairs: maximumActivePairs);
+        // n = 8 slots of 1 QPC each; the ring of 18 cells wraps many times.
+        buffer.BeginWindow(0, 8);
         StartProcess(buffer, 0, 100, 1000, "A", 10);
         StartProcess(buffer, 0, 200, 2000, "B", 20);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
-        int[] expectedProcessors = [0];
         CpuResidencyAggregationSnapshot? first = null;
         CpuResidencyAggregationSnapshot? last = null;
 
@@ -145,7 +146,7 @@ public sealed class CpuResidencyAggregationBufferTests
             Switch(buffer, qpc, 0, oldProcessId, oldThreadId, newProcessId, newThreadId);
             if (qpc >= 8)
             {
-                last = buffer.Snapshot(expectedProcessors);
+                last = buffer.Snapshot();
                 if (qpc == 8)
                 {
                     first = last;
@@ -162,7 +163,7 @@ public sealed class CpuResidencyAggregationBufferTests
             var newProcessId = qpc % 2 == 1 ? 200 : 100;
             var newThreadId = qpc % 2 == 1 ? 20 : 10;
             Switch(buffer, qpc, 0, oldProcessId, oldThreadId, newProcessId, newThreadId);
-            last = buffer.Snapshot(expectedProcessors);
+            last = buffer.Snapshot();
         }
 
         var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -180,8 +181,13 @@ public sealed class CpuResidencyAggregationBufferTests
         Assert.NotSame(first.Records, last.Records);
         Assert.Equal(8, first.Records.Sum(static record => record.ExecutionTimeQpc));
 
-        buffer.ResetContinuity();
+        Assert.Equal(firstWarmThroughQpc + measuredIterations - 8, last.WindowStartQpc);
+        Assert.Equal(firstWarmThroughQpc + measuredIterations, last.MeasuredThroughQpc);
+
+        // A re-issued begin (same n) restarts above the latest event and releases every ring.
+        buffer.BeginWindow(0, 8);
         Assert.Equal(0, buffer.GetDiagnostics().ActivePairCount);
+        Assert.Equal(0, buffer.GetDiagnostics().WindowStorageBytes);
         Switch(buffer, firstWarmThroughQpc + measuredIterations, 0, 0, 0, 100, 10);
         for (var qpc = firstWarmThroughQpc + measuredIterations + 1;
             qpc <= firstWarmThroughQpc + measuredIterations + 8;
@@ -194,7 +200,7 @@ public sealed class CpuResidencyAggregationBufferTests
             Switch(buffer, qpc, 0, oldProcessId, oldThreadId, newProcessId, newThreadId);
         }
 
-        var afterReset = buffer.Snapshot(expectedProcessors);
+        var afterReset = buffer.Snapshot();
         Assert.True(afterReset.IsComplete);
         Assert.Equal(8, afterReset.Records.Sum(static record => record.ExecutionTimeQpc));
         Assert.Equal(8, first.Records.Sum(static record => record.ExecutionTimeQpc));
@@ -223,7 +229,7 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void SnapshotUsesTheLatestClosedBoundarySharedByEveryProcessor()
     {
-        var buffer = CreateBuffer(windowMilliseconds: 500);
+        var buffer = CreateBuffer(windowMilliseconds: 500, processors: [0, 1]);
         StartProcess(buffer, 0, 100, 1000, "Game", 10);
         StartProcess(buffer, 0, 200, 2000, "Worker", 20);
 
@@ -232,7 +238,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 500, 1, 200, 20, 0, 0);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
 
-        var snapshot = buffer.Snapshot([0, 1]);
+        var snapshot = buffer.Snapshot();
         Assert.True(snapshot.IsComplete);
         Assert.Equal(500, snapshot.MeasuredThroughQpc);
         Assert.Equal(500, Assert.Single(snapshot.Records, row => row.ProcessId == 100).ExecutionTimeQpc);
@@ -242,8 +248,8 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void ThirtyTwoProcessorsProduceOneExactFiveSecondWindow()
     {
-        var buffer = CreateBuffer(windowMilliseconds: 5000, maximumActivePairs: 64);
         var logicalProcessors = Enumerable.Range(0, 32).ToArray();
+        var buffer = CreateBuffer(windowMilliseconds: 5000, maximumActivePairs: 64, processors: logicalProcessors);
 
         foreach (var logicalProcessorId in logicalProcessors)
         {
@@ -276,7 +282,7 @@ public sealed class CpuResidencyAggregationBufferTests
                 0);
         }
 
-        var snapshot = buffer.Snapshot(logicalProcessors);
+        var snapshot = buffer.Snapshot();
         Assert.True(snapshot.IsComplete);
         Assert.Equal(0, snapshot.WindowStartQpc);
         Assert.Equal(5000, snapshot.MeasuredThroughQpc);
@@ -292,20 +298,22 @@ public sealed class CpuResidencyAggregationBufferTests
     public void ClosedSliceIsClippedAtBothWindowEdges()
     {
         var buffer = CreateBuffer(windowMilliseconds: 5000);
+        // Continuous: five 1,000-QPC slots, read as the last five complete slots.
+        buffer.BeginWindow(0, 5);
         StartProcess(buffer, 0, 100, 1000, "Game", 10);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
         Switch(buffer, 10_000, 0, 100, 10, 0, 0);
 
-        var first = buffer.Snapshot([0]);
+        var first = buffer.Snapshot();
         Assert.True(first.IsComplete);
         Assert.Equal(5000, Assert.Single(first.Records).ExecutionTimeQpc);
 
         Switch(buffer, 12_000, 0, 0, 0, 0, 0);
-        var second = buffer.Snapshot([0]);
+        var second = buffer.Snapshot();
         Assert.Equal(3000, Assert.Single(second.Records).ExecutionTimeQpc);
 
         Switch(buffer, 15_000, 0, 0, 0, 0, 0);
-        Assert.Empty(buffer.Snapshot([0]).Records);
+        Assert.Empty(buffer.Snapshot().Records);
     }
 
     [Fact]
@@ -322,8 +330,8 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(delayed, 1000, 0, 100, 10, 0, 0, DateTimeOffset.UnixEpoch.AddDays(30));
 
         Assert.Equal(
-            Assert.Single(baseline.Snapshot([0]).Records).ExecutionTimeQpc,
-            Assert.Single(delayed.Snapshot([0]).Records).ExecutionTimeQpc);
+            Assert.Single(baseline.Snapshot().Records).ExecutionTimeQpc,
+            Assert.Single(delayed.Snapshot().Records).ExecutionTimeQpc);
     }
 
     [Fact]
@@ -335,7 +343,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 0, 0, 0, 0, -1, 10);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
 
-        var row = Assert.Single(buffer.Snapshot([0]).Records);
+        var row = Assert.Single(buffer.Snapshot().Records);
         Assert.Equal(100, row.ProcessId);
         Assert.Equal(10, row.ThreadId);
         Assert.Equal(1000, row.ExecutionTimeQpc);
@@ -350,7 +358,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 0, 0, 0, 0, -1, 10);
         Switch(buffer, 1000, 0, -1, 10, 0, 0);
 
-        var row = Assert.Single(buffer.Snapshot([0]).Records);
+        var row = Assert.Single(buffer.Snapshot().Records);
         Assert.Equal(100, row.ProcessId);
         Assert.Equal(10, row.ThreadId);
         Assert.Equal(1000, row.ExecutionTimeQpc);
@@ -366,17 +374,18 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 400, 0, 100, 10, -1, 999);
         Switch(buffer, 600, 0, -1, 999, 100, 10);
 
-        var interrupted = buffer.Snapshot([0]);
+        var interrupted = buffer.Snapshot();
         Assert.False(interrupted.IsComplete);
         Assert.Empty(interrupted.Records);
 
         Switch(buffer, 1600, 0, 100, 10, 0, 0);
 
-        var recovered = buffer.Snapshot([0]);
+        var recovered = buffer.Snapshot();
         Assert.True(recovered.IsComplete);
         var row = Assert.Single(recovered.Records);
         Assert.Equal(100, row.ProcessId);
-        Assert.Equal(1000, row.ExecutionTimeQpc);
+        // Finite [0, 1000): 400 before and 400 after the unattributed 200.
+        Assert.Equal(800, row.ExecutionTimeQpc);
     }
 
     [Fact]
@@ -388,13 +397,13 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 0, 0, 0, 0, 100, 10);
 
         Switch(buffer, 1000, 0, 200, 20, 200, 20);
-        var interrupted = buffer.Snapshot([0]);
+        var interrupted = buffer.Snapshot();
         Assert.False(interrupted.IsComplete);
         Assert.Empty(interrupted.Records);
 
         Switch(buffer, 2000, 0, 200, 20, 0, 0);
 
-        var recovered = buffer.Snapshot([0]);
+        var recovered = buffer.Snapshot();
         Assert.True(recovered.IsComplete);
         Assert.Equal(1000, Assert.Single(recovered.Records).ExecutionTimeQpc);
     }
@@ -406,12 +415,12 @@ public sealed class CpuResidencyAggregationBufferTests
         StartProcess(buffer, 0, 100, 1000, "Old", 10);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
-        Assert.NotEmpty(buffer.Snapshot([0]).Records);
+        Assert.NotEmpty(buffer.Snapshot().Records);
 
-        buffer.ResetContinuity();
+        buffer.BeginWindow(0, 0);
 
-        Assert.False(buffer.Snapshot([0]).IsComplete);
-        Assert.Empty(buffer.Snapshot([0]).Records);
+        Assert.False(buffer.Snapshot().IsComplete);
+        Assert.Empty(buffer.Snapshot().Records);
     }
 
     [Fact]
@@ -421,13 +430,13 @@ public sealed class CpuResidencyAggregationBufferTests
         StartProcess(buffer, 0, 100, 1000, "Old", 10, uniqueProcessKey: 11);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
-        var old = Assert.Single(buffer.Snapshot([0]).Records);
+        var old = Assert.Single(buffer.Snapshot().Records);
         var inventory = buffer.CaptureInventorySeed();
         var process = Assert.IsType<OracleCpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
 
         buffer.ResetAfterEventLoss();
 
-        Assert.False(buffer.Snapshot([0]).IsComplete);
+        Assert.False(buffer.Snapshot().IsComplete);
         Assert.Null(inventory.SeedProcess(999, 9999, "Stale"));
         process.SeedThread(77);
         Assert.Equal(0, buffer.GetDiagnostics().CurrentProcessCount);
@@ -438,7 +447,7 @@ public sealed class CpuResidencyAggregationBufferTests
         replacement.SeedThread(10);
         Switch(buffer, 1000, 0, 0, 0, 100, 10);
         Switch(buffer, 2000, 0, 100, 10, 0, 0);
-        var recovered = buffer.Snapshot([0]);
+        var recovered = buffer.Snapshot();
         Assert.True(recovered.IsComplete);
         var current = Assert.Single(recovered.Records);
         Assert.Equal(2000L, current.ProcessStartKey);
@@ -460,12 +469,14 @@ public sealed class CpuResidencyAggregationBufferTests
         Assert.Null(inventory.SeedProcess(100, 1000, "Stale"));
         Switch(buffer, 0, 0, 0, 0, 100, 30);
         Switch(buffer, 1000, 0, 100, 30, 0, 0);
-        Assert.Empty(buffer.Snapshot([0]).Records);
+        Assert.Empty(buffer.Snapshot().Records);
         Assert.Equal(1, buffer.GetDiagnostics().CurrentThreadCount);
 
+        // The finite window [0, 1000) is complete; the reused PID's thread runs in the next window.
+        buffer.BeginWindow(0, 0);
         Switch(buffer, 1000, 0, 0, 0, 100, 20);
         Switch(buffer, 2000, 0, 100, 20, 0, 0);
-        var row = Assert.Single(buffer.Snapshot([0]).Records);
+        var row = Assert.Single(buffer.Snapshot().Records);
         Assert.Equal(20, row.ThreadId);
         Assert.Equal(2000L, row.ProcessStartKey);
         Assert.Equal("New", row.ProcessName);
@@ -477,12 +488,12 @@ public sealed class CpuResidencyAggregationBufferTests
         var buffer = CreateBuffer(windowMilliseconds: 1000);
         var process = Assert.IsType<OracleCpuResidencyAggregationBuffer.SeededProcess>(
             buffer.CaptureInventorySeed().SeedProcess(100, 1000, "Current"));
-        buffer.ResetContinuity();
+        buffer.BeginWindow(0, 0);
         process.SeedThread(10);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
 
-        Assert.Equal(1000, Assert.Single(buffer.Snapshot([0]).Records).ExecutionTimeQpc);
+        Assert.Equal(1000, Assert.Single(buffer.Snapshot().Records).ExecutionTimeQpc);
     }
 
     [Fact]
@@ -508,13 +519,14 @@ public sealed class CpuResidencyAggregationBufferTests
 
         Assert.Equal(0, buffer.GetDiagnostics().CurrentProcessCount);
         Assert.Equal(0, buffer.GetDiagnostics().CurrentThreadCount);
-        Assert.False(buffer.Snapshot([0]).IsComplete);
+        Assert.False(buffer.Snapshot().IsComplete);
     }
 
     [Fact]
     public void PidReuseProducesDistinctProcessInstances()
     {
-        var buffer = CreateBuffer(windowMilliseconds: 5000);
+        // The finite window [0, 8000) covers both instances' runs.
+        var buffer = CreateBuffer(windowMilliseconds: 8000);
         Switch(buffer, 0, 0, 0, 0, 0, 0);
         StartProcess(buffer, 3000, 100, 1000, "Old", 10, uniqueProcessKey: 11);
         Switch(buffer, 3000, 0, 0, 0, 100, 10);
@@ -527,7 +539,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 7000, 0, 100, 20, 0, 0);
         Switch(buffer, 8000, 0, 0, 0, 0, 0);
 
-        var rows = buffer.Snapshot([0]).Records.OrderBy(row => row.ProcessStartKey).ToArray();
+        var rows = buffer.Snapshot().Records.OrderBy(row => row.ProcessStartKey).ToArray();
         Assert.Equal(2, rows.Length);
         Assert.Equal([1000L, 2000L], rows.Select(row => row.ProcessStartKey!.Value));
         Assert.NotEqual(rows[0].ProcessInstanceId, rows[1].ProcessInstanceId);
@@ -547,7 +559,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 2000, 0, 100, 20, 0, 0);
         Switch(buffer, 3000, 0, 0, 0, 0, 0);
 
-        var rows = buffer.Snapshot([0]).Records
+        var rows = buffer.Snapshot().Records
             .OrderBy(static row => row.ProcessInstanceId)
             .ToArray();
         Assert.Equal(2, rows.Length);
@@ -565,7 +577,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 0, 0, 0, 0, 100, 10);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
 
-        var row = Assert.Single(buffer.Snapshot([0]).Records);
+        var row = Assert.Single(buffer.Snapshot().Records);
         Assert.Equal(1000, row.ProcessStartKey);
         Assert.Equal("Game Renamed", row.ProcessName);
     }
@@ -583,7 +595,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 2000, 0, 0, 0, 100, 10);
         Switch(buffer, 3000, 0, 100, 10, 0, 0);
 
-        var rows = buffer.Snapshot([0]).Records
+        var rows = buffer.Snapshot().Records
             .OrderBy(static row => row.ThreadInstanceId)
             .ToArray();
         Assert.Equal(2, rows.Length);
@@ -606,7 +618,7 @@ public sealed class CpuResidencyAggregationBufferTests
         buffer.ObserveThreadEnd(900, Time(900), 100, 10);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
 
-        var row = Assert.Single(buffer.Snapshot([0]).Records);
+        var row = Assert.Single(buffer.Snapshot().Records);
         Assert.Equal(1000, row.ExecutionTimeQpc);
         Assert.Equal(10, row.ThreadId);
     }
@@ -621,7 +633,7 @@ public sealed class CpuResidencyAggregationBufferTests
         buffer.ObserveProcessEnd(900, Time(900), 100, 11);
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
 
-        var row = Assert.Single(buffer.Snapshot([0]).Records);
+        var row = Assert.Single(buffer.Snapshot().Records);
         Assert.Equal(1000, row.ExecutionTimeQpc);
         Assert.Equal(1000, row.ProcessStartKey);
     }
@@ -636,7 +648,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 500, 0, 100, 10, 200, 20);
         Switch(buffer, 1000, 0, 200, 20, 100, 10);
 
-        var snapshot = buffer.Snapshot([0]);
+        var snapshot = buffer.Snapshot();
         Assert.False(snapshot.IsComplete);
         Assert.Empty(snapshot.Records);
     }
@@ -651,12 +663,12 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 500, 0, 100, 10, 200, 20);
         Switch(buffer, 1000, 0, 200, 20, 100, 10);
 
-        Assert.False(buffer.Snapshot([0]).IsComplete);
+        Assert.False(buffer.Snapshot().IsComplete);
         Assert.Equal(1, buffer.GetDiagnostics().CapacityResetCount);
 
         Switch(buffer, 2000, 0, 100, 10, 0, 0);
 
-        var recovered = buffer.Snapshot([0]);
+        var recovered = buffer.Snapshot();
         Assert.True(recovered.IsComplete);
         var row = Assert.Single(recovered.Records);
         Assert.Equal(100, row.ProcessId);
@@ -673,11 +685,11 @@ public sealed class CpuResidencyAggregationBufferTests
         var plan = HostManagerTestPlanFactory.CreatePlan(cpuTopology: HostManagerTestPlanFactory.CreateCpuTopology(1, 1))
             .CpuCoreResidency;
         var buffer = ReplayRecordedThreadMigration(plan.ExecutionTimeSource.MaximumActivePairs,
-            plan.ObservationWindowMilliseconds, plan.ExecutionTimeSource.BucketWidthMilliseconds);
+            plan.ObservationWindowMilliseconds);
 
         var diagnostics = buffer.GetDiagnostics();
         Assert.Equal(0, diagnostics.CapacityResetCount);
-        var aggregate = buffer.Snapshot([0, 1]);
+        var aggregate = buffer.Snapshot();
         Assert.True(aggregate.IsComplete);
         Assert.Equal(threadCount * 2, aggregate.Records.Count);
         var published = EtwCpuCoreResidencyReader.BuildProcessSnapshot(plan, 7, aggregate);
@@ -689,48 +701,58 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void FormerDefaultNamesThePairLimitForRecordedThreadMigration()
     {
-        var buffer = ReplayRecordedThreadMigration(16384, 5000, 50);
+        var buffer = ReplayRecordedThreadMigration(16384, 5000);
         var diagnostics = buffer.GetDiagnostics();
         Assert.Equal(1, diagnostics.CapacityResetCount);
-        Assert.False(buffer.Snapshot([0, 1]).IsComplete);
+        Assert.False(buffer.Snapshot().IsComplete);
         var failure = Assert.IsType<CpuResidencyCapacityResetDiagnostics>(diagnostics.LastCapacityReset);
         Assert.Equal("active-pair-limit", failure.Reason);
         Assert.Equal(16384, failure.ActivePairCount);
-        Assert.Equal(failure.MaximumBucketSlots, failure.RetainedBucketSlots);
+        Assert.Equal(16384, failure.MaximumActivePairs);
+        Assert.Equal(0L, failure.WindowStartQpc);
+        // A finite window has no ring and the pair limit needs no slot span.
+        Assert.Equal(0, failure.RingSlots);
         Assert.Equal(13165, failure.CurrentThreadCount);
-        Assert.Equal(102, failure.RequiredBucketCount);
+        Assert.Equal(0, failure.RequiredSlotSpan);
     }
 
     [Theory]
-    [InlineData(1, 1030, "bucket-resize-limit", 102, 103)]
-    [InlineData(2, 1040, "bucket-storage-limit", 103, 102)]
-    [InlineData(4, 2050, "bucket-retention-span", 102, 205)]
-    public void CapacityFailureNamesTheBucketLimitInsteadOfAnIdentityLimit(
-        int maximumPairs, int failedAt, string reason, int retainedSlots, int requiredBuckets)
+    [InlineData(0, true)]
+    [InlineData(1500, false)]
+    public void ContinuousWindowResetsOnRingSpanOnlyWhenTheRecomputedFloorStillCannotHoldTheWrite(
+        int lowerProcessorBoundary, bool resets)
     {
-        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: maximumPairs);
+        // n = 4 slots of 250 QPC, R = 10 cells. CPU 0's run [0, 2501) ends in slot 10.
+        var buffer = CreateBuffer(windowMilliseconds: 1000, processors: [0, 1]);
+        buffer.BeginWindow(0, 4);
         StartProcess(buffer, 0, 100, 1000, "A", 10);
-        StartProcess(buffer, 0, 200, 2000, "B", 20);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
-        Switch(buffer, 0, 1, 0, 0, 0, 0); // This real closed boundary pins retention.
-        if (reason == "bucket-storage-limit")
-        {
-            Switch(buffer, 1000, 0, 100, 10, 100, 10);
-            Switch(buffer, 1030, 0, 100, 10, 200, 20);
-            Switch(buffer, failedAt, 0, 200, 20, 0, 0);
-        }
-        else Switch(buffer, failedAt, 0, 100, 10, 0, 0);
+        Switch(buffer, 0, 1, 0, 0, 0, 0);
+        if (lowerProcessorBoundary > 0) Switch(buffer, lowerProcessorBoundary, 1, 0, 0, 0, 0);
+        Switch(buffer, 2501, 0, 100, 10, 0, 0);
 
         var diagnostics = buffer.GetDiagnostics();
+        Assert.Equal(10, diagnostics.RingSlots);
+        if (!resets)
+        {
+            // F = slot(1500) - 4 = 2, so slot 10 < F + R.
+            Assert.Equal(0, diagnostics.CapacityResetCount);
+            Assert.Equal(1, diagnostics.ActivePairCount);
+            return;
+        }
+
         Assert.Equal(1, diagnostics.CapacityResetCount);
+        Assert.Equal(0, diagnostics.ActivePairCount);
         var failure = Assert.IsType<CpuResidencyCapacityResetDiagnostics>(diagnostics.LastCapacityReset);
-        Assert.Equal(reason, failure.Reason);
-        Assert.Equal(failedAt, failure.EventQpc);
-        Assert.Equal(1, failure.ActivePairCount);
-        Assert.Equal(retainedSlots, failure.RetainedBucketSlots);
-        Assert.Equal(requiredBuckets, failure.RequiredBucketCount);
-        Assert.Equal(2, failure.CurrentThreadCount);
-        Assert.False(buffer.Snapshot([0, 1]).IsComplete);
+        Assert.Equal("ring-span", failure.Reason);
+        Assert.Equal(2501, failure.EventQpc);
+        Assert.Equal(0L, failure.WindowStartQpc);
+        Assert.Equal(0, failure.ActivePairCount);
+        // CPU 1 still holds the lowest boundary 0: F stays 0 and slots 0..10 need 11 cells.
+        Assert.Equal(11, failure.RequiredSlotSpan);
+        Assert.Equal(10, failure.RingSlots);
+        Assert.Equal(1, failure.CurrentThreadCount);
+        Assert.False(buffer.Snapshot().IsComplete);
     }
 
     [Fact]
@@ -757,10 +779,10 @@ public sealed class CpuResidencyAggregationBufferTests
         Assert.Equal(1000L, failure.GetType().GetProperty("EventQpc")!.GetValue(failure));
 
         Switch(buffer, 2000, 0, 100, 10, 0, 0);
-        Assert.True(buffer.Snapshot([0]).IsComplete);
+        Assert.True(buffer.Snapshot().IsComplete);
         Assert.Equal(failure, property.GetValue(buffer.GetDiagnostics()));
-        buffer.ReleaseWindowBuckets();
-        Assert.Equal(0, buffer.GetDiagnostics().RetainedBucketBytes);
+        buffer.ReleaseWindowStorage();
+        Assert.Equal(0, buffer.GetDiagnostics().WindowStorageBytes);
         Assert.Equal(0, buffer.GetDiagnostics().ActivePairCount);
         Assert.Equal(failure, property.GetValue(buffer.GetDiagnostics()));
     }
@@ -768,15 +790,17 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void CapacityEvictsExpiredPairsBeforeRejectingAnAppend()
     {
-        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 2);
+        // One pair fits. Continuous n = 10 (100-QPC slots): when F reaches slot 2 at 1200, B's pair
+        // (last written slot 1) is dropped before A's run needs the only pair.
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 1);
+        buffer.BeginWindow(0, 10);
         StartProcess(buffer, 0, 100, 1000, "A", 10);
         StartProcess(buffer, 0, 200, 2000, "B", 20);
-        Switch(buffer, 0, 0, 0, 0, 100, 10);
-        Switch(buffer, 100, 0, 100, 10, 200, 20);
+        Switch(buffer, 0, 0, 0, 0, 200, 20);
         Switch(buffer, 200, 0, 200, 20, 100, 10);
         Switch(buffer, 1200, 0, 100, 10, 0, 0);
 
-        var snapshot = buffer.Snapshot([0]);
+        var snapshot = buffer.Snapshot();
         Assert.True(snapshot.IsComplete);
         Assert.Equal(200, snapshot.WindowStartQpc);
         var row = Assert.Single(snapshot.Records);
@@ -820,7 +844,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Assert.Equal(0, diagnostics.CurrentThreadCount);
         Assert.True(diagnostics.CapacityResetCount > 0);
 
-        buffer.ResetContinuity();
+        buffer.ReleaseWindowStorage();
         diagnostics = buffer.GetDiagnostics();
         Assert.Equal(0, diagnostics.ActivePairCount);
         Assert.Equal(0, diagnostics.RetainedProcessIdentityCount);
@@ -830,7 +854,7 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void MaximumQpcBoundaryIsNotConfusedWithAnUnsetBoundary()
     {
-        var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1, 4, 1);
+        var buffer = new OracleCpuResidencyAggregationBuffer(1000, 1, 4, [0]);
         buffer.ObserveProcessStart(
             long.MaxValue - 1,
             DateTimeOffset.UnixEpoch,
@@ -862,7 +886,7 @@ public sealed class CpuResidencyAggregationBufferTests
             null,
             0);
 
-        var snapshot = buffer.Snapshot([0]);
+        var snapshot = buffer.Snapshot();
         Assert.True(snapshot.IsComplete);
         Assert.NotNull(snapshot.MeasuredThrough);
         Assert.Equal(long.MaxValue, snapshot.MeasuredThroughQpc);
@@ -877,8 +901,223 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 1000, 0, 0, 0, 100, 10);
         Switch(buffer, 900, 0, 100, 10, 0, 0);
 
-        Assert.False(buffer.Snapshot([0]).IsComplete);
-        Assert.Empty(buffer.Snapshot([0]).Records);
+        Assert.False(buffer.Snapshot().IsComplete);
+        Assert.Empty(buffer.Snapshot().Records);
+    }
+
+    [Fact]
+    public void ExpectedProcessorSetIsValidatedAtConstruction()
+    {
+        Assert.Throws<ArgumentException>(() => new OracleCpuResidencyAggregationBuffer(1000, 1000, 8, []));
+        Assert.Throws<ArgumentException>(() => new OracleCpuResidencyAggregationBuffer(1000, 1000, 8, [0, 0]));
+        Assert.Throws<ArgumentException>(() => new OracleCpuResidencyAggregationBuffer(1000, 1000, 8, [-1]));
+        Assert.Throws<InvalidOperationException>(
+            () => new OracleCpuResidencyAggregationBuffer(1000, 1000, 8, [0, 1, 2], maximumProcessors: 2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateBuffer(1000).BeginWindow(0, 2048));
+    }
+
+    [Fact]
+    public void FiniteWindowTotalsEqualHandComputedRunsAcrossStartEndAndALateProcessor()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000, processors: [0, 1]);
+        StartProcess(buffer, 0, 100, 1000, "A", 10);
+        StartProcess(buffer, 0, 200, 2000, "B", 20);
+        buffer.ObserveThreadStart(0, Time(0), 200, 21);
+        Switch(buffer, 100, 0, 0, 0, 100, 10);
+        // A processor outside the expected set is ignored.
+        Switch(buffer, 150, 5, 0, 0, 200, 21);
+        Assert.False(buffer.Snapshot().HasBoundaries);
+        // CPU 1's first switch makes every processor known: S = 300, E = 1300.
+        Switch(buffer, 300, 1, 0, 0, 200, 20);
+        // [100, 700) spans S: 400 QPC and no switch (it started before S).
+        Switch(buffer, 700, 0, 100, 10, 200, 21);
+        // [700, 1500) spans E: 600 QPC and one switch.
+        Switch(buffer, 1500, 0, 200, 21, 0, 0);
+
+        var waiting = buffer.Snapshot();
+        Assert.False(waiting.IsComplete);
+        Assert.True(waiting.HasBoundaries);
+        Assert.Empty(waiting.Records);
+        Assert.Equal(300, waiting.WindowStartQpc);
+        Assert.Equal(300, waiting.MeasuredThroughQpc);
+        Assert.Equal(Time(300), waiting.MeasuredThrough);
+
+        // CPU 1 covers E late: [300, 2000) gives 1000 QPC and one switch (it started at S).
+        Switch(buffer, 2000, 1, 200, 20, 100, 10);
+        // A run that starts after E adds nothing and creates no pair.
+        Switch(buffer, 2100, 1, 100, 10, 0, 0);
+
+        var snapshot = buffer.Snapshot();
+        Assert.True(snapshot.IsComplete);
+        Assert.Equal(300, snapshot.WindowStartQpc);
+        Assert.Equal(1300, snapshot.MeasuredThroughQpc);
+        Assert.Equal(Time(1300), snapshot.MeasuredThrough);
+        Assert.Equal(
+            [(10, 0, 400L, 0), (20, 1, 1000L, 1), (21, 0, 600L, 1)],
+            snapshot.Records.Select(static row => (row.ThreadId, row.LogicalProcessorId, row.ExecutionTimeQpc, row.SwitchCount)));
+        Assert.Equal(3, buffer.GetDiagnostics().ActivePairCount);
+
+        // A complete finite window stops growing.
+        Switch(buffer, 3000, 0, 0, 0, 100, 10);
+        Switch(buffer, 4000, 0, 100, 10, 0, 0);
+        Assert.Equal(snapshot.Records, buffer.Snapshot().Records);
+    }
+
+    [Fact]
+    public void FiniteWindowKeepsItsTotalsWhenAProcessorThatAlreadyCoveredEDiscontinues()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000, processors: [0, 1]);
+        StartProcess(buffer, 0, 100, 1000, "A", 10);
+        StartProcess(buffer, 0, 200, 2000, "B", 20);
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        Switch(buffer, 0, 1, 0, 0, 0, 0);
+        Switch(buffer, 1200, 0, 100, 10, 0, 0);
+        var epoch = buffer.GetDiagnostics().ContinuityEpoch;
+
+        // CPU 0 already covered E = 1000, so its broken run cannot change [0, 1000).
+        Switch(buffer, 1300, 0, 200, 20, 200, 20);
+        Switch(buffer, 1400, 1, 0, 0, 0, 0);
+
+        var snapshot = buffer.Snapshot();
+        Assert.True(snapshot.IsComplete);
+        Assert.Equal(0, snapshot.WindowStartQpc);
+        Assert.Equal(1000, Assert.Single(snapshot.Records).ExecutionTimeQpc);
+        Assert.Equal(epoch, buffer.GetDiagnostics().ContinuityEpoch);
+    }
+
+    [Fact]
+    public void DiscontinuityRestartsAContinuousWindowAtTheSwitchWithoutAContinuityReset()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000);
+        buffer.BeginWindow(0, 4);
+        StartProcess(buffer, 0, 100, 1000, "A", 10);
+        StartProcess(buffer, 0, 200, 2000, "B", 20);
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        Switch(buffer, 1200, 0, 100, 10, 100, 10);
+        Assert.True(buffer.Snapshot().IsComplete);
+        var epoch = buffer.GetDiagnostics().ContinuityEpoch;
+
+        // The old thread does not match the running one: pairs are dropped and S moves to 1300.
+        Switch(buffer, 1300, 0, 200, 20, 200, 20);
+        var restarted = buffer.Snapshot();
+        Assert.False(restarted.IsComplete);
+        Assert.Equal(1300, restarted.WindowStartQpc);
+        Assert.Equal(0, buffer.GetDiagnostics().ActivePairCount);
+        Assert.Equal(epoch, buffer.GetDiagnostics().ContinuityEpoch);
+
+        Switch(buffer, 2300, 0, 200, 20, 0, 0);
+        var recovered = buffer.Snapshot();
+        Assert.True(recovered.IsComplete);
+        Assert.Equal(1300, recovered.WindowStartQpc);
+        var row = Assert.Single(recovered.Records);
+        Assert.Equal(20, row.ThreadId);
+        Assert.Equal(1000, row.ExecutionTimeQpc);
+    }
+
+    [Fact]
+    public void ConsecutiveContinuousSnapshotsSlideByOneSlot()
+    {
+        // n = 3: b(k) = floor(k * 1000 / 3) = 0, 333, 666, 1000, 1333, 1666, 2000.
+        var buffer = CreateBuffer(windowMilliseconds: 1000);
+        buffer.BeginWindow(0, 3);
+        Assert.Equal(3, buffer.SlotsPerWindow);
+        StartProcess(buffer, 0, 100, 1000, "A", 10);
+        long[] boundaries = [0, 333, 666, 1000, 1333, 1666, 2000];
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        for (var slot = 1; slot < boundaries.Length; slot++)
+        {
+            Switch(buffer, boundaries[slot], 0, 100, 10, 100, 10);
+            var snapshot = buffer.Snapshot();
+            if (slot < 3)
+            {
+                Assert.False(snapshot.IsComplete);
+                continue;
+            }
+
+            Assert.True(snapshot.IsComplete);
+            Assert.Equal(boundaries[slot - 3], snapshot.WindowStartQpc);
+            Assert.Equal(boundaries[slot], snapshot.MeasuredThroughQpc);
+            Assert.Equal(Time(boundaries[slot]), snapshot.MeasuredThrough);
+            var row = Assert.Single(snapshot.Records);
+            Assert.Equal(1000, row.ExecutionTimeQpc);
+            Assert.Equal(3, row.SwitchCount);
+        }
+    }
+
+    [Fact]
+    public void ContinuousWindowStorageStaysBoundedOverALongRunWithThreadChurn()
+    {
+        const int threads = 10_000;
+        // W = 100 QPC, n = 4 (25-QPC slots), R = 10. Each thread runs once, for 10 QPC.
+        var buffer = CreateBuffer(windowMilliseconds: 100, maximumActivePairs: 64);
+        buffer.BeginWindow(0, 4);
+        buffer.ObserveProcessStart(0, Time(0), 100, 11, 1000, "Churn");
+        buffer.ObserveThreadStart(0, Time(0), 100, 1);
+        Switch(buffer, 0, 0, 0, 0, 100, 1);
+        var peakActivePairs = 0;
+        for (var thread = 2; thread <= threads; thread++)
+        {
+            var qpc = (thread - 1) * 10L;
+            buffer.ObserveThreadStart(qpc, Time(qpc), 100, thread);
+            Switch(buffer, qpc, 0, 100, thread - 1, 100, thread);
+            buffer.ObserveThreadEnd(qpc, Time(qpc), 100, thread - 1);
+            peakActivePairs = Math.Max(peakActivePairs, buffer.GetDiagnostics().ActivePairCount);
+        }
+
+        // Pairs whose last written slot fell below F are dropped: about W + one slot of threads stay live.
+        Assert.InRange(peakActivePairs, 1, 16);
+        var diagnostics = buffer.GetDiagnostics();
+        Assert.Equal(0, diagnostics.CapacityResetCount);
+        Assert.Equal(1, diagnostics.CurrentThreadCount);
+        Assert.InRange(diagnostics.RetainedThreadIdentityCount, 1, 17);
+        // One record chunk (2,730 x 24 B) and one ring chunk (409 rings x 160 B).
+        Assert.Equal(65_520 + 409 * 160, diagnostics.WindowStorageBytes);
+        Assert.Equal(diagnostics.MaximumWindowStorageBytes, diagnostics.WindowStorageBytes);
+
+        // The last switch at 99,990 is in slot 3999: the window is [99,875, 99,975), fully attributed.
+        var snapshot = buffer.Snapshot();
+        Assert.True(snapshot.IsComplete);
+        Assert.Equal(99_875, snapshot.WindowStartQpc);
+        Assert.Equal(99_975, snapshot.MeasuredThroughQpc);
+        Assert.Equal(100, snapshot.Records.Sum(static row => row.ExecutionTimeQpc));
+        Assert.Equal(10, snapshot.Records.Sum(static row => row.SwitchCount));
+    }
+
+    [Fact]
+    public void WindowStorageIsZeroAfterRelease()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 8);
+        StartProcess(buffer, 0, 100, 1000, "A", 10);
+        Assert.Equal(0, buffer.GetDiagnostics().WindowStorageBytes);
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        Switch(buffer, 1000, 0, 100, 10, 0, 0);
+        var finite = buffer.GetDiagnostics();
+        // One 2,730-record chunk of 24 B records; a finite window has no ring.
+        Assert.Equal(0, finite.SlotsPerWindow);
+        Assert.Equal(0, finite.RingSlots);
+        Assert.Equal(65_520, finite.WindowStorageBytes);
+        Assert.Equal(65_520, finite.MaximumWindowStorageBytes);
+
+        buffer.ReleaseWindowStorage();
+        Assert.Equal(0, buffer.GetDiagnostics().WindowStorageBytes);
+        Assert.Equal(0, buffer.GetDiagnostics().ActivePairCount);
+        Assert.False(buffer.Snapshot().IsComplete);
+
+        buffer.BeginWindow(0, 4);
+        Switch(buffer, 1000, 0, 0, 0, 100, 10);
+        Switch(buffer, 2000, 0, 100, 10, 0, 0);
+        var continuous = buffer.GetDiagnostics();
+        Assert.Equal(4, continuous.SlotsPerWindow);
+        Assert.Equal(10, continuous.RingSlots);
+        // Plus one chunk of floor(65,536 / 160) = 409 rings of ten 16 B cells.
+        Assert.Equal(65_520 + 409 * 160, continuous.WindowStorageBytes);
+        Assert.True(buffer.Snapshot().IsComplete);
+
+        buffer.ReleaseWindowStorage();
+        Assert.Equal(0, buffer.GetDiagnostics().WindowStorageBytes);
+        buffer.Clear();
+        Assert.Equal(0, buffer.GetDiagnostics().WindowStorageBytes);
+        Assert.Equal(0, buffer.GetDiagnostics().SlotsPerWindow);
     }
 
     [Fact]
@@ -890,7 +1129,7 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 1000, 0, 100, 10, 0, 0);
 
         var snapshots = new CpuResidencyAggregationSnapshot[64];
-        Parallel.For(0, snapshots.Length, index => snapshots[index] = buffer.Snapshot([0]));
+        Parallel.For(0, snapshots.Length, index => snapshots[index] = buffer.Snapshot());
 
         Assert.All(snapshots, snapshot =>
         {
@@ -904,6 +1143,8 @@ public sealed class CpuResidencyAggregationBufferTests
     {
         const int switchCount = 50_000;
         var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 4096);
+        // Continuous n = 4: every complete snapshot is the last 1,000 QPC.
+        buffer.BeginWindow(0, 4);
         StartProcess(buffer, 0, 100, 1000, "A", 10, uniqueProcessKey: 11);
         StartProcess(buffer, 0, 200, 2000, "B", 20, uniqueProcessKey: 22);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
@@ -954,7 +1195,7 @@ public sealed class CpuResidencyAggregationBufferTests
                 while (!writer.IsCompleted)
                 {
                     stop.Token.ThrowIfCancellationRequested();
-                    var snapshot = buffer.Snapshot([0]);
+                    var snapshot = buffer.Snapshot();
                     if (!snapshot.IsComplete)
                     {
                         continue;
@@ -987,18 +1228,18 @@ public sealed class CpuResidencyAggregationBufferTests
         }
 
         Assert.True(Volatile.Read(ref completeSnapshotCount) > 0);
-        var final = buffer.Snapshot([0]);
+        var final = buffer.Snapshot();
         Assert.True(final.IsComplete);
         Assert.Equal(1000, final.Records.Sum(static row => row.ExecutionTimeQpc));
         Assert.Equal(0, buffer.GetDiagnostics().CapacityResetCount);
     }
 
     private static OracleCpuResidencyAggregationBuffer ReplayRecordedThreadMigration(
-        int maximumPairs, int windowMilliseconds, int bucketWidthMilliseconds)
+        int maximumPairs, int windowMilliseconds)
     {
         const int threadCount = 13165;
         const long frequency = 10000;
-        var buffer = new OracleCpuResidencyAggregationBuffer(frequency, windowMilliseconds, maximumPairs, bucketWidthMilliseconds);
+        var buffer = new OracleCpuResidencyAggregationBuffer(frequency, windowMilliseconds, maximumPairs, [0, 1]);
         buffer.ObserveProcessStart(0, DateTimeOffset.UnixEpoch, 100, 11, 1000, "recorded-two-cpu-migration");
         for (var thread = 1; thread <= threadCount; thread++)
             buffer.ObserveThreadStart(0, DateTimeOffset.UnixEpoch, 100, thread);
@@ -1021,10 +1262,12 @@ public sealed class CpuResidencyAggregationBufferTests
         return buffer;
     }
 
+    // A fresh buffer begins a finite window at floor 0; the expected processor set defaults to [0].
     private static OracleCpuResidencyAggregationBuffer CreateBuffer(
         int windowMilliseconds,
-        int maximumActivePairs = 1024)
-        => new(1000, windowMilliseconds, maximumActivePairs, Math.Max(1, (windowMilliseconds + 99) / 100));
+        int maximumActivePairs = 1024,
+        int[]? processors = null)
+        => new(1000, windowMilliseconds, maximumActivePairs, processors ?? [0]);
 
     private static void StartProcess(
         OracleCpuResidencyAggregationBuffer buffer,

@@ -19,7 +19,7 @@ pub const Session = struct {
     external_region_bytes: usize = 0,
 
     pub fn create(backing: std.mem.Allocator, config: *const p.Config) !*Session {
-        if (config.size != @sizeOf(p.Config) or config.version != p.abi_version or config.byte_cap < @sizeOf(Session)) return error.InvalidConfig;
+        if (config.size != @sizeOf(p.Config) or config.version != p.abi_version or config.reserved != 0 or config.byte_cap < @sizeOf(Session)) return error.InvalidConfig;
         const self = try backing.create(Session);
         errdefer backing.destroy(self);
         self.* = .{
@@ -30,13 +30,12 @@ pub const Session = struct {
         self.residency = try r.Owner.init(self.budget.allocator(), .{
             .qpc_frequency = config.qpc_frequency,
             .window_ms = config.window_ms,
-            .bucket_ms = config.bucket_ms,
             .max_pairs = config.max_pairs,
-            .max_cells = config.max_cells,
             .max_processes = config.max_processes,
             .max_threads = config.max_threads,
             .max_processors = config.max_processors,
             .max_name_bytes = config.max_name_bytes,
+            .processors = try configuredProcessors(config),
         });
         return self;
     }
@@ -44,7 +43,7 @@ pub const Session = struct {
     /// The host owns this entire span and keeps its ledger lease until destroy
     /// succeeds. Session state and every owner/publication allocation stay in it.
     pub fn createExternal(span: []u8, config: *const p.Config) !*Session {
-        if (config.size != @sizeOf(p.Config) or config.version != p.abi_version or span.len > config.byte_cap) return error.InvalidConfig;
+        if (config.size != @sizeOf(p.Config) or config.version != p.abi_version or config.reserved != 0 or span.len > config.byte_cap) return error.InvalidConfig;
         const address = @intFromPtr(span.ptr);
         const aligned = (try std.math.add(usize, address, @alignOf(Session) - 1)) & ~(@as(usize, @alignOf(Session)) - 1);
         const prefix = aligned - address;
@@ -64,13 +63,12 @@ pub const Session = struct {
         self.residency = try r.Owner.init(self.budget.allocator(), .{
             .qpc_frequency = config.qpc_frequency,
             .window_ms = config.window_ms,
-            .bucket_ms = config.bucket_ms,
             .max_pairs = config.max_pairs,
-            .max_cells = config.max_cells,
             .max_processes = config.max_processes,
             .max_threads = config.max_threads,
             .max_processors = config.max_processors,
             .max_name_bytes = config.max_name_bytes,
+            .processors = try configuredProcessors(config),
         });
         return self;
     }
@@ -103,7 +101,7 @@ pub const Session = struct {
             6 => try self.residency.observeThreadEnd(input.qpc, input.time_ticks, input.pid, input.tid),
             7 => try self.residency.observeContextSwitch(input.qpc, input.time_ticks, input.processor, input.old_pid, input.old_tid, input.pid, name, input.tid),
             8 => try self.residency.resetAfterEventLoss(),
-            9 => try self.residency.resetContinuity(),
+            9 => try self.residency.beginWindowAt(input.qpc, input.unique),
             10 => try self.residency.clear(),
             else => return error.InvalidInput,
         }
@@ -121,6 +119,11 @@ pub const Session = struct {
         return self.last_error;
     }
 };
+/// The owner copies the expected processors; the caller's array is borrowed only during create.
+fn configuredProcessors(config: *const p.Config) ![]const i32 {
+    if (config.processor_count == 0) return &.{};
+    return (config.processors orelse return error.InvalidConfig)[0..config.processor_count];
+}
 fn session(handle: ?*anyopaque) ?*Session {
     return @ptrCast(@alignCast(handle));
 }
@@ -136,6 +139,8 @@ pub export fn rm_kernel_etw_create(config: ?*const p.Config, output: ?*?*anyopaq
     out.* = null;
     const cfg = config orelse return code(.invalid_argument);
     if (cfg.size != @sizeOf(p.Config) or cfg.version != p.abi_version) return code(.abi_mismatch);
+    // The standalone owner has no configure call: its processor set comes with the config.
+    if (cfg.processor_count == 0) return code(.invalid_argument);
     // Replay/candidate construction. Production supplies ledger-owned backing
     // through create_in_region; tiny objects must never use page_allocator.
     out.* = Session.create(std.heap.smp_allocator, cfg) catch |err| return if (err == error.OutOfMemory) code(.out_of_memory) else code(.invalid_argument);
@@ -146,6 +151,7 @@ pub export fn rm_kernel_etw_create_in_region(config: ?*const p.Config, memory: ?
     out.* = null;
     const cfg = config orelse return code(.invalid_argument);
     if (cfg.size != @sizeOf(p.Config) or cfg.version != p.abi_version) return code(.abi_mismatch);
+    if (cfg.processor_count == 0) return code(.invalid_argument);
     const span = (memory orelse return code(.invalid_argument))[0..length];
     out.* = Session.createExternal(span, cfg) catch |err| return if (err == error.OutOfMemory) code(.out_of_memory) else code(.invalid_argument);
     return code(.ok);
@@ -199,16 +205,15 @@ pub export fn rm_kernel_etw_apply(handle: ?*anyopaque, input: ?*const p.Input) c
 /// Produces one immutable native publication. Its rows and names are references,
 /// valid through release, even while subsequent events update capture state.
 /// A second outstanding publication is rejected; destroy requires no active caller.
-pub export fn rm_kernel_etw_acquire_residency(handle: ?*anyopaque, processors: ?[*]const i32, count: u32, output: ?*p.View) callconv(.c) i32 {
+pub export fn rm_kernel_etw_acquire_residency(handle: ?*anyopaque, output: ?*p.View) callconv(.c) i32 {
     const self = session(handle) orelse return code(.invalid_argument);
     const out = output orelse return code(.invalid_argument);
     out.* = .{};
-    const ids: []const i32 = if (count == 0) &.{} else (processors orelse return code(.invalid_argument))[0..count];
     self.lock();
     defer self.mutex.unlock();
     if (self.publication != null) return code(.unavailable);
     var arena = std.heap.ArenaAllocator.init(self.budget.allocator());
-    const snapshot = self.residency.snapshot(arena.allocator(), ids) catch |err| {
+    const snapshot = self.residency.snapshot(arena.allocator()) catch |err| {
         arena.deinit();
         return self.fail(err);
     };
@@ -270,8 +275,33 @@ pub export fn rm_kernel_etw_query_capacity_failure(handle: ?*anyopaque, output: 
     return code(.ok);
 }
 
+const test_processors = [_]i32{ 0, 1 };
+
+test "standalone create requires its expected processor set" {
+    var config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 4, .max_processes = 4, .max_threads = 4, .max_processors = 2, .max_name_bytes = 64, .byte_cap = 1024 * 1024 };
+    var output: ?*anyopaque = null;
+    try std.testing.expectEqual(code(.invalid_argument), rm_kernel_etw_create(&config, &output));
+    const duplicate = [_]i32{ 0, 0 };
+    config.processor_count = 2;
+    config.processors = &duplicate;
+    try std.testing.expectEqual(code(.invalid_argument), rm_kernel_etw_create(&config, &output));
+    const negative = [_]i32{-1};
+    config.processor_count = 1;
+    config.processors = &negative;
+    try std.testing.expectEqual(code(.invalid_argument), rm_kernel_etw_create(&config, &output));
+    const three = [_]i32{ 0, 1, 2 };
+    config.processor_count = 3;
+    config.processors = &three;
+    try std.testing.expectEqual(code(.invalid_argument), rm_kernel_etw_create(&config, &output));
+    try std.testing.expectEqual(@as(?*anyopaque, null), output);
+    config.processor_count = 2;
+    config.processors = &test_processors;
+    try std.testing.expectEqual(code(.ok), rm_kernel_etw_create(&config, &output));
+    try std.testing.expectEqual(code(.ok), rm_kernel_etw_destroy(output));
+}
+
 test "ABI owner and immutable publication release all allocations" {
-    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 64, .max_cells = 4096, .max_processes = 64, .max_threads = 128, .max_processors = 8, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 };
+    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 64, .max_processes = 64, .max_threads = 128, .max_processors = 8, .max_name_bytes = 4096, .byte_cap = 1024 * 1024, .processor_count = 1, .processors = &test_processors };
     const self = try Session.create(std.testing.allocator, &config);
     defer self.destroy();
     var input: p.Input = .{ .kind = 3, .pid = 1, .unique = 1 };
@@ -283,7 +313,7 @@ test "ABI owner and immutable publication release all allocations" {
     input = .{ .kind = 7, .old_pid = 1, .old_tid = 2, .qpc = 1000, .time_ticks = 1000 };
     try std.testing.expectEqual(@as(i32, 0), rm_kernel_etw_apply(self, &input));
     var view: p.View = .{};
-    try std.testing.expectEqual(@as(i32, 0), rm_kernel_etw_acquire_residency(self, &.{0}, 1, &view));
+    try std.testing.expectEqual(@as(i32, 0), rm_kernel_etw_acquire_residency(self, &view));
     try std.testing.expectEqual(@as(u32, 1), view.count);
     try std.testing.expectEqual(@as(i64, 1000), view.rows.?[0].duration);
     rm_kernel_etw_release_residency(self);
@@ -293,7 +323,7 @@ test "external region contains owner allocations and refuses destruction while l
     const capacity = 256 * 1024;
     const memory = try std.testing.allocator.alloc(u8, capacity + 1);
     defer std.testing.allocator.free(memory);
-    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 100, .bucket_ms = 50, .max_pairs = 64, .max_cells = 4096, .max_processes = 64, .max_threads = 128, .max_processors = 8, .max_name_bytes = 4096, .byte_cap = capacity };
+    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 64, .max_processes = 64, .max_threads = 128, .max_processors = 8, .max_name_bytes = 4096, .byte_cap = capacity, .processor_count = 1, .processors = &test_processors };
     var handle: ?*anyopaque = null;
     try std.testing.expectEqual(code(.ok), rm_kernel_etw_create_in_region(&config, memory.ptr + 1, capacity, &handle));
     const self = session(handle).?;
@@ -304,7 +334,7 @@ test "external region contains owner allocations and refuses destruction while l
     try self.residency.observeContextSwitch(0, 0, 0, 0, 0, 1, null, 2);
     try self.residency.observeContextSwitch(100, 100, 0, 1, 2, 0, null, 0);
     var view: p.View = .{};
-    try std.testing.expectEqual(code(.ok), rm_kernel_etw_acquire_residency(handle, &.{0}, 1, &view));
+    try std.testing.expectEqual(code(.ok), rm_kernel_etw_acquire_residency(handle, &view));
     try std.testing.expectEqual(@as(u32, 1), view.count);
     try std.testing.expectEqual(code(.unavailable), rm_kernel_etw_destroy(handle));
     var usage: RegionUsage = .{};
@@ -324,7 +354,7 @@ test "external region contains owner allocations and refuses destruction while l
 
 test "external region creation validates actual region footprint and minimum size" {
     var memory: [32]u8 = undefined;
-    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 100, .bucket_ms = 50, .max_pairs = 1, .max_cells = 4, .max_processes = 1, .max_threads = 1, .max_processors = 1, .max_name_bytes = 32, .byte_cap = 4096 };
+    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 1, .max_processes = 1, .max_threads = 1, .max_processors = 1, .max_name_bytes = 32, .byte_cap = 4096, .processor_count = 1, .processors = &test_processors };
     var output: ?*anyopaque = null;
     try std.testing.expectEqual(code(.invalid_argument), rm_kernel_etw_create_in_region(&config, &memory, memory.len, &output));
     try std.testing.expectEqual(@as(?*anyopaque, null), output);
@@ -333,10 +363,14 @@ test "external region creation validates actual region footprint and minimum siz
     try std.testing.expectEqual(code(.invalid_argument), rm_kernel_etw_create_in_region(&tiny_cap, &memory, memory.len, &output));
 }
 
-test "capacity diagnostics retain exact bucket span and lagging processor before reset" {
-    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 100, .bucket_ms = 50, .max_pairs = 32, .max_cells = 4096, .max_processes = 64, .max_threads = 128, .max_processors = 8, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 };
+test "capacity diagnostics retain the exact ring span and lagging processor before reset" {
+    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 100, .max_pairs = 32, .max_processes = 64, .max_threads = 128, .max_processors = 8, .max_name_bytes = 4096, .byte_cap = 1024 * 1024, .processor_count = 2, .processors = &test_processors };
     const self = try Session.create(std.testing.allocator, &config);
     defer self.destroy();
+    // One slot per window: R = 4 ring cells. Processor 1 stays at qpc 0 while
+    // processor 0 closes a run reaching slot 4, five slots above F = 0.
+    var begin: p.Input = .{ .kind = 9, .unique = 1 };
+    try std.testing.expectEqual(code(.ok), rm_kernel_etw_apply(self, &begin));
     try self.residency.seedProcess(10, 100, "p");
     try self.residency.seedThread(10, 20);
     try self.residency.observeContextSwitch(0, 0, 0, 0, 0, 10, null, 20);
@@ -344,15 +378,23 @@ test "capacity diagnostics retain exact bucket span and lagging processor before
     try self.residency.observeContextSwitch(500, 500, 0, 10, 20, 0, null, 0);
     var failure: r.CapacityFailure = .{};
     try std.testing.expectEqual(code(.ok), rm_kernel_etw_query_capacity_failure(self, &failure, @sizeOf(r.CapacityFailure)));
-    try std.testing.expectEqual(@as(usize, 112), @sizeOf(r.CapacityFailure));
-    try std.testing.expectEqual(@intFromEnum(r.CapacityReason.bucket_span), failure.reason);
+    try std.testing.expectEqual(@as(usize, 96), @sizeOf(r.CapacityFailure));
+    try std.testing.expectEqual(@intFromEnum(r.CapacityReason.ring_span), failure.reason);
     try std.testing.expectEqual(@as(i64, 500), failure.event_qpc);
-    try std.testing.expectEqual(@as(u64, 10), failure.observed);
-    try std.testing.expectEqual(@as(u64, 8), failure.limit);
+    try std.testing.expectEqual(@as(u64, 5), failure.observed);
+    try std.testing.expectEqual(@as(u64, 4), failure.limit);
+    try std.testing.expectEqual(@as(i64, 0), failure.window_start_qpc);
     try std.testing.expectEqual(@as(i32, 0), failure.logical_processor);
     try std.testing.expectEqual(@as(i32, 1), failure.oldest_processor);
     try std.testing.expectEqual(@as(i64, 0), failure.oldest_boundary_qpc);
-    try std.testing.expectEqual(@as(u64, 1), failure.pairs);
+    try std.testing.expectEqual(@as(u64, 0), failure.pairs);
     try std.testing.expectEqual(@as(u64, 2), failure.processors);
-    try std.testing.expectEqual(@as(usize, 0), self.residency.getDiagnostics().active_pair_count);
+    const diagnostics = self.residency.getDiagnostics();
+    try std.testing.expectEqual(@as(usize, 0), diagnostics.active_pair_count);
+    try std.testing.expectEqual(@as(i64, 1), diagnostics.capacity_reset_count);
+    try std.testing.expectEqual(@as(usize, 72), @sizeOf(r.CapacityReset));
+    try std.testing.expectEqual(@intFromEnum(r.CapacityResetReason.ring_span), diagnostics.last_capacity_reset.reason);
+    try std.testing.expectEqual(@as(u64, 5), diagnostics.last_capacity_reset.required_slot_span);
+    try std.testing.expectEqual(@as(u64, 4), diagnostics.last_capacity_reset.ring_slots);
+    try std.testing.expectEqual(@as(i64, 0), diagnostics.last_capacity_reset.window_start_qpc);
 }

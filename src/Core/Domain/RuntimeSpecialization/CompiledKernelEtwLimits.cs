@@ -11,7 +11,6 @@ public sealed record CompiledKernelEtwLimits(
     [property: JsonRequired, JsonPropertyName("network_bytes")] ulong NetworkBytes,
     [property: JsonRequired, JsonPropertyName("file_bytes")] ulong FileBytes,
     [property: JsonRequired, JsonPropertyName("history_bytes")] ulong HistoryBytes,
-    [property: JsonRequired, JsonPropertyName("maximum_cells")] uint MaximumCells,
     [property: JsonRequired, JsonPropertyName("maximum_processes")] uint MaximumProcesses,
     [property: JsonRequired, JsonPropertyName("maximum_threads")] uint MaximumThreads,
     [property: JsonRequired, JsonPropertyName("maximum_process_name_bytes")] uint MaximumProcessNameBytes,
@@ -47,7 +46,7 @@ public sealed record CompiledKernelEtwLimits(
         && CpuBytes <= RegionBytes && InterruptBytes <= RegionBytes
         && DiskBytes <= RegionBytes && NetworkBytes <= RegionBytes
         && FileBytes <= RegionBytes && HistoryBytes <= RegionBytes
-        && MaximumCells > 0 && MaximumProcesses > 0 && MaximumThreads > 0 && MaximumProcessNameBytes > 0
+        && MaximumProcesses > 0 && MaximumThreads > 0 && MaximumProcessNameBytes > 0
         && MaximumModules > 0 && MaximumPathUnits > 0 && MaximumModuleIdentities > 0
         && MaximumInterruptSlices > 0 && MaximumInterruptDrivers > 0
         && MaximumDiskPairs > 0 && MaximumDisks > 0 && MaximumCachedProcesses > 0

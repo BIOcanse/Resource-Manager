@@ -405,7 +405,7 @@ pub export fn rm_kernel_etw_shared_clock(handle: ?*anyopaque, output: ?*trace.Tr
 test "diagnostic sampling requires the exact acknowledged ticket window and new row interface" {
     const d = @import("thread_diagnostics.zig");
     const cfg: shared.Config = .{
-        .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 16, .max_cells = 1024, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 },
+        .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 16, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 },
         .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 },
         .byte_cap = 4 * 1024 * 1024,
         .disk_byte_cap = 512 * 1024,
@@ -473,12 +473,12 @@ test "diagnostic sampling requires the exact acknowledged ticket window and new 
 
 test "shared x64 ABI layouts match the managed boundary declarations" {
     if (@sizeOf(usize) != 8) return error.UnsupportedPlatform;
-    try std.testing.expectEqual(@as(usize, 272), @sizeOf(shared.Config));
+    try std.testing.expectEqual(@as(usize, 280), @sizeOf(shared.Config));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(host.Callbacks));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(counters.Config));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(counters.Pair));
     try std.testing.expectEqual(@as(usize, 2560), @sizeOf(counters.Frame));
-    try std.testing.expectEqual(@as(usize, 208), @sizeOf(shared.AggregationDiagnostics));
+    try std.testing.expectEqual(@as(usize, 192), @sizeOf(shared.AggregationDiagnostics));
     try std.testing.expectEqual(@as(usize, 32), @sizeOf(shared.InterruptMetadata));
     try std.testing.expectEqual(@as(usize, 24), @sizeOf(shared.RendererStamp));
     try std.testing.expectEqual(@as(usize, 96), @sizeOf(shared.Notification));

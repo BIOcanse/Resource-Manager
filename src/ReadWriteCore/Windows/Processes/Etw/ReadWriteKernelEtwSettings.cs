@@ -12,7 +12,6 @@ internal static class ReadWriteKernelEtwSettings
         var value = KernelEtwNativeDefaults.SelectedLimits;
         value.Residency.QpcFrequency = Stopwatch.Frequency;
         value.Residency.WindowMilliseconds = checked((uint)cpu.ObservationWindowMilliseconds);
-        value.Residency.BucketMilliseconds = checked((uint)cpu.BucketWidthMilliseconds);
         value.Residency.MaximumPairs = checked((uint)cpu.MaximumActivePairs);
         value.Residency.MaximumProcessors = checked((uint)cpu.PhysicalCoreByLogicalProcessor.Count);
         return value;

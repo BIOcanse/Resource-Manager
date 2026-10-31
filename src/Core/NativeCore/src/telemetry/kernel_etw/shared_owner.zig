@@ -208,8 +208,8 @@ pub const ResidencyLease = struct { view: p.View, sequence: u64, events_lost: u6
 pub const ResidencyRequest = struct { ticket: u64, pending: bool };
 pub const AggregationDiagnostics = extern struct {
     qpc_frequency: i64, window_qpc: i64,
-    maximum_active_pairs: u64, active_pair_count: u64, bucket_count: u64, maximum_bucket_count: u64,
-    bucket_width_qpc: i64, retained_bucket_bytes: u64, maximum_bucket_bytes: u64,
+    maximum_active_pairs: u64, active_pair_count: u64, slots_per_window: u64, ring_slots: u64,
+    pair_record_bytes: u64, window_storage_bytes: u64, maximum_window_storage_bytes: u64,
     current_process_count: u64, current_thread_count: u64, retained_process_identity_count: u64, retained_thread_identity_count: u64,
     continuity_epoch: i64, capacity_reset_count: i64,
     last_capacity_reset: @import("residency.zig").CapacityReset,
@@ -364,6 +364,8 @@ pub const Owner = struct {
         return self;
     }
     fn validateConfig(cfg: Config) !void {
+        // The shared owner configures processors through configure_processors only.
+        if (cfg.residency.processor_count != 0 or cfg.residency.processors != null) return error.InvalidConfig;
         if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or cfg.reserved != 0 or cfg.reserved3 != 0 or cfg.maximum_renderer_processes == 0 or
             cfg.maximum_pending_events == 0 or cfg.maximum_pending_path_units == 0 or cfg.maximum_commands == 0 or cfg.maximum_command_name_bytes == 0 or cfg.publication_banks < 2 or cfg.publication_banks > 8 or
             cfg.maximum_namespace_entries == 0 or cfg.maximum_path_units == 0 or cfg.started_tick_ms < 0) return error.InvalidConfig;
@@ -562,7 +564,7 @@ pub const Owner = struct {
     fn snapshotDiagnostics(self: *Owner) void {
         const aggregate: ?AggregationDiagnostics = if (self.has(1)) blk: {
             const d = self.capture.residency.getDiagnostics();
-            break :blk .{ .qpc_frequency = d.qpc_frequency, .window_qpc = d.window_qpc, .maximum_active_pairs = d.maximum_active_pairs, .active_pair_count = d.active_pair_count, .bucket_count = @intCast(d.bucket_count), .maximum_bucket_count = @intCast(d.maximum_bucket_count), .bucket_width_qpc = d.bucket_width_qpc, .retained_bucket_bytes = d.retained_bucket_bytes, .maximum_bucket_bytes = @intCast((d.maximum_bucket_slots + d.maximum_bucket_count) * 24), .current_process_count = d.current_process_count, .current_thread_count = d.current_thread_count, .retained_process_identity_count = d.retained_process_identity_count, .retained_thread_identity_count = d.retained_thread_identity_count, .continuity_epoch = d.continuity_epoch, .capacity_reset_count = d.capacity_reset_count, .last_capacity_reset = d.last_capacity_reset };
+            break :blk .{ .qpc_frequency = d.qpc_frequency, .window_qpc = d.window_qpc, .maximum_active_pairs = d.maximum_active_pairs, .active_pair_count = d.active_pair_count, .slots_per_window = d.slots_per_window, .ring_slots = d.ring_slots, .pair_record_bytes = d.pair_record_bytes, .window_storage_bytes = d.window_storage_bytes, .maximum_window_storage_bytes = d.maximum_window_storage_bytes, .current_process_count = d.current_process_count, .current_thread_count = d.current_thread_count, .retained_process_identity_count = d.retained_process_identity_count, .retained_thread_identity_count = d.retained_thread_identity_count, .continuity_epoch = d.continuity_epoch, .capacity_reset_count = d.capacity_reset_count, .last_capacity_reset = d.last_capacity_reset };
         } else null;
         self.publication_mutex.lock();
         self.aggregation_diagnostics = aggregate;
@@ -571,6 +573,7 @@ pub const Owner = struct {
     }
 
     pub fn createExternal(span: []u8, cfg: Config, source: identity.Source) !*Owner {
+        if (cfg.residency.processor_count != 0 or cfg.residency.processors != null) return error.InvalidConfig;
         if (cfg.size != @sizeOf(Config) or cfg.version != abi_version or cfg.reserved != 0 or cfg.reserved3 != 0 or cfg.maximum_renderer_processes == 0 or cfg.byte_cap < span.len or
             cfg.maximum_pending_events == 0 or cfg.maximum_pending_path_units == 0 or cfg.maximum_commands == 0 or cfg.maximum_command_name_bytes == 0 or cfg.publication_banks < 2 or cfg.publication_banks > 8 or
             cfg.maximum_namespace_entries == 0 or cfg.maximum_path_units == 0 or cfg.started_tick_ms < 0) return error.InvalidConfig;
@@ -1080,7 +1083,7 @@ pub const Owner = struct {
     /// Uses the same pure closed-boundary prelude as the exact snapshot core.
     fn cpuReadiness(self: *Owner) p.View {
         if (!self.has(1)) return .{};
-        const metadata = self.capture.residency.snapshotMetadata(self.readers.processor_ids);
+        const metadata = self.capture.residency.snapshotMetadata();
         return .{ .frequency = metadata.qpc_frequency, .start_qpc = metadata.window_start_qpc, .through_qpc = metadata.measured_through_qpc, .time_ticks = metadata.measured_through orelse 0, .flags = @as(u32, if (metadata.is_complete) 1 else 0) | @as(u32, if (metadata.measured_through != null) 2 else 0) | @as(u32, if (metadata.boundaries_ready) 4 else 0), .current_bytes = self.capture.budget.current, .peak_bytes = self.capture.budget.peak };
     }
     pub fn submit(self: *Owner, inputs: []const p.Input) !void {
@@ -1143,6 +1146,23 @@ pub const Owner = struct {
                 const offset = @intFromPtr(input.name.?) - address;
                 input.name = self.command_names.ptr + offset;
             };
+        }
+    }
+    /// Applied commands no longer need their staging: a host-backed owner returns
+    /// buffers grown past the minimum (4 entries, 64 name bytes), so a seed burst
+    /// does not keep its high-water mark. Region owners preallocate and keep theirs.
+    fn releaseCommandBuffers(self: *Owner) void {
+        if (self.host_callbacks == null) return;
+        const a = self.controlAllocator();
+        if (self.commands.len > 4 or self.command_tickets.len > 4) {
+            a.free(self.commands);
+            a.free(self.command_tickets);
+            self.commands = &.{};
+            self.command_tickets = &.{};
+        }
+        if (self.command_names.len > 64) {
+            a.free(self.command_names);
+            self.command_names = &.{};
         }
     }
     pub fn configure(self: *Owner, ids: []const i32, flags: u32) !void {
@@ -1235,6 +1255,7 @@ pub const Owner = struct {
         self.pending_changes.store(false, .release);
         self.command_count = 0;
         self.command_name_count = 0;
+        self.releaseCommandBuffers();
         self.snapshotDiagnostics();
         try self.checkAllocatorFault();
     }
@@ -1350,8 +1371,7 @@ pub const Owner = struct {
                 const component = &self.cpu_banks[component_index];
                 _ = component.arena.reset(.free_all);
                 if (self.profile.enabled) {
-                    self.profile.view.cpu_pairs_bound +|= self.capture.residency.pairs.count();
-                    self.profile.view.cpu_retained_cells +|= self.capture.residency.cell_count;
+                    self.profile.view.cpu_pairs_bound +|= self.capture.residency.live_pairs;
                 }
                 component.view = try self.readers.publishResidency(component.arena.allocator(), scratch);
                 if (self.profile.enabled) self.profile.view.cpu_rows +|= component.view.count;
@@ -1582,7 +1602,7 @@ pub const Owner = struct {
     }
 };
 fn testConfig() Config {
-    return .{ .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 16, .max_cells = 1024, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 }, .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 }, .byte_cap = 4 * 1024 * 1024, .disk_byte_cap = 512 * 1024, .network_byte_cap = 512 * 1024, .file_byte_cap = 256 * 1024, .history_byte_cap = 256 * 1024, .maximum_disk_pairs = 32, .maximum_disks = 16, .maximum_cached_processes = 16, .maximum_network_events = 64, .maximum_network_processes = 16, .maximum_file_entries = 16, .maximum_file_versions = 64, .maximum_history_entries = 64, .maximum_path_units = 128, .maximum_namespace_entries = 16, .maximum_commands = 8, .maximum_command_name_bytes = 128, .publication_banks = 3, .window_ms = 2000, .retention_ms = 8000, .disk_bucket_ms = 100, .started_tick_ms = 0, .maximum_pending_events = 128, .maximum_pending_path_units = 4096, .maximum_renderer_processes = 4096 };
+    return .{ .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 16, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 }, .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 }, .byte_cap = 4 * 1024 * 1024, .disk_byte_cap = 512 * 1024, .network_byte_cap = 512 * 1024, .file_byte_cap = 256 * 1024, .history_byte_cap = 256 * 1024, .maximum_disk_pairs = 32, .maximum_disks = 16, .maximum_cached_processes = 16, .maximum_network_events = 64, .maximum_network_processes = 16, .maximum_file_entries = 16, .maximum_file_versions = 64, .maximum_history_entries = 64, .maximum_path_units = 128, .maximum_namespace_entries = 16, .maximum_commands = 8, .maximum_command_name_bytes = 128, .publication_banks = 3, .window_ms = 2000, .retention_ms = 8000, .disk_bucket_ms = 100, .started_tick_ms = 0, .maximum_pending_events = 128, .maximum_pending_path_units = 4096, .maximum_renderer_processes = 4096 };
 }
 fn absentOpen(_: ?*anyopaque, _: u32) ?*anyopaque {
     return null;
@@ -1737,7 +1757,8 @@ test "handled CPU reset invalidates a complete current sample while its historic
     var cfg = testConfig(); cfg.residency.max_pairs = 1; cfg.residency.max_processors = 1;
     const self = try Owner.createExternal(backing, cfg, absent_identity);
     defer self.destroy() catch unreachable;
-    try self.submit(&.{ .{ .kind = 1, .pid = 7 }, .{ .kind = 2, .pid = 7, .tid = 8 }, .{ .kind = 2, .pid = 7, .tid = 9 } });
+    // A continuous window (one slot per window) keeps adding after its first W.
+    try self.submit(&.{ .{ .kind = 9, .unique = 1 }, .{ .kind = 1, .pid = 7 }, .{ .kind = 2, .pid = 7, .tid = 8 }, .{ .kind = 2, .pid = 7, .tid = 9 } });
     try self.drain(0);
     try self.history.start(8, 7); try self.history.start(9, 7);
     var t: trace.Trace = .{ .owner = self.capture, .interrupts = self.interrupts, .paths = &self.paths, .name = @constCast(std.unicode.utf8ToUtf16LeStringLiteral("")), .consumer = native.Consumer.init(.{ .context = null, .on_notice = trace.Trace.onNotice }), .interrupt_qpc_origin = 0, .shared_hooks = self.hooks() };
@@ -1880,7 +1901,7 @@ test "host CPU window storage returns while identities and a closed borrowed pub
     try self.drain(1000);
     const diagnostics = try self.queryResidencyDiagnostics();
     try std.testing.expectEqual(@as(u64, 0), diagnostics.active_pair_count);
-    try std.testing.expectEqual(@as(u64, 0), diagnostics.retained_bucket_bytes);
+    try std.testing.expectEqual(@as(u64, 0), diagnostics.window_storage_bytes);
     try std.testing.expectEqual(@as(u64, 1), diagnostics.current_thread_count);
     try std.testing.expectEqual(@as(usize, 0), self.host_contexts[1][1].requested);
     try std.testing.expectEqual(duration, closed.view.rows.?[0].duration);
@@ -2020,7 +2041,7 @@ test "shared public command admission includes IRQ reset and CPU window configur
     defer std.testing.allocator.free(backing);
     const self = try Owner.createExternal(backing, testConfig(), absent_identity);
     defer self.destroy() catch unreachable;
-    try self.submit(&.{ .{ .kind = 15, .qpc = 1250 }, .{ .kind = 16, .qpc = 2000, .time_ticks = 100, .unique = 8 } });
+    try self.submit(&.{ .{ .kind = 15, .qpc = 1250 }, .{ .kind = 16, .qpc = 2000, .unique = 8 } });
     try self.drain(1300);
     try std.testing.expectEqual(@as(i64, 1250), self.interrupts.owner.started_tick_ms);
     try std.testing.expectEqual(@as(i64, 2000), self.capture.residency.window_qpc);
@@ -2049,7 +2070,7 @@ test "tracked reader barrier preserves input fields and publishes only its appli
     try self.publish(2000);
     const old = try self.acquire();
     defer self.release(old.token) catch unreachable;
-    const ticket = try self.submitTracked(&.{ .{ .kind = 16, .qpc = 500, .time_ticks = 50, .unique = 16 }, .{ .kind = 9 } });
+    const ticket = try self.submitTracked(&.{ .{ .kind = 16, .qpc = 500, .unique = 16 }, .{ .kind = 9 } });
     try std.testing.expectEqual(@as(u64, 16), self.commands[0].unique);
     try std.testing.expectEqual(@as(u64, 0), old.view.?.command_version);
     try self.drain(2500);
@@ -2247,7 +2268,6 @@ test "shared working pins stay below growing retained publication storage" {
     defer std.testing.allocator.free(backing);
     var cfg = testConfig();
     cfg.residency.max_pairs = 512;
-    cfg.residency.max_cells = 16384;
     cfg.residency.max_threads = 512;
     cfg.residency.max_processors = 1;
     const self = try Owner.createExternal(backing, cfg, absent_identity);
@@ -2408,6 +2428,8 @@ test "all pinned aggregate CPU versions reject new acquires after loss then reco
     for (&held, 0..) |*item, i| {
         const started: i64 = @intCast(i * 1000);
         const through = started + 1000;
+        // One finite window per due, as the managed reader runs them.
+        try self.readers.apply(&.{ .kind = 9, .qpc = started });
         try self.readers.apply(&.{ .kind = 7, .pid = 7, .tid = 8, .processor = 0, .qpc = started });
         try self.readers.apply(&.{ .kind = 7, .old_pid = 7, .old_tid = 8, .processor = 0, .qpc = through, .time_ticks = 1000000 + through });
         // Explicit fixture publication forces a distinct current CPU view.
@@ -2492,7 +2514,8 @@ test "normal buffers prepare the first complete CPU window once then require cur
     t.consumer.metadata = .{ .qpc_frequency = 1000, .start_filetime_100ns = 1, .header_qpc = 0, .clock_type = 1 };
     self.trace = &t;
     defer self.trace = null;
-    try self.submit(&.{ .{ .kind = 9 }, .{ .kind = 1, .pid = 7 }, .{ .kind = 2, .pid = 7, .tid = 8 }, .{ .kind = 7, .pid = 7, .tid = 8, .processor = 0 }, .{ .kind = 7, .old_pid = 7, .old_tid = 8, .processor = 0, .qpc = 500, .time_ticks = 1000500 } });
+    // A continuous window of ten 100 QPC slots: a later sample slides by whole slots.
+    try self.submit(&.{ .{ .kind = 9, .unique = 10 }, .{ .kind = 1, .pid = 7 }, .{ .kind = 2, .pid = 7, .tid = 8 }, .{ .kind = 7, .pid = 7, .tid = 8, .processor = 0 }, .{ .kind = 7, .old_pid = 7, .old_tid = 8, .processor = 0, .qpc = 500, .time_ticks = 1000500 } });
     try std.testing.expect(trace.Trace.onBuffer(&t));
     try std.testing.expectEqual(@as(u64, 0), self.profile.cpu_detail.native_snapshot.calls);
     try std.testing.expect(trace.Trace.onBuffer(&t));

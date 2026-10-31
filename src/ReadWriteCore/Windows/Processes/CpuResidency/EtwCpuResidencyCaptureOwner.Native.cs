@@ -1,9 +1,11 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.ReadWrite.Windows.Devices;
+using static ResourceManager.ReadWrite.Windows.Processes.WindowsProcessSystemThreadParser;
 
 namespace ResourceManager.ReadWrite.Windows.Processes;
 
@@ -20,33 +22,45 @@ public sealed partial class EtwCpuResidencyCaptureOwner
         private long minimumWindowQpc;
         private int expectedEventsLost;
         private ulong requiredTicket;
+        // 0 = finite window; n >= 1 = continuous window with n slots. Every window begin re-issues it.
+        private int slotsPerWindow;
+        internal int SlotsPerWindow { get { lock (gate) return slotsPerWindow; } }
         private CpuResidencyAggregationSnapshot warming = new(Stopwatch.Frequency, 0, 0, null, false, []);
         internal NativeKernelEtwSession Session => session;
         internal long WindowStartQpc { get { lock (gate) return minimumWindowQpc; } }
         internal CpuResidencyAggregationDiagnostics? GetDiagnostics()
             => KernelEtwNativeReaders.ReadResidencyDiagnostics(session);
 
-        internal void Configure(int[] ids, bool enabled)
+        internal void Configure(int[] ids, bool enabled, int slots)
         {
             lock (gate)
             {
                 minimumWindowQpc = session.IsRealtime ? Stopwatch.GetTimestamp() : 0;
+                slotsPerWindow = slots;
                 ClearProjection();
-                KernelEtwNativeReaders.ConfigureResidency(session, plan.ObservationWindowMilliseconds, plan.BucketWidthMilliseconds, plan.MaximumActivePairs);
+                KernelEtwNativeReaders.ConfigureResidency(session, plan.ObservationWindowMilliseconds, plan.MaximumActivePairs);
                 KernelEtwNativeReaders.ConfigureProcessors(session, ids);
                 KernelEtwNativeReaders.SetEnabled(session, KernelEtwNativeReaders.Residency, enabled, refresh: false);
-                requiredTicket = KernelEtwNativeReaders.ResetContinuity(session, minimumWindowQpc);
+                requiredTicket = KernelEtwNativeReaders.ResetContinuity(session, minimumWindowQpc, slotsPerWindow);
                 session.RequestRefresh(Environment.TickCount64);
             }
         }
         internal void SetEnabled(bool enabled) => KernelEtwNativeReaders.SetEnabled(session, KernelEtwNativeReaders.Residency, enabled);
+        internal void BeginWindow(int slots)
+        {
+            lock (gate)
+            {
+                slotsPerWindow = slots;
+                ResetContinuity();
+            }
+        }
         internal void ResetContinuity()
         {
             lock (gate)
             {
                 minimumWindowQpc = session.IsRealtime ? Stopwatch.GetTimestamp() : 0;
                 ClearProjection();
-                requiredTicket = KernelEtwNativeReaders.ResetContinuity(session, minimumWindowQpc);
+                requiredTicket = KernelEtwNativeReaders.ResetContinuity(session, minimumWindowQpc, slotsPerWindow);
                 session.RequestRefresh(Environment.TickCount64);
             }
         }
@@ -197,8 +211,8 @@ public sealed partial class EtwCpuResidencyCaptureOwner
                     {
                         var inventory = new InventorySeed(subscriptionGate,
                             () => IsCurrentSession(session, session.BindingEpoch) && Volatile.Read(ref session.EventsLost) == expectedLoss,
-                            (pid, birth, name) => KernelEtwNativeReaders.SeedProcess(session.Native.Session, pid, birth, name, expectedLoss),
-                            (pid, birth, tid) => KernelEtwNativeReaders.SeedThread(session.Native.Session, pid, birth, tid, expectedLoss),
+                            (pid, birth, name, threadIds) => KernelEtwNativeReaders.SeedProcess(
+                                session.Native.Session, pid, birth, name, threadIds, expectedLoss),
                             () => session.Native.Session.RequestRefresh(Environment.TickCount64));
                         seedProcessInventory(inventory, inventory.IsCurrent);
                     }
@@ -216,34 +230,23 @@ public sealed partial class EtwCpuResidencyCaptureOwner
         }
     }
 
-    internal sealed class InventorySeed(object gate, Func<bool> current,
-        Action<int, long, string> seedProcess, Action<int, long, int> seedThread, Action flush)
+    internal delegate void ProcessSeedWriter(int pid, long birth, ReadOnlySpan<char> name, ReadOnlySpan<int> threadIds);
+
+    internal sealed class InventorySeed(object gate, Func<bool> current, ProcessSeedWriter seedProcess, Action flush)
     {
         private readonly object seedGate = gate;
         private readonly Func<bool> isCurrent = current;
-        private readonly Action<int, long, string> writeProcess = seedProcess;
-        private readonly Action<int, long, int> writeThread = seedThread;
+        private readonly ProcessSeedWriter writeProcess = seedProcess;
         private readonly Action flushCommands = flush;
         internal bool IsCurrent() => isCurrent();
-        internal ProcessSeed? SeedProcess(int pid, long birth, string name)
+        /// <summary>Writes one process and its threads as one native batch. False when this scan is no longer current.</summary>
+        internal bool SeedProcess(int pid, long birth, ReadOnlySpan<char> name, ReadOnlySpan<int> threadIds)
         {
             lock (seedGate)
             {
-                if (!IsCurrent()) return null;
-                writeProcess(pid, birth, name);
-                return new ProcessSeed(this, pid, birth);
-            }
-        }
-        internal sealed class ProcessSeed(InventorySeed inventory, int pid, long birth)
-        {
-            internal bool SeedThread(int tid)
-            {
-                lock (inventory.seedGate)
-                {
-                    if (!inventory.IsCurrent()) return false;
-                    inventory.writeThread(pid, birth, tid);
-                    return true;
-                }
+                if (!IsCurrent()) return false;
+                writeProcess(pid, birth, name, threadIds);
+                return true;
             }
         }
         internal void Flush()
@@ -253,32 +256,69 @@ public sealed partial class EtwCpuResidencyCaptureOwner
         }
     }
 
-    private static void SeedNativeInventory(InventorySeed inventory, Func<bool> shouldSeed)
+    // Thread ids per process that fit on the stack; a larger process rents one array reused for the rest of the seed.
+    private const int SeedStackThreads = 256;
+
+    // One SystemProcessInformation table for the whole seed: it grows on a length
+    // mismatch, is read in place (no Process objects, no handle per process or
+    // thread) and is freed when the seed returns. The table is one consistent
+    // snapshot, so each process's CreateTime and thread list belong together.
+    private static unsafe void SeedNativeInventory(InventorySeed inventory, Func<bool> shouldSeed)
     {
-        VisitOwnedArray(Process.GetProcesses(), process =>
+        if (!shouldSeed()) return;
+        using var table = new WindowsProcessInventoryBuffer { ReturnPolicy = static () => new(true, 0) };
+        if (!table.TryRead(out var data, out _)) return;
+        var headerSize = sizeof(SystemProcessInformationHeader);
+        var threadSize = sizeof(SystemThreadInformation);
+        int[]? rented = null;
+        Span<int> stackIds = stackalloc int[SeedStackThreads];
+        try
         {
-            if (!shouldSeed()) return false;
-            try
+            fixed (byte* start = data)
             {
-                using var identity = WindowsNetworkEndpointProcessLease.Open(unchecked((uint)process.Id));
-                if (identity is null || !identity.TryReadCreationFileTime(out var birth) || birth == 0 || birth > long.MaxValue) return true;
-                var name = process.ProcessName;
-                var handles = process.Threads.Cast<ProcessThread>().ToArray();
-                var ids = new List<int>(handles.Length);
-                if (!VisitOwnedArray(handles, thread => { if (!shouldSeed()) return false; ids.Add(thread.Id); return true; })) return false;
-                if (!identity.TryReadCreationFileTime(out var after) || birth != after || !shouldSeed()) return shouldSeed();
-                var seeded = inventory.SeedProcess(process.Id, (long)birth, name);
-                if (seeded is null) return false;
-                foreach (var tid in ids)
+                var offset = 0;
+                while (offset <= data.Length - headerSize && offset % IntPtr.Size == 0)
                 {
-                    if (!shouldSeed()) return false;
-                    if (!seeded.SeedThread(tid)) return false;
+                    if (!shouldSeed()) return;
+                    var header = MemoryMarshal.Read<SystemProcessInformationHeader>(data.Slice(offset, headerSize));
+                    var entryBytes = header.NextEntryOffset == 0 ? data.Length - offset : (long)header.NextEntryOffset;
+                    if (entryBytes < headerSize || entryBytes > data.Length - offset) return;
+                    var pid = header.UniqueProcessId.ToInt64();
+                    // pid 0 is System Idle: it owns no real threads to attribute.
+                    if (pid is > 0 and <= int.MaxValue && header.CreationTime > 0
+                        && header.NumberOfThreads <= (entryBytes - headerSize) / threadSize)
+                    {
+                        var name = pid == 4 ? "System".AsSpan() : ImageName(header.ImageName, start, data.Length);
+                        var count = (int)header.NumberOfThreads;
+                        if (count > stackIds.Length && (rented is null || rented.Length < count))
+                        {
+                            if (rented is not null) System.Buffers.ArrayPool<int>.Shared.Return(rented);
+                            rented = System.Buffers.ArrayPool<int>.Shared.Rent(count);
+                        }
+                        var ids = count <= stackIds.Length ? stackIds[..count] : rented.AsSpan(0, count);
+                        var threads = data.Slice(offset + headerSize, count * threadSize);
+                        for (var index = 0; index < count; index++)
+                            ids[index] = (int)MemoryMarshal.Read<SystemThreadInformation>(threads.Slice(index * threadSize, threadSize))
+                                .ClientThreadId.ToInt64();
+                        if (!inventory.SeedProcess((int)pid, header.CreationTime, name, ids)) return;
+                    }
+                    if (header.NextEntryOffset == 0) break;
+                    offset += (int)header.NextEntryOffset;
                 }
             }
-            catch (System.ComponentModel.Win32Exception) { }
-            catch (InvalidOperationException) when (process.HasExited) { }
-            return true;
-        });
+        }
+        finally { if (rented is not null) System.Buffers.ArrayPool<int>.Shared.Return(rented); }
         if (shouldSeed()) inventory.Flush();
+    }
+
+    // The image name without its executable extension, as Process.ProcessName reports it; empty when the
+    // UNICODE_STRING does not lie inside the table.
+    private static unsafe ReadOnlySpan<char> ImageName(UnicodeString image, byte* start, int length)
+    {
+        if (image.Length == 0 || (image.Length & 1) != 0 || image.Length > image.MaximumLength) return [];
+        var imageOffset = unchecked((ulong)image.Buffer.ToInt64() - (ulong)start);
+        if (imageOffset > (ulong)length || image.Length > (ulong)length - imageOffset || imageOffset % 2 != 0) return [];
+        var characters = new ReadOnlySpan<char>(start + imageOffset, image.Length / 2);
+        return characters.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? characters[..^4] : characters;
     }
 }

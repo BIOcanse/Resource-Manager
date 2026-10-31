@@ -40,7 +40,7 @@ public sealed partial class CpuTopologyEndpointTests
         Assert.Equal(CpuCoreResidencyUnavailableReasons.NotRequested,
             Assert.IsType<CpuCoreResidencyUnavailable>(reader.ReadObservation()).ReasonCode);
         capture.EnsureStarted();
-        capture.BeginWindow();
+        capture.BeginWindow(TimeSpan.FromSeconds(1));
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         {

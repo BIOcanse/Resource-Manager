@@ -9,6 +9,8 @@ public sealed partial class EtwCpuResidencyCaptureOwner
     private readonly object durationResourceGate = new();
     private IKernelEtwSubscription? durationSubscription;
     private bool windowRequested, acquiringDuration;
+    // Cadence of the requested continuous window; null = finite window. Every binding re-issues it.
+    private TimeSpan? windowCadence;
     private long durationEpoch;
 
     private void SynchronizeDurationHold()

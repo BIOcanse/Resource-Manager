@@ -29,7 +29,6 @@ internal sealed partial class OracleCpuResidencyCaptureOwner : IDisposable
     private readonly KernelEtwDiagnostics logger;
     private readonly Action<OracleCpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seedProcessInventory;
     private readonly Action? published;
-    private readonly Func<int, OracleCaptureBucketMemory>? allocateBuckets;
     private readonly object subscriptionGate = new(), snapshotGate = new();
     public SamplingPublicationSignal Publications { get; } = new();
     private IOracleKernelEtwSubscription? kernelSubscription;
@@ -48,12 +47,12 @@ internal sealed partial class OracleCpuResidencyCaptureOwner : IDisposable
         Func<CpuResidencyCaptureConfiguration> configuration, KernelEtwDiagnostics? diagnostics = null)
         : this(broker, configuration, diagnostics ?? new(), SeedExistingProcesses) { }
     internal OracleCpuResidencyCaptureOwner(IOracleKernelEtwSessionBroker broker, Func<CpuResidencyCaptureConfiguration> configuration,
-        KernelEtwDiagnostics diagnostics, Action<OracleCpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seed, Action? published = null, Func<int, OracleCaptureBucketMemory>? allocateBuckets = null)
+        KernelEtwDiagnostics diagnostics, Action<OracleCpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seed, Action? published = null)
     {
         ArgumentNullException.ThrowIfNull(broker); ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(diagnostics); ArgumentNullException.ThrowIfNull(seed);
         kernelEtwBroker = broker; readConfiguration = configuration; logger = diagnostics;
-        seedProcessInventory = seed; this.published = published; this.allocateBuckets = allocateBuckets;
+        seedProcessInventory = seed; this.published = published;
     }
     public CpuCoreResidencySnapshot? Read()
     {
@@ -117,34 +116,55 @@ internal sealed partial class OracleCpuResidencyCaptureOwner : IDisposable
         get { lock (subscriptionGate) return activeSession is { WindowActive: true }; }
     }
 
-    /// <summary>Opens observation coverage and its duration-keyword hold on the run's metadata session.</summary>
-    public void BeginWindow()
+    /// <summary>Opens continuous observation coverage and its duration-keyword hold on the run's metadata session.
+    /// The window is split into ceil(window / cadence) slots (1..2047), so each read slides by about one cadence.</summary>
+    public void BeginWindow(TimeSpan cadence)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(cadence, TimeSpan.Zero);
+        BeginWindow((TimeSpan?)cadence);
+    }
+
+    private void BeginWindow(TimeSpan? cadence)
     {
         lock (durationResourceGate)
         {
-            lock (subscriptionGate) BeginWindowCore();
+            lock (subscriptionGate) BeginWindowCore(cadence);
             SynchronizeDurationHold();
         }
     }
 
+    // A finite window: it starts when every processor is known and stops growing once it covered W.
     internal async Task<T> RunWindowAsync<T>(Func<Task<T>> sample)
     {
         try
         {
-            BeginWindow();
+            BeginWindow(null);
             return await sample().ConfigureAwait(false);
         }
         finally { PauseWindow(); }
     }
-    private void BeginWindowCore()
+    // Null cadence = finite window (0 slots).
+    private static int SlotsFor(CpuResidencyCaptureConfiguration plan, TimeSpan? cadence)
+    {
+        if (cadence is not { } value) return 0;
+        var slots = (plan.ObservationWindow.Ticks + value.Ticks - 1) / value.Ticks;
+        return (int)Math.Clamp(slots, 1, OracleCpuResidencyAggregationBuffer.MaximumSlotsPerWindow);
+    }
+
+    private void BeginWindowCore(TimeSpan? cadence)
     {
         if (stopped) return;
         windowRequested = true;
-        if (activeSession is not { } session || session.WindowActive) return;
+        windowCadence = cadence;
+        if (activeSession is not { } session) return;
+        var slots = SlotsFor(session.Plan, cadence);
+        // An active window with the same shape keeps measuring; a different n re-issues the begin.
+        if (session.WindowActive && session.SlotsPerWindow == slots) return;
         session.Window.Invalidate();
+        session.WindowStartQpc = Stopwatch.GetTimestamp();
+        session.SlotsPerWindow = slots;
         session.ResetContinuity();
         session.Window = session.CreateWindow();
-        session.WindowStartQpc = Stopwatch.GetTimestamp();
         session.UnavailableReason = CpuCoreResidencyUnavailableReasons.WindowWarming;
         state = "Warming";
         message = WarmingMessage(session);
@@ -170,7 +190,7 @@ internal sealed partial class OracleCpuResidencyCaptureOwner : IDisposable
             session.WindowActive = false;
 
             session.Window.Invalidate();
-            session.Buffer.ReleaseWindowBuckets();
+            session.Buffer.ReleaseWindowStorage();
         }
         state = "Idle";
         message = idleMessage;
@@ -274,7 +294,7 @@ internal sealed partial class OracleCpuResidencyCaptureOwner : IDisposable
             context.StartedAt,
             expectedBindingEpoch,
             plan,
-            CreateAggregationBuffer(plan, Stopwatch.Frequency, allocateBuckets));
+            CreateAggregationBuffer(plan, Stopwatch.Frequency));
         var processorIds = plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray();
         BindKernelEventCallbacks(
             kernel,
@@ -301,6 +321,9 @@ internal sealed partial class OracleCpuResidencyCaptureOwner : IDisposable
             Volatile.Write(ref activeSession, null);
             ClearRetiredBuffersCore();
             session.WindowActive = windowRequested;
+            // Every binding re-issues the requested window shape (finite unless a cadence was given).
+            session.SlotsPerWindow = SlotsFor(plan, windowCadence);
+            session.ResetContinuity();
 
             Volatile.Write(ref activeSession, session);
             state = "Warming";
@@ -383,14 +406,15 @@ internal sealed partial class OracleCpuResidencyCaptureOwner : IDisposable
 
     internal static OracleCpuResidencyAggregationBuffer CreateAggregationBuffer(
         CpuResidencyCaptureConfiguration plan,
-        long qpcFrequency, Func<int, OracleCaptureBucketMemory>? allocateBuckets = null)
+        long qpcFrequency)
     {
         ArgumentNullException.ThrowIfNull(plan);
         var published = plan.RequirePublished();
         return new OracleCpuResidencyAggregationBuffer(
             qpcFrequency,
             published.ObservationWindowMilliseconds,
-            published.MaximumActivePairs, published.BucketWidthMilliseconds, allocateBuckets);
+            published.MaximumActivePairs,
+            published.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray());
     }
 
     internal static void BindKernelEventCallbacks(
@@ -581,7 +605,7 @@ internal sealed partial class OracleCpuResidencyCaptureOwner : IDisposable
             {
                 var currentSession = observedSession
                     ?? throw new InvalidOperationException("The running ETW session state is missing.");
-                var aggregate = currentSession.Buffer.Snapshot(currentSession.Plan.PhysicalCoreByLogicalProcessor.Keys);
+                var aggregate = currentSession.Buffer.Snapshot();
                 var brokerAfter = ReadBrokerSnapshot();
                 if (!brokerAfter.IsRunning
                     || brokerAfter.Generation != currentSession.Generation
@@ -939,7 +963,9 @@ internal sealed partial class OracleCpuResidencyCaptureOwner : IDisposable
         public CpuResidencyCaptureConfiguration Plan { get; } = plan;
         public OracleCpuResidencyAggregationBuffer? ManagedBuffer { get; } = buffer;
         public OracleCpuResidencyAggregationBuffer Buffer => ManagedBuffer ?? throw new InvalidOperationException("A native capture has no managed event buffer.");
-        public void ResetContinuity() => Buffer.ResetContinuity();
+        // A continuity re-issue begins the same window shape again above the session's floor.
+        public void ResetContinuity() => Buffer.BeginWindow(WindowStartQpc, SlotsPerWindow);
+        public int SlotsPerWindow;
         public OracleCpuResidencyWindowCompletion Window { get; set; } = new(plan.PhysicalCoreByLogicalProcessor.Keys,
             checked(Stopwatch.Frequency * (long)plan.ObservationWindowMilliseconds / 1000));
         public OracleCpuResidencyWindowCompletion CreateWindow() => new(Plan.PhysicalCoreByLogicalProcessor.Keys,

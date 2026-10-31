@@ -16,7 +16,7 @@ public sealed class KernelEtwNativeReaderLifecycleTests
 {
     private static CpuResidencyCaptureConfiguration CpuConfiguration() => new(1000, 32,
         new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "ccd:0", 1, 1) }.ToFrozenDictionary(),
-        "controlled native fixture", 50);
+        "controlled native fixture");
 
     [Fact]
     public void CpuReadAndDiagnosticRegistrationAcquireNoRunOrDurationHold()
@@ -36,7 +36,7 @@ public sealed class KernelEtwNativeReaderLifecycleTests
         using var owner = new EtwCpuResidencyCaptureOwner(broker, CpuConfiguration);
         owner.EnsureStarted();
         Assert.False(owner.IsWindowActive);
-        owner.BeginWindow();
+        owner.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.True(owner.IsWindowActive);
         var generation = broker.GetSnapshot().Generation;
         var nativeSession = broker.Resource.Session;
@@ -50,7 +50,7 @@ public sealed class KernelEtwNativeReaderLifecycleTests
         for (var i = 0; i < 10; i++) Assert.Same(first, owner.Read());
         Assert.Equal(2, broker.Acquires);
         Assert.Equal(1, broker.MetadataAcquires); Assert.Equal(1, broker.DurationAcquires);
-        owner.BeginWindow();
+        owner.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.Same(nativeSession, broker.Resource.Session);
         Assert.Equal(generation, broker.GetSnapshot().Generation);
         Assert.Equal(1, broker.SessionStarts);
@@ -70,14 +70,14 @@ public sealed class KernelEtwNativeReaderLifecycleTests
         using var first = new EtwCpuResidencyCaptureOwner(broker, CpuConfiguration);
         first.EnsureStarted();
         Assert.False(first.IsWindowActive);
-        first.BeginWindow();
+        first.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.True(first.IsWindowActive);
         var end = NativeCpuReaderTestFeed.ClosedWindow(first, [0], 1000);
         Assert.True(first.Collect()); Assert.NotNull(first.Read());
         using var later = new EtwCpuResidencyCaptureOwner(broker, CpuConfiguration);
         later.EnsureStarted();
         Assert.False(later.IsWindowActive);
-        later.BeginWindow();
+        later.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.True(later.IsWindowActive);
         // The native bank is still the earlier complete bank: this reader's
         // map/config/reset is staged, and its required ticket is not acknowledged.
@@ -95,7 +95,7 @@ public sealed class KernelEtwNativeReaderLifecycleTests
         using var owner = new EtwCpuResidencyCaptureOwner(broker, CpuConfiguration);
         owner.EnsureStarted();
         Assert.False(owner.IsWindowActive);
-        owner.BeginWindow();
+        owner.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.True(owner.IsWindowActive);
         NativeCpuReaderTestFeed.ClosedWindow(owner, [0], 1000);
         Assert.True(owner.Collect()); Assert.NotNull(owner.Read());

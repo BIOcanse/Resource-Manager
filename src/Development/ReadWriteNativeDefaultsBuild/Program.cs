@@ -16,7 +16,7 @@ internal static partial class Program
         new("region_bytes", "ByteCap", "ulong"), new("cpu_bytes", "Residency.ByteCap", "ulong"),
         new("interrupt_bytes", "Interrupts.ByteCap", "ulong"), new("disk_bytes", "DiskByteCap", "ulong"),
         new("network_bytes", "NetworkByteCap", "ulong"), new("file_bytes", "FileByteCap", "ulong"), new("history_bytes", "HistoryByteCap", "ulong"),
-        new("maximum_cells", "Residency.MaximumCells", "uint"), new("maximum_processes", "Residency.MaximumProcesses", "uint"),
+        new("maximum_processes", "Residency.MaximumProcesses", "uint"),
         new("maximum_threads", "Residency.MaximumThreads", "uint"), new("maximum_process_name_bytes", "Residency.MaximumNameBytes", "uint"),
         new("maximum_modules", "Interrupts.MaximumModules", "uint"), new("maximum_path_units", "MaximumPathUnits", "uint"),
         new("maximum_module_identities", "Interrupts.MaximumIdentities", "uint"), new("maximum_interrupt_slices", "Interrupts.MaximumSlices", "uint"),

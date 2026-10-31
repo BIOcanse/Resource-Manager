@@ -112,18 +112,10 @@ internal static class NativeCpuReaderTestFeed
                 var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession",
                     BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
                 var plan = (CpuResidencyCaptureConfiguration)session.GetType().GetProperty("Plan")!.GetValue(session)!;
-                var frequency = native.QpcFrequency;
-                var width = checked((frequency * plan.BucketWidthMilliseconds + 999) / 1000);
-                var window = checked((frequency * windowMilliseconds + 999) / 1000);
-                var buckets = checked((window + width - 1) / width + 2);
-                var initialRetainedStart = Math.Max(0, start - window);
-                var span = checked((end - 1) / width - initialRetainedStart / width + 1);
                 throw new InvalidOperationException($"Controlled CPU close failed: rawIndex={i}; logicalId={processors[i]}; "
-                    + $"openedProcessors={processors.Length}; priorCloses={i}; startQpc={start}; endQpc={end}; frequency={frequency}; "
-                    + $"bucketQpc={width}; initialRetainedSpanBuckets={span}; bucketCount={buckets}; "
-                    + $"planPairLimit={plan.MaximumActivePairs}; bucketSlotBudget={plan.MaximumActivePairs * buckets}; "
-                    + $"processorCap={native.Configuration.Residency.MaximumProcessors}; threadCap={native.Configuration.Residency.MaximumThreads}; "
-                    + $"cellCap={native.Configuration.Residency.MaximumCells}.", error);
+                    + $"openedProcessors={processors.Length}; priorCloses={i}; startQpc={start}; endQpc={end}; frequency={native.QpcFrequency}; "
+                    + $"planPairLimit={plan.MaximumActivePairs}; "
+                    + $"processorCap={native.Configuration.Residency.MaximumProcessors}; threadCap={native.Configuration.Residency.MaximumThreads}.", error);
             }
         }
         native.Publish(native.Tick + windowMilliseconds);

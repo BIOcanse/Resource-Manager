@@ -24,7 +24,7 @@ public sealed class KernelEtwDurationHoldTests
         Assert.Equal(CpuMetadata, broker.GetSnapshot().EnabledKeywords);
         Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
         Assert.False(capture.IsWindowActive);
-        capture.BeginWindow();
+        capture.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.Equal(CpuMetadata | KernelTraceEventParser.Keywords.ContextSwitch, broker.GetSnapshot().EnabledKeywords);
         Assert.Equal(2, broker.GetSnapshot().SubscriptionCount);
         Assert.True(capture.IsWindowActive);
@@ -42,7 +42,7 @@ public sealed class KernelEtwDurationHoldTests
             var current = capture.ReadObservation();
             for (var read = 0; read < 3; read++) Assert.Same(current, capture.ReadObservation());
             Assert.Equal(CpuMetadata, broker.GetSnapshot().EnabledKeywords);
-            capture.BeginWindow(); capture.BeginWindow();
+            capture.BeginWindow(TimeSpan.FromSeconds(1)); capture.BeginWindow(TimeSpan.FromSeconds(1));
             Assert.Equal(CpuMetadata | KernelTraceEventParser.Keywords.ContextSwitch, broker.GetSnapshot().EnabledKeywords);
             Assert.Equal(2, broker.GetSnapshot().SubscriptionCount);
             Assert.Equal(generation, broker.GetSnapshot().Generation);
@@ -52,7 +52,7 @@ public sealed class KernelEtwDurationHoldTests
         }
         capture.PauseWindow();
         Assert.Equal(CpuMetadata, broker.GetSnapshot().EnabledKeywords);
-        capture.BeginWindow();
+        capture.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.Equal(CpuMetadata | KernelTraceEventParser.Keywords.ContextSwitch, broker.GetSnapshot().EnabledKeywords);
         capture.Stop();
         Assert.Equal(KernelTraceEventParser.Keywords.None, broker.GetSnapshot().EnabledKeywords);
@@ -67,8 +67,8 @@ public sealed class KernelEtwDurationHoldTests
         capture.EnsureStarted();
         Assert.Equal(CpuMetadata, broker.GetSnapshot().EnabledKeywords);
         Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
-        capture.BeginWindow();
-        for (var window = 0; window < 4; window++) capture.BeginWindow();
+        capture.BeginWindow(TimeSpan.FromSeconds(1));
+        for (var window = 0; window < 4; window++) capture.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.Equal(2, broker.GetSnapshot().SubscriptionCount);
         Assert.Equal(1, broker.Binds["cpu-core-residency-duration"]);
         Assert.Equal(1, broker.Binds["cpu-core-residency"]); Assert.Equal(1, broker.Resource.Creations);

@@ -9,7 +9,7 @@ const fileio = @import("fileio.zig");
 
 fn config() shared.Config {
     return .{
-        .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 1, .max_cells = 1024, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 },
+        .residency = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 1, .max_processes = 16, .max_threads = 32, .max_processors = 2, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 },
         .interrupts = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 },
         .byte_cap = 8 * 1024 * 1024, .disk_byte_cap = 512 * 1024, .network_byte_cap = 512 * 1024,
         .file_byte_cap = 256 * 1024, .history_byte_cap = 256 * 1024,
@@ -66,6 +66,8 @@ test "handled CPU capacity reset rewarms while shared IRQ disk network and FileI
         std.debug.assert(backing.empty());
     }
     try self.setOutputs(127);
+    // Only processor 0 switches here; S needs every expected processor.
+    try self.configureProcessors(&.{0});
     try self.submit(&.{.{ .kind = 1, .pid = 7, .flags = 1, .start = 100, .name = "process".ptr, .name_len = 7 }});
     try self.drain(0);
 

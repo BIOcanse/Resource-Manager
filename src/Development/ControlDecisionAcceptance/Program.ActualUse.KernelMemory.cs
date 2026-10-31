@@ -79,7 +79,7 @@ internal static partial class Program
         }
     }
 
-    // IsWindowActive is the managed request. The native flow frees the closed window's pairs and buckets at its next
+    // IsWindowActive is the managed request. The native flow frees the closed window's pair storage at its next
     // buffer boundary and advances the continuity epoch then, so a between-window sample still at the closed window's
     // epoch is that release in flight. It is retention only if the next window opens before the epoch advances.
     private static ActualUseKernelMemorySample[] SettledBetweenWindowSamples(List<ActualUseKernelMemorySample> samples)
@@ -95,7 +95,7 @@ internal static partial class Program
             if (sample.WindowBefore || sample.WindowAfter)
             {
                 if (inFlight?.Aggregation is { } held)
-                    throw new InvalidDataException($"Residency window memory survived between windows at {inFlight.At:O}: pairs={held.ActivePairCount}, retainedBucketBytes={held.RetainedBucketBytes}; the next window opened before its release.");
+                    throw new InvalidDataException($"Residency window memory survived between windows at {inFlight.At:O}: pairs={held.ActivePairCount}, windowStorageBytes={held.WindowStorageBytes}; the next window opened before its release.");
                 if (sample.WindowBefore && sample.WindowAfter) closedEpoch = aggregation.ContinuityEpoch;
                 continue;
             }
@@ -113,9 +113,9 @@ internal static partial class Program
         foreach (var sample in idle)
         {
             var aggregation = sample.Aggregation!.Value;
-            if (aggregation.ActivePairCount != 0 || aggregation.RetainedBucketBytes != 0
+            if (aggregation.ActivePairCount != 0 || aggregation.WindowStorageBytes != 0
                 || sample.Allocation?.Tags.Any(tag => tag.Owner == 1 && tag.Scope == 1 && tag.CommittedBytes != 0) == true)
-                throw new InvalidDataException($"Residency window memory survived between windows at {sample.At:O}: pairs={aggregation.ActivePairCount}, retainedBucketBytes={aggregation.RetainedBucketBytes}.");
+                throw new InvalidDataException($"Residency window memory survived between windows at {sample.At:O}: pairs={aggregation.ActivePairCount}, windowStorageBytes={aggregation.WindowStorageBytes}.");
         }
         ActualUseKernelMemoryRow Row(string label, ActualUseKernelMemorySample[] values, bool absent = false)
         {

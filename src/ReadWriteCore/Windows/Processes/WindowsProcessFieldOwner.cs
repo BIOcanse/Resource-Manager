@@ -84,15 +84,19 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         (disk ?? throw new InvalidOperationException("This owner uses the hosted shared disk reader and has no standalone disk capture.")).Stop();
     }
+    /// <summary>The cadence a standalone capture slides its continuous window by when the caller gives none.</summary>
+    public static TimeSpan DefaultCpuResidencyCadence { get; } = TimeSpan.FromSeconds(1);
     /// <summary>Called by the SDK host's run entry to acquire this owner's CPU residency capture.
-    /// Field collection and cached reads never start it. Hosted product owners use their shared reader instead.</summary>
-    public void StartCpuResidencyCapture()
+    /// Field collection and cached reads never start it. Hosted product owners use their shared reader instead.
+    /// <paramref name="cadence"/> is how often the caller reads: null uses <see cref="DefaultCpuResidencyCadence"/>
+    /// (1 s), a given value is used exactly.</summary>
+    public void StartCpuResidencyCapture(TimeSpan? cadence = null)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         var capture = residency ?? throw new InvalidOperationException("This owner uses the hosted shared CPU residency reader and has no standalone CPU residency capture.");
         capture.EnsureStarted();
         // An explicit standalone run captures continuously until its host stops it.
-        capture.BeginWindow();
+        capture.BeginWindow(cadence ?? DefaultCpuResidencyCadence);
     }
     /// <summary>Called when the SDK host's run returns to release its CPU residency capture.
     /// Field collection and subscription changes never release the run's holder.</summary>

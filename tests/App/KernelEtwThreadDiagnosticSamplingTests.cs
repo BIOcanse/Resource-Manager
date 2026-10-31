@@ -224,13 +224,13 @@ public sealed class KernelEtwThreadDiagnosticSamplingTests
             Resource = new(config, Origin, DiagnosticSourceMode.Scripted);
             CpuResidencyCaptureConfiguration plan = new(5000, 32,
                 new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(),
-                "scripted native diagnostic test", 50);
+                "scripted native diagnostic test");
             Owner = new(Resource, () => plan);
             Owner.EnsureStarted();
             Assert.True(Owner.HasSessionLease);
             Assert.False(Owner.IsWindowActive);
             // Open the observation at this fixture's native due time, QPC zero.
-            Owner.BeginWindow();
+            Owner.BeginWindow(TimeSpan.FromSeconds(1));
             Assert.True(Owner.IsWindowActive);
             Resource.ConfigureDiagnosticScript(Origin.AddSeconds(-1).ToFileTime(),
                 [new(Pid, ProcessBirth)],

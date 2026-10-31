@@ -7,9 +7,12 @@ public struct NativeKernelEtwResidencyConfig
 {
     public uint Size, Version;
     public long QpcFrequency;
-    public uint WindowMilliseconds, BucketMilliseconds, MaximumPairs, MaximumCells,
+    public uint WindowMilliseconds, MaximumPairs,
         MaximumProcesses, MaximumThreads, MaximumProcessors, MaximumNameBytes;
     public ulong ByteCap;
+    /// <summary>Standalone captures pass the expected logical processor ids here; the shared owner passes 0/0/0 and configures them through configure_processors.</summary>
+    public uint ProcessorCount, Reserved;
+    public nint Processors;
 }
 
 [StructLayout(LayoutKind.Sequential)]

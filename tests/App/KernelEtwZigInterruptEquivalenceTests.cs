@@ -113,10 +113,17 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
         Assert.True(through >= 11000, "The owned capture does not contain ten seconds of recorded coverage.");
 
         var configuration = new ResidencyConfiguration { Size = (uint)Marshal.SizeOf<ResidencyConfiguration>(), Version = 0x10000,
-            Frequency = frequency, WindowMilliseconds = 5000, BucketMilliseconds = 50, MaximumPairs = 65536,
-            MaximumCells = 2_000_000, MaximumProcesses = 32768, MaximumThreads = 131072,
+            Frequency = frequency, WindowMilliseconds = 5000, MaximumPairs = 65536,
+            MaximumProcesses = 32768, MaximumThreads = 131072,
             MaximumProcessors = 4096, MaximumNameBytes = 8 * 1024 * 1024, ByteCap = 256 * 1024 * 1024 };
-        Assert.Equal(0, CreateResidency(ref configuration, out var residency));
+        nint residency;
+        // The owner copies the expected processors at create; the pin only spans the call.
+        fixed (int* processors = Enumerable.Range(0, source.NumberOfProcessors).ToArray())
+        {
+            configuration.ProcessorCount = checked((uint)source.NumberOfProcessors);
+            configuration.Processors = (nint)processors;
+            Assert.Equal(0, CreateResidency(ref configuration, out residency));
+        }
         nint trace = 0;
         try
         {
@@ -643,9 +650,11 @@ public sealed class KernelEtwZigInterruptEquivalenceTests
     {
         public uint Size, Version;
         public long Frequency;
-        public uint WindowMilliseconds, BucketMilliseconds, MaximumPairs, MaximumCells,
+        public uint WindowMilliseconds, MaximumPairs,
             MaximumProcesses, MaximumThreads, MaximumProcessors, MaximumNameBytes;
         public ulong ByteCap;
+        public uint ProcessorCount, Reserved;
+        public nint Processors;
     }
     [StructLayout(LayoutKind.Sequential)] private struct NativeTraceStatus
     {

@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
 using ResourceManager.ReadWrite.Windows.Processes;
@@ -17,10 +18,10 @@ public sealed class KernelEtwNativeSettingsTests
             new Dictionary<int, CpuResidencyCoreAccounting>
             {
                 [0] = new("core", "", 2, 0.5), [1] = new("core", "", 2, 0.5)
-            }.ToFrozenDictionary(), "fixture", plan.CpuCoreResidency.ExecutionTimeSource.BucketWidthMilliseconds);
+            }.ToFrozenDictionary(), "fixture");
         var expected = KernelEtwNativeSettings.CreateConfiguration(plan.KernelEtwLimits!, plan.CpuCoreResidency, 2);
         var selected = ReadWriteKernelEtwSettings.CreateConfiguration(cpu);
-        var json = new JsonSerializerOptions { IncludeFields = true };
+        var json = new JsonSerializerOptions { IncludeFields = true, Converters = { new NativePointerConverter() } };
         Assert.Equal(JsonSerializer.SerializeToUtf8Bytes(expected, json), JsonSerializer.SerializeToUtf8Bytes(selected, json));
         selected.ByteCap = 1;
         Assert.Equal(expected.ByteCap, ReadWriteKernelEtwSettings.CreateConfiguration(cpu).ByteCap);
@@ -45,7 +46,6 @@ public sealed class KernelEtwNativeSettingsTests
         Assert.Equal(4U, config.PublicationBanks);
         Assert.Equal(16U, config.Residency.MaximumProcessors);
         Assert.Equal(5000U, config.Residency.WindowMilliseconds);
-        Assert.Equal(50U, config.Residency.BucketMilliseconds);
         Assert.Equal(baseline.KernelEtwLimits, KernelEtwNativeSettings.ProductDefaults);
         Assert.NotEqual(baseline.BuildSha256, changed.BuildSha256);
         Assert.NotEqual(baseline.PlanSha256, changed.PlanSha256);
@@ -87,7 +87,7 @@ public sealed class KernelEtwNativeSettingsTests
         var buffers = KernelEtwNativeSettings.CreateSessionBuffers(changed.KernelEtwLimits!);
         Assert.Equal((32, 96, 3), (buffers.BufferKib, buffers.MinimumBuffers, buffers.PoolMib));
         // The pool is a managed session setting; the native owner configuration is unchanged.
-        var json = new JsonSerializerOptions { IncludeFields = true };
+        var json = new JsonSerializerOptions { IncludeFields = true, Converters = { new NativePointerConverter() } };
         Assert.Equal(JsonSerializer.SerializeToUtf8Bytes(KernelEtwNativeSettings.CreateConfiguration(baseline.KernelEtwLimits!, baseline.CpuCoreResidency, 2), json),
             JsonSerializer.SerializeToUtf8Bytes(KernelEtwNativeSettings.CreateConfiguration(changed.KernelEtwLimits!, changed.CpuCoreResidency, 2), json));
         Assert.NotEqual(baseline.BuildSha256, changed.BuildSha256);
@@ -96,7 +96,7 @@ public sealed class KernelEtwNativeSettingsTests
 
     [Theory]
     [InlineData("region_bytes", 1)]
-    [InlineData("maximum_cells", 0)]
+    [InlineData("maximum_threads", 0)]
     [InlineData("publication_banks", 1)]
     [InlineData("io_retention_milliseconds", 100)]
     [InlineData("disk_bucket_milliseconds", 0)]
@@ -108,5 +108,12 @@ public sealed class KernelEtwNativeSettingsTests
     {
         Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.KernelEtwLimits)["value"]![field] = value));
+    }
+
+    // The residency config's processor pointer is a native field too (the shared owner passes none).
+    private sealed class NativePointerConverter : JsonConverter<nint>
+    {
+        public override nint Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => (nint)reader.GetInt64();
+        public override void Write(Utf8JsonWriter writer, nint value, JsonSerializerOptions options) => writer.WriteNumberValue((long)value);
     }
 }

@@ -56,11 +56,10 @@ public sealed record CompiledCpuPhysicalCoreAccounting(
 
 public sealed record CompiledCpuExecutionTimeSourcePlan(
     string Kind,
-    int MaximumActivePairs,
-    int BucketWidthMilliseconds = 50)
+    int MaximumActivePairs)
 {
     public bool IsPublished => Kind == CpuExecutionTimeSourceKinds.KernelEtwContextSwitchClosedIntervals
-        && MaximumActivePairs > 0 && BucketWidthMilliseconds > 0;
+        && MaximumActivePairs > 0;
 
     public static CompiledCpuExecutionTimeSourcePlan Unpublished { get; } = new(string.Empty, 0);
 }

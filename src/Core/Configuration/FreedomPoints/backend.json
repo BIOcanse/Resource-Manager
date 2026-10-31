@@ -136,7 +136,6 @@
                   "network_bytes": 8388608,
                   "file_bytes": 4194304,
                   "history_bytes": 4194304,
-                  "maximum_cells": 262144,
                   "maximum_processes": 32768,
                   "maximum_threads": 65536,
                   "maximum_process_name_bytes": 2097152,
@@ -233,8 +232,7 @@
                     "value_source": "registry",
                     "value": {
                       "kind": "kernel_etw_context_switch_qpc_closed_intervals_v1",
-                      "maximum_active_pairs": 65536,
-                        "bucket_width_ms": 50
+                      "maximum_active_pairs": 65536
                     },
                     "consumers": [
                       "HostManagerPlanCompiler.CompileCpuCoreResidency"

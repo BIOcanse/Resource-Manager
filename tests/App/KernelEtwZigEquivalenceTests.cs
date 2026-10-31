@@ -11,35 +11,34 @@ namespace Resource_Manager_APP.Tests;
 /// <summary>Feeds identical normalized events to the retained C# oracle and the Zig C ABI.</summary>
 public sealed class KernelEtwZigEquivalenceTests
 {
+    private static readonly string[] ReplayScenarios =
+    [
+        "duration-distribution", "unknown-and-idle", "known-thread-unknown-pid", "identity-mismatch",
+        "pid-reuse", "tid-reuse", "lifecycle-before-boundary", "identity-metadata", "event-loss",
+        "reset-and-clear", "capacity-rewarm", "expired-pair", "partial-buckets", "shared-boundary",
+        "backward-time", "bucket-wrap", "maximum-qpc", "rounded-qpc-window"
+    ];
+
+    // Every scenario runs as a finite window (n = 0) and as a continuous one with n = 4.
+    public static IEnumerable<object[]> ReplayCases()
+    {
+        foreach (var scenario in ReplayScenarios)
+            foreach (var slots in new[] { 0, 4 }) yield return [scenario, slots];
+    }
+
     [Theory]
-    [InlineData("duration-distribution")]
-    [InlineData("unknown-and-idle")]
-    [InlineData("known-thread-unknown-pid")]
-    [InlineData("identity-mismatch")]
-    [InlineData("pid-reuse")]
-    [InlineData("tid-reuse")]
-    [InlineData("lifecycle-before-boundary")]
-    [InlineData("identity-metadata")]
-    [InlineData("event-loss")]
-    [InlineData("reset-and-clear")]
-    [InlineData("capacity-rewarm")]
-    [InlineData("expired-pair")]
-    [InlineData("partial-buckets")]
-    [InlineData("shared-boundary")]
-    [InlineData("invalid-processor-set")]
-    [InlineData("backward-time")]
-    [InlineData("bucket-wrap")]
-    [InlineData("maximum-qpc")]
-    [InlineData("rounded-qpc-window")]
-    public void NormalizedReplayMatchesEverySnapshotField(string scenario)
+    [MemberData(nameof(ReplayCases))]
+    public void NormalizedReplayMatchesEverySnapshotField(string scenario, int slots)
     {
         var window = scenario switch { "tid-reuse" or "pid-reuse" => 3000, "bucket-wrap" => 8,
             "maximum-qpc" => 1, "rounded-qpc-window" => 7, _ => 1000 };
         var frequency = scenario == "rounded-qpc-window" ? 1001 : 1000;
         var capacity = scenario == "capacity-rewarm" ? 1 : scenario == "expired-pair" ? 2 : 1024;
-        using var replay = new Replay(frequency, window, capacity,
-            scenario == "partial-buckets" ? 73 : Math.Max(1, (window + 99) / 100), compareEveryEvent: true);
-        replay.Compare([0]);
+        int[] processors = scenario == "shared-boundary" ? [0, 9] : [0];
+        using var replay = new Replay(frequency, window, capacity, processors, slots, compareEveryEvent: true);
+        replay.Compare();
+        // A fresh owner is a finite window with floor 0; a continuous one is begun explicitly.
+        if (slots != 0) replay.Begin(0);
 
         switch (scenario)
         {
@@ -125,10 +124,12 @@ public sealed class KernelEtwZigEquivalenceTests
                 replay.Start(0, 100, 1000, "Game", 10);
                 replay.Switch(0, 0, 0, 0, 100, 10);
                 replay.Switch(1000, 0, 100, 10, 0, 0);
-                replay.Apply(new(Kind.Reset));
+                replay.Begin(1000);
                 replay.Switch(1000, 0, 0, 0, 100, 10);
                 replay.Switch(2000, 0, 100, 10, 0, 0);
                 replay.Apply(new(Kind.Clear));
+                // A cleared owner is a fresh one; begin the theory's window shape again.
+                if (slots != 0) replay.Begin(0);
                 replay.Start(0, 100, 3000, "Fresh", 10);
                 replay.Switch(0, 0, 0, 0, 100, 10);
                 replay.Switch(1000, 0, 100, 10, 0, 0);
@@ -150,6 +151,7 @@ public sealed class KernelEtwZigEquivalenceTests
                 replay.Switch(1200, 0, 100, 10, 0, 0);
                 break;
             case "partial-buckets":
+                // Run edges that fall inside slots of either window grid.
                 replay.Start(0, 100, 1000, "A", 10);
                 replay.Start(0, 200, 2000, "B", 20);
                 replay.Switch(0, 0, 0, 0, 100, 10);
@@ -160,23 +162,12 @@ public sealed class KernelEtwZigEquivalenceTests
                 replay.Switch(2300, 0, 0, 0, 0, 0);
                 break;
             case "shared-boundary":
-                replay.ExpectedProcessors = [0, 9];
                 replay.Start(0, 100, 1000, "A", 10);
                 replay.Start(0, 200, 2000, "B", 20);
                 replay.Switch(0, 0, 0, 0, 100, 10);
                 replay.Switch(0, 9, 0, 0, 200, 20);
                 replay.Switch(1000, 9, 200, 20, 0, 0);
                 replay.Switch(1700, 0, 100, 10, 0, 0);
-                replay.Compare([9, 0]);
-                break;
-            case "invalid-processor-set":
-                replay.Start(0, 100, 1000, "A", 10);
-                replay.Switch(0, 0, 0, 0, 100, 10);
-                replay.Switch(1000, 0, 100, 10, 0, 0);
-                replay.Compare([]);
-                replay.Compare([0, 0]);
-                replay.Compare([0, 1]);
-                replay.Compare([-1]);
                 break;
             case "backward-time":
                 replay.Start(0, 100, 1000, "Game", 10);
@@ -186,6 +177,7 @@ public sealed class KernelEtwZigEquivalenceTests
                 replay.Switch(2000, 0, 100, 10, 0, 0);
                 break;
             case "bucket-wrap":
+                // An 8 QPC window: the continuous ring wraps many times.
                 replay.Start(0, 100, 1000, "A", 10);
                 replay.Start(0, 200, 2000, "B", 20);
                 replay.Switch(0, 0, 0, 0, 100, 10);
@@ -210,8 +202,22 @@ public sealed class KernelEtwZigEquivalenceTests
         }
 
         // Acquiring twice cannot settle an open slice or mutate the previous result.
-        replay.Compare(replay.ExpectedProcessors);
-        replay.Compare(replay.ExpectedProcessors);
+        replay.Compare();
+        replay.Compare();
+    }
+
+    [Theory]
+    [InlineData(new int[] { })]
+    [InlineData(new[] { 0, 0 })]
+    [InlineData(new[] { -1 })]
+    [InlineData(new[] { 0, 1, -2 })]
+    public void InvalidExpectedProcessorSetIsRejectedAtCreateByBothOwners(int[] processors)
+    {
+        Assert.Throws<ArgumentException>(() => new OracleCpuResidencyAggregationBuffer(1000, 1000, 1024, processors));
+        var status = NativeReplay.Create(1000, 1000, 1024, processors, out var handle);
+        if (handle != 0) NativeReplay.DestroyHandle(handle);
+        // invalid_argument
+        Assert.Equal(1, status);
     }
 
     [EnvironmentVariableFact("RESOURCE_MANAGER_ETL_REPLAY_PATH")]
@@ -224,8 +230,11 @@ public sealed class KernelEtwZigEquivalenceTests
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var frequency = Assert.IsType<long>(qpcProperty?.GetValue(source));
         Assert.True(frequency > 0);
-        using var replay = new Replay(frequency, 5000, 65536, 50, compareEveryEvent: false);
-        replay.ExpectedProcessors = Enumerable.Range(0, source.NumberOfProcessors).ToArray();
+        var processors = Enumerable.Range(0, source.NumberOfProcessors).ToArray();
+        using var finite = new Replay(frequency, 5000, 65536, processors, slots: 0, compareEveryEvent: false);
+        using var continuous = new Replay(frequency, 5000, 65536, processors, slots: 4, compareEveryEvent: false);
+        continuous.Begin(0);
+        Replay[] replays = [finite, continuous];
         var parser = new KernelTraceEventParser(source);
         var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
         dispatcher.AttachParser(parser);
@@ -239,7 +248,7 @@ public sealed class KernelEtwZigEquivalenceTests
 
         void Apply(Event input)
         {
-            replay.Apply(input);
+            foreach (var replay in replays) replay.Apply(input);
             if (++events >= maximumEvents) source.StopProcessing();
         }
 
@@ -268,12 +277,15 @@ public sealed class KernelEtwZigEquivalenceTests
                         switches++;
                         if (switches % 4096 == 0 || switches == maximumSwitches)
                         {
-                            var snapshot = replay.Compare(replay.ExpectedProcessors);
-                            snapshots++;
-                            if (snapshot.IsComplete)
+                            foreach (var replay in replays)
                             {
-                                completeSnapshots++;
-                                attributedQpc += snapshot.Records.Sum(static row => row.ExecutionTimeQpc);
+                                var snapshot = replay.Compare();
+                                snapshots++;
+                                if (snapshot.IsComplete)
+                                {
+                                    completeSnapshots++;
+                                    attributedQpc += snapshot.Records.Sum(static row => row.ExecutionTimeQpc);
+                                }
                             }
                         }
                         if (switches >= maximumSwitches) source.StopProcessing();
@@ -282,11 +294,14 @@ public sealed class KernelEtwZigEquivalenceTests
                 })], new(1, DateTimeOffset.UnixEpoch));
 
         source.Process();
-        var final = replay.Compare(replay.ExpectedProcessors);
-        if (final.IsComplete)
+        foreach (var replay in replays)
         {
-            completeSnapshots++;
-            attributedQpc += final.Records.Sum(static row => row.ExecutionTimeQpc);
+            var final = replay.Compare();
+            if (final.IsComplete)
+            {
+                completeSnapshots++;
+                attributedQpc += final.Records.Sum(static row => row.ExecutionTimeQpc);
+            }
         }
         Assert.InRange(switches, 4096, maximumSwitches);
         Assert.InRange(events, switches, maximumEvents);
@@ -309,12 +324,12 @@ public sealed class KernelEtwZigEquivalenceTests
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         var frequency = Assert.IsType<long>(frequencyProperty?.GetValue(source));
         Assert.True(frequency > 0);
-        var managed = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, 50);
+        var processors = Enumerable.Range(0, source.NumberOfProcessors).ToArray();
+        var managed = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, processors);
         var initialEventsLost = checked((uint)source.EventsLost);
         // OpenTrace reports historical session loss before delivering any records.
         // Match that empty-state reset; a later loss must not be absorbed into this baseline.
         if (initialEventsLost != 0) managed.ResetAfterEventLoss();
-        var processors = Enumerable.Range(0, source.NumberOfProcessors).ToArray();
         var parser = new KernelTraceEventParser(source);
         var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
         dispatcher.AttachParser(parser);
@@ -337,11 +352,11 @@ public sealed class KernelEtwZigEquivalenceTests
         source.Process();
         Assert.InRange(switches, 4096, switchLimit);
         Assert.Equal(initialEventsLost, checked((uint)source.EventsLost));
-        var expected = managed.Snapshot(processors);
+        var expected = managed.Snapshot();
         Assert.True(expected.IsComplete, "The chosen ETL prefix must contain a complete managed window.");
         Assert.NotEmpty(expected.Records);
 
-        using var native = new NativeReplay(frequency, 5000, 65536, 50);
+        using var native = new NativeReplay(frequency, 5000, 65536, processors);
         var status = native.ReplayEtl(path!, (ulong)switches);
         Assert.Equal((ulong)switches, status.Switches);
         Assert.Equal(frequency, status.QpcFrequency);
@@ -349,13 +364,13 @@ public sealed class KernelEtwZigEquivalenceTests
         Assert.Equal(0UL, status.Rejected);
         Assert.Equal(initialEventsLost, status.EventsLost);
         Assert.Equal(0u, status.BuffersLost);
-        AssertSnapshotsEqual(expected, native.Snapshot(processors));
+        AssertSnapshotsEqual(expected, native.Snapshot());
     }
 
     [Fact]
     public void NativeReferencePublicationSurvivesEventLossAndReleasesBudgetedStorage()
     {
-        using var native = new NativeReplay(1000, 1000, 64, 10);
+        using var native = new NativeReplay(1000, 1000, 64, [0]);
         native.Apply(new(Kind.ProcessStart, Pid: 100, Unique: 11, StartKey: 1000, Name: "Stable 中文"),
             DateTimeOffset.UnixEpoch);
         native.Apply(new(Kind.ThreadStart, Pid: 100, Tid: 10), DateTimeOffset.UnixEpoch);
@@ -379,8 +394,9 @@ public sealed class KernelEtwZigEquivalenceTests
         => rows.OrderBy(static row => row.LogicalProcessorId).ThenBy(static row => row.ProcessInstanceId)
             .ThenBy(static row => row.ThreadInstanceId).ToArray();
 
+    // Begin: Qpc = floor, Unique = slots per window (0 = finite).
     private enum Kind : uint { SeedProcess = 1, SeedThread, ProcessStart, ProcessEnd, ThreadStart,
-        ThreadEnd, Switch, Loss, Reset, Clear }
+        ThreadEnd, Switch, Loss, Begin, Clear }
 
     private readonly record struct Event(Kind Kind, long Qpc = 0, int Pid = 0, int Tid = 0,
         int OldPid = 0, int OldTid = 0, int Processor = 0, ulong Unique = 0,
@@ -391,14 +407,17 @@ public sealed class KernelEtwZigEquivalenceTests
         private readonly OracleCpuResidencyAggregationBuffer managed;
         private readonly NativeReplay native;
         private readonly bool compareEveryEvent;
-        public int[] ExpectedProcessors { get; set; } = [0];
+        private readonly int slots;
 
-        public Replay(long frequency, int window, int pairs, int bucket, bool compareEveryEvent)
+        public Replay(long frequency, int window, int pairs, int[] processors, int slots, bool compareEveryEvent)
         {
-            managed = new(frequency, window, pairs, bucket);
-            native = new(frequency, window, pairs, bucket);
+            managed = new(frequency, window, pairs, processors);
+            native = new(frequency, window, pairs, processors);
+            this.slots = slots;
             this.compareEveryEvent = compareEveryEvent;
         }
+
+        public void Begin(long floor) => Apply(new(Kind.Begin, floor, Unique: (ulong)slots));
 
         public void Start(long qpc, int pid, long startKey, string name, int tid, ulong unique = 1)
         {
@@ -425,18 +444,22 @@ public sealed class KernelEtwZigEquivalenceTests
                 case Kind.Switch: managed.ObserveContextSwitch(input.Qpc, time, input.Processor,
                     input.OldPid, input.OldTid, input.Pid, input.Name, input.Tid); break;
                 case Kind.Loss: managed.ResetAfterEventLoss(); break;
-                case Kind.Reset: managed.ResetContinuity(); break;
+                case Kind.Begin: managed.BeginWindow(input.Qpc, checked((int)input.Unique)); break;
                 case Kind.Clear: managed.Clear(); break;
                 default: throw new ArgumentOutOfRangeException(nameof(input));
             }
-            native.Apply(input, time);
-            if (compareEveryEvent) Compare(ExpectedProcessors);
+            // Capacity overflow is a declared fail-closed reset; native may report it only where the oracle reset.
+            native.Apply(input, time, managed.CapacityResetCount != capacityResets);
+            capacityResets = managed.CapacityResetCount;
+            if (compareEveryEvent) Compare();
         }
 
-        public CpuResidencyAggregationSnapshot Compare(int[] processors)
+        private long capacityResets;
+
+        public CpuResidencyAggregationSnapshot Compare()
         {
-            var expected = managed.Snapshot(processors);
-            var actual = native.Snapshot(processors);
+            var expected = managed.Snapshot();
+            var actual = native.Snapshot();
             AssertSnapshotsEqual(expected, actual);
             return expected;
         }
@@ -448,25 +471,34 @@ public sealed class KernelEtwZigEquivalenceTests
     private sealed class NativeReplay : IDisposable
     {
         private nint handle;
-        private readonly bool allowPairCapacityReset;
 
-        public NativeReplay(long frequency, int window, int pairs, int bucket)
+        public NativeReplay(long frequency, int window, int pairs, int[] processors)
         {
-            allowPairCapacityReset = pairs == 1;
-            var config = new Configuration
-            {
-                Size = (uint)Marshal.SizeOf<Configuration>(), Version = 0x10000,
-                QpcFrequency = frequency, WindowMilliseconds = (uint)window,
-                BucketMilliseconds = (uint)bucket, MaximumPairs = (uint)pairs,
-                MaximumCells = 2_000_000, MaximumProcesses = 32768, MaximumThreads = 131072,
-                MaximumProcessors = 4096, MaximumNameBytes = 8 * 1024 * 1024,
-                ByteCap = 256 * 1024 * 1024
-            };
-            Assert.Equal(0, Create(ref config, out handle));
+            Assert.Equal(0, Create(frequency, window, pairs, processors, out handle));
             Assert.NotEqual(nint.Zero, handle);
         }
 
-        public unsafe void Apply(Event input, DateTimeOffset time)
+        // The owner copies the expected processors; the pin only spans the call.
+        public static unsafe int Create(long frequency, int window, int pairs, int[] processors, out nint handle)
+        {
+            fixed (int* processorPointer = processors)
+            {
+                var config = new Configuration
+                {
+                    Size = (uint)Marshal.SizeOf<Configuration>(), Version = 0x10000,
+                    QpcFrequency = frequency, WindowMilliseconds = (uint)window,
+                    MaximumPairs = (uint)pairs, MaximumProcesses = 32768, MaximumThreads = 131072,
+                    MaximumProcessors = 4096, MaximumNameBytes = 8 * 1024 * 1024,
+                    ByteCap = 256 * 1024 * 1024,
+                    ProcessorCount = (uint)processors.Length, Processors = (nint)processorPointer
+                };
+                return CreateNative(ref config, out handle);
+            }
+        }
+
+        public static void DestroyHandle(nint value) => Destroy(value);
+
+        public unsafe void Apply(Event input, DateTimeOffset time, bool capacityReset = false)
         {
             var name = input.Name is null ? null : Encoding.UTF8.GetBytes(input.Name);
             fixed (byte* namePointer = name)
@@ -482,22 +514,19 @@ public sealed class KernelEtwZigEquivalenceTests
                 var status = ApplyNative(handle, ref value);
                 var capacity = status != 0 ? DescribeCapacityFailure() : string.Empty;
                 // Capacity overflow is a declared fail-closed reset, also exercised by the C# oracle.
-                Assert.True(status == 0 || status == 5 && allowPairCapacityReset,
+                Assert.True(status == 0 || status == 5 && capacityReset,
                     $"Native event {input.Kind} at QPC {input.Qpc} returned {status}. {capacity}");
             }
         }
 
-        public unsafe CpuResidencyAggregationSnapshot Snapshot(int[] processors)
+        public CpuResidencyAggregationSnapshot Snapshot()
         {
-            fixed (int* processorPointer = processors)
+            Assert.Equal(0, Acquire(handle, out var view));
+            try
             {
-                Assert.Equal(0, Acquire(handle, processorPointer, (uint)processors.Length, out var view));
-                try
-                {
-                    return Copy(view);
-                }
-                finally { Release(handle); }
+                return Copy(view);
             }
+            finally { Release(handle); }
         }
 
         private static unsafe CpuResidencyAggregationSnapshot Copy(View view)
@@ -550,16 +579,15 @@ public sealed class KernelEtwZigEquivalenceTests
                 : $"capacity reason={failure.Reason}; observed={failure.Observed}; limit={failure.Limit}; "
                     + $"processor={failure.Processor}; eventQpc={failure.EventQpc}; "
                     + $"oldestProcessor={failure.OldestProcessor}; oldestBoundary={failure.OldestBoundaryQpc}; "
-                    + $"retainedStart={failure.RetainedStartQpc}; pairs={failure.Pairs}; cells={failure.Cells}; "
-                    + $"retainedSlots={failure.RetainedSlots}; processors={failure.Processors}; "
+                    + $"windowStart={failure.WindowStartQpc}; pairs={failure.Pairs}; "
+                    + $"processors={failure.Processors}; "
                     + $"processes={failure.Processes}; threads={failure.Threads}; nameBytes={failure.NameBytes}.";
         }
 
-        public unsafe void AssertPublicationSurvivesLoss()
+        public void AssertPublicationSurvivesLoss()
         {
-            int processor = 0;
             ulong heldPublicationBytes = 0;
-            Assert.Equal(0, Acquire(handle, &processor, 1, out var view));
+            Assert.Equal(0, Acquire(handle, out var view));
             try
             {
                 var original = Copy(view);
@@ -567,7 +595,7 @@ public sealed class KernelEtwZigEquivalenceTests
                 Assert.Single(original.Records);
                 Apply(new(Kind.Loss), DateTimeOffset.UnixEpoch);
                 AssertSnapshotsEqual(original, Copy(view));
-                Assert.Equal(3, Acquire(handle, &processor, 1, out _));
+                Assert.Equal(3, Acquire(handle, out _));
                 Assert.Equal(0, QueryUsage(handle, out var held, (uint)Marshal.SizeOf<Usage>()));
                 Assert.True(held.CurrentBytes <= held.ByteCap);
                 Assert.True(held.PeakBytes <= held.ByteCap);
@@ -578,7 +606,7 @@ public sealed class KernelEtwZigEquivalenceTests
             Assert.Equal(0, QueryUsage(handle, out var released, (uint)Marshal.SizeOf<Usage>()));
             Assert.True(released.CurrentBytes < heldPublicationBytes,
                 $"Releasing the publication did not reduce native allocations: held={heldPublicationBytes}, released={released.CurrentBytes}.");
-            Assert.False(Snapshot([0]).IsComplete);
+            Assert.False(Snapshot().IsComplete);
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -607,8 +635,9 @@ public sealed class KernelEtwZigEquivalenceTests
             public uint Reason;
             public int Processor;
             public long EventQpc;
-            public ulong Observed, Limit, Pairs, Cells, RetainedSlots;
-            public long RetainedStartQpc;
+            public ulong Observed, Limit, Pairs;
+            // -1 = no window start.
+            public long WindowStartQpc;
             public int OldestProcessor;
             public uint Reserved;
             public long OldestBoundaryQpc;
@@ -627,9 +656,11 @@ public sealed class KernelEtwZigEquivalenceTests
         {
             public uint Size, Version;
             public long QpcFrequency;
-            public uint WindowMilliseconds, BucketMilliseconds, MaximumPairs, MaximumCells,
+            public uint WindowMilliseconds, MaximumPairs,
                 MaximumProcesses, MaximumThreads, MaximumProcessors, MaximumNameBytes;
             public ulong ByteCap;
+            public uint ProcessorCount, Reserved;
+            public nint Processors;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -670,13 +701,13 @@ public sealed class KernelEtwZigEquivalenceTests
 
         private const string Library = "ResourceManager.NativeCore";
         [DllImport(Library, EntryPoint = "rm_kernel_etw_create", CallingConvention = CallingConvention.Cdecl)]
-        private static extern int Create(ref Configuration config, out nint handle);
+        private static extern int CreateNative(ref Configuration config, out nint handle);
         [DllImport(Library, EntryPoint = "rm_kernel_etw_destroy", CallingConvention = CallingConvention.Cdecl)]
         private static extern void Destroy(nint handle);
         [DllImport(Library, EntryPoint = "rm_kernel_etw_apply", CallingConvention = CallingConvention.Cdecl)]
         private static extern int ApplyNative(nint handle, ref Input input);
         [DllImport(Library, EntryPoint = "rm_kernel_etw_acquire_residency", CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe int Acquire(nint handle, int* processors, uint count, out View view);
+        private static extern int Acquire(nint handle, out View view);
         [DllImport(Library, EntryPoint = "rm_kernel_etw_release_residency", CallingConvention = CallingConvention.Cdecl)]
         private static extern void Release(nint handle);
         [DllImport(Library, EntryPoint = "rm_kernel_etw_query_usage", CallingConvention = CallingConvention.Cdecl)]

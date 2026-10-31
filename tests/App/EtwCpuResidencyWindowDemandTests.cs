@@ -192,7 +192,7 @@ public sealed class EtwCpuResidencyWindowDemandTests(ITestOutputHelper testOutpu
                     TimeSpan.FromSeconds(35));
                 await FeedElapsedWindowAsync(reader, sampling, cancellation.Token, diagnostics =>
                 {
-                    Assert.True(diagnostics.RetainedBucketBytes > 0);
+                    Assert.True(diagnostics.WindowStorageBytes > 0);
                     Assert.True(diagnostics.ActivePairCount > 0);
                     memoryTrace.Add(new { phase = "window", index, at = DateTimeOffset.UtcNow,
                         qpc = Stopwatch.GetTimestamp(), diagnostics });
@@ -204,7 +204,7 @@ public sealed class EtwCpuResidencyWindowDemandTests(ITestOutputHelper testOutpu
                 await UntilAsync(() => !IsWindowActive(reader) && broker.Keywords == MetadataKeywords);
                 NativeCpuReaderTestFeed.PublishCommands(reader);
                 var idleMemory = CaptureOwner(reader)!.GetDiagnostics().Aggregation!.Value;
-                Assert.Equal(0, idleMemory.RetainedBucketBytes);
+                Assert.Equal(0, idleMemory.WindowStorageBytes);
                 Assert.Equal(0, idleMemory.ActivePairCount);
                 memoryTrace.Add(new { phase = "idle", index, at = DateTimeOffset.UtcNow,
                     qpc = Stopwatch.GetTimestamp(), diagnostics = idleMemory });

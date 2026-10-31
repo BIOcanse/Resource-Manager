@@ -47,7 +47,7 @@ public sealed unsafe class KernelEtwNativeCommittedMemoryTests(ITestOutputHelper
         var between = fixture.Diagnostics();
         Assert.Equal(12000ul, between.CurrentThreadCount);
         Assert.Equal(0ul, between.ActivePairCount);
-        Assert.Equal(0ul, between.RetainedBucketBytes);
+        Assert.Equal(0ul, between.WindowStorageBytes);
         AssertWindowReturned(fixture.Allocation.GetUsage());
         rows.Add(new { scenario = "tray: CPU metadata + IRQ + network", usage = fixture.Allocation.GetUsage(), diagnostics = between });
 
@@ -58,7 +58,7 @@ public sealed unsafe class KernelEtwNativeCommittedMemoryTests(ITestOutputHelper
         Assert.Equal(16056ul, active.ActivePairCount);
         Assert.Equal(12000ul, active.CurrentThreadCount);
         Assert.Equal(0L, active.CapacityResetCount);
-        Assert.True(active.RetainedBucketBytes > 0);
+        Assert.True(active.WindowStorageBytes > 0);
         var activeUsage = fixture.Allocation.GetUsage();
         Assert.Contains(activeUsage.Tags, value => value.Owner == 1 && value.Scope == 1 && value.CommittedBytes > 0);
         rows.Add(new { scenario = "CPU window: 16056 pairs / 12000 threads", usage = activeUsage, diagnostics = active });
@@ -94,7 +94,7 @@ public sealed unsafe class KernelEtwNativeCommittedMemoryTests(ITestOutputHelper
             fixture.EndWindow(completedTick + 1);
             var ended = fixture.Diagnostics();
             Assert.Equal(0ul, ended.ActivePairCount);
-            Assert.Equal(0ul, ended.RetainedBucketBytes);
+            Assert.Equal(0ul, ended.WindowStorageBytes);
             Assert.Equal(12000ul, ended.CurrentThreadCount);
             AssertWindowReturned(fixture.Allocation.GetUsage());
             fixture.Outputs(KernelEtwNativeOutputs.None);
@@ -218,6 +218,9 @@ public sealed unsafe class KernelEtwNativeCommittedMemoryTests(ITestOutputHelper
         }
         internal void ClosePairs(int firstProcessor, int secondProcessor)
         {
+            // Window storage starts at S, once both expected processors have a known run.
+            Switch(0, 0, 0);
+            Switch(1, 0, 0);
             for (var processor = 0; processor < 2; processor++)
             {
                 var oldTid = 0;
@@ -292,15 +295,14 @@ public sealed unsafe class KernelEtwNativeCommittedMemoryTests(ITestOutputHelper
     private struct AggregationDiagnostics
     {
         public long QpcFrequency, WindowQpc;
-        public ulong MaximumActivePairs, ActivePairCount, BucketCount, MaximumBucketCount;
-        public long BucketWidthQpc;
-        public ulong RetainedBucketBytes, MaximumBucketBytes;
+        public ulong MaximumActivePairs, ActivePairCount, SlotsPerWindow, RingSlots;
+        public ulong PairRecordBytes, WindowStorageBytes, MaximumWindowStorageBytes;
         public ulong CurrentProcessCount, CurrentThreadCount, RetainedProcessIdentityCount, RetainedThreadIdentityCount;
         public long ContinuityEpoch, CapacityResetCount;
         public uint ResetReason, Reserved;
-        public long ResetEventQpc, ResetRetainedWindowStartQpc;
-        public ulong ResetActivePairs, ResetMaximumPairs, ResetRetainedBucketSlots, ResetMaximumBucketSlots;
-        public ulong ResetRequiredBucketCount, ResetMaximumBucketCount, ResetCurrentProcesses, ResetCurrentThreads;
+        public long ResetEventQpc, ResetWindowStartQpc;
+        public ulong ResetActivePairs, ResetMaximumPairs, ResetRequiredSlotSpan, ResetRingSlots;
+        public ulong ResetCurrentProcesses, ResetCurrentThreads;
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct InterruptView

@@ -17,12 +17,12 @@ public sealed class KernelEtwCpuProjectionConcurrencyTests
         using var broker = new ReceiptBarrierBroker(resource);
         CpuResidencyCaptureConfiguration plan = new(1000, 32,
             new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(),
-            "concurrent native CPU projection fixture", 50);
+            "concurrent native CPU projection fixture");
         using var owner = new EtwCpuResidencyCaptureOwner(broker, () => plan);
         owner.EnsureStarted();
         Assert.False(owner.IsWindowActive);
         // The controlled observation is due at QPC zero, before either collector.
-        owner.BeginWindow();
+        owner.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.True(owner.IsWindowActive);
         resource.Publish(0);
         resource.ProcessStart(0, origin, 41, 11, origin.AddDays(-1).ToFileTime(), "fixture");

@@ -11,6 +11,8 @@ internal sealed partial class OracleCpuResidencyCaptureOwner
     private readonly object durationResourceGate = new();
     private IOracleKernelEtwSubscription? durationSubscription;
     private bool windowRequested = true;
+    // Cadence of the requested continuous window; null = finite window. Every binding re-issues it.
+    private TimeSpan? windowCadence;
 
     private void SynchronizeDurationHold()
     {

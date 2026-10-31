@@ -41,7 +41,7 @@ internal sealed unsafe partial class NativeKernelEtwTestResource : IKernelEtwSes
 
     // Test declarations only: deliberately small, explicit bounds, independent of production defaults.
     internal static NativeKernelEtwSessionConfig SmallConfiguration(long? qpcFrequency = null, uint maximumProcessors = 64,
-        uint windowMilliseconds = 1000, uint bucketMilliseconds = 50, long startedTick = 0)
+        uint windowMilliseconds = 1000, long startedTick = 0)
     {
         var config = new NativeKernelEtwSessionConfig
         {
@@ -49,7 +49,7 @@ internal sealed unsafe partial class NativeKernelEtwTestResource : IKernelEtwSes
             DiskByteCap = 4 * 1024 * 1024, NetworkByteCap = 4 * 1024 * 1024,
             FileByteCap = 4 * 1024 * 1024, HistoryByteCap = 4 * 1024 * 1024,
             Residency = new() { QpcFrequency = qpcFrequency ?? Stopwatch.Frequency, WindowMilliseconds = windowMilliseconds,
-                BucketMilliseconds = bucketMilliseconds, MaximumPairs = 32, MaximumCells = 1024,
+                MaximumPairs = 32,
                 MaximumProcesses = 64, MaximumThreads = 128, MaximumProcessors = maximumProcessors,
                 MaximumNameBytes = 4096, ByteCap = 4 * 1024 * 1024 },
             Interrupts = new() { MaximumModules = 16, MaximumPathUnits = 1024, MaximumIdentities = 64,

@@ -37,15 +37,13 @@ pub const State = struct {
         self.* = undefined;
     }
 
+    /// The residency owner validates and stores the expected set (resetting
+    /// continuity); this copy resolves interrupt processor indexes.
     pub fn configureProcessors(self: *State, ids: []const i32) !void {
-        if (ids.len == 0 or ids.len > self.capture.residency.config.max_processors) return error.InvalidConfig;
-        for (ids, 0..) |id, index| {
-            if (id < 0) return error.InvalidConfig;
-            for (ids[0..index]) |previous| if (previous == id) return error.InvalidConfig;
-        }
+        if (ids.len > self.capture.residency.config.max_processors) return error.InvalidConfig;
         const replacement = try self.allocator.dupe(i32, ids);
         errdefer self.allocator.free(replacement);
-        try self.capture.residency.resetContinuity();
+        try self.capture.residency.setProcessors(ids);
         self.allocator.free(self.processor_ids);
         self.processor_ids = replacement;
     }
@@ -59,7 +57,7 @@ pub const State = struct {
         if (input.reserved != 0 or input.reserved2 != 0 or input.flags & ~@as(u32, 1) != 0) return error.InvalidInput;
         if (input.kind == 9) {
             if (input.qpc < 0) return error.InvalidInput;
-            try self.capture.residency.beginWindowAt(input.qpc);
+            try self.capture.residency.beginWindowAt(input.qpc, input.unique);
             return;
         }
         if (input.kind == 13) {
@@ -83,7 +81,8 @@ pub const State = struct {
             return;
         }
         if (input.kind == 16) {
-            try self.capture.residency.configureWindow(input.qpc, input.time_ticks, std.math.cast(usize, input.unique) orelse return error.InvalidInput);
+            if (input.time_ticks != 0) return error.InvalidInput;
+            try self.capture.residency.configureWindow(input.qpc, std.math.cast(usize, input.unique) orelse return error.InvalidInput);
             return;
         }
         if (input.kind == 11 or input.kind == 12) {
@@ -148,7 +147,7 @@ pub const State = struct {
         var snapshot = build_snapshot: {
             const snapshot_started = if (profiling) |profile| profile.detailStart() else null;
             defer if (profiling) |profile| profile.finishCpuPart(snapshot_started, &profile.cpu_detail.native_snapshot);
-            break :build_snapshot try self.capture.residency.snapshotBorrowedNames(temporary, self.processor_ids);
+            break :build_snapshot try self.capture.residency.snapshotBorrowedNames(temporary);
         };
         const started = if (profiling) |profile| profile.detailStart() else null;
         defer if (profiling) |profile| profile.finishCpuPart(started, &profile.cpu_detail.abi_conversion);
@@ -207,7 +206,7 @@ fn identity(value: interrupts.Identity) irq.Identity {
 }
 
 test "shared reader publications retain rows and age idle interrupt windows" {
-    const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 64, .max_cells = 4096, .max_processes = 64, .max_threads = 128, .max_processors = 8, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 };
+    const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 64, .max_processes = 64, .max_threads = 128, .max_processors = 8, .max_name_bytes = 4096, .byte_cap = 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &cfg);
     defer owner.destroy();
     const irq_cfg: irq.Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 64, .max_slice_drivers = 128, .byte_cap = 1024 * 1024, .generation = 7, .started_tick_ms = 0, .events_lost = 0 };
@@ -235,7 +234,8 @@ test "shared reader publications retain rows and age idle interrupt windows" {
     try state.setResidencyEnabled(true);
     try std.testing.expectEqual(@as(i64, 1000), residency.rows.?[0].duration);
     try std.testing.expectEqualStrings("p", residency.rows.?[0].name.?[0..residency.rows.?[0].name_len]);
-    try state.apply(&.{ .kind = 16, .qpc = 2000, .time_ticks = 100, .unique = 32 });
+    try std.testing.expectError(error.InvalidInput, state.apply(&.{ .kind = 16, .qpc = 2000, .time_ticks = 100, .unique = 32 }));
+    try state.apply(&.{ .kind = 16, .qpc = 2000, .unique = 32 });
     try std.testing.expectEqual(@as(i64, 2000), owner.residency.window_qpc);
     try std.testing.expectEqual(@as(usize, 1), owner.residency.current_threads.count());
     try std.testing.expectEqual(@as(i64, 1000), residency.rows.?[0].duration);
@@ -257,7 +257,7 @@ test "shared reader publications retain rows and age idle interrupt windows" {
 }
 test "residency bank stores only final rows and one name per process instance" {
     const Budget = @import("budget.zig").Budget;
-    const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 512, .max_cells = 16384, .max_processes = 8, .max_threads = 512, .max_processors = 1, .max_name_bytes = 4096, .byte_cap = 2 * 1024 * 1024 };
+    const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 512, .max_processes = 8, .max_threads = 512, .max_processors = 1, .max_name_bytes = 4096, .byte_cap = 2 * 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &cfg);
     defer owner.destroy();
     const irq_cfg: irq.Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 8, .max_slice_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
@@ -297,7 +297,7 @@ test "residency bank stores only final rows and one name per process instance" {
 }
 
 test "residency publication reuses fragmented region islands with retained banks" {
-    const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 512, .max_cells = 16384, .max_processes = 8, .max_threads = 512, .max_processors = 1, .max_name_bytes = 4096, .byte_cap = 2 * 1024 * 1024 };
+    const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 512, .max_processes = 8, .max_threads = 512, .max_processors = 1, .max_name_bytes = 4096, .byte_cap = 2 * 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &cfg);
     defer owner.destroy();
     const irq_cfg: irq.Config = .{ .max_modules = 8, .max_path_units = 128, .max_identities = 16, .max_slices = 8, .max_slice_drivers = 16, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };

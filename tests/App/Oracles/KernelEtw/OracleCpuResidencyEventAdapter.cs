@@ -8,14 +8,15 @@ internal static class OracleCpuResidencyEventAdapter
 {
     internal static OracleCpuResidencyAggregationBuffer CreateAggregationBuffer(
         CpuResidencyCaptureConfiguration plan,
-        long qpcFrequency, Func<int, OracleCaptureBucketMemory>? allocateBuckets = null)
+        long qpcFrequency)
     {
         ArgumentNullException.ThrowIfNull(plan);
         var published = plan.RequirePublished();
         return new OracleCpuResidencyAggregationBuffer(
             qpcFrequency,
             published.ObservationWindowMilliseconds,
-            published.MaximumActivePairs, published.BucketWidthMilliseconds, allocateBuckets);
+            published.MaximumActivePairs,
+            published.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray());
     }
 
     internal static void BindKernelEventCallbacks(

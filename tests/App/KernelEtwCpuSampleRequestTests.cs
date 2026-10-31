@@ -152,13 +152,13 @@ public sealed class KernelEtwCpuSampleRequestTests
             Resource = new(NativeKernelEtwTestResource.SmallConfiguration(1000, 1), Origin);
             CpuResidencyCaptureConfiguration plan = new(1000, 32,
                 new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(),
-                "explicit CPU sample fixture", 50);
+                "explicit CPU sample fixture");
             Owner = new(Resource, () => plan);
             Owner.EnsureStarted();
             Assert.False(Owner.IsWindowActive);
             // This controlled run's observation is due at QPC zero. Metadata
             // acquisition alone must not open its finite CSwitch window.
-            Owner.BeginWindow();
+            Owner.BeginWindow(TimeSpan.FromSeconds(1));
             Assert.True(Owner.IsWindowActive);
             Resource.Publish(0);
             Resource.ProcessStart(0, Origin, 41, 11, Origin.AddDays(-1).ToFileTime(), "fixture");

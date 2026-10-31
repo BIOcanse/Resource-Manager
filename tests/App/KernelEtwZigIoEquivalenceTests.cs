@@ -368,8 +368,8 @@ public sealed class KernelEtwZigIoEquivalenceTests(Xunit.Abstractions.ITestOutpu
             // recorded addresses / 1,134,299 versions. Match its proven finite
             // allowance; realtime cleanup and production defaults are unchanged.
             FileByteCap = 128 * 1024 * 1024, HistoryByteCap = 64 * 1024 * 1024,
-            Residency = new() { QpcFrequency = frequency, WindowMilliseconds = 5000, BucketMilliseconds = 50,
-                MaximumPairs = 65536, MaximumCells = 2_000_000, MaximumProcesses = 32768, MaximumThreads = 131072,
+            Residency = new() { QpcFrequency = frequency, WindowMilliseconds = 5000,
+                MaximumPairs = 65536, MaximumProcesses = 32768, MaximumThreads = 131072,
                 MaximumProcessors = processors, MaximumNameBytes = 8 * 1024 * 1024, ByteCap = 128 * 1024 * 1024 },
             Interrupts = new() { MaximumModules = 8192, MaximumPathUnits = 32768, MaximumIdentities = 32768,
                 MaximumSlices = 262144, MaximumSliceDrivers = 1048576, ByteCap = 128 * 1024 * 1024 },
@@ -465,7 +465,7 @@ public sealed class KernelEtwZigIoEquivalenceTests(Xunit.Abstractions.ITestOutpu
             config.MaximumCommands = 32; config.MaximumCommandNameBytes = 4096; config.MaximumPathUnits = 1024;
             config.MaximumNamespaceEntries = 32; config.MaximumPendingEvents = 128; config.MaximumPendingPathUnits = 4096;
             config.MaximumRendererProcesses = 64;
-            config.Residency.MaximumPairs = 32; config.Residency.MaximumCells = 1024;
+            config.Residency.MaximumPairs = 32;
             config.Residency.MaximumProcesses = 64; config.Residency.MaximumThreads = 128;
             config.Residency.MaximumNameBytes = 4096; config.Residency.ByteCap = 4 * 1024 * 1024;
             config.Interrupts.MaximumModules = 16; config.Interrupts.MaximumPathUnits = 1024; config.Interrupts.MaximumIdentities = 64;

@@ -541,14 +541,15 @@ pub export fn rm_kernel_etw_trace_clock(handle: ?*anyopaque, output: ?*TraceCloc
 }
 
 test "fatal decoder failure invalidates both capture owners" {
-    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 8, .max_cells = 512, .max_processes = 8, .max_threads = 16, .max_processors = 2, .max_name_bytes = 1024, .byte_cap = 1024 * 1024 };
+    const processors = [_]i32{0};
+    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 8, .max_processes = 8, .max_threads = 16, .max_processors = 2, .max_name_bytes = 1024, .byte_cap = 1024 * 1024, .processor_count = 1, .processors = &processors };
     const owner = try capture.Session.create(std.testing.allocator, &config);
     defer owner.destroy();
     try owner.apply(&.{ .kind = 3, .pid = 1, .unique = 1 });
     try owner.apply(&.{ .kind = 5, .pid = 1, .tid = 2 });
     try owner.apply(&.{ .kind = 7, .pid = 1, .tid = 2 });
     try owner.apply(&.{ .kind = 7, .old_pid = 1, .old_tid = 2, .qpc = 1000 });
-    var before = try owner.residency.snapshot(std.testing.allocator, &.{0});
+    var before = try owner.residency.snapshot(std.testing.allocator);
     defer before.deinit(std.testing.allocator);
     try std.testing.expect(before.is_complete);
     const icfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
@@ -557,14 +558,14 @@ test "fatal decoder failure invalidates both capture owners" {
     try target.owner.observe(.dpc, 1, 0, 1000);
     var input: Trace = .{ .owner = owner, .consumer = native.Consumer.init(.{ .context = null, .on_notice = Trace.onNotice }), .name = @constCast(std.unicode.utf8ToUtf16LeStringLiteral("")), .interrupts = target };
     try std.testing.expect(!Trace.onNotice(&input, .{ .invalid_record = .{ .original_header_size = 1, .flags = 0, .payload_length = 8, .missing_payload = true } }));
-    var after = try owner.residency.snapshot(std.testing.allocator, &.{0});
+    var after = try owner.residency.snapshot(std.testing.allocator);
     defer after.deinit(std.testing.allocator);
     try std.testing.expect(!after.is_complete);
     try std.testing.expectError(error.Invalidated, target.owner.publish(std.testing.allocator, 20000, 1));
 }
 
 test "lost event marker resets interrupt coverage at its actual replay time" {
-    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 8, .max_cells = 512, .max_processes = 8, .max_threads = 16, .max_processors = 2, .max_name_bytes = 1024, .byte_cap = 1024 * 1024 };
+    const config: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 8, .max_processes = 8, .max_threads = 16, .max_processors = 2, .max_name_bytes = 1024, .byte_cap = 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &config);
     defer owner.destroy();
     const icfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };
@@ -583,7 +584,7 @@ test "lost event marker resets interrupt coverage at its actual replay time" {
 }
 
 test "recorded namespace is applied by raw consumer before first image path" {
-    const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .bucket_ms = 50, .max_pairs = 8, .max_cells = 512, .max_processes = 8, .max_threads = 16, .max_processors = 2, .max_name_bytes = 1024, .byte_cap = 1024 * 1024 };
+    const cfg: p.Config = .{ .qpc_frequency = 1000, .window_ms = 1000, .max_pairs = 8, .max_processes = 8, .max_threads = 16, .max_processors = 2, .max_name_bytes = 1024, .byte_cap = 1024 * 1024 };
     const owner = try capture.Session.create(std.testing.allocator, &cfg);
     defer owner.destroy();
     const icfg: interrupt_abi.Config = .{ .max_modules = 4, .max_path_units = 128, .max_identities = 8, .max_slices = 32, .max_slice_drivers = 32, .byte_cap = 1024 * 1024, .generation = 1, .started_tick_ms = 0, .events_lost = 0 };

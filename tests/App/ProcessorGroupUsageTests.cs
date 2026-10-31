@@ -32,15 +32,14 @@ public sealed class ProcessorGroupUsageTests
         Assert.Equal(20d, usage[47]); Assert.Null(usage[48]); Assert.Equal(90d, usage[64]); Assert.Null(usage[65]);
         var topologyIds = Enumerable.Range(0, 48).Concat(Enumerable.Range(64, 48)).ToArray();
         var config = NativeKernelEtwTestResource.SmallConfiguration(maximumProcessors: 96);
-        config.Residency.MaximumCells = 8192;
         using var broker = new RecordingNativeKernelEtwBroker(config);
         var plan = new CpuResidencyCaptureConfiguration(1000, 128,
             topologyIds.ToFrozenDictionary(id => id, id => new CpuResidencyCoreAccounting($"core:{id}", "", 1, 1)),
-            "native sparse group map", 50);
+            "native sparse group map");
         using var owner = new EtwCpuResidencyCaptureOwner(broker, () => plan);
         owner.EnsureStarted();
         Assert.False(owner.IsWindowActive); // The run holds metadata only.
-        owner.BeginWindow();
+        owner.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.True(owner.IsWindowActive);
         // The fixture delivers RAW indices through the actual shared trace
         // processor hook, so index48 becomes64 and index95 becomes111.

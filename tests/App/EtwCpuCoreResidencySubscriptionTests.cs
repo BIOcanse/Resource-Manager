@@ -119,11 +119,11 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
                 {
                     started.TrySetResult(true);
                     if (!releaseFirst.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Native inventory was not released.");
-                    Assert.False(shouldSeed()); Assert.Null(inventory.SeedProcess(999, 9999, "Stale"));
+                    Assert.False(shouldSeed()); Assert.False(inventory.SeedProcess(999, 9999, "Stale", []));
                 }
                 else
                 {
-                    Assert.True(shouldSeed()); inventory.SeedProcess(100, 2000, "Current")!.SeedThread(10);
+                    Assert.True(shouldSeed()); Assert.True(inventory.SeedProcess(100, 2000, "Current", [10]));
                     recovered.TrySetResult(true);
                 }
             }
@@ -131,7 +131,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             finally { Interlocked.Decrement(ref active); }
         });
         owner.EnsureStarted();
-        owner.BeginWindow();
+        owner.BeginWindow(TimeSpan.FromSeconds(1));
         broker.Resource.Publish(broker.Resource.Tick);
         try
         {
@@ -161,19 +161,19 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         {
             if (!shouldSeed()) return;
             var attempt = Interlocked.Increment(ref count);
-            inventory.SeedProcess(100, attempt * 1000L, "Current")!.SeedThread(10);
+            inventory.SeedProcess(100, attempt * 1000L, "Current", [10]);
             if (attempt == 1) first.TrySetResult(inventory);
             if (attempt == 2) second.TrySetResult(inventory);
         });
         owner.EnsureStarted();
-        owner.BeginWindow();
+        owner.BeginWindow(TimeSpan.FromSeconds(1));
         var old = await first.Task.WaitAsync(TimeSpan.FromSeconds(5));
         broker.Resource.Publish(broker.Resource.Tick);
         var before = owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
         broker.Resource.Loss(broker.Resource.Tick + 1, 1); broker.Resource.Publish(broker.Resource.Tick); owner.Collect();
         await second.Task.WaitAsync(TimeSpan.FromSeconds(5));
         broker.Resource.Publish(broker.Resource.Tick);
-        Assert.Null(old.SeedProcess(999, 9999, "Stale"));
+        Assert.False(old.SeedProcess(999, 9999, "Stale", []));
         Assert.Equal(broker.GetSnapshot().Generation, owner.GetDiagnostics().SessionGeneration);
         Assert.Equal(1, owner.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
         Assert.True(owner.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > before);
@@ -181,7 +181,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     }
 
     private static CpuResidencyCaptureConfiguration InventoryConfiguration() => new(1000, 32,
-        new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(), "native inventory", 50);
+        new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(), "native inventory");
     [Fact]
     public async Task StartingSubscriptionAllowsTheBrokerToBindOnAnotherThread()
     {

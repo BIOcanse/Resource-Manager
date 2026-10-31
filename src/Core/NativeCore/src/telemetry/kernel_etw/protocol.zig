@@ -7,14 +7,18 @@ pub const Config = extern struct {
     version: u32 = abi_version,
     qpc_frequency: i64,
     window_ms: u32,
-    bucket_ms: u32,
     max_pairs: u32,
-    max_cells: u32,
     max_processes: u32,
     max_threads: u32,
     max_processors: u32,
     max_name_bytes: u32,
     byte_cap: u64,
+    /// Expected logical processors, stored by the owner for the capture's
+    /// lifetime. The standalone ABI requires them; the shared owner passes none
+    /// and configures them through rm_kernel_etw_shared_configure_processors.
+    processor_count: u32 = 0,
+    reserved: u32 = 0,
+    processors: ?[*]const i32 = null,
 };
 pub const Input = extern struct {
     kind: u32,

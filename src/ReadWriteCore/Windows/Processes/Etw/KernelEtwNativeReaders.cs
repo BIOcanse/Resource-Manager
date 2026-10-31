@@ -27,10 +27,13 @@ internal static unsafe partial class KernelEtwNativeReaders
         if (refresh) session.RequestRefresh(Environment.TickCount64);
     }
 
-    internal static ulong ResetContinuity(NativeKernelEtwSession session, long requestedQpc = 0)
+    // Window begin: the floor QPC and the slots per window (0 = finite window, 1..2047 = continuous).
+    internal static ulong ResetContinuity(NativeKernelEtwSession session, long requestedQpc, int slotsPerWindow)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(slotsPerWindow);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(slotsPerWindow, MaximumSlotsPerWindow);
         using var owner = session.AcquireReadLease();
-        var input = new Input { Kind = 9, Qpc = requestedQpc };
+        var input = new Input { Kind = 9, Qpc = requestedQpc, Unique = (ulong)slotsPerWindow };
         Check(SubmitTrackedNative(owner.OwnerHandle, &input, 1, out var ticket), "submit continuity barrier");
         return ticket;
     }
@@ -70,18 +73,44 @@ internal static unsafe partial class KernelEtwNativeReaders
     }
     internal static void ConfigureInterruptProcessors(NativeKernelEtwSession session, int processorCount)
         => Submit(session, new Input { Kind = 21, ProcessId = processorCount });
-    internal static void ConfigureResidency(NativeKernelEtwSession session, int windowMilliseconds, int bucketMilliseconds, int maximumPairs)
-        => Submit(session, new Input { Kind = 16, Qpc = windowMilliseconds, TimeTicks = bucketMilliseconds, Unique = checked((ulong)maximumPairs) });
+    internal const int MaximumSlotsPerWindow = 2047;
+    internal static void ConfigureResidency(NativeKernelEtwSession session, int windowMilliseconds, int maximumPairs)
+        => Submit(session, new Input { Kind = 16, Qpc = windowMilliseconds, TimeTicks = 0, Unique = checked((ulong)maximumPairs) });
 
-    internal static void SeedProcess(NativeKernelEtwSession session, int pid, long birth, string name, int eventsLost)
+    // Commands per seed submit: 80 B each, so one chunk is 5 KiB of stack.
+    private const int SeedChunkInputs = 64;
+    private const int SeedNameStackBytes = 512;
+
+    /// <summary>One process and its threads: kind 11, then kind 12 per thread, in one submit per chunk of 64 commands.</summary>
+    internal static void SeedProcess(NativeKernelEtwSession session, int pid, long birth,
+        ReadOnlySpan<char> name, ReadOnlySpan<int> threadIds, int eventsLost)
     {
-        var bytes = Encoding.UTF8.GetBytes(name);
-        fixed (byte* text = bytes)
-            Submit(session, new Input { Kind = 11, Flags = 1, ProcessId = pid, Start = birth, Qpc = eventsLost, Name = (nint)text, NameLength = checked((uint)bytes.Length) });
+        var byteCount = Encoding.UTF8.GetByteCount(name);
+        byte[]? rented = byteCount > SeedNameStackBytes ? System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount) : null;
+        try
+        {
+            Span<byte> bytes = rented is null ? stackalloc byte[SeedNameStackBytes] : rented;
+            var written = Encoding.UTF8.GetBytes(name, bytes);
+            var inputs = stackalloc Input[SeedChunkInputs];
+            using var owner = session.AcquireReadLease();
+            fixed (byte* text = bytes)
+            {
+                inputs[0] = new Input { Kind = 11, Flags = 1, ProcessId = pid, Start = birth, Qpc = eventsLost, Name = (nint)text, NameLength = checked((uint)written) };
+                var count = 1;
+                foreach (var tid in threadIds)
+                {
+                    if (count == SeedChunkInputs)
+                    {
+                        Check(SubmitNative(owner.OwnerHandle, inputs, (uint)count), "submit process seed");
+                        count = 0;
+                    }
+                    inputs[count++] = new Input { Kind = 12, ProcessId = pid, Start = birth, ThreadId = tid, Qpc = eventsLost };
+                }
+                Check(SubmitNative(owner.OwnerHandle, inputs, (uint)count), "submit process seed");
+            }
+        }
+        finally { if (rented is not null) System.Buffers.ArrayPool<byte>.Shared.Return(rented); }
     }
-
-    internal static void SeedThread(NativeKernelEtwSession session, int pid, long birth, int tid, int eventsLost)
-        => Submit(session, new Input { Kind = 12, ProcessId = pid, Start = birth, ThreadId = tid, Qpc = eventsLost });
 
     private static void Submit(NativeKernelEtwSession session, Input input)
     {

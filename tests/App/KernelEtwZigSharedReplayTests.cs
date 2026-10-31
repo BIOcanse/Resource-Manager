@@ -123,7 +123,7 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
         => OnDedicatedThread(() =>
         {
             using var source = new ETWTraceEventSource(path);
-            var residency = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, 50);
+            var residency = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, processors);
             var interrupts = new OracleSystemInterruptWindowAggregator();
             var modules = new OracleKernelModuleAddressMap();
             var parser = new KernelTraceEventParser(source);
@@ -192,7 +192,7 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
             var cpu = (ThreadCpu() - cpuStart) / 10_000.0;
             var wall = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             return new ManagedRun(records, switches, lost, cpu, wall, (last - first) / (double)frequency,
-                residency.Snapshot(processors), interrupts, irqStarted, ioRecords, Tick(last), processors.Length);
+                residency.Snapshot(), interrupts, irqStarted, ioRecords, Tick(last), processors.Length);
         });
 
     private static Dictionary<ulong, ManagedPrefix> ReadManagedPrefixes(string path, long frequency, int[] processors,
@@ -201,7 +201,7 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
         {
             Assert.InRange(requestedCuts.Count, 1, 1024);
             using var source = new ETWTraceEventSource(path);
-            var residency = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, 50);
+            var residency = new OracleCpuResidencyAggregationBuffer(frequency, 5000, 65536, processors);
             var parser = new KernelTraceEventParser(source);
             var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
             dispatcher.AttachParser(parser);
@@ -219,7 +219,7 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
             long projectedRows = 0, nameCharacters = 0;
             void Capture()
             {
-                var snapshot = residency.Snapshot(processors);
+                var snapshot = residency.Snapshot();
                 projectedRows = checked(projectedRows + snapshot.Records.Count);
                 nameCharacters = checked(nameCharacters + snapshot.Records.Sum(static row => (long)row.ProcessName.Length));
                 Assert.True(projectedRows <= 2_000_000, "Bulk managed prefix rows exceeded their explicit bound.");
@@ -362,7 +362,7 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
             }
             // An actual closed shared bank must not satisfy a later consumer reset
             // before that consumer's exact staged command has been acknowledged.
-            var pendingTicket = KernelEtwNativeReaders.ResetContinuity(session);
+            var pendingTicket = KernelEtwNativeReaders.ResetContinuity(session, 0, 0);
             var previousSequence = sequence;
             var projectedOldBank = false;
             Assert.Null(KernelEtwNativeReaders.ReadResidency(session, ref sequence, checked((int)oracle.Lost), pendingTicket, cpu,
@@ -385,7 +385,7 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
         Assert.Equal(1u, value.Enabled); Assert.Equal(11u, value.PhaseCount);
         Assert.True(value.QpcFrequency > 0);
         output.WriteLine($"profile enabled={value.Enabled}; frequency={value.QpcFrequency}; publications={value.Publications}; clockFailures={value.ClockFailures}; "
-            + $"cpuRows={value.CpuRows}; cpuPairsBound={value.CpuPairsBound}; cpuRetainedCells={value.CpuRetainedCells}; "
+            + $"cpuRows={value.CpuRows}; cpuPairsBound={value.CpuPairsBound}; "
             + $"irqIdentities={value.IrqIdentities}; irqCells={value.IrqCells}; notifications={value.Notifications}; pathUnits={value.PathUnits}.");
         for (var i = 0; i < phases.Length; ++i)
             output.WriteLine($"profile phase={phases[i]}; calls={value.Phases[i].Calls}; wallQpcTicks={value.Phases[i].WallQpcTicks}; "
@@ -402,12 +402,6 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
         output.WriteLine($"profile CPU detail enabled={value.Enabled}; frequency={value.QpcFrequency}; clockReads={value.ClockReads}; clockFailures={value.ClockFailures}.");
         output.WriteLine($"profile CPU native_snapshot calls={value.NativeSnapshot.Calls}; wallQpcTicks={value.NativeSnapshot.WallQpcTicks}; wallMs={value.NativeSnapshot.WallQpcTicks * 1000.0 / value.QpcFrequency:F3}.");
         output.WriteLine($"profile CPU ABI_conversion calls={value.AbiConversion.Calls}; wallQpcTicks={value.AbiConversion.WallQpcTicks}; wallMs={value.AbiConversion.WallQpcTicks * 1000.0 / value.QpcFrequency:F3}.");
-        WriteRetention("event", value.EventRetention);
-        WriteRetention("snapshot", value.SnapshotRetention);
-        void WriteRetention(string lane, RetentionProfile r)
-            => output.WriteLine($"profile CPU retention={lane}; calls={r.Calls}; wallQpcTicks={r.WallQpcTicks}; wallMs={r.WallQpcTicks * 1000.0 / value.QpcFrequency:F3}; "
-                + $"pairEntryVisits={r.PairEntryVisits}; cellEntryVisits={r.CellEntryVisits}; pairsRemoved={r.PairsRemoved}; cellsRemoved={r.CellsRemoved}; "
-                + $"pairRestarts={r.PairRestarts}; cellRestarts={r.CellRestarts}.");
     }
 
     private unsafe void WriteFailureDiagnostics(nint owner)
@@ -651,13 +645,9 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
     {
         public uint Enabled, PhaseCount;
         public long QpcFrequency;
-        public ulong Publications, ClockFailures, CpuRows, CpuPairsBound, CpuRetainedCells, IrqIdentities, IrqCells, Notifications, PathUnits;
+        public ulong Publications, ClockFailures, CpuRows, CpuPairsBound, IrqIdentities, IrqCells, Notifications, PathUnits;
         public ProfileRegion Region;
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 11)] public ProfilePhase[] Phases;
-    }
-    [StructLayout(LayoutKind.Sequential)] private struct RetentionProfile
-    {
-        public ulong Calls, WallQpcTicks, PairEntryVisits, CellEntryVisits, PairsRemoved, CellsRemoved, PairRestarts, CellRestarts;
     }
     [StructLayout(LayoutKind.Sequential)] private struct CpuPublicationDetail
     {
@@ -665,7 +655,6 @@ public sealed class KernelEtwZigSharedReplayTests(Xunit.Abstractions.ITestOutput
         public long QpcFrequency;
         public ulong ClockReads, ClockFailures;
         public ProfilePhase NativeSnapshot, AbiConversion;
-        public RetentionProfile EventRetention, SnapshotRetention;
     }
     [DllImport("kernel32.dll")] private static extern nint GetCurrentThread();
     [DllImport("kernel32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]

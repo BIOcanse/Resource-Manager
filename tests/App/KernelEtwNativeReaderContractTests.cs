@@ -124,7 +124,7 @@ public sealed class KernelEtwNativeReaderContractTests
         var type = typeof(EtwCpuResidencyCaptureOwner).GetNestedType("NativeResidencyReader", BindingFlags.NonPublic)!;
         var reader = Activator.CreateInstance(type, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             null, [fixture.Session, RecordedConfiguration(), 1L, source], null)!;
-        type.GetMethod("Configure", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(reader, [new[] { 0 }, true]);
+        type.GetMethod("Configure", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(reader, [new[] { 0 }, true, 0]);
         if (reset) type.GetMethod("ResetContinuity", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(reader, null);
         fixture.Publish(1000); // The tracked map/config/reset barrier is now applied.
         var at = DateTimeOffset.UnixEpoch;
@@ -326,7 +326,7 @@ public sealed class KernelEtwNativeReaderContractTests
 
     private static CpuResidencyCaptureConfiguration RecordedConfiguration() => new(1000, 32,
         new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(),
-        "recorded native contract", 50);
+        "recorded native contract");
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RecordedInput

@@ -177,12 +177,12 @@ public sealed class KernelEtwThreadDiagnosticEquivalenceTests
             Resource = new(config, Origin, DiagnosticSourceMode.Scripted);
             CpuResidencyCaptureConfiguration plan = new(5000, 32,
                 new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(),
-                "scripted native diagnostic equivalence", 50);
+                "scripted native diagnostic equivalence");
             Owner = new(Resource, () => plan);
             Owner.EnsureStarted();
             Assert.False(Owner.IsWindowActive);
             // Both diagnostic owners consume the observation due at QPC zero.
-            Owner.BeginWindow();
+            Owner.BeginWindow(TimeSpan.FromSeconds(1));
             Assert.True(Owner.IsWindowActive);
             Resource.ConfigureDiagnosticScript(BaselineTime.ToFileTime(), ProcessRows(), ThreadRows(2, 3, nameError: -1));
             Resource.ProcessStart(0, Origin, Pid, 11, ProcessBirth, "scripted process");

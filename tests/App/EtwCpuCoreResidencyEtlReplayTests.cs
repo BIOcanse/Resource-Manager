@@ -52,7 +52,7 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests(ITestOutputHelper output)
             }.ToFrozenDictionary(), "controlled SMT replay barrier");
         using var owner = new EtwCpuResidencyCaptureOwner(broker, () => plan, new(), null, static (_, _) => { });
         owner.EnsureStarted();
-        owner.BeginWindow();
+        owner.BeginWindow(TimeSpan.FromSeconds(1));
         var end = NativeCpuReaderTestFeed.ClosedWindow(owner, [0, 1], 1000, startQpc: 0);
         Assert.True(owner.Collect());
         Assert.NotNull(owner.Read());
@@ -357,7 +357,8 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests(ITestOutputHelper output)
         var buffer = new OracleCpuResidencyAggregationBuffer(
             qpcFrequency,
             observationWindowMilliseconds: ReplayWindowMilliseconds,
-            maximumActivePairs: compiledPlan.ExecutionTimeSource.MaximumActivePairs);
+            maximumActivePairs: compiledPlan.ExecutionTimeSource.MaximumActivePairs,
+            logicalProcessorIds: Enumerable.Range(0, source.NumberOfProcessors).ToArray());
         var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
         dispatcher.AttachParser(kernel);
         dispatcher.InitializeSubscriptions(
@@ -390,7 +391,7 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests(ITestOutputHelper output)
                 return;
             }
 
-            var snapshot = buffer.Snapshot(expectedProcessors);
+            var snapshot = buffer.Snapshot();
             if (snapshot.IsComplete && snapshot.Records.Count > 0)
             {
                 complete = snapshot;
@@ -486,7 +487,8 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests(ITestOutputHelper output)
         using var source = new ETWTraceEventSource(path);
         var topology = new ReplayTopologySampler(source.NumberOfProcessors).CaptureTopology();
         var plan = HostManagerTestPlanFactory.CreatePlan(cpuTopology: topology).CpuCoreResidency.RequirePublished();
-        var buffer = new OracleCpuResidencyAggregationBuffer(ReadQpcFrequency(source), plan.ObservationWindowMilliseconds, plan.ExecutionTimeSource.MaximumActivePairs, plan.ExecutionTimeSource.BucketWidthMilliseconds);
+        var buffer = new OracleCpuResidencyAggregationBuffer(ReadQpcFrequency(source), plan.ObservationWindowMilliseconds, plan.ExecutionTimeSource.MaximumActivePairs,
+            Enumerable.Range(0, source.NumberOfProcessors).ToArray());
         var dispatcher = new OracleKernelEtwSubscriptionDispatcher();
         dispatcher.AttachParser(new KernelTraceEventParser(source));
         dispatcher.InitializeSubscriptions(

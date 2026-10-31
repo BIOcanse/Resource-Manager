@@ -22,24 +22,12 @@ pub const View = extern struct {
     clock_failures: u64 = 0,
     cpu_rows: u64 = 0,
     cpu_pairs_bound: u64 = 0,
-    cpu_retained_cells: u64 = 0,
     irq_identities: u64 = 0,
     irq_cells: u64 = 0,
     notifications: u64 = 0,
     path_units: u64 = 0,
     region: RegionStats = .{},
     phases: [phase_count]PhaseStats = .{PhaseStats{}} ** phase_count,
-};
-pub const RetentionCaller = enum { event, snapshot };
-pub const RetentionStats = extern struct {
-    calls: u64 = 0,
-    wall_qpc_ticks: u64 = 0,
-    pair_entry_visits: u64 = 0,
-    cell_entry_visits: u64 = 0,
-    pairs_removed: u64 = 0,
-    cells_removed: u64 = 0,
-    pair_restarts: u64 = 0,
-    cell_restarts: u64 = 0,
 };
 pub const CpuDetail = extern struct {
     enabled: u32 = 0,
@@ -49,8 +37,6 @@ pub const CpuDetail = extern struct {
     detail_clock_failures: u64 = 0,
     native_snapshot: PhaseStats = .{},
     abi_conversion: PhaseStats = .{},
-    retention_event: RetentionStats = .{},
-    retention_snapshot: RetentionStats = .{},
 };
 extern "kernel32" fn QueryPerformanceCounter(value: *i64) callconv(.winapi) i32;
 extern "kernel32" fn QueryPerformanceFrequency(value: *i64) callconv(.winapi) i32;
@@ -98,15 +84,6 @@ pub const Profile = struct {
         stats.calls +|= 1;
         stats.wall_qpc_ticks +|= self.detailElapsed(started);
     }
-    pub fn retentionStats(self: *Profile, caller: RetentionCaller) *RetentionStats {
-        return if (caller == .event) &self.cpu_detail.retention_event else &self.cpu_detail.retention_snapshot;
-    }
-    pub fn finishRetention(self: *Profile, started: ?i64, caller: RetentionCaller) void {
-        if (!self.enabled) return;
-        const stats = self.retentionStats(caller);
-        stats.calls +|= 1;
-        stats.wall_qpc_ticks +|= self.detailElapsed(started);
-    }
     fn finishAt(self: *Profile, now_tick: ?i64) void {
         if (self.phase) |phase| {
             const stats = &self.view.phases[@intFromEnum(phase)];
@@ -134,9 +111,8 @@ test "profile is disabled by default and has a stable bounded wire layout" {
     var profile: Profile = .{};
     profile.begin(.residency);
     profile.end();
-    try std.testing.expectEqual(@as(usize, 344), @sizeOf(View));
-    try std.testing.expectEqual(@as(usize, 192), @sizeOf(CpuDetail));
-    try std.testing.expectEqual(@as(usize, 64), @sizeOf(RetentionStats));
+    try std.testing.expectEqual(@as(usize, 336), @sizeOf(View));
+    try std.testing.expectEqual(@as(usize, 64), @sizeOf(CpuDetail));
     try std.testing.expectEqual(@as(?i64, null), profile.detailStart());
     try std.testing.expectEqual(@as(u64, 0), profile.cpu_detail.detail_clock_reads);
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(RegionStats));

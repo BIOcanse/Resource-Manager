@@ -211,7 +211,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
                     return SubscriptionSampleCompletion.Skipped;
                 var windowed = WindowedCapture;
                 if (windowed) return await Capture.RunWindowAsync(SampleCurrentWindowAsync);
-                Capture.BeginWindow();
+                Capture.BeginWindow(captureInterval);
                 return await SampleCurrentWindowAsync();
 
                 async Task<SubscriptionSampleCompletion> SampleCurrentWindowAsync()
@@ -324,7 +324,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
         => new(plan.ObservationWindowMilliseconds, plan.ExecutionTimeSource.MaximumActivePairs,
             plan.PhysicalCoreByLogicalProcessor.ToFrozenDictionary(pair => pair.Key, pair => new CpuResidencyCoreAccounting(
                 pair.Value.PhysicalCoreId, pair.Value.CcdId, pair.Value.LogicalProcessorCount, pair.Value.LogicalProcessorShare)),
-            "Host published typed core/CCD accounting plan", plan.ExecutionTimeSource.BucketWidthMilliseconds);
+            "Host published typed core/CCD accounting plan");
     internal static IReadOnlyList<CpuProcessCoreResidency> BuildProcessSnapshot(CompiledCpuCoreResidencyPlan plan,
         long generation, CpuResidencyAggregationSnapshot aggregate)
         => EtwCpuResidencyCaptureOwner.BuildProcessSnapshot(MapPlan(plan), generation, aggregate);

@@ -13,7 +13,7 @@ public sealed class EtwDynamicKeywordHoldTests
     private const KernelTraceEventParser.Keywords Metadata = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread;
     private const KernelTraceEventParser.Keywords Switch = KernelTraceEventParser.Keywords.ContextSwitch;
     private static EtwCpuResidencyCaptureOwner Capture(Broker broker) => new(broker,
-        () => new(50, 64, new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("0", "", 1, 1) }.ToFrozenDictionary(), "fixture", 10),
+        () => new(50, 64, new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("0", "", 1, 1) }.ToFrozenDictionary(), "fixture"),
         new KernelEtwDiagnostics(), null, static (_, _) => { });
 
     [Fact]
@@ -26,20 +26,20 @@ public sealed class EtwDynamicKeywordHoldTests
         Assert.Equal(Metadata, broker.Keywords);
         for (var i = 0; i < 2; i++)
         {
-            capture.BeginWindow();
+            capture.BeginWindow(TimeSpan.FromSeconds(1));
             Assert.Equal(Metadata | Switch, broker.Keywords);
             capture.Collect();
             capture.PauseWindow();
             Assert.Equal(Metadata, broker.Keywords);
             Assert.Equal(Metadata, broker.Holders.Single().Keywords);
         }
-        capture.BeginWindow();
+        capture.BeginWindow(TimeSpan.FromSeconds(1));
         capture.Collect();
-        capture.BeginWindow();
+        capture.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.Equal(2, broker.Holders.Length); // continuous capture keeps the same second hold
         capture.PauseWindow();
         Assert.Equal(Metadata, broker.Keywords);
-        capture.BeginWindow();
+        capture.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.Equal(Metadata | Switch, broker.Keywords);
         capture.Stop();
         Assert.Empty(broker.Holders);
@@ -63,7 +63,7 @@ public sealed class EtwDynamicKeywordHoldTests
             entered.Set();
             Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
         };
-        var window = Task.Run(capture.BeginWindow);
+        var window = Task.Run(() => capture.BeginWindow(TimeSpan.FromSeconds(1)));
         try
         {
             Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
@@ -82,7 +82,7 @@ public sealed class EtwDynamicKeywordHoldTests
         using var broker = new Broker { DeniedKeywords = Switch };
         using var capture = Capture(broker);
         capture.EnsureStarted();
-        capture.BeginWindow();
+        capture.BeginWindow(TimeSpan.FromSeconds(1));
         Assert.False(capture.Collect());
         Assert.Equal("cpu-residency-session-unavailable",
             Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencyUnavailable>(capture.ReadObservation()).ReasonCode);
