@@ -43,6 +43,9 @@ export interface ResourceColumnSourceChoice {
 
 /** 一列能选的来源；没有可选来源时为空数组（不摆选择）。 */
 export function resourceColumnSourceChoices(columnId: string, fields: readonly ProcessMetricField[]): readonly ResourceColumnSourceChoice[] {
+  const field = fields.find(field => field.name === columnId);
+  if (field?.table) return [{ source: null, field: null }, ...field.table.sources.map(source => ({ source: source.fieldName,
+    field: fields.find(field => field.name === source.fieldName) ?? null }))];
   const metricId = resourceTableMetricId({ id: columnId });
   if (metricId === null) return [];
   const sources = processResourceSources(comparableTotalMetricIds[columnId] ?? [metricId], fields);
@@ -51,7 +54,7 @@ export function resourceColumnSourceChoices(columnId: string, fields: readonly P
 
 /** 列（含它的来源）在资源事实里对应的指标 id；不是数值列时为 null。 */
 export function resourceTableMetricId(column: Pick<ResourceTableColumnSettings, "id" | "source">): string | null {
-  const automatic = automaticMetricIds[column.id] ?? (/^gpu\.\d+\.(usage|vram)$/.test(column.id) ? column.id : null);
+  const automatic = automaticMetricIds[column.id] ?? (/^gpu\.\d+\.(usage|vram)$/.test(column.id) || column.id.startsWith("process_") ? column.id : null);
   return automatic === null ? null : column.source || automatic;
 }
 
@@ -75,6 +78,9 @@ export function resourceTableColumnText(
   fields: readonly ProcessMetricField[],
   actualFieldName: string | null = null
 ): ResourceTableColumnText {
+  const field = fields.find(field => field.name === column.id);
+  if (field?.table) return { label: [field.reading?.resource === "gpu" && field.resourceFactTotalMetricId
+    ? resourceTableColumnLabel(field.resourceFactTotalMetricId) : null, processSourceName(column.id, fields)].filter(Boolean).join(" · "), basis: field.sourceId };
   if (!column.source || !isResourceTableMetricColumn(column.id)) {
     const quantity = actualFieldName ? processMemoryQuantity(actualFieldName, fields) : null;
     const quantityBasis = quantity === "working_set_including_shared" || quantity === "private_commit"

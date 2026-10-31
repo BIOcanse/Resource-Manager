@@ -4,7 +4,6 @@ import {
   resourceTableCellPresentation,
   resourceTableCellText,
   type ResourceTableCellPresentation,
-  resourceTableColumnLabel,
   resourceTableRowName as rowName
 } from "../../presentation/metricLabels";
 import type { ProcessMetricField } from "../../data/resourceMonitor/processFieldCatalog.ts";
@@ -50,13 +49,18 @@ import type { Presentation } from "../../interactions/protocol/runtime.ts";
 import { enterSlot, exitInPlace, settleEntrancesWithin } from "../../presentation/nodeAnimation.ts";
 import { GpuNameNote } from "../monitor/GpuNameNote.tsx";
 import { HelpHint, OptionsHelpHint } from "../../ui/primitives/HelpHint.tsx";
+import { MetricModal } from "../monitor/MetricModal.tsx";
+import { fitTableColumnWidth, tableFieldCatalog } from "./resourceTableColumns.ts";
+import { ResourceManager } from "../../preferences/generated/frontendPoints.values.ts";
+import { dashboardPointValues } from "../../preferences/dashboardPreferences.ts";
+import { clampResourceTableColumnWidth } from "../../stores/monitorConfig.ts";
 
 const rowHeight = 38;
 const overscan = 6;
 const slotReserve = 10;
-const minColumnWidth = 56;
-const maxColumnWidth = 520;
-const columnResizeKeyStep = 12;
+const minColumnWidth = ResourceManager.FrontendPoints.DashboardLayoutLimits.minimumColumnWidth;
+const maxColumnWidth = ResourceManager.FrontendPoints.DashboardLayoutLimits.maximumColumnWidth;
+const columnResizeKeyStep = ResourceManager.FrontendPoints.TableColumnResizeKeyStep;
 type CssVars = JSX.CSSProperties & Record<string, string>;
 interface ResourceTableRowPresentation {
   readonly row: ResourceTableRow | undefined;
@@ -101,6 +105,8 @@ interface ResourceTableProps {
   /** 点了某列表头；排序怎么变由 store 决定（resourceTableSort.ts）。 */
   onSortColumn: (columnId: string) => void;
   onToggleColumn: (columnId: string, visible: boolean) => void;
+  onAddColumn: (columnId: string) => void;
+  onRemoveColumn: (columnId: string) => void;
   /** 后端进程字段目录：列的来源选择和选了来源后的表头口径。 */
   processFields: readonly ProcessMetricField[];
   onColumnSourceChange: (columnId: string, source: string | null) => void;
@@ -228,6 +234,8 @@ export function ResourceTable(props: ResourceTableProps) {
           processFields={props.processFields}
           snapshotColumns={props.snapshot?.columns ?? []}
           onToggle={props.onToggleColumn}
+          onAdd={props.onAddColumn}
+          onRemove={props.onRemoveColumn}
           onSourceChange={props.onColumnSourceChange}
         />
       </Show>
@@ -331,8 +339,14 @@ function ResourceTableColumnEditor(props: {
   /** 当前快照的列：自动选择的列带着后端这次实际读的字段。 */
   snapshotColumns: readonly ResourceTableColumn[];
   onToggle: (columnId: string, visible: boolean) => void;
+  onAdd: (columnId: string) => void;
+  onRemove: (columnId: string) => void;
   onSourceChange: (columnId: string, source: string | null) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = createSignal(false);
+  const [selectedField, setSelectedField] = createSignal<string | null>(null);
+  const pickerCatalog = createMemo(() => tableFieldCatalog(props.processFields, props.mode, props.catalog)
+    .filter(field => !props.columns.some(column => column.id === field.id)));
   const byId = () => new Map(props.columns.map((column) => [column.id, column]));
   // 自动选择这一项写出后端这次实际读的字段：只有这一列现在就是自动选择时快照里的字段才是它。
   const automaticField = (columnId: string) => {
@@ -364,9 +378,16 @@ function ResourceTableColumnEditor(props: {
         }
       }}
     >
+      <button type="button" class="secondary resource-table-add-column" onClick={() => { setSelectedField(null); setPickerOpen(true); }}>
+        {uiText.resourceTableView.addColumn}
+      </button>
+      <MetricModal open={pickerOpen()} catalog={pickerCatalog()} components={[]} selectedMetricId={selectedField()}
+        onSelect={setSelectedField} onClose={() => setPickerOpen(false)}
+        onConfirm={() => { const id = selectedField(); if (id) props.onAdd(id); setPickerOpen(false); }}
+        onDependencyPrompt={() => {}} />
       <For each={editorColumnIds()}>
         {(columnId) => {
-          const label = () => resourceTableColumnLabel(columnId);
+          const label = () => resourceTableColumnText({ id: columnId }, props.processFields).label;
           const selected = () => selectedColumnId() === columnId;
           return (
             // 芯片里除了方格子都是“选中”：选中按钮之外的内边距也算，按钮的点击（含键盘 Enter/空格）冒泡到这里处理。
@@ -387,8 +408,12 @@ function ResourceTableColumnEditor(props: {
               />
               <button type="button" class="resource-table-column-select" aria-pressed={selected()}>
                 {label()}
-                <GpuNameNote metricId={columnId} names={props.gpuNames} />
+                <GpuNameNote metricId={props.processFields.find(field => field.name === columnId)?.resourceFactTotalMetricId ?? columnId} names={props.gpuNames} />
               </button>
+              <Show when={columnId !== "name"}>
+                <button type="button" class="resource-table-column-remove" aria-label={uiText.resourceTableView.removeColumn(label())}
+                  onClick={event => { event.stopPropagation(); props.onRemove(columnId); }} >×</button>
+              </Show>
             </div>
           );
         }}
@@ -396,11 +421,11 @@ function ResourceTableColumnEditor(props: {
       <Show when={sourceColumnId()} keyed>
         {(columnId) => {
           const choices = () => resourceColumnSourceChoices(columnId, props.processFields);
-          const label = () => uiText.resourceTable.columnSourceLabel(resourceTableColumnLabel(columnId));
+          const label = () => uiText.resourceTable.columnSourceLabel(resourceTableColumnText({ id: columnId }, props.processFields).label);
           const current = () => byId().get(columnId)?.source ?? null;
           return (
             <div class="resource-table-column-source">
-              <strong>{label()}<GpuNameNote metricId={columnId} names={props.gpuNames} /></strong>
+              <strong>{label()}<GpuNameNote metricId={props.processFields.find(field => field.name === columnId)?.resourceFactTotalMetricId ?? columnId} names={props.gpuNames} /></strong>
               <RadioGroupRoot class="segmented resource-table-column-source-choices" ariaLabel={label()}
                 // 存的来源不在目录里（目录变了）时不勾任何一项，不把它显示成自动选择。
                 value={(() => { const index = choices().findIndex((choice) => choice.source === current()); return index < 0 ? "" : `source-${index}`; })()}
@@ -509,7 +534,7 @@ function VirtualResourceTable(props: {
   const columnReorder = createReorderGroup("表头列", (source, target) => props.onReorderColumn(source, target));
   const baseTableWidth = createMemo(() => baseColumns().reduce((sum, column) => sum + clampColumnWidth(column.width), 0));
   const tableWidth = createMemo(() => Math.max(baseTableWidth(), viewportWidth()));
-  const columnWidths = createMemo(() => distributeColumnWidths(baseColumns(), tableWidth()));
+  const columnWidths = createMemo(() => baseColumns().map(column => clampColumnWidth(column.width)));
   const columns = createMemo<ResourceTableColumn[]>((previous) => {
     const next = baseColumns().map((column, index) => ({
       ...column,
@@ -518,28 +543,15 @@ function VirtualResourceTable(props: {
     return resourceTableColumnsEqual(previous, next) ? previous : next;
   }, []);
   const columnIds = createMemo(() => baseColumns().map((column) => column.id));
-  /** 第 index 列存的宽度改成 width 时，它的右边缘离表头左边缘多远（多余宽度照常分给各列）。 */
+  /** 第 index 列存的宽度改成 width 时，右边缘离表头左边缘多远。 */
   const columnRightEdge = (index: number, width: number) => {
     const resized = baseColumns().map((column, at) => at === index ? { ...column, width } : column);
-    const total = resized.reduce((sum, column) => sum + clampColumnWidth(column.width), 0);
-    return distributeColumnWidths(resized, Math.max(total, viewportWidth()))
+    return resized.map(column => clampColumnWidth(column.width))
       .slice(0, index + 1)
       .reduce((sum, columnWidth) => sum + columnWidth, 0);
   };
-  /**
-   * 右边缘要到 edge 时第 index 列存多宽：右边缘随存的宽度单调不减，取到得了 edge 的最小宽度，限制在最小、最大宽度之间。
-   * 最后一列铺满前右边缘不动，这时一拖过右边缘就取到刚好不再分多余宽度的那个宽度。整数二分，最多十来步。
-   */
-  const columnWidthForEdge = (index: number, edge: number) => {
-    let low = minColumnWidth;
-    let high = maxColumnWidth;
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-      if (columnRightEdge(index, middle) >= edge) high = middle;
-      else low = middle + 1;
-    }
-    return low;
-  };
+  const columnWidthForEdge = (index: number, edge: number) => clampColumnWidth(edge - baseColumns()
+    .slice(0, index).reduce((sum, column) => sum + clampColumnWidth(column.width), 0));
   // 表头、单元格提示用的列名和说明：选了来源的列写出口径，自动选择写出后端这次实际读的字段。
   // Width correction must not invalidate every cell's current text/reading.
   const columnsById = createMemo(() => new Map(columns().map(column => [column.id, column])));
@@ -846,7 +858,7 @@ function VirtualResourceTable(props: {
                 >
                   <span>{columnText(column()).label}</span>
                   {/* GPU 列：列名下面一行小字写这块显卡的名字（编号原样），排序箭头和列名的位置不变。 */}
-                  <GpuNameNote metricId={columnId} names={props.gpuNames} />
+                  <GpuNameNote metricId={props.processFields.find(field => field.name === columnId)?.resourceFactTotalMetricId ?? columnId} names={props.gpuNames} />
                   {/* 排序箭头一直在（不占位置变化）：当前排序列按方向画出，其余可排序列悬停时淡出点下去会得到的降序。
                       数值列的箭头在列名左边，列名右边缘和下面的数字对齐。 */}
                   <Show when={column().sortable}>
@@ -910,6 +922,15 @@ function VirtualResourceTable(props: {
                     rightEdge={width => columnRightEdge(columnIndex(), width)}
                     widthForEdge={edge => columnWidthForEdge(columnIndex(), edge)}
                     onWidthChange={props.onColumnWidthChange}
+                    onFit={() => {
+                      const canvas = document.createElement("canvas");
+                      const context = canvas.getContext("2d");
+                      if (!context || !viewport) return;
+                      context.font = getComputedStyle(viewport.querySelector(".resource-table-cell-text") ?? viewport).font;
+                      const texts = [columnText(column()).label, ...rows().map(row => columnId === "name" ? rowName(row)
+                        : columnId === "status" ? rowStatus(row) : resourceTableCellText(row.values[columnId], columnId))];
+                      props.onColumnWidthChange(columnId, fitTableColumnWidth(texts, text => context.measureText(text).width), true);
+                    }}
                     reorder={columnReorder}
                     bindHeader={bindHeader}
                   />
@@ -977,6 +998,7 @@ function ResourceTableColumnResizer(props: {
   rightEdge: (width: number) => number;
   widthForEdge: (edge: number) => number;
   onWidthChange: ResourceTableProps["onColumnWidthChange"];
+  onFit: () => void;
   reorder: ReorderGroup;
   bindHeader: (ref: ((element: HTMLElement) => void) | undefined) => void;
 }) {
@@ -1003,6 +1025,16 @@ function ResourceTableColumnResizer(props: {
       }
     }));
   return <span ref={element} class="resource-table-column-resizer" role="separator" tabIndex={0}
+    onDblClick={event => { event.preventDefault(); event.stopPropagation(); props.onFit(); }}
+    onKeyDown={event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault(); event.stopPropagation(); props.onFit();
+      }
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault(); event.stopPropagation();
+        props.onWidthChange(props.columnId, event.key === "Home" ? minColumnWidth : maxColumnWidth, true);
+      }
+    }}
     aria-orientation="vertical" aria-label={uiText.resourceTableView.resizeColumn(props.label)}
     aria-valuemin={minColumnWidth} aria-valuemax={maxColumnWidth} aria-valuenow={props.storedWidth()} aria-disabled="false" />;
 }
@@ -1135,10 +1167,11 @@ function resourceTableEditorColumns(
   const available = resourceTableColumnOptions(catalog, mode);
   const availableById = new Map(available.map((column) => [column.id, column]));
   const configured = settings
-    .map((setting) => availableById.get(setting.id))
+    .map((setting) => availableById.get(setting.id) ?? { ...setting, unit: "", sortable: true,
+      width: setting.width ?? ResourceManager.FrontendPoints.DashboardLayoutLimits.defaultColumnWidth,
+      source: setting.source ?? null, processFieldName: null, additiveAcrossProcesses: null })
     .filter((column): column is ResourceTableColumn => Boolean(column));
-  const configuredIds = new Set(configured.map((column) => column.id));
-  return configured.concat(available.filter((column) => !configuredIds.has(column.id)));
+  return configured;
 }
 
 function createSoftwareContextTargetFromRow(
@@ -1414,39 +1447,11 @@ function contextMenuEventForElement(element: HTMLElement) {
 }
 
 function resourceTableColumnOptions(catalog: MetricDefinition[], mode: ResourceTableViewMode = "software"): ResourceTableColumn[] {
-  const processMode = mode === "process";
-  return [
-    { id: "name", unit: "", visible: true, sortable: true, width: 260, source: null, processFieldName: null, additiveAcrossProcesses: null },
-    ...(processMode ? [{ id: "pid", unit: "", visible: true, sortable: true, width: 76, source: null, processFieldName: null, additiveAcrossProcesses: null }] : []),
-    { id: "status", unit: "", visible: true, sortable: true, width: 92, source: null, processFieldName: null, additiveAcrossProcesses: null },
-    ...(processMode ? [
-      { id: "user", unit: "", visible: true, sortable: true, width: 150, source: null, processFieldName: null, additiveAcrossProcesses: null },
-      { id: "architecture", unit: "", visible: true, sortable: true, width: 76, source: null, processFieldName: null, additiveAcrossProcesses: null }
-    ] : []),
-    { id: "cpu", unit: "%", visible: true, sortable: true, width: 86, source: null, processFieldName: null, additiveAcrossProcesses: null },
-    { id: "memory", unit: "B", visible: true, sortable: true, width: 110, source: null, processFieldName: null, additiveAcrossProcesses: null },
-    ...gpuResourceTableColumns(catalog),
-    { id: "disk", unit: "B/s", visible: true, sortable: true, width: 106, source: null, processFieldName: null, additiveAcrossProcesses: null },
-    { id: "network", unit: "bps", visible: true, sortable: true, width: 106, source: null, processFieldName: null, additiveAcrossProcesses: null }
-  ];
+  const defaults = dashboardPointValues(catalog);
+  const settings = mode === "process" ? defaults.resourceTableProcessColumns : defaults.resourceTableColumns;
+  return settings.map(setting => ({ ...setting, unit: "", sortable: true,
+    width: setting.width!, source: setting.source ?? null, processFieldName: null, additiveAcrossProcesses: null }));
 }
-
-function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColumn[] {
-  return catalog
-    .filter((metric) => /^gpu\.\d+\.(usage|vram)$/i.test(metric.id))
-    .sort((left, right) => gpuColumnOrder(left.id) - gpuColumnOrder(right.id))
-    .map((metric) => ({
-      id: metric.id,
-      unit: metric.id.endsWith(".vram") ? "B" : "%",
-      visible: true,
-      sortable: true,
-      width: metric.id.endsWith(".vram") ? 132 : 108,
-      source: null,
-      processFieldName: null,
-      additiveAcrossProcesses: null
-    }));
-}
-
 /**
  * 列宽把手的呈现层：逻辑中心是把手中线，也就是列的右边缘。通道是右边缘离表头左边缘多少屏幕 px，
  * 几何就是表头左边缘两侧各一个边界远的两点（1 个单位 = 1 px），表头横向滚动时跟着表头走。
@@ -1472,37 +1477,7 @@ function columnResizeView(handle: HTMLElement, editing: () => boolean): Presenta
   };
 }
 function clampColumnWidth(value: number) {
-  return Math.round(Math.min(maxColumnWidth, Math.max(minColumnWidth, Number(value) || 100)));
-}
-
-function distributeColumnWidths(columns: ResourceTableColumn[], targetWidth: number) {
-  const baseWidths = columns.map((column) => clampColumnWidth(column.width));
-  const baseWidth = baseWidths.reduce((sum, width) => sum + width, 0);
-  const extraWidth = Math.max(0, Math.floor(targetWidth) - baseWidth);
-  if (columns.length === 0 || extraWidth <= 0) {
-    return baseWidths;
-  }
-
-  const weights = columns.map((column) => resourceTableColumnFlexWeight(column.id));
-  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || columns.length;
-  let assignedExtra = 0;
-  return baseWidths.map((width, index) => {
-    if (index === baseWidths.length - 1) {
-      return width + extraWidth - assignedExtra;
-    }
-
-    const extra = Math.floor(extraWidth * weights[index] / totalWeight);
-    assignedExtra += extra;
-    return width + extra;
-  });
-}
-
-function resourceTableColumnFlexWeight(columnId: string) {
-  if (columnId === "name") return 3;
-  if (columnId === "status" || columnId === "user") return 1.4;
-  if (columnId === "memory" || columnId.endsWith(".vram")) return 1.2;
-  if (columnId === "pid" || columnId === "architecture") return 0.7;
-  return 1;
+  return clampResourceTableColumnWidth(value);
 }
 
 // 状态列：汇总行装的是采样状态标识，软件行装的是分组标识，进程行装的是进程状态。
@@ -1536,9 +1511,4 @@ function rowStatus(row: ResourceTableRow | undefined) {
 function softwareGroupLabel(value?: string | null) {
   const group = String(value ?? "").trim() as keyof typeof uiText.softwareKind;
   return uiText.softwareKind[group];
-}
-
-function gpuColumnOrder(metricId: string) {
-  const match = /^gpu\.(\d+)\.(usage|vram)$/i.exec(metricId);
-  return match ? Number(match[1]) * 2 + (match[2].toLowerCase() === "vram" ? 1 : 0) : 999;
 }

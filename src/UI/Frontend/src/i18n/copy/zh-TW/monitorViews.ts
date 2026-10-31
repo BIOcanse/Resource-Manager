@@ -31,6 +31,8 @@ export const zhMonitorViewsCopy = {
     }
   },
   resourceTableView: {
+    addColumn: "新增欄",
+    removeColumn: (column: string) => "移除 {column} 欄".replace("{column}", column),
     cancelEditLabel: "取消資源列表列編輯",
     cancel: "取消",
     saveLabel: "儲存資源列表列",

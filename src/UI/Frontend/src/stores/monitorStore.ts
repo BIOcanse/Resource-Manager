@@ -7,10 +7,10 @@ import { saveDashboardSettings } from "../api";
 import type { DashboardSlotRef } from "../features/monitor/Dashboard";
 import { defaultPerformanceMetricIds } from "../features/resourceTable/ResourcePerformancePanel";
 import { createResourceFactsProjection } from "../features/resourceTable/resourceFacts.ts";
-import { resourceTableMetricId } from "../features/resourceTable/resourceTableSources.ts";
 import { defaultResourceTableSort, nextResourceTableSort, type ResourceTableSort } from "../features/resourceTable/resourceTableSort.ts";
 import { gpuAdapterNames } from "../features/monitor/gpuAdapterNames.ts";
 import type { ProcessMetricField } from "../data/resourceMonitor/processFieldCatalog.ts";
+import { addTableColumn, removeTableColumn, tableSampleItems } from "../features/resourceTable/resourceTableColumns.ts";
 import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/ResourceBreakdown";
 import { reconcileResourceSelection, toggledResourceSelection } from "../features/resourceBreakdown/resourceSelection";
 import { isReservedSegment } from "../features/resourceBreakdown/resourceProcessIdentity.ts";
@@ -210,6 +210,8 @@ export interface MonitorStore {
   /** 点一次某列表头：降序、升序、回到默认的综合排序轮流（resourceTableSort.ts）。 */
   cycleResourceTableSort: (columnId: string) => void;
   toggleResourceTableColumn: (columnId: string, visible: boolean) => void;
+  addResourceTableColumn: (columnId: string) => void;
+  removeResourceTableColumn: (columnId: string) => void;
   /** 改一列的来源：null 是自动选择，其余是进程字段名。和显示/隐藏一样进编辑草稿，保存时写前端布局缓存。 */
   changeResourceTableColumnSource: (columnId: string, source: string | null) => void;
   updateResourceTableColumnWidth: (columnId: string, width: number, commit: boolean) => void;
@@ -483,8 +485,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       scope: "table",
       bars: [],
       // Identity/attribution are explicit facts; hidden numeric columns have no demand.
-      sampleMetricIds: [...new Set([...(activeResourceTableColumns().some(column => column.visible) ? ["process.inventory", "process.attribution"] : []), ...normalizeResourceTableColumns(activeResourceTableColumns(), catalog(), resourceTableMode())
-        .filter(column => column.visible && dashboardMetricAvailable(column.id, column.binding, catalog())).map(column => resourceTableMetricId(column)).filter((id): id is string => id !== null)])],
+      sampleMetricIds: tableSampleItems(activeResourceTableColumns(), catalog(), processFields()),
       processDetailLevel: activeResourceTableColumns().some(column => column.visible && ["user", "architecture"].includes(column.id)) ? "full" : "basic",
       visibleColumnIds: [],
       sortColumnId: "",
@@ -916,6 +917,15 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     });
   }
 
+  function addResourceTableColumn(columnId: string) {
+    updateResourceTableColumns(columns => addTableColumn(columns, columnId, processFields(), resourceTableMode(), catalog()));
+  }
+
+  function removeResourceTableColumn(columnId: string) {
+    updateResourceTableColumns(columns => removeTableColumn(columns, columnId));
+    if (resourceTableSort().columnId === columnId) setResourceTableSort(defaultResourceTableSort);
+  }
+
   function changeResourceTableColumnSource(columnId: string, source: string | null) {
     updateResourceTableColumns((columns) => normalizeResourceTableColumns(columns, catalog(), resourceTableMode())
       .map((column) => column.id === columnId ? { ...column, source } : column));
@@ -1103,6 +1113,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     cancelResourceTableEdit,
     cycleResourceTableSort,
     toggleResourceTableColumn,
+    addResourceTableColumn,
+    removeResourceTableColumn,
     changeResourceTableColumnSource,
     updateResourceTableColumnWidth,
     toggleResourceTableExpand,

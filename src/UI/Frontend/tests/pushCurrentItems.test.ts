@@ -7,6 +7,7 @@ import { gpuSpecializedCurrentItems } from "../src/data/gpu/gpuSpecializedCurren
 import { resourceMonitorCurrentItems, resourceDetailsCurrentItems } from "../src/data/resourceMonitor/resourceCurrentItems.ts";
 import type { ResourceMonitorQuery } from "../src/data/resourceMonitor/resourceMonitorApi.ts";
 import type { ResourceBreakdownBar, ResourceMonitorSnapshot } from "../src/types.ts";
+import { decodeResourceFacts, projectResourceFacts } from "../src/features/resourceTable/resourceFacts.ts";
 
 const time = (second: number) => `2026-10-27T00:00:${String(second).padStart(2, "0")}Z`;
 function harness<Q, V>(policy: PushValueItemPolicy<Q, V>) {
@@ -203,4 +204,35 @@ for (const scope of ["table", "bars"] as const) {
   assert.equal(h.read(sourced).data?.metrics[0].software[0].processes[0].value, 40,
     "A sourced residual is selected by its totalMetricId or its field ID without separate current values");
 }
+// Exercise the same split/cache/combine path as the table, not only its direct decoder.
+{
+  const field = "process_all_handle_count_actual";
+  const foundations = ["process.inventory", "process.attribution"];
+  const full = query("table", [...foundations, field]);
+  const identitiesOnly = query("table", foundations);
+  const frame = (second: number, startKey: string, includeField: boolean) => decodeResourceFacts({
+    version: 2, capturedAt: time(second), metrics: [],
+    software: [{ softwareId: "app", name: "App", kind: "other", attributionKind: "other" }],
+    processes: [{ processId: 42, processStartKey: startKey, name: "app.exe", executablePath: null,
+      userName: null, architecture: null, attributionKind: "process" }],
+    attributions: [{ processIndex: 0, softwareId: "app", baseScore: 0 }],
+    fields: includeField ? [{ field, unit: "count", sourceId: "windows.process.query", capturedAt: time(second),
+      additiveAcrossProcesses: true, software: [], processes: [{ processIndex: 0, limit: null, scopes: [],
+        value: { field, integerValue: "9007199254740993", numericValue: null, stringValue: null } }] }] : []
+  });
+  const h = harness(resourceMonitorCurrentItems);
+  h.owner.accept(full, h.state(frame(10, "101", true), 10));
+  const current = h.read(full);
+  assert.equal(current.status, "ready", "A typed field publication answers its own requested item");
+  assert.equal(current.data?.facts?.fields?.[0].processes[0].value.integerValue, "9007199254740993");
+  assert.deepEqual(h.read(identitiesOnly).data?.facts?.fields, [], "Identity-only queries never borrow field values");
+  const columns = [{ id: "name", visible: true }, { id: field, visible: true }];
+  const before = projectResourceFacts(current.data!.facts!, columns, "process", "name", "asc", "en-US");
+  assert.equal(before.rows[1].values[field].integerValue, "9007199254740993");
+  h.owner.accept(identitiesOnly, h.state(frame(20, "102", false), 20));
+  const after = projectResourceFacts(h.read(full).data!.facts!, columns, "process", "name", "asc", "en-US");
+  assert.equal(after.rows[1].processStartKey, "102");
+  assert.equal(after.rows[1].values[field].availability, "Unavailable", "A reused PID cannot borrow a cached index from an earlier identity catalog");
+}
+
 console.log("Push item policies: metrics, device fields, GPU counters, facts, bars and details passed.");
