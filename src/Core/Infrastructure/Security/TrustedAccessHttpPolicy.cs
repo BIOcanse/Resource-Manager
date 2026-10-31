@@ -187,7 +187,7 @@ internal static class TrustedAccessHttpPolicy
             "DELETE /api/optimization/trust/{id}",
             "PUT /api/control/presets/{objectId}/{name}",
             "DELETE /api/control/presets/{presetId}",
-            // V/F library and draft changes only edit user data; applying them uses the MachineWrite state routes.
+            // V/F library and draft changes only edit user data. Applying them uses the MachineWrite state routes.
             "PUT /api/control/gpu-vf-curves/{curveId}",
             "DELETE /api/control/gpu-vf-curves/{curveId}",
             "POST /api/control/gpu-vf-curves/editor/command",
