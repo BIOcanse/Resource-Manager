@@ -34,3 +34,6 @@ src/Shared/StateItems/state-items.json text eol=lf
 /artifacts/sdk/** -text
 /artifacts/disk-sdk/** -text
 /sdk/freedom-point/** -text
+
+# Preserve the upstream npm license text used by the acknowledgement check.
+/src/Core/ThirdPartyNotices/Picocolors.LICENSE.txt text eol=lf

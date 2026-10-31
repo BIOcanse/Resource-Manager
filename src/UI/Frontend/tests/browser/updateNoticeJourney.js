@@ -190,7 +190,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
 
   // 设置页“通知”：每类三项默认全开；“弹出通知”关掉时两条途径不可改，显示的仍是各自的选择。
   await openNotifications();
-  for (const kind of ["memoryProtection", "update", "accessRequest"]) {
+  for (const kind of ["memoryProtection", "update", "accessRequest", "crashReport"]) {
     for (const option of ["notify", "system", "inApp"]) {
       assert.equal(await notificationSwitch(kind, option).isChecked(), true, `${kind} ${option}`);
       assert.equal(await notificationSwitch(kind, option).isDisabled(), false, `${kind} ${option}`);
@@ -199,12 +199,13 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await notificationSwitch("update", "inApp").uncheck();
   await notificationSwitch("update", "system").uncheck();
   await notificationSwitch("accessRequest", "system").uncheck();
+  await notificationSwitch("crashReport", "system").uncheck();
   await notificationSwitch("memoryProtection", "notify").uncheck();
   for (const option of ["system", "inApp"]) {
     assert.equal(await notificationSwitch("memoryProtection", option).isDisabled(), true, `memory protection ${option} under a closed switch`);
     assert.equal(await notificationSwitch("memoryProtection", option).isChecked(), true, `memory protection ${option} keeps its choice`);
   }
-  const all = value => Object.fromEntries(["update", "accessRequest", "memoryProtection"].flatMap(kind =>
+  const all = value => Object.fromEntries(["update", "accessRequest", "memoryProtection", "crashReport"].flatMap(kind =>
     ["Notify", "InApp", "System"].map(option => [`${kind}${option}`, value])));
   const patchCount = patches.length;
   await page.getByRole("button", { name: settings.actions.save, exact: true }).click();
@@ -215,7 +216,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await liveText(page, settings.saveState.saved).waitFor({ timeout: 5_000 });
   assert.equal(patches.length, patchCount, "notification switches reached the backend settings");
   assert.deepEqual((await readFrontendPreferences(page)).notifications, { ...all("on"),
-    updateInApp: "off", updateSystem: "off", accessRequestSystem: "off", memoryProtectionNotify: "off" });
+    updateInApp: "off", updateSystem: "off", accessRequestSystem: "off", memoryProtectionNotify: "off", crashReportSystem: "off" });
 
   // 软件内提示关着：不提示；总开关关着：同样不提示。重新打开后，关着期间的通知不补显示。
   await notify(update(3, "1.3.0"));
@@ -256,6 +257,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   assert.equal(await notificationSwitch("update", "inApp").isChecked(), true);
   assert.equal(await notificationSwitch("update", "system").isChecked(), false);
   assert.equal(await notificationSwitch("accessRequest", "system").isChecked(), false);
+  assert.equal(await notificationSwitch("crashReport", "system").isChecked(), false, "crash-report channel choice survives save and reload");
   assert.equal(await notificationSwitch("memoryProtection", "notify").isChecked(), false);
   assert.equal(await notificationSwitch("memoryProtection", "inApp").isDisabled(), true);
 
@@ -265,7 +267,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   // 没有浮层选择时重置删掉整份缓存，每一项按点值读取。
   await page.waitForFunction(() => localStorage.getItem("resource-manager:frontend-preferences:v1") === null);
   await page.getByRole("button", { name: settings.sections.notifications, exact: true }).click();
-  for (const kind of ["memoryProtection", "update", "accessRequest"]) {
+  for (const kind of ["memoryProtection", "update", "accessRequest", "crashReport"]) {
     for (const option of ["notify", "system", "inApp"]) {
       await waitForChecked(notificationSwitch(kind, option), `${kind} ${option} after reset`);
     }

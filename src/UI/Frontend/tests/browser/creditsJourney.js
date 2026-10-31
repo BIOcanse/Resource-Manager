@@ -191,7 +191,10 @@ export default async function creditsJourney(page, baseUrl) {
   assert(JSON.stringify(table.headers) === JSON.stringify([columns.name, columns.version, columns.license, columns.source]), `Dependency headers: ${table.headers}`);
   assert(expectedDependencies.every((item) => table.rows.some((row) => row[0] === item.name && row[1] === item.version)), "Every name/version must render in its own column");
   assert(table.rows.every((row) => row[3] === credits.linkLabels.npm || row[3] === credits.linkLabels.nuget), "Every dependency needs its npm or NuGet button");
-  assert(table.rows.some((row) => row[0] === "tslib" && row[2] === "0BSD"), "Permissive terms are not a reason to omit acknowledgement");
+  // tslib left the resolved graph in the dependency upgrade; use a current permissive dependency.
+  assert(table.rows.some((row) => row[0] === "picocolors" && row[2] === "ISC"), "Permissive terms are not a reason to omit acknowledgement");
+  assert(readFileSync(new URL("../../../../Core/ThirdPartyNotices/Picocolors.LICENSE.txt", import.meta.url), "utf8")
+    === readFileSync(new URL("../../node_modules/picocolors/LICENSE", import.meta.url), "utf8"), "Retain picocolors' original acknowledgement and license text");
   assert(table.rows.some((row) => row[0] === "Newtonsoft.Json"), "Transitive managed test dependencies are missing");
   assert(table.buttonLefts.length === 1, `Dependency buttons are not in one column: ${table.buttonLefts}`);
   assert(table.numeric.every((value) => value.includes("tabular-nums")), `Versions and licenses need tabular numbers: ${table.numeric}`);

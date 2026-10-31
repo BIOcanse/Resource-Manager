@@ -4,6 +4,8 @@ Thank you to every author, contributor and maintainer in the resolved frontend d
 
 Source: `src/UI/Frontend/package-lock.json`. This list records all 125 non-root package paths, including nested copies and optional packages. A listing does not imply that all code is in the shipped JavaScript. Required original license texts remain separate and unmodified.
 
+Thank you to Oleksii Raspopov, Kostiantyn Denysov and Anton Verinov for picocolors 1.1.1. Its original ISC license and copyright acknowledgement are retained verbatim in `Picocolors.LICENSE.txt`, copied from the dependency's own `node_modules/picocolors/LICENSE`.
+
 | Package | Version | Declared license | Role |
 | --- | --- | --- | --- |
 | @babel/code-frame | 7.29.7 | MIT | Build dependency |
