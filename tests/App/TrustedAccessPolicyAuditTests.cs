@@ -61,6 +61,26 @@ public sealed class TrustedAccessPolicyAuditTests
         Assert.True(missing.Count == 0, "Registered endpoints without explicit policy: " + string.Join(", ", missing));
     }
 
+    [Theory]
+    [InlineData("GET", "/api/control/objects/{objectId}/gpu-vf-curve", AccessKeyScopes.Read)]
+    [InlineData("GET", "/api/control/gpu-vf-curves", AccessKeyScopes.Read)]
+    [InlineData("GET", "/api/control/gpu-vf-curves/{curveId}/references", AccessKeyScopes.Read)]
+    [InlineData("PUT", "/api/control/gpu-vf-curves/{curveId}", AccessKeyScopes.Session)]
+    [InlineData("DELETE", "/api/control/gpu-vf-curves/{curveId}", AccessKeyScopes.Session)]
+    [InlineData("POST", "/api/control/gpu-vf-curves/editor/command", AccessKeyScopes.Session)]
+    [InlineData("PUT", "/api/control/state/{objectId}", AccessKeyScopes.MachineWrite)]
+    public void GpuVfReadsAndUserDataEditsKeepHardwareApplicationInTheMachineWriteScope(
+        string method, string template, string expectedScope)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Method = method;
+        context.Request.Path = template;
+        Assert.True(TrustedAccessHttpPolicy.TryGetRequirement(context.Request, out var requirement));
+        Assert.Equal(TrustedAccessHttpAuthorizationMode.Protected, requirement.Mode);
+        Assert.Equal([expectedScope], requirement.RequiredScopes);
+        Assert.Equal(expectedScope == AccessKeyScopes.Read, requirement.AllowKeylessLocalWindowsCaller);
+    }
+
     [Fact]
     public async Task EveryRouteAndSelectorTakesItsKeylessPermissionFromTheScopeTable()
     {
