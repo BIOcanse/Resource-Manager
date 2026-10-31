@@ -42,6 +42,30 @@ assert.equal(Object.isFrozen(decoded.settings), true);
 assert.equal(Object.isFrozen(decoded.settings.debug), true);
 assert.equal(Object.isFrozen(decoded.runtimeCapabilityConstrainedPaths), true);
 
+// A single response must retain the new crash diagnostics and the normalized backend-owned overlay section together.
+const crashDiagnostics = {
+  state: "applied", effectiveMode: "on", modeSource: "user", defaultMode: "ask", channel: "beta",
+  dumpFolder: "C:\\fixture\\dumps", keepCountMaximum: 7, images: ["ResourceManager.exe"], actual: null,
+  skipReason: null, writeError: null, readError: null
+};
+const overlayWire = {
+  enabled: true, mode: "external", sizeMode: "windowRatio", fontSizePx: 23,
+  regionWidthRatio: 0.4, regionHeightRatio: 0.3, anchor: "bottomRight", marginPx: 19,
+  items: [{ kind: "software", id: " cpu.usage ", source: " auto ", intervalMs: null, syncPrecision: "high", ignored: true }],
+  ignored: true
+};
+const combined = appSettingsResultDecoder.decode({ ...source, crashDumps: crashDiagnostics,
+  settings: { ...source.settings, performanceOverlay: { software: { game: overlayWire } } } });
+assert.deepEqual(combined.crashDumps, crashDiagnostics);
+assert.equal(Object.isFrozen(combined.crashDumps), true);
+const overlay = combined.settings.performanceOverlay!.software.game!;
+assert.deepEqual(overlay.items, [{ kind: "software", id: "cpu.usage", source: "auto", intervalMs: null, syncPrecision: "high" }]);
+assert.equal("ignored" in overlay, false);
+assert.equal(Object.isFrozen(overlay.items[0]), true);
+assert.equal(overlayWire.items[0].id, " cpu.usage ");
+assert.equal(appSettingsResultDecoder.decode({ ...source, crashDumps: null }).crashDumps, null);
+assert.throws(() => appSettingsResultDecoder.decode({ ...source, crashDumps: { ...crashDiagnostics, state: "unknown" } }), ResponseDecodeError);
+
 for (const [value, expectedPath] of [
   [{ ...source, settings: null }, "$.settings"],
   [{ ...source, settings: { ...source.settings, version: "" } }, "$.settings.version"],

@@ -46,3 +46,4 @@
 # FreedomPoint values are selected afresh by the frontend build, never committed.
 /src/UI/Core/Preferences/Generated/FrontendPoints.Values.g.cs
 /src/UI/Frontend/src/preferences/generated/frontendPoints.values.ts
+/src/UI/Frontend/src/preferences/generated/desktopPoints.values.ts

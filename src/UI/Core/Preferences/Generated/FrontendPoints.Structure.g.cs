@@ -55,20 +55,6 @@ public static class @FrontendPoints
     public static readonly string @AutoForegroundPreset = @FrontendPointsValues.@__fpValue_AutoForegroundPreset;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200410007UL)]
     public static readonly ImmutableArray<string> @KeptPages = @FrontendPointsValues.@__fpValue_KeptPages;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200440000UL)]
-    public const int @FontSizePx = @FrontendPointsValues.@__fpValue_FontSizePx;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200440001UL)]
-    public const double @RegionWidthRatio = @FrontendPointsValues.@__fpValue_RegionWidthRatio;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200440002UL)]
-    public const double @RegionHeightRatio = @FrontendPointsValues.@__fpValue_RegionHeightRatio;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200440003UL)]
-    public const int @MarginPx = @FrontendPointsValues.@__fpValue_MarginPx;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200450000UL)]
-    public static readonly string @SizeMode = @FrontendPointsValues.@__fpValue_SizeMode;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200450001UL)]
-    public static readonly string @Anchor = @FrontendPointsValues.@__fpValue_Anchor;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200450002UL)]
-    public static readonly ImmutableArray<string> @MetricOrder = @FrontendPointsValues.@__fpValue_MetricOrder;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200490000UL)]
     public static readonly global::System.Text.Json.JsonElement @DashboardLayoutDefaults = @FrontendPointsValues.@__fpValue_DashboardLayoutDefaults;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200490001UL)]

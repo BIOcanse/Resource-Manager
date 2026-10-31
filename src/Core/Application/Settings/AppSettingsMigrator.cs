@@ -106,9 +106,25 @@ public static class AppSettingsMigrator
             ReadReports(root),
             ReadMemoryProtection(root),
             ReadMemoryCpuTier(root),
-            ReadTargetedRecording(root));
+            ReadTargetedRecording(root),
+            ReadPerformanceOverlay(root));
 
         return AppSettingsNormalizer.Normalize(settings);
+    }
+
+    // A file written before the performanceOverlay section has no overlay; the window process moves the
+    // overlays it kept in frontend preferences here once (FrontendOverlayBackendMigration).
+    private static AppPerformanceOverlaySettings? ReadPerformanceOverlay(JsonElement root)
+    {
+        if (!root.TryGetProperty("performanceOverlay", out var section)) return null;
+        if (section.ValueKind != JsonValueKind.Object)
+            throw new JsonException("performanceOverlay must be an object.");
+        var settings = AppSettingsNormalizer.NormalizePerformanceOverlay(
+            section.Deserialize<AppPerformanceOverlaySettings>(OverlayJsonOptions)
+                ?? throw new JsonException("performanceOverlay must be an object."));
+        if (AppSettingsDefaults.PerformanceOverlay.Validate(settings) is { } reason)
+            throw new JsonException(reason);
+        return settings;
     }
 
     // An older settings file has no targetedRecording section: it reads as the single 默认 profile. A stored
@@ -151,6 +167,11 @@ public static class AppSettingsMigrator
                 ? new AppReportSettings(overrides.Deserialize<AppReportRuleOverride[]>(WebJsonOptions) ?? [])
                 : new AppReportSettings([]);
 
+    private static readonly JsonSerializerOptions WebJsonOptions = new AppSettingsJsonContext(new(JsonSerializerDefaults.Web)).Options;
+    private static readonly JsonSerializerOptions OverlayJsonOptions = new AppSettingsJsonContext(new(JsonSerializerDefaults.Web)
+    {
+        AllowDuplicateProperties = false
+    }).Options;
     // An older settings file has no systemIntegration.crashDumps: it reads as the defaults (mode "default").
     private static AppCrashDumpSettings ReadCrashDumps(JsonElement root)
     {
@@ -161,7 +182,6 @@ public static class AppSettingsMigrator
         catch (JsonException) { return new AppCrashDumpSettings(); }
     }
 
-    private static readonly JsonSerializerOptions WebJsonOptions =new AppSettingsJsonContext(new(JsonSerializerDefaults.Web)).Options;
 
     public static bool RequiresRewrite(JsonElement root)
     {

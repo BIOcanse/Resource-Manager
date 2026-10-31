@@ -9,6 +9,10 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ProcessIdToSessionId(uint processId, out uint sessionId);
 
+    // 0xFFFFFFFF while the console is being attached or detached.
+    [DllImport("kernel32.dll")]
+    internal static extern uint WTSGetActiveConsoleSessionId();
+
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
 

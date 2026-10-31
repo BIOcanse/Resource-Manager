@@ -4,6 +4,7 @@ pub const keys = @import("key_reader.zig");
 pub const identity = @import("identity.zig");
 pub const probe = @import("probe.zig");
 pub const transport = @import("transport.zig");
+pub const channel = @import("channel.zig");
 
 pub const Config = struct {
     /// Borrowed UTF-16 paths, not NUL terminated. Valid until run returns.
@@ -87,6 +88,45 @@ fn attempt(workspace: *Workspace, stop: c.HANDLE, config: Config) !identity.Iden
     try transport.authenticated(stop, config.port, config.timeout_ms, &workspace.transport, &workspace.identity, expected, config.backend_path, config.service_name, key.value());
     return expected;
 }
+
+/// The product channel opener. Every open captures the configured backend's
+/// identity, reads the default key and attests the connected peer before the
+/// first byte, exactly like the health probe. One Link per block thread: its
+/// scratch is not shared. Callers own the memory (VirtualAlloc per run).
+pub const Link = struct {
+    package_root: []const u16,
+    backend_path: []const u16,
+    service_name: [:0]const u16,
+    port: u16,
+    timeout_ms: u32,
+    reader: keys.Reader = .{},
+    identity: identity.Scratch = undefined,
+
+    pub fn create(config: Config) !*Link {
+        const memory = c.VirtualAlloc(null, @sizeOf(Link), c.MEM_RESERVE | c.MEM_COMMIT, c.PAGE_READWRITE) orelse return error.OutOfMemory;
+        const self: *Link = @ptrCast(@alignCast(memory));
+        self.package_root = config.package_root;
+        self.backend_path = config.backend_path;
+        self.service_name = config.service_name;
+        self.port = config.port;
+        self.timeout_ms = config.timeout_ms;
+        self.reader = .{};
+        return self;
+    }
+    pub fn destroy(self: *Link) void {
+        _ = c.VirtualFree(self, 0, c.MEM_RELEASE);
+    }
+    pub fn opener(self: *Link) channel.Opener {
+        return .{ .context = self, .open_fn = open };
+    }
+    fn open(raw: *anyopaque, target: *channel.Channel, stop: c.HANDLE) anyerror!void {
+        const self: *Link = @ptrCast(@alignCast(raw));
+        const expected = try identity.capture(&self.identity, self.backend_path, self.service_name);
+        var key = (try self.reader.read(self.package_root, stop)) orelse return error.DefaultKeyUnavailable;
+        defer key.clear();
+        try target.open(stop, self.port, self.timeout_ms, transport.Gate{ .scratch = &self.identity, .expected = expected, .path = self.backend_path, .service_name = self.service_name }, key.value());
+    }
+};
 
 test "health generation remains stable until loss or process replacement" {
     var session: Session = .{};

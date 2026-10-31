@@ -11,8 +11,9 @@ public sealed partial class MainForm
             || (WindowCloseRequested is null && ExitRequested is null))
             return false;
 
-        // QUERY only grants permission. SystemEvents.SessionEnded is the single
-        // confirmed-session exit entry, including when no main window exists.
+        // QUERY only grants permission. The window process does not exit on its own
+        // for a session end: the resident owns program exit and stops this child
+        // through the pipe (parent-wants-me-stop).
         message.Result = message.Msg == WmQueryEndSession ? new IntPtr(1) : IntPtr.Zero;
 
         // Form's default WM_ENDSESSION(TRUE) raises FormClosed and disposes

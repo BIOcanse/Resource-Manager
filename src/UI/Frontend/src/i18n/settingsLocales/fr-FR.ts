@@ -350,6 +350,8 @@ export default createSettingsLocale("fr-FR", {
     "forceTerminateTitle": "Raccourci d’arrêt forcé",
     "forceTerminateDescription": "Arrêter l’application au premier plan et toutes celles avec une fenêtre visible qui ne répond plus. Désactivé par défaut.",
     "forceTerminateWarning": "Ce raccourci arrête immédiatement les processus et perd les travaux non enregistrés. Il doit contenir Ctrl, Alt ou Win avec une touche non modificatrice.",
+    "performanceOverlayHotkeyTitle": "Raccourci de la superposition de performances",
+    "performanceOverlayHotkeyDescription": "Activer ou désactiver la superposition de performances du logiciel au premier plan. Le résultat s’affiche dans une notification de la zone de notification. Désactivé par défaut.",
     "hotkeyEmpty": "Aucune touche configurée",
     "hotkeyAddKey": "Ajouter une touche",
     "hotkeyKeyLabel": "Touche",

@@ -19,13 +19,6 @@
     {"group":1,"name":"refresh-visibility_cooldown_ms","symbol":"VisibilityCooldownMs","type":"integer","min":0,"max":60000,"value":5000},
     {"group":1,"name":"refresh-kept_pages","symbol":"KeptPages","type":"choiceSet","options":["monitor","components","optimization","diskUsage","control","details","settings"],"value":["monitor"]},
     {"group":1,"name":"refresh-shell_open_timeout_ms","symbol":"ShellOpenTimeoutMs","type":"integer","min":1,"max":2147483647,"value":10000},
-    {"group":2,"name":"overlay-font_size_px","symbol":"FontSizePx","type":"integer","min":8,"max":72,"value":14},
-    {"group":2,"name":"overlay-region_width_ratio","symbol":"RegionWidthRatio","type":"decimal","min":0.05,"max":1,"value":0.25},
-    {"group":2,"name":"overlay-region_height_ratio","symbol":"RegionHeightRatio","type":"decimal","min":0.05,"max":1,"value":0.2},
-    {"group":2,"name":"overlay-size_mode","symbol":"SizeMode","type":"choice","options":["absolutePixels","windowRatio"],"value":"absolutePixels"},
-    {"group":2,"name":"overlay-anchor","symbol":"Anchor","type":"choice","options":["topLeft","topRight","bottomLeft","bottomRight"],"value":"topLeft"},
-    {"group":2,"name":"overlay-margin_px","symbol":"MarginPx","type":"integer","min":0,"max":256,"value":12},
-    {"group":2,"name":"overlay-metric_order","symbol":"MetricOrder","type":"metricOrder","value":["frames:frames.fps","frames:frames.low1","frames:frames.present","software:cpu.usage","software:gpu.usage"]},
     {"group":3,"name":"dashboard-layout_defaults","symbol":"DashboardLayoutDefaults","type":"dashboardDefaults","value":{
       "builtInMetricIds":["cpu.usage","cpu.frequency","cpu.frequencyPercent","memory.usage","memory.percent","virtualMemory.usage","virtualMemory.percent","disk.total.activePercent","disk.total.readBytesPerSec","disk.total.writeBytesPerSec","disk.total.queueLength","network.total.receiveBytesPerSec","network.total.sendBytesPerSec","network.total.utilizationPercent"],
       "cards":[

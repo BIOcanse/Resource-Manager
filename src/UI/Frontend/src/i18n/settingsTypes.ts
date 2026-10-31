@@ -295,6 +295,8 @@ export interface SettingsCopy {
     forceTerminateTitle: string;
     forceTerminateDescription: string;
     forceTerminateWarning: string;
+    performanceOverlayHotkeyTitle: string;
+    performanceOverlayHotkeyDescription: string;
     hotkeyEmpty: string;
     hotkeyAddKey: string;
     hotkeyKeyLabel: string;

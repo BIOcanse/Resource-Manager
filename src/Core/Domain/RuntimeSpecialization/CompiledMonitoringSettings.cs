@@ -16,6 +16,8 @@ public sealed record CompiledMonitoringSettings(
     EtwSessionBuffers GpuAllocationSessionBuffers,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.PresentSessionBuffers)]
     EtwSessionBuffers PresentSessionBuffers,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.PerformanceOverlay)]
+    ResourceManager.App.Domain.Settings.PerformanceOverlayDefaults PerformanceOverlay,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.FramePipeline)]
     FramePipelineOptions FramePipeline);
 
@@ -88,6 +90,56 @@ public sealed record EtwSessionBufferPoolOptions(
         return new(BufferKib, MinimumBuffers);
     }
 }
+
+/// <summary>The performance overlay point as declared, including every default item's source and precision.</summary>
+public sealed record PerformanceOverlayOptions(
+    [property: JsonPropertyName("default_enabled")] bool DefaultEnabled,
+    [property: JsonPropertyName("default_mode")] string DefaultMode,
+    [property: JsonPropertyName("default_items")] IReadOnlyList<PerformanceOverlayItemOptions> DefaultItems,
+    [property: JsonPropertyName("default_size_mode")] string DefaultSizeMode,
+    [property: JsonPropertyName("default_font_size_px")] int DefaultFontSizePx,
+    [property: JsonPropertyName("default_region_width_ratio")] double DefaultRegionWidthRatio,
+    [property: JsonPropertyName("default_region_height_ratio")] double DefaultRegionHeightRatio,
+    [property: JsonPropertyName("default_anchor")] string DefaultAnchor,
+    [property: JsonPropertyName("default_margin_px")] int DefaultMarginPx,
+    [property: JsonPropertyName("font_size_px_minimum")] int FontSizePxMinimum,
+    [property: JsonPropertyName("font_size_px_maximum")] int FontSizePxMaximum,
+    [property: JsonPropertyName("margin_px_minimum")] int MarginPxMinimum,
+    [property: JsonPropertyName("margin_px_maximum")] int MarginPxMaximum,
+    [property: JsonPropertyName("region_ratio_minimum")] double RegionRatioMinimum,
+    [property: JsonPropertyName("region_ratio_maximum")] double RegionRatioMaximum,
+    [property: JsonPropertyName("region_ratio_step")] double RegionRatioStep,
+    [property: JsonPropertyName("maximum_software")] int MaximumSoftware,
+    [property: JsonPropertyName("maximum_items")] int MaximumItems,
+    [property: JsonPropertyName("toggle_hotkey_enabled")] bool ToggleHotkeyEnabled,
+    [property: JsonPropertyName("toggle_hotkey_encoding")] IReadOnlyList<int> ToggleHotkeyEncoding)
+{
+    public ResourceManager.App.Domain.Settings.PerformanceOverlayDefaults ToDefaults()
+    {
+        var items = (DefaultItems ?? throw new InvalidDataException("performance_overlay.default_items is missing."))
+            .Select(item => new ResourceManager.App.Domain.Settings.TargetedRecordingItem(
+                item.Kind, item.Id, item.Source, item.IntervalMs, item.SyncPrecision)).ToArray();
+        var defaults = new ResourceManager.App.Domain.Settings.PerformanceOverlayDefaults(DefaultEnabled, DefaultMode, Array.AsReadOnly(items),
+            DefaultSizeMode, DefaultFontSizePx, DefaultRegionWidthRatio, DefaultRegionHeightRatio, DefaultAnchor, DefaultMarginPx,
+            FontSizePxMinimum, FontSizePxMaximum, MarginPxMinimum, MarginPxMaximum, RegionRatioMinimum, RegionRatioMaximum, RegionRatioStep,
+            MaximumSoftware, MaximumItems, ToggleHotkeyEnabled,
+            Array.AsReadOnly(ToggleHotkeyEncoding?.ToArray() ?? throw new InvalidDataException("performance_overlay.toggle_hotkey_encoding is missing.")));
+        if (FontSizePxMinimum > FontSizePxMaximum || MarginPxMinimum > MarginPxMaximum || RegionRatioMinimum > RegionRatioMaximum
+            || RegionRatioMinimum <= 0 || !double.IsFinite(RegionRatioStep) || RegionRatioStep <= 0
+            || MaximumSoftware < 1 || MaximumItems < 1 || ToggleHotkeyEncoding.Count != 7
+            || defaults.ValidateEntry(defaults.Entry()) is not null)
+            throw new InvalidDataException("Invalid performance_overlay freedom point: its defaults must satisfy its own ranges.");
+        return defaults;
+    }
+}
+
+/// <summary>The declaration uses explicit wire names; it is independent of the settings serializer policy.</summary>
+public sealed record PerformanceOverlayItemOptions(
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("source")] string Source,
+    [property: JsonPropertyName("intervalMs")] int? IntervalMs,
+    [property: JsonPropertyName("syncPrecision")] string SyncPrecision);
 
 /// <summary>Targeted recording (freedom point backend/monitoring targeted_recording; its description names
 /// every field).</summary>

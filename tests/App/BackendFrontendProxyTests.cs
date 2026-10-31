@@ -206,7 +206,7 @@ public sealed class BackendFrontendProxyTests(Xunit.Abstractions.ITestOutputHelp
         });
         using var session = new BackendServiceSession(BackendAddress(backend).AbsoluteUri,
             () => Volatile.Read(ref currentKey), CurrentProcessIdentity);
-        await session.EnsureConnectedAsync(CancellationToken.None);
+        session.PrepareWindowTransport();
         await using var proxy = new FrontendLoopbackProxy(BackendAddress(backend), session.SendFrontendRequestAsync);
         await proxy.StartAsync();
         using var client = ProxyClient(proxy);
@@ -301,7 +301,7 @@ public sealed class BackendFrontendProxyTests(Xunit.Abstractions.ITestOutputHelp
             });
         using var session = new BackendServiceSession(BackendAddress(backend).AbsoluteUri,
             () => Volatile.Read(ref currentKey), CurrentProcessIdentity);
-        await session.EnsureConnectedAsync(CancellationToken.None);
+        session.PrepareWindowTransport();
         var temporary = new TrustedAccessTemporaryDirectory();
         var initializationStarted = false;
         var browserExited = false;

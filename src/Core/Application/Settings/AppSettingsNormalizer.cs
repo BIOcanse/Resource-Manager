@@ -30,7 +30,26 @@ public static class AppSettingsNormalizer
                     ProtectedProcesses = settings.MemoryProtection is { } protection ? protection.ProtectedProcesses?.ToArray()! : ["explorer.exe"] },
             // Tier and override values are validated against the tier table by the settings write gate, not rewritten here.
             NormalizeMemoryCpuTier(settings.MemoryCpuTier),
-            NormalizeTargetedRecording(settings.TargetedRecording));
+            NormalizeTargetedRecording(settings.TargetedRecording),
+            NormalizePerformanceOverlay(settings.PerformanceOverlay));
+    }
+
+    // A missing section has no overlay. Each entry's omitted fields take the build's declared defaults so
+    // every reader gets complete values; values are kept as written otherwise (the write gate rejects
+    // out-of-range ones before commit). Valid ids are trimmed and compared ignoring case. Malformed maps
+    // stay intact for validation: normalization must not turn a rejected write into a different valid write.
+    public static AppPerformanceOverlaySettings NormalizePerformanceOverlay(AppPerformanceOverlaySettings? settings)
+    {
+        var defaults = AppSettingsDefaults.PerformanceOverlay;
+        var software = new Dictionary<string, AppPerformanceOverlaySoftwareSettings>(StringComparer.OrdinalIgnoreCase);
+        if (settings is null) return new AppPerformanceOverlaySettings(software);
+        if (settings.Software is null) return settings;
+        foreach (var (id, entry) in settings.Software)
+        {
+            if (string.IsNullOrWhiteSpace(id) || entry is null
+                || !software.TryAdd(id.Trim(), defaults.Complete(entry))) return settings;
+        }
+        return new AppPerformanceOverlaySettings(software);
     }
 
     // A missing section, or one without profiles, is the single default profile. Item values are kept as
@@ -175,6 +194,10 @@ public static class AppSettingsNormalizer
                 Enabled: false,
                 Encoding: [0, 0, 0, 0, 0, 0, 0]));
         }
+
+        if (normalized.All(static hotkey => !string.Equals(hotkey.ActionId,
+                AppSystemIntegrationActionIds.TogglePerformanceOverlayForeground, StringComparison.Ordinal)))
+            normalized.Add(AppSettingsDefaults.TogglePerformanceOverlayHotkeyDefault());
 
         return normalized;
     }

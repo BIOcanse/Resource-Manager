@@ -6,6 +6,21 @@ namespace Resource_Manager_APP.Tests;
 public sealed class AppSettingsNormalizerTests
 {
     [Fact]
+    public void OverlayToggleHotkeyGetsItsDeclaredDefaultAndAllowsASingleNonDestructiveKey()
+    {
+        var defaults = AppSettingsNormalizer.NormalizeEditableHotkeys([]);
+        var declared = AppSettingsDefaults.TogglePerformanceOverlayHotkeyDefault();
+        var added = Assert.Single(defaults, static hotkey => hotkey.ActionId == AppSystemIntegrationActionIds.TogglePerformanceOverlayForeground);
+        Assert.Equal(declared.Enabled, added.Enabled);
+        Assert.Equal(declared.Encoding, added.Encoding);
+        var custom = AppSettingsNormalizer.NormalizeEditableHotkeys(
+            [new(AppSystemIntegrationActionIds.TogglePerformanceOverlayForeground, true, [65])]);
+        var enabled = Assert.Single(custom, static hotkey => hotkey.ActionId == AppSystemIntegrationActionIds.TogglePerformanceOverlayForeground);
+        Assert.True(enabled.Enabled);
+        Assert.Equal(65, enabled.Encoding[0]);
+    }
+
+    [Fact]
     public void RealtimeActionBudget_DefaultsToFixedCountWithStoredPercent()
     {
         var performance = AppSettingsDefaults.Create().Performance;
@@ -147,7 +162,7 @@ public sealed class AppSettingsNormalizerTests
 
         var normalized = AppSettingsNormalizer.Normalize(settings);
 
-        Assert.False(normalized.SystemIntegration.Hotkeys.Single().Enabled);
+        Assert.False(normalized.SystemIntegration.Hotkeys.Single(static hotkey => hotkey.ActionId == AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground).Enabled);
     }
 
     [Fact]
@@ -170,7 +185,7 @@ public sealed class AppSettingsNormalizerTests
 
         var normalized = AppSettingsNormalizer.Normalize(settings);
 
-        Assert.False(normalized.SystemIntegration.Hotkeys.Single().Enabled);
+        Assert.False(normalized.SystemIntegration.Hotkeys.Single(static hotkey => hotkey.ActionId == AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground).Enabled);
         Assert.False(AppSettingsHotkeySafetyValidator.AreEnabledDestructiveHotkeysSafe(settings));
     }
 
@@ -194,7 +209,7 @@ public sealed class AppSettingsNormalizerTests
 
         var normalized = AppSettingsNormalizer.Normalize(settings);
 
-        Assert.True(normalized.SystemIntegration.Hotkeys.Single().Enabled);
+        Assert.True(normalized.SystemIntegration.Hotkeys.Single(static hotkey => hotkey.ActionId == AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground).Enabled);
         Assert.True(AppSettingsHotkeySafetyValidator.AreEnabledDestructiveHotkeysSafe(settings));
     }
 

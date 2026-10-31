@@ -474,6 +474,28 @@
       "changeEvent": "NativeEtwSessionAvailability initial publication or Report failure"
     },
     {
+      "uid": 56,
+      "kind": "block",
+      "process": "desktop",
+      "name": "OverlayToggleHotkey",
+      "comment": "Registers the configured toggle-performance-overlay-foreground hotkey and toggles the foreground software's overlay through the backend."
+    },
+    {
+      "uid": 57,
+      "kind": "item",
+      "process": "desktop",
+      "name": "OverlayToggleHotkeyEnabled",
+      "comment": "Backend settings fact: the toggle-performance-overlay-foreground hotkey is enabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop Host settings subscription publication (systemIntegration.hotkeys)"
+    },
+    {
       "uid": 58,
       "kind": "item",
       "process": "desktop",
@@ -482,11 +504,11 @@
       "storage": "own",
       "type": "bool",
       "owner": {
-        "component": "NativeUiBlockTrees shutdown path"
+        "component": "Resident host shutdown path"
       },
       "perBlock": false,
       "trigger": "event",
-      "changeEvent": "BusinessBlockScheduler.ShutdownAsync terminal shutdown requested"
+      "changeEvent": "Shared controller shutdown requested"
     },
     {
       "uid": 59,
@@ -497,11 +519,11 @@
       "storage": "own",
       "type": "bool",
       "owner": {
-        "component": "NativeUiBlockTrees startup path"
+        "component": "Resident host startup path"
       },
       "perBlock": false,
       "trigger": "event",
-      "changeEvent": "NativeUiBlockTrees.StartAsync process-started"
+      "changeEvent": "Resident host start process-started"
     },
     {
       "uid": 60,
@@ -512,11 +534,11 @@
       "storage": "own",
       "type": "bool",
       "owner": {
-        "component": "NativeUiBlockTrees user operation paths"
+        "component": "Resident host user operation paths"
       },
       "perBlock": false,
       "trigger": "event",
-      "changeEvent": "NativeUiBlockTrees.SetWindowWantedAsync show-window or close-window"
+      "changeEvent": "Resident host show-window or close-window"
     },
     {
       "uid": 61,
@@ -531,7 +553,7 @@
       },
       "perBlock": false,
       "trigger": "event",
-      "changeEvent": "NativeUiBlockTrees backend session bind, transition or unbind"
+      "changeEvent": "Resident host backend session bind, transition or unbind"
     },
     {
       "uid": 62,
@@ -948,7 +970,7 @@
       "kind": "item",
       "process": "desktop",
       "name": "OverlayEnabled",
-      "comment": "Resident preference or backend settings fact: OverlayEnabled; absent means false.",
+      "comment": "Backend settings fact: at least one software in performanceOverlay has its overlay enabled; absent means false.",
       "storage": "own",
       "type": "bool",
       "owner": {
@@ -956,7 +978,7 @@
       },
       "perBlock": false,
       "trigger": "event",
-      "changeEvent": "Desktop Host.readPreferences preferences-changed publication"
+      "changeEvent": "Desktop Host settings subscription publication (performanceOverlay)"
     },
     {
       "uid": 95,
@@ -1178,7 +1200,7 @@
       "name": "BackendSession",
       "comment": "不可变后端会话由常驻进程的后端连接块持有；完整值留在宿主，变化事件通知窗口转发消费者。",
       "storage": "reference",
-      "type": "ResourceManager.NativeUi.LegacyStateItems.DesktopBackendSession",
+      "type": "ResourceManager.Desktop.main.Session",
       "owner": {
         "block": 44
       },
@@ -1515,6 +1537,21 @@
       "perBlock": false,
       "trigger": "event",
       "changeEvent": "PendingTasksChanged"
+    },
+    {
+      "uid": 132,
+      "kind": "item",
+      "process": "desktop",
+      "name": "OverlayToggleHotkeyValid",
+      "comment": "Backend settings fact: the toggle-performance-overlay-foreground key set is not empty; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop Host settings subscription publication (systemIntegration.hotkeys)"
     },
     {
       "uid": 133,
@@ -2151,6 +2188,26 @@
       "conditions": [],
       "children": [],
       "decides": 12
+    },
+    {
+      "uid": 158,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "OverlayToggleHotkeyWanted",
+      "comment": "The toggle-performance-overlay-foreground setting is enabled and its configured hotkey is valid.",
+      "perBlock": false,
+      "node": 100,
+      "items": [
+        {
+          "item": 57
+        },
+        {
+          "item": 132
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 56
     },
     {
       "uid": 159,

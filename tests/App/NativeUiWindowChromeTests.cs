@@ -139,7 +139,7 @@ public sealed class NativeUiWindowChromeTests
         AssertDisabled(false);
     });
 
-    internal static MainForm CreateForm(MockHost host) => new(_ => { }, () => { }, host)
+    internal static MainForm CreateForm(MockHost host) => new(_ => { }, host)
     {
         ShowInTaskbar = false,
         Location = new Point(-30000, -30000)

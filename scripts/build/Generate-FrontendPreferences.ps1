@@ -2,6 +2,7 @@
 param(
     [string]$WorkRoot = $env:RM_LEDGER_WORK_ROOT,
     [string]$GeneratorPath = $env:RM_FRONTEND_GENERATOR,
+    [string]$DesktopGeneratorPath = $env:RM_DESKTOP_GENERATOR,
     [string[]]$BuildProperties = @()
 )
 $ErrorActionPreference = 'Stop'
@@ -40,3 +41,5 @@ if (-not $GeneratorPath) {
 }
 & $memoryLimit -FilePath dotnet -ArgumentList @([IO.Path]::GetFullPath($GeneratorPath), $repository, $output)
 if ($LASTEXITCODE -ne 0) { throw "Frontend projection failed: $LASTEXITCODE" }
+& (Join-Path $PSScriptRoot 'Generate-DesktopPoints.ps1') -WorkRoot $WorkRoot -GeneratorPath $DesktopGeneratorPath -ConsumersOnly -BuildProperties $BuildProperties
+if ($LASTEXITCODE -ne 0) { throw "Desktop consumer projection failed: $LASTEXITCODE" }

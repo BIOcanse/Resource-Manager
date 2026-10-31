@@ -42,7 +42,8 @@ public static class AppSettingsDefaults
                     new AppEditableHotkeySettings(
                         AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground,
                         Enabled: false,
-                        Encoding: [0, 0, 0, 0, 0, 0, 0])
+                        Encoding: [0, 0, 0, 0, 0, 0, 0]),
+                    TogglePerformanceOverlayHotkeyDefault()
                 ]),
             new AppDebugSettings(
                 DebugModeEnabled: false,
@@ -63,7 +64,21 @@ public static class AppSettingsDefaults
             new AppReportSettings([]),
             new HostMemoryProtectionSettings(Reserves: []),
             new MemoryCpuTierSettings(MemoryCpuTierSettings.DefaultTier, new Dictionary<string, System.Text.Json.JsonElement>()),
-            TargetedRecordingProfileDefaults.Create());
+            TargetedRecordingProfileDefaults.Create(),
+            new AppPerformanceOverlaySettings(new Dictionary<string, AppPerformanceOverlaySoftwareSettings>(StringComparer.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>The build's overlay choices (freedom point monitoring/performance_overlay).</summary>
+    public static PerformanceOverlayDefaults PerformanceOverlay
+        => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.PerformanceOverlay;
+
+    /// <summary>The toggle-performance-overlay-foreground hotkey as the build declares it; enabled only
+    /// when the declared encoding names a key.</summary>
+    public static AppEditableHotkeySettings TogglePerformanceOverlayHotkeyDefault()
+    {
+        var encoding = AppSettingsNormalizer.NormalizeHotkeyEncoding(PerformanceOverlay.ToggleHotkeyEncoding);
+        return new(AppSystemIntegrationActionIds.TogglePerformanceOverlayForeground,
+            PerformanceOverlay.ToggleHotkeyEnabled && encoding[0] != 0, encoding);
     }
 
 }

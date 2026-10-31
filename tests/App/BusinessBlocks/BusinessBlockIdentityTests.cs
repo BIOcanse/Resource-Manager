@@ -12,7 +12,7 @@ public sealed class BusinessBlockIdentityTests
         var block = new BusinessBlockTestSupport.Probe();
         await using var scheduler = BusinessBlockTestSupport.Create(
             [BusinessBlockTestSupport.Register(BackendUids.PresentFrameEtwSource, block)], logger: logger);
-        await using var ui = new ResourceManager.NativeUi.Blocks.NativeUiBlockTrees(
+        await using var ui = new ResourceManager.NativeUi.Blocks.NativeWindowBlockTrees(
             _ => new BusinessBlockTestSupport.Probe(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockController>.Instance);
@@ -20,10 +20,10 @@ public sealed class BusinessBlockIdentityTests
         const string mode = "names-on";
         var expectedBackendName = ResourceManager.App.StateItems.StateNames.Name(BackendUids.PresentFrameEtwSource);
         var expectedBackendProgramName = ResourceManager.App.StateItems.StateNames.Name(BackendUids.Program);
-        var expectedUiName = ResourceManager.NativeUi.LegacyStateItems.StateNames.Name(UiUids.MainRoot);
-        var expectedUiProgramName = ResourceManager.NativeUi.LegacyStateItems.StateNames.Name(UiUids.Program);
+        var expectedUiName = ResourceManager.NativeUi.StateItems.StateNames.Name(UiUids.MainWindow);
+        var expectedUiProgramName = ResourceManager.NativeUi.StateItems.StateNames.Name(UiUids.Program);
         Assert.Equal("PresentFrameEtwSource", expectedBackendName);
-        Assert.Equal("MainFrontend", expectedUiName);
+        Assert.Equal("MainWindow", expectedUiName);
 #else
         const string mode = "names-off";
         string? expectedBackendName = null;
@@ -50,7 +50,7 @@ public sealed class BusinessBlockIdentityTests
             Assert.Equal(ResourceManager.NativeUi.StateItems.StateRegistry.Version, uiSnapshot.RegistryVersion);
             Assert.Equal(UiUids.Program, uiSnapshot.Program);
             Assert.Equal(expectedUiProgramName, uiSnapshot.ProgramName);
-            Assert.Equal(expectedUiName, Assert.Single(uiSnapshot.Blocks, value => value.Id == UiUids.MainRoot).Name);
+            Assert.Equal(expectedUiName, Assert.Single(uiSnapshot.Blocks, value => value.Id == UiUids.MainWindow).Name);
             var childLabel = BackendUids.PresentFrameEtwSource.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 + (expectedBackendName is null ? "" : $" ({expectedBackendName})");
             Assert.Contains(logger.Messages, value => value.Contains("children=" + childLabel, StringComparison.Ordinal));

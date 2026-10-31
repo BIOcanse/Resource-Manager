@@ -191,6 +191,8 @@ export const loadingSettingsText: SettingsTextBundle = {
     forceTerminateTitle: "",
     forceTerminateDescription: "",
     forceTerminateWarning: "",
+    performanceOverlayHotkeyTitle: "",
+    performanceOverlayHotkeyDescription: "",
     hotkeyEmpty: "",
     hotkeyAddKey: "",
     hotkeyKeyLabel: "",

@@ -136,6 +136,7 @@ internal static class TrustedAccessHttpPolicy
             "DELETE /api/gpu/performance-overrides",
             "DELETE /api/optimization/protection/entries/{protectionId}",
             "PATCH /api/settings/app",
+            "POST /api/performance-overlay/toggle",
             // Crash report actions take the permission of the settings writes (docs/crash_dumps_2026-10-31.md).
             "POST /api/crash-reports/{id}/package",
             "POST /api/crash-reports/{id}/issue-link",
@@ -270,6 +271,8 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/startup-modules/catalog",
             "GET /api/startup-modules/settings",
             "GET /api/startup-modules/software/{softwareId}",
+            "GET /api/performance-overlay/foreground",
+            "GET /api/performance-overlay/software/{softwareId}",
             "GET /api/settings/app",
             "GET /api/settings/dashboard",
             "GET /api/settings/memory-cpu-tier",

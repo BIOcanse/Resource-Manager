@@ -128,7 +128,7 @@ public sealed class NativeUiSessionEndingMessageTests
 
     private static MainForm CreateForm(IFrontendHost host)
     {
-        var form = new MainForm(_ => { }, () => { }, host) { ShowInTaskbar = false };
+        var form = new MainForm(_ => { }, host) { ShowInTaskbar = false };
         // Create an actual hidden HWND. No browser, backend, user window, or real
         // Windows logoff is involved; SendMessage targets only this test form.
         _ = form.Handle;

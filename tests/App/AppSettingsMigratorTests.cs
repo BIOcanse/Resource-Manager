@@ -9,6 +9,46 @@ namespace Resource_Manager_APP.Tests;
 public sealed class AppSettingsMigratorTests
 {
     [Theory]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("true")]
+    [InlineData("{}")]
+    [InlineData("{\"software\":null}")]
+    [InlineData("{\"software\":{\"game\":null}}")]
+    [InlineData("{\"software\":{\"game\":{},\"GAME\":{}}}")]
+    [InlineData("{\"software\":{\"game\":{},\"game\":{}}}")]
+    [InlineData("{\"software\":{\"game\":{\"items\":[null]}}}")]
+    [InlineData("{\"software\":{\"game\":{\"enabled\":\"yes\"}}}")]
+    [InlineData("{\"software\":{\"game\":{\"fontSizePx\":-1}}}")]
+    [InlineData("{\"software\":{\"game\":{\"enabeld\":true}}}")]
+    public void MalformedOverlaySectionIsCorruptInputRatherThanAnEmptyOverlay(string json)
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!;
+        // Insert the section as raw JSON so a duplicate property is not collapsed by a test helper.
+        root.AsObject().Remove("performanceOverlay");
+        var prefix = root.ToJsonString()[..^1];
+        using var document = JsonDocument.Parse(prefix + ",\"performanceOverlay\":" + json + "}");
+        Assert.Throws<JsonException>(() => AppSettingsMigrator.MigrateForRead(document.RootElement));
+    }
+
+    [Fact]
+    public void OverlayMigrationCompletesEachSoftwareWithoutReplacingItsSavedChoices()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!;
+        root["performanceOverlay"] = JsonNode.Parse("""{"software":{" Game ":{"enabled":true,"mode":"injected","fontSizePx":26,"items":[]},"other":{"enabled":false,"marginPx":40}}}""");
+        using var document = JsonDocument.Parse(root.ToJsonString());
+        var overlay = AppSettingsMigrator.MigrateForRead(document.RootElement).PerformanceOverlay!;
+        Assert.Equal(2, overlay.Software.Count);
+        Assert.True(overlay.Software["GAME"].Enabled);
+        Assert.Equal("injected", overlay.Software["game"].Mode);
+        Assert.Equal(26, overlay.Software["game"].FontSizePx);
+        Assert.Empty(overlay.Software["game"].Items!);
+        Assert.False(overlay.Software["other"].Enabled);
+        Assert.Equal(40, overlay.Software["other"].MarginPx);
+        Assert.Null(AppSettingsDefaults.PerformanceOverlay.Validate(overlay));
+    }
+
+    [Theory]
     [InlineData("true", true, false)]
     [InlineData("false", false, false)]
     [InlineData("null", false, true)]
@@ -264,7 +304,7 @@ public sealed class AppSettingsMigratorTests
 
         Assert.Equal(AppSettingsDefaults.CurrentVersion, settings.Version);
         Assert.False(settings.SystemIntegration.TaskManagerShortcutReplacementEnabled);
-        Assert.False(settings.SystemIntegration.Hotkeys.Single().Enabled);
+        Assert.False(settings.SystemIntegration.Hotkeys.Single(static hotkey => hotkey.ActionId == AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground).Enabled);
         Assert.False(settings.Debug.DebugModeEnabled);
         Assert.False(settings.Debug.DebugLogEnabled);
         Assert.False(settings.Debug.HostManagerSmartCoordinatorScoreOnlyEnabled);
@@ -389,8 +429,11 @@ public sealed class AppSettingsMigratorTests
 
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
-        var hotkey = Assert.Single(settings.SystemIntegration.Hotkeys);
-        Assert.Equal(AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground, hotkey.ActionId);
+        // Every editable action gets its disabled default: force terminate and the overlay toggle.
+        Assert.Equal([AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground, AppSystemIntegrationActionIds.TogglePerformanceOverlayForeground],
+            settings.SystemIntegration.Hotkeys.Select(static item => item.ActionId));
+        Assert.All(settings.SystemIntegration.Hotkeys, static item => Assert.False(item.Enabled));
+        var hotkey = settings.SystemIntegration.Hotkeys[0];
         Assert.False(hotkey.Enabled);
         Assert.Equal([0, 0, 0, 0, 0, 0, 0], hotkey.Encoding);
         Assert.True(settings.PublicService.Enabled);

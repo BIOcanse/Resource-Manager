@@ -20,6 +20,7 @@ pub const tree: control.tree.Tree = .{
         .{ .uid = B.SingleInstance, .parent = B.MainFrontend },
         .{ .uid = B.SystemIntegration, .parent = B.MainFrontend },
         .{ .uid = B.ForceTerminateHotkey, .parent = B.SystemIntegration },
+        .{ .uid = B.OverlayToggleHotkey, .parent = B.SystemIntegration },
         .{ .uid = B.TaskManagerReplacement, .parent = B.SystemIntegration },
         .{ .uid = B.BackendConnection, .parent = B.MainFrontend },
         .{ .uid = B.WindowProcess, .parent = B.MainFrontend, .launches_process = "window" },
@@ -38,6 +39,7 @@ pub const tree: control.tree.Tree = .{
         .{ .condition = C.ProgramActive, .function = programActive },
         .{ .condition = C.AlwaysWanted, .function = alwaysWanted },
         .{ .condition = C.ForceTerminateHotkeyWanted, .function = hotkeyWanted },
+        .{ .condition = C.OverlayToggleHotkeyWanted, .function = overlayToggleWanted },
         .{ .condition = C.TaskManagerReplacementWanted, .function = taskManagerWanted },
         .{ .condition = C.WindowProcessWanted, .function = windowWanted },
         .{ .condition = C.DesktopObservationWanted, .function = desktopWanted },
@@ -76,6 +78,11 @@ fn alwaysWanted(_: *Input) anyerror!bool {
 fn hotkeyWanted(input: *Input) anyerror!bool {
     const enabled = try read(input, I.ForceTerminateHotkeyEnabled);
     const valid = try read(input, I.ForceTerminateHotkeyValid);
+    return enabled and valid;
+}
+fn overlayToggleWanted(input: *Input) anyerror!bool {
+    const enabled = try read(input, I.OverlayToggleHotkeyEnabled);
+    const valid = try read(input, I.OverlayToggleHotkeyValid);
     return enabled and valid;
 }
 fn taskManagerWanted(input: *Input) anyerror!bool {
@@ -122,16 +129,16 @@ test "Program owns only Frontend and Frontend owns the two frontend branches" {
     try std.testing.expectEqual(@as(usize, 2), frontend_children);
 }
 
-test "SystemIntegration owns exactly the two system integration blocks" {
+test "SystemIntegration owns exactly the three system integration blocks" {
     const std = @import("std");
     var children: usize = 0;
     for (tree.blocks) |block| {
         if (block.uid == B.SystemIntegration) try std.testing.expectEqual(B.MainFrontend, block.parent.?);
         if (block.parent != B.SystemIntegration) continue;
         children += 1;
-        try std.testing.expect(block.uid == B.ForceTerminateHotkey or block.uid == B.TaskManagerReplacement);
+        try std.testing.expect(block.uid == B.ForceTerminateHotkey or block.uid == B.OverlayToggleHotkey or block.uid == B.TaskManagerReplacement);
     }
-    try std.testing.expectEqual(@as(usize, 2), children);
+    try std.testing.expectEqual(@as(usize, 3), children);
 }
 
 test "resident conditions require ready sessions, explicit switches and valid keys" {
@@ -174,6 +181,11 @@ test "resident conditions require ready sessions, explicit switches and valid ke
     try std.testing.expect(!try hotkeyWanted(&input));
     fixture.set(I.ForceTerminateHotkeyValid, .{ .value = true });
     try std.testing.expect(try hotkeyWanted(&input));
+    try std.testing.expect(!try overlayToggleWanted(&input));
+    fixture.set(I.OverlayToggleHotkeyEnabled, .{ .value = true });
+    try std.testing.expect(!try overlayToggleWanted(&input));
+    fixture.set(I.OverlayToggleHotkeyValid, .{ .value = true });
+    try std.testing.expect(try overlayToggleWanted(&input));
     fixture.set(I.TaskManagerReplacementEnabled, .{ .value = true });
     try std.testing.expect(try taskManagerWanted(&input));
     fixture.set(I.BackendSessionReady, .{ .value = true });

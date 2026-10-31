@@ -1,12 +1,16 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { getPerformanceOverlaySettings, OverlayPreferencesSaveError, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
+import {
+  getPerformanceOverlaySettings, OverlaySettingsSaveError, performanceOverlayEntry, resetPerformanceOverlayPresentation,
+  savePerformanceOverlaySettings
+} from "../../api.ts";
+import { AppSettingsRevisionConflictError } from "../../data/appSettings/appSettingsApi.ts";
 import { expectedOverlayInjectionModules } from "./startupModuleSelection.ts";
 import { userFacingErrorMessage } from "../../presentation/userFacingText.ts";
 import { StandardSelect } from "../../components/StandardSelect.tsx";
 import { uiText, currentSettingsText } from "../../text.ts";
-import type { PerformanceOverlayItem, PerformanceOverlaySettings } from "../../types.ts";
+import type { PerformanceOverlayItem, PerformanceOverlayEditorSettings as PerformanceOverlaySettings } from "../../types.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { DialogActions, DialogBody, DialogHeader, DialogRoot } from "../../ui/primitives/Dialog.tsx";
 import { ItemPicker } from "../itemSelection/ItemPicker.tsx";
@@ -15,7 +19,7 @@ import { findCatalogEntry, intervalPlaceholder, itemKinds, type CatalogEntry } f
 import { getItemCatalog } from "../targetedReport/targetedRecordingApi.ts";
 import { moveView } from "../targetedReport/views/viewModel.ts";
 import { overlayItemLabel } from "./overlayItemLabels.ts";
-import { maximumOverlayItems, overlayDefaultIntervalMs, overlayItemsIssue } from "./overlayItems.ts";
+import { overlayDefaultIntervalMs, overlayItemsIssue } from "./overlayItems.ts";
 
 export function SoftwareOverlaySettings(props: { softwareId: string; active: boolean }) {
   const [saved, setSaved] = createSignal<PerformanceOverlaySettings | null>(null);
@@ -31,11 +35,18 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
   const [error, setError] = createSignal("");
   const runtime = useFrontendRuntime();
   let requestId = 0;
-  const dirty = createMemo(() => JSON.stringify(saved()) !== JSON.stringify(draft()));
+  // 只比较后端条目的字段：修订号和启动模块登记跟着保存走，不算用户的改动。
+  const dirty = createMemo(() => {
+    const before = saved();
+    const current = draft();
+    return before !== null && current !== null
+      && JSON.stringify(performanceOverlayEntry(before)) !== JSON.stringify(performanceOverlayEntry(current));
+  });
   // 草稿里的项不合规（旧缓存或别处写坏）时说明原因，不让保存。
   const itemsIssue = createMemo(() => {
     const current = draft();
-    return current ? overlayItemsIssue(current.items) : null;
+    const constraints = saved()?.editingConstraints;
+    return current && constraints ? overlayItemsIssue(current.items, constraints) : null;
   });
   // 后端登记的注入模块和这里的选择不一致（外部改过，或上次只保存了一半）：显示提示，并允许保存来对齐。
   const modulesMismatch = () => {
@@ -47,7 +58,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     if (!current || !modulesMismatch()) return null;
     return current.injectionModules === "partial" ? uiText.performanceOverlay.injectedModulesPartial
       : current.injectionModules === "complete" ? uiText.performanceOverlay.externalModeModulesPresent
-        : null;
+        : uiText.performanceOverlay.injectedModulesMissing;
   };
 
   createEffect(() => {
@@ -55,7 +66,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     const id = ++requestId;
     setLoading(true);
     setError("");
-    void Promise.all([getPerformanceOverlaySettings(props.softwareId), getItemCatalog(runtime.requestClient)])
+    void Promise.all([getPerformanceOverlaySettings(runtime.requestClient, props.softwareId), getItemCatalog(runtime.requestClient)])
       .then(([settings, entries]) => {
         if (id !== requestId) return;
         setSaved(settings);
@@ -93,32 +104,46 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     const current = draft();
     if (current) input.value = String(current[field]);
   };
+  // 后端设置在这期间被别处改过（例如浮窗热键）：重读后端的当前值作为已保存的值，草稿留着，用户可以再保存一次。
+  const reloadAfterConflict = async (cause: unknown) => {
+    const conflict = cause instanceof AppSettingsRevisionConflictError ? cause
+      : cause instanceof OverlaySettingsSaveError && cause.cause instanceof AppSettingsRevisionConflictError ? cause.cause : null;
+    if (!conflict) return;
+    try { setSaved(await getPerformanceOverlaySettings(runtime.requestClient, props.softwareId)); }
+    catch (reloadError) { setError(userFacingErrorMessage(reloadError, uiText.status.actionFailed)); }
+  };
   const save = async () => {
     const current = draft();
-    if (!current || saving()) return;
+    const before = saved();
+    if (!current || !before || saving()) return;
     setSaving(true);
     setError("");
     try {
-      const result = await savePerformanceOverlaySettings(current, saved() ?? undefined);
+      const result = await savePerformanceOverlaySettings(runtime.requestClient, current, before);
       setSaved(result);
       setDraft(cloneSettings(result));
     } catch (cause) {
-      setError(cause instanceof OverlayPreferencesSaveError
-        ? uiText.performanceOverlay.modulesSavedPreferencesFailed
+      setError(cause instanceof OverlaySettingsSaveError
+        ? uiText.performanceOverlay.modulesSavedSettingsFailed
         : userFacingErrorMessage(cause, uiText.status.actionFailed));
+      await reloadAfterConflict(cause);
     } finally {
       setSaving(false);
     }
   };
   const resetPresentation = async () => {
-    if (!draft() || saving()) return;
+    const before = saved();
+    if (!draft() || !before || saving()) return;
     setSaving(true);
     setError("");
     try {
-      const presentation = await resetPerformanceOverlayPresentation(props.softwareId);
-      setSaved(current => current && { ...current, ...presentation });
-      setDraft(current => current && { ...current, ...presentation });
-    } catch (cause) { setError(userFacingErrorMessage(cause, uiText.status.actionFailed)); }
+      const result = await resetPerformanceOverlayPresentation(runtime.requestClient, before);
+      setSaved(result);
+      setDraft(cloneSettings(result));
+    } catch (cause) {
+      setError(userFacingErrorMessage(cause, uiText.status.actionFailed));
+      await reloadAfterConflict(cause);
+    }
     finally { setSaving(false); }
   };
   // 一项的来源、间隔、同步精度，写成一行跟在名称后面；留空的间隔写出实际会用的间隔和出处（自然间隔或浮层默认）。
@@ -198,19 +223,19 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
             onChange={(sizeMode) => update({ sizeMode })} />
           <Show when={current().sizeMode === "absolutePixels"}>
             <label>{uiText.performanceOverlay.fontSizePx}
-              <input disabled={saving()} type="number" min="8" max="72" ref={bindNumber("fontSizePx")}
+              <input disabled={saving()} type="number" min={saved()!.editingConstraints.fontSizePxMinimum} max={saved()!.editingConstraints.fontSizePxMaximum} ref={bindNumber("fontSizePx")}
                 onInput={(event) => editNumber("fontSizePx", event.currentTarget)}
                 onChange={(event) => showDraftNumber("fontSizePx", event.currentTarget)} />
             </label>
           </Show>
           <Show when={current().sizeMode === "windowRatio"}>
             <label>{uiText.performanceOverlay.regionWidthRatio}
-              <input disabled={saving()} type="number" min="0.05" max="1" step="0.01" ref={bindNumber("regionWidthRatio")}
+              <input disabled={saving()} type="number" min={saved()!.editingConstraints.regionRatioMinimum} max={saved()!.editingConstraints.regionRatioMaximum} step={saved()!.editingConstraints.regionRatioStep} ref={bindNumber("regionWidthRatio")}
                 onInput={(event) => editNumber("regionWidthRatio", event.currentTarget)}
                 onChange={(event) => showDraftNumber("regionWidthRatio", event.currentTarget)} />
             </label>
             <label>{uiText.performanceOverlay.regionHeightRatio}
-              <input disabled={saving()} type="number" min="0.05" max="1" step="0.01" ref={bindNumber("regionHeightRatio")}
+              <input disabled={saving()} type="number" min={saved()!.editingConstraints.regionRatioMinimum} max={saved()!.editingConstraints.regionRatioMaximum} step={saved()!.editingConstraints.regionRatioStep} ref={bindNumber("regionHeightRatio")}
                 onInput={(event) => editNumber("regionHeightRatio", event.currentTarget)}
                 onChange={(event) => showDraftNumber("regionHeightRatio", event.currentTarget)} />
             </label>
@@ -225,7 +250,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
             ]}
             onChange={(anchor) => update({ anchor })} />
           <label>{uiText.performanceOverlay.marginPx}
-            <input disabled={saving()} type="number" min="0" max="256" ref={bindNumber("marginPx")}
+            <input disabled={saving()} type="number" min={saved()!.editingConstraints.marginPxMinimum} max={saved()!.editingConstraints.marginPxMaximum} ref={bindNumber("marginPx")}
               onInput={(event) => editNumber("marginPx", event.currentTarget)}
                 onChange={(event) => showDraftNumber("marginPx", event.currentTarget)} />
           </label>
@@ -237,9 +262,11 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
           <DialogHeader title={uiText.performanceOverlay.pickerTitle} titleId="overlayItemsPickerTitle"
             onDismiss={() => setPickerOpen(false)} />
           <DialogBody class="overlay-items-body">
-            <ItemPicker catalog={catalog()} use="overlay" items={pickerItems()} maximumItems={maximumOverlayItems}
-              allowedKinds={itemKinds} defaultIntervalMs={overlayDefaultIntervalMs} nameOf={overlayItemLabel}
-              onChange={(items) => setPickerItems(items)} onIssuesChange={setPickerIssues} />
+            <Show when={saved()?.editingConstraints}>{(constraints) =>
+              <ItemPicker catalog={catalog()} use="overlay" items={pickerItems()} maximumItems={constraints().maximumItems}
+                allowedKinds={itemKinds} defaultIntervalMs={overlayDefaultIntervalMs} nameOf={overlayItemLabel}
+                onChange={(items) => setPickerItems(items)} onIssuesChange={setPickerIssues} />
+            }</Show>
           </DialogBody>
           <DialogActions>
             <button class="secondary" type="button" disabled={saving()} onClick={() => setPickerOpen(false)}>{uiText.metricPicker.cancel}</button>

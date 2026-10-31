@@ -2,78 +2,87 @@
 const declarations = @import("rm_control").declarations;
 
 pub const registry: declarations.Registry = .{
-    .version = "4e455295522649bdef142f432748d07251a6dcba",
+    .version = "a948749d656cf9c862aa58a565c716400378b1a8",
     .process = "desktop",
     .blocks = &.{
-        .{ .uid = 40, .name = null },
-        .{ .uid = 41, .name = null },
-        .{ .uid = 42, .name = null },
-        .{ .uid = 43, .name = null },
-        .{ .uid = 44, .name = null },
-        .{ .uid = 46, .name = null },
-        .{ .uid = 47, .name = null },
-        .{ .uid = 50, .name = null },
-        .{ .uid = 87, .name = null },
-        .{ .uid = 88, .name = null },
-        .{ .uid = 89, .name = null },
-        .{ .uid = 100, .name = null },
-        .{ .uid = 101, .name = null },
+        .{ .uid = 40, .name = "Program" },
+        .{ .uid = 41, .name = "MainFrontend" },
+        .{ .uid = 42, .name = "Tray" },
+        .{ .uid = 43, .name = "SingleInstance" },
+        .{ .uid = 44, .name = "BackendConnection" },
+        .{ .uid = 46, .name = "DesktopObservation" },
+        .{ .uid = 47, .name = "Overlay" },
+        .{ .uid = 50, .name = "TrayNotifications" },
+        .{ .uid = 56, .name = "OverlayToggleHotkey" },
+        .{ .uid = 87, .name = "ForceTerminateHotkey" },
+        .{ .uid = 88, .name = "TaskManagerReplacement" },
+        .{ .uid = 89, .name = "WindowProcess" },
+        .{ .uid = 100, .name = "SystemIntegration" },
+        .{ .uid = 101, .name = "Frontend" },
     },
     .items = &.{
-        .{ .uid = 58, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
-        .{ .uid = 59, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
-        .{ .uid = 60, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
-        .{ .uid = 61, .storage = .reference, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = 44, .name = null },
-        .{ .uid = 94, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
-        .{ .uid = 95, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
-        .{ .uid = 96, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
-        .{ .uid = 97, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
-        .{ .uid = 98, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
-        .{ .uid = 109, .storage = .reference, .value_type = .host, .per_block = false, .trigger = .event, .owner_block = 44, .name = null },
+        .{ .uid = 57, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "OverlayToggleHotkeyEnabled" },
+        .{ .uid = 58, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "ProgramShuttingDown" },
+        .{ .uid = 59, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "ProgramStarted" },
+        .{ .uid = 60, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "WindowWanted" },
+        .{ .uid = 61, .storage = .reference, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = 44, .name = "BackendSessionReady" },
+        .{ .uid = 94, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "OverlayEnabled" },
+        .{ .uid = 95, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "ForceTerminateHotkeyEnabled" },
+        .{ .uid = 96, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "ForceTerminateHotkeyValid" },
+        .{ .uid = 97, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "TaskManagerReplacementEnabled" },
+        .{ .uid = 98, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "NotificationsEnabled" },
+        .{ .uid = 109, .storage = .reference, .value_type = .host, .per_block = false, .trigger = .event, .owner_block = 44, .name = "BackendSession" },
+        .{ .uid = 132, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "OverlayToggleHotkeyValid" },
     },
     .conditions = &.{
         .{ .uid = 99, .node = 40, .per_block = false,
             .items = &.{
                 .{ .item = 59, .block = null },
             },
-            .conditions = &.{  }, .children = &.{  }, .decides = 101, .name = null },
+            .conditions = &.{  }, .children = &.{  }, .decides = 101, .name = "ProgramActive" },
         .{ .uid = 102, .node = null, .per_block = true,
             .items = &.{
             },
-            .conditions = &.{  }, .children = &.{  }, .decides = null, .name = null },
+            .conditions = &.{  }, .children = &.{  }, .decides = null, .name = "AlwaysWanted" },
         .{ .uid = 103, .node = 100, .per_block = false,
             .items = &.{
                 .{ .item = 95, .block = null },
                 .{ .item = 96, .block = null },
             },
-            .conditions = &.{  }, .children = &.{  }, .decides = 87, .name = null },
+            .conditions = &.{  }, .children = &.{  }, .decides = 87, .name = "ForceTerminateHotkeyWanted" },
         .{ .uid = 104, .node = 100, .per_block = false,
             .items = &.{
                 .{ .item = 97, .block = null },
             },
-            .conditions = &.{  }, .children = &.{  }, .decides = 88, .name = null },
+            .conditions = &.{  }, .children = &.{  }, .decides = 88, .name = "TaskManagerReplacementWanted" },
         .{ .uid = 105, .node = 41, .per_block = false,
             .items = &.{
                 .{ .item = 60, .block = null },
             },
-            .conditions = &.{  }, .children = &.{  }, .decides = 89, .name = null },
+            .conditions = &.{  }, .children = &.{  }, .decides = 89, .name = "WindowProcessWanted" },
         .{ .uid = 106, .node = 44, .per_block = false,
             .items = &.{
                 .{ .item = 61, .block = null },
             },
-            .conditions = &.{  }, .children = &.{  }, .decides = 46, .name = null },
+            .conditions = &.{  }, .children = &.{  }, .decides = 46, .name = "DesktopObservationWanted" },
         .{ .uid = 107, .node = 44, .per_block = false,
             .items = &.{
                 .{ .item = 61, .block = null },
                 .{ .item = 94, .block = null },
             },
-            .conditions = &.{  }, .children = &.{  }, .decides = 47, .name = null },
+            .conditions = &.{  }, .children = &.{  }, .decides = 47, .name = "OverlayWanted" },
         .{ .uid = 108, .node = 42, .per_block = false,
             .items = &.{
                 .{ .item = 61, .block = null },
                 .{ .item = 98, .block = null },
             },
-            .conditions = &.{  }, .children = &.{  }, .decides = 50, .name = null },
+            .conditions = &.{  }, .children = &.{  }, .decides = 50, .name = "TrayNotificationsWanted" },
+        .{ .uid = 158, .node = 100, .per_block = false,
+            .items = &.{
+                .{ .item = 57, .block = null },
+                .{ .item = 132, .block = null },
+            },
+            .conditions = &.{  }, .children = &.{  }, .decides = 56, .name = "OverlayToggleHotkeyWanted" },
     },
 };
 
@@ -86,6 +95,7 @@ pub const BlockUids = struct {
     pub const @"DesktopObservation" = 46;
     pub const @"Overlay" = 47;
     pub const @"TrayNotifications" = 50;
+    pub const @"OverlayToggleHotkey" = 56;
     pub const @"ForceTerminateHotkey" = 87;
     pub const @"TaskManagerReplacement" = 88;
     pub const @"WindowProcess" = 89;
@@ -94,6 +104,7 @@ pub const BlockUids = struct {
 };
 
 pub const ItemUids = struct {
+    pub const @"OverlayToggleHotkeyEnabled" = 57;
     pub const @"ProgramShuttingDown" = 58;
     pub const @"ProgramStarted" = 59;
     pub const @"WindowWanted" = 60;
@@ -104,6 +115,7 @@ pub const ItemUids = struct {
     pub const @"TaskManagerReplacementEnabled" = 97;
     pub const @"NotificationsEnabled" = 98;
     pub const @"BackendSession" = 109;
+    pub const @"OverlayToggleHotkeyValid" = 132;
 };
 
 pub const ConditionUids = struct {
@@ -115,4 +127,5 @@ pub const ConditionUids = struct {
     pub const @"DesktopObservationWanted" = 106;
     pub const @"OverlayWanted" = 107;
     pub const @"TrayNotificationsWanted" = 108;
+    pub const @"OverlayToggleHotkeyWanted" = 158;
 };

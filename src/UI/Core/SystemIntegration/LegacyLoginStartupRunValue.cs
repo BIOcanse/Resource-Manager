@@ -40,7 +40,7 @@ internal static class LegacyLoginStartupRunValue
         return LegacyLoginStartupOutcome.Migrated;
     }
 
-    /// <summary>One serial startup step of the primary frontend instance; the outcome is only logged.</summary>
+    /// <summary>One serial startup step of the window process; the outcome is only logged.</summary>
     internal static void MigrateCurrentUser()
     {
         try

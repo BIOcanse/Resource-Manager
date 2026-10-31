@@ -92,6 +92,17 @@ internal sealed record NativeText
     public required string ForceTerminateFailed { get; init; }
     public required string ForceTerminateHotkeyDisabled { get; init; }
     public required string ForceTerminateHotkeyEnableFailed { get; init; }
+    public required string PerformanceOverlayTitle { get; init; }
+    public required string PerformanceOverlayEnabledFormat { get; init; }
+    public required string PerformanceOverlayDisabledFormat { get; init; }
+    public required string PerformanceOverlayNoForegroundSoftware { get; init; }
+    public required string PerformanceOverlayBackendUnavailable { get; init; }
+    public required string PerformanceOverlayToggleFailedFormat { get; init; }
+    public required string PerformanceOverlayHotkeyEnableFailed { get; init; }
+    public required string PerformanceOverlayMenuFormat { get; init; }
+    public required string PerformanceOverlayMenuNoSoftware { get; init; }
+    public required string PerformanceOverlayMenuBackendUnavailable { get; init; }
+    public required string PerformanceOverlayMenuReadFailed { get; init; }
     public required string HotkeyNeedsAtLeastOneKey { get; init; }
     public required string ForceTerminateHotkeyNeedsModifier { get; init; }
     public required string KeyboardHookRegisterFailed { get; init; }

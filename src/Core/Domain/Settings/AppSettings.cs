@@ -23,6 +23,9 @@ public static class AppOptimizationModes
 public static class AppSystemIntegrationActionIds
 {
     public const string ForceTerminateUnresponsiveAndForeground = "force-terminate-unresponsive-and-foreground";
+    /// <summary>Toggles the performance overlay of the backend's current foreground software
+    /// (POST /api/performance-overlay/toggle without a software id). Not destructive.</summary>
+    public const string TogglePerformanceOverlayForeground = "toggle-performance-overlay-foreground";
 }
 
 public sealed record AppSettings(
@@ -37,7 +40,8 @@ public sealed record AppSettings(
     AppReportSettings? Reports = null,
     HostMemoryProtectionSettings? MemoryProtection = null,
     MemoryCpuTierSettings? MemoryCpuTier = null,
-    AppTargetedRecordingSettings? TargetedRecording = null);
+    AppTargetedRecordingSettings? TargetedRecording = null,
+    AppPerformanceOverlaySettings? PerformanceOverlay = null);
 
 /// <summary>内存与 CPU 取舍: the chosen tier (1 = least memory, most CPU; 5 = least CPU, most memory)
 /// and the user's per-option values by option name. An option without an entry takes the tier's value;

@@ -32,6 +32,7 @@ public sealed partial class HostManagerPlanCompiler
     [JsonSerializable(typeof(FanCurveFeedTiming))]
     [JsonSerializable(typeof(UniwillEcChannelOptions))]
     [JsonSerializable(typeof(TargetedRecordingOptions))]
+    [JsonSerializable(typeof(PerformanceOverlayOptions))]
     [JsonSerializable(typeof(EtwSessionBufferPoolOptions))]
     [JsonSerializable(typeof(FramePipelineOptions))]
     [JsonSerializable(typeof(CompiledMemoryCpuTierCell[]))]

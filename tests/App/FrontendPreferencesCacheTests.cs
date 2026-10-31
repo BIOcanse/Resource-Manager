@@ -21,8 +21,8 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal(FrontendPoints.BarFrameRate, current.Appearance.ResourceBarFrameRate);
         Assert.Equal(FrontendPoints.Monitor.CustomValue, current.Refresh.Monitor.CustomValue);
         Assert.Equal(FrontendPoints.LocalSystem.Preset, current.Refresh.LocalSystem.Preset);
-        Assert.Equal(FrontendOverlayItems.PointItems(), Owner().Overlay("unrecorded").Items);
-        Assert.Equal(FrontendPoints.MetricOrder.Length, Owner().Overlay("unrecorded").Items.Count);
+        // Overlay settings are backend settings: a missing cache has no overlay entries waiting for the backend.
+        Assert.Empty(Owner().PendingOverlayEntries());
         Assert.False(File.Exists(Cache));
     }
 
@@ -33,21 +33,16 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         var desired = owner.Read() with
         {
             Appearance = new() { Theme = "dark", ResourceBarFrameRate = 120 },
-            Refresh = new() { Monitor = new("custom", "balanced", 3456) },
-            Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["game"] = new() { Enabled = true, Mode = "injected", FontSizePx = 22, Items = ChosenItems } }
+            Refresh = new() { Monitor = new("custom", "balanced", 3456) }
         };
         owner.Save(desired);
         var restarted = Owner();
         var current = restarted.Read();
         Assert.Equal("dark", current.Appearance.Theme);
         Assert.Equal(3456, current.Refresh.Monitor.CustomValue);
-        Assert.Equal(22, restarted.Overlay("GAME").FontSizePx);
-        Assert.Equal(ChosenItems, restarted.Overlay("game").Items);
         restarted.Reset();
-        var expected = new FrontendPreferences { Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["game"] = new() { Enabled = true, Mode = "injected" } } };
-        Assert.Equal(Serialize(expected), Serialize(Owner().Read()));
+        Assert.Equal(Serialize(new FrontendPreferences()), Serialize(Owner().Read()));
+        Assert.False(File.Exists(Cache));
     }
 
     [Fact]
@@ -58,7 +53,7 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal("de-DE", current.Appearance.Language);
         Assert.Equal(FrontendPoints.Theme, current.Appearance.Theme);
         Assert.Equal(FrontendPoints.Monitor.CustomValue, current.Refresh.Monitor.CustomValue);
-        Assert.Empty(current.Overlays);
+        Assert.Empty(Owner().PendingOverlayEntries());
         Assert.Equal(Serialize(current), Serialize(Owner().Read()));
     }
 
@@ -100,18 +95,13 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     }
 
     [Fact]
-    public void OverlayChoicesImportBeforeDashboardRoundTripAndResetKeepsOnlyTheChoices()
+    public void OverlayChoicesImportBeforeDashboardRoundTripAndResetKeepsThePendingEntries()
     {
         WriteLegacy();
-        var existing = JsonSerializer.SerializeToNode(new FrontendPreferences
-        {
-            Appearance = new() { Language = "de-DE" },
-            Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["game"] = new() { FontSizePx = 22 } }
-        }, FrontendPreferencesOwner.Json)!.AsObject();
+        var existing = JsonSerializer.SerializeToNode(new FrontendPreferences { Appearance = new() { Language = "de-DE" } },
+            FrontendPreferencesOwner.Json)!.AsObject();
         existing.Remove("overlaySelectionVersion");
-        existing["overlays"]!["game"]!.AsObject().Remove("enabled");
-        existing["overlays"]!["game"]!.AsObject().Remove("mode");
+        existing["overlays"] = new System.Text.Json.Nodes.JsonObject { ["game"] = new System.Text.Json.Nodes.JsonObject { ["fontSizePx"] = 22 } };
         File.WriteAllText(Cache, existing.ToJsonString(FrontendPreferencesOwner.Json));
         var dashboard = Path.Combine(root, "dashboard-settings.json");
         File.WriteAllText(dashboard, """{"cards":[{"id":"existing-layout","main":"cpu"}]}""");
@@ -119,13 +109,16 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         var current = owner.Read();
         Assert.Equal("de-DE", current.Appearance.Language);
         Assert.Equal("existing-layout", current.Dashboard!.Value.GetProperty("cards")[0].GetProperty("id").GetString());
-        Assert.True(current.Overlays["game"].Enabled);
-        Assert.Equal("injected", current.Overlays["game"].Mode);
-        Assert.Equal(22, current.Overlays["game"].FontSizePx);
-        var expected = new FrontendPreferences { Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["game"] = new() { Enabled = true, Mode = "injected" } } };
-        Assert.Equal(Serialize(expected), Serialize(owner.Reset()));
-        Assert.Equal(Serialize(expected), Serialize(new FrontendPreferencesOwner(Cache, App, Overlay, dashboard).Read()));
+        // The backend-era choices fill the cache entry's missing switch and mode; the entry waits for the backend migration.
+        var pending = owner.Pending("game")!;
+        Assert.True(pending["enabled"]!.GetValue<bool>());
+        Assert.Equal("injected", pending["mode"]!.GetValue<string>());
+        Assert.Equal(22, pending["fontSizePx"]!.GetValue<int>());
+        // A preference reset clears the preferences only; the entries are not preferences and stay for the migration.
+        Assert.Equal(Serialize(new FrontendPreferences()), Serialize(owner.Reset()));
+        var restarted = new FrontendPreferencesOwner(Cache, App, Overlay, dashboard);
+        Assert.Equal(Serialize(new FrontendPreferences()), Serialize(restarted.Read()));
+        Assert.Equal(pending.ToJsonString(), restarted.Pending("game")!.ToJsonString());
     }
 
     [Fact]
@@ -155,6 +148,22 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     }
 
     [Fact]
+    public void SaveBeforeReadRetriesLoadingPendingOverlaysAfterAnIoFailure()
+    {
+        File.WriteAllText(Cache, """{"overlays":{"game":{"enabled":true,"mode":"injected"}}}""");
+        var owner = Owner();
+        var desired = new FrontendPreferences { Appearance = new() { Language = "ja-JP" } };
+        using (var blocked = new FileStream(Cache, FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.Throws<IOException>(() => owner.Save(desired));
+
+        owner.Save(desired);
+        var restarted = Owner();
+        Assert.Equal("ja-JP", restarted.Read().Appearance.Language);
+        Assert.True(restarted.Pending("game")!["enabled"]!.GetValue<bool>());
+        Assert.Equal("injected", restarted.Pending("game")!["mode"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void LegacyBackupsImportOnceAndLosingCacheNeverReimports()
     {
         WriteLegacy();
@@ -172,10 +181,11 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.DoesNotContain("autoDisableAnimations", File.ReadAllText(Cache));
         Assert.Equal(4321, imported.Refresh.Monitor.CustomValue);
         Assert.DoesNotContain("smartMonitoringMode", File.ReadAllText(Cache));
-        Assert.Equal(24, imported.Overlays["game"].FontSizePx);
+        var pending = Owner().Pending("game")!;
+        Assert.Equal(24, pending["fontSizePx"]!.GetValue<int>());
         // target.gpu becomes the software GPU total and target.fps the frames item, in their old order.
         Assert.Equal([new FrontendOverlayItem("software", "gpu.usage", "auto", null, "mid"),
-            new FrontendOverlayItem("frames", "frames.fps", "auto", null, "mid")], imported.Overlays["game"].Items);
+            new FrontendOverlayItem("frames", "frames.fps", "auto", null, "mid")], PendingItems(pending));
         Assert.DoesNotContain("\"metrics\"", File.ReadAllText(Cache));
         Assert.True(File.Exists(Cache + ".imported-v1"));
         File.Delete(Cache);
@@ -189,7 +199,7 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         WriteLegacy();
         var imported = Owner().Read();
         Assert.Equal("dark", imported.Appearance.Theme);
-        Assert.Equal(24, imported.Overlays["game"].FontSizePx);
+        Assert.Equal(24, Owner().Pending("game")!["fontSizePx"]!.GetValue<int>());
         Assert.True(File.ReadAllText(App).Contains("appearance", StringComparison.Ordinal));
         Assert.True(File.ReadAllText(Overlay).Contains("fontSizePx", StringComparison.Ordinal));
     }
@@ -213,19 +223,20 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     }
 
     [Fact]
-    public void ScopedUpdatesPreserveChoicesMadeFromAnotherFrontendView()
+    public void ScopedUpdatesKeepTheOverlayEntriesWaitingForTheBackend()
     {
+        File.WriteAllText(Cache, """{"overlays":{"GAME":{"fontSizePx":28},"other":{"fontSizePx":30}}}""");
         var owner = Owner();
         var old = owner.Read();
-        owner.SaveOverlay("game", old with { Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["GAME"] = new() { FontSizePx = 28 } } });
         owner.SaveGlobal(old with { Appearance = new() { Theme = "dark" } });
-        Assert.Equal(28, owner.Overlay("game").FontSizePx);
-        owner.SaveOverlay("other", old with { Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["other"] = new() { FontSizePx = 30 } } });
-        Assert.Equal("dark", owner.Read().Appearance.Theme);
-        Assert.Equal(28, owner.Overlay("game").FontSizePx);
-        Assert.Equal(30, owner.Overlay("other").FontSizePx);
+        owner.SaveDashboard(old with { Dashboard = null });
+        owner.Save(owner.Read() with { Refresh = new() { Monitor = new("custom", "quiet", 4321) } });
+        var restarted = Owner();
+        Assert.Equal("dark", restarted.Read().Appearance.Theme);
+        Assert.Equal(28, restarted.Pending("game")!["fontSizePx"]!.GetValue<int>());
+        Assert.Equal(30, restarted.Pending("other")!["fontSizePx"]!.GetValue<int>());
+        // The page never sees them: the record has no overlay member.
+        Assert.DoesNotContain("overlays", Serialize(restarted.Read()));
     }
 
     [Fact]
@@ -235,9 +246,14 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         File.Copy(BackendPreferenceBoundaryTests.Fixture("performance-overlay.local.json"), Overlay);
         var imported = Owner().Read();
         Assert.Equal(FrontendPoints.Theme, imported.Appearance.Theme);
-        // fps, 1% low, frame time, cpu and gpu convert in their old order, which is the default point.
-        Assert.Equal(FrontendOverlayItems.PointItems(), imported.Overlays["legacy-game"].Items);
-        Assert.Equal(FrontendPoints.FontSizePx, imported.Overlays["legacy-game"].FontSizePx);
+        // fps, 1% low, frame time, cpu and gpu convert in their old order; fields the writer did not store stay absent
+        // (the backend fills its defaults when the entry is migrated).
+        var pending = Owner().Pending("legacy-game")!;
+        Assert.Equal([new FrontendOverlayItem("frames", "frames.fps", "auto", null, "mid"),
+            new FrontendOverlayItem("frames", "frames.low1", "auto", null, "mid"),
+            new FrontendOverlayItem("frames", "frames.present", "auto", null, "mid"),
+            new FrontendOverlayItem("software", "cpu.usage", "auto", null, "mid"),
+            new FrontendOverlayItem("software", "gpu.usage", "auto", null, "mid")], PendingItems(pending));
         Assert.True(File.Exists(Cache));
     }
 
@@ -362,11 +378,7 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     {
         var owner = Owner();
         owner.Save(new() { Appearance = new() { Theme = "dark" } });
-        Assert.Throws<InvalidDataException>(() => owner.Save(new()
-        {
-            Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["game"] = new() { RegionWidthRatio = double.NaN } }
-        }));
+        Assert.Throws<InvalidDataException>(() => owner.Save(new() { Appearance = new() { ResourceBarFrameRate = 0 } }));
         Assert.Equal("dark", Owner().Read().Appearance.Theme);
         Assert.Empty(Directory.GetFiles(root, "*.tmp"));
     }
@@ -475,20 +487,16 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     }
 
     [Fact]
-    public void DashboardAndOverlaySavesKeepTheNotificationSectionAndGlobalSavesKeepTheirs()
+    public void DashboardSavesKeepTheNotificationSectionAndGlobalSavesKeepTheirs()
     {
         var owner = Owner();
         var old = owner.Read();
         var chosen = new FrontendNotifications { UpdateSystem = "off", AccessRequestNotify = "off", MemoryProtectionInApp = "off" };
         owner.SaveGlobal(old with { Notifications = chosen });
         // Stale callers still hold the default section; their scopes must not write it.
-        owner.SaveOverlay("game", old with { Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["game"] = new() { FontSizePx = 26 } } });
-        Assert.Equal(chosen, owner.Read().Notifications);
         owner.SaveDashboard(old with { Dashboard = null });
         Assert.Equal(chosen, owner.Read().Notifications);
         owner.SaveGlobal(owner.Read() with { Appearance = new() { Theme = "dark" } });
-        Assert.Equal(26, owner.Overlay("game").FontSizePx);
         Assert.Equal(chosen, Owner().Read().Notifications);
         Assert.Equal("dark", Owner().Read().Appearance.Theme);
     }
@@ -553,59 +561,6 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal("legacy", Owner().Read().Dashboard!.Value.GetProperty("cards")[0].GetProperty("id").GetString());
     }
 
-    private static readonly FrontendOverlayItem[] ChosenItems =
-    [
-        new("metric", "custom.metric", "custom_field@cpu|0", 2500, "high"),
-        new("software", "cpu.usage", "auto", null, "low"),
-        new("frames", "frames.low01", "auto", null, "mid")
-    ];
-
-    [Fact]
-    public void OverlayItemsSurviveTheCacheAndInvalidListsAreRefused()
-    {
-        // Each item keeps its own source, interval and synchronization precision; the order is the user's.
-        static FrontendPreferences With(IReadOnlyList<FrontendOverlayItem> items) => new()
-        {
-            Overlays = new Dictionary<string, FrontendOverlayPresentation> { ["game"] = new() { Items = items } }
-        };
-        var owner = Owner();
-        owner.SaveOverlay("game", With(ChosenItems));
-        Assert.Equal(ChosenItems, Owner().Overlay("game").Items);
-        var written = File.ReadAllText(Cache);
-        Assert.Contains("\"items\"", written);
-        Assert.DoesNotContain("\"metrics\"", written);
-        Assert.DoesNotContain("\"metricSources\"", written);
-        // An empty list is a choice (the overlay shows nothing), not a reason to fill in the defaults.
-        owner.SaveOverlay("game", With([]));
-        Assert.Empty(Owner().Overlay("game").Items);
-
-        static FrontendOverlayItem Fine(int index) => new("metric", "m." + index, "auto", null, "mid");
-        foreach (var invalid in new IReadOnlyList<FrontendOverlayItem>[]
-        {
-            Enumerable.Range(0, FrontendOverlayItems.MaximumItems + 1).Select(Fine).ToArray(),
-            [Fine(1), new("metric", "M.1", "auto", 1000, "high")],
-            [new("process", "cpu.usage", "auto", null, "mid")],
-            [new("metric", "cpu.temperature", "auto", null, "exact")],
-            [new("metric", "cpu.temperature", "auto", 99, "mid")],
-            [new("metric", "cpu.temperature", "auto", 60_001, "mid")],
-            [new("frames", "frames.fps", "auto", 1000, "mid")],
-            [new("metric", " ", "auto", null, "mid")],
-            [new("metric", "cpu.temperature", "", null, "mid")]
-        })
-            Assert.Throws<InvalidDataException>(() => owner.SaveOverlay("game", With(invalid)));
-        Assert.Empty(Owner().Overlay("game").Items);
-        // Bounds and the same id under another kind are allowed.
-        var edge = new FrontendOverlayItem[]
-        {
-            new("metric", "cpu.usage", "auto", FrontendOverlayItems.MinimumIntervalMs, "low"),
-            new("software", "cpu.usage", "auto", FrontendOverlayItems.MaximumIntervalMs, "high")
-        };
-        owner.SaveOverlay("game", With(edge));
-        Assert.Equal(edge, Owner().Overlay("game").Items);
-        owner.SaveOverlay("game", With(Enumerable.Range(0, FrontendOverlayItems.MaximumItems).Select(Fine).ToArray()));
-        Assert.Equal(FrontendOverlayItems.MaximumItems, Owner().Overlay("game").Items.Count);
-    }
-
     [Fact]
     public void OldOverlayMetricsAreReadAsItemsInTheirOrderAndTheCacheIsRewritten()
     {
@@ -618,8 +573,9 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
                "metricSources":{"cpu.temperature":{"fieldName":"cpu_amd_tctl_temperature_celsius","deviceIdentity":"cpu|0"},
                  "target.fps":{"fieldName":"ignored","deviceIdentity":"ignored"}}}}}
             """);
-        var loaded = Owner().Read();
-        Assert.Equal([new FrontendOverlayItem("frames", "frames.fps", "auto", null, "mid")], loaded.Overlays["old"].Items);
+        var owner = Owner();
+        var loaded = owner.Read();
+        Assert.Equal([new FrontendOverlayItem("frames", "frames.fps", "auto", null, "mid")], PendingItems(owner.Pending("old")!));
         Assert.Equal(
         [
             new FrontendOverlayItem("metric", "cpu.temperature", "cpu_amd_tctl_temperature_celsius@cpu|0", null, "mid"),
@@ -631,8 +587,8 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
             new FrontendOverlayItem("frames", "frames.low1", "auto", null, "mid"),
             new FrontendOverlayItem("software", "cpu.usage", "auto", null, "mid"),
             new FrontendOverlayItem("frames", "frames.fps", "auto", null, "mid")
-        ], loaded.Overlays["game"].Items);
-        Assert.Equal(20, loaded.Overlays["game"].FontSizePx);
+        ], PendingItems(owner.Pending("game")!));
+        Assert.Equal(20, owner.Pending("game")!["fontSizePx"]!.GetValue<int>());
         var written = File.ReadAllText(Cache);
         Assert.DoesNotContain("\"metrics\"", written);
         Assert.DoesNotContain("\"metricSources\"", written);
@@ -642,7 +598,7 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
             {"overlays":{"game":{"items":[{"kind":"software","id":"cpu.usage","source":"auto","intervalMs":1000,"syncPrecision":"high"}],
               "metrics":["target.fps"]}}}
             """);
-        Assert.Equal([new FrontendOverlayItem("software", "cpu.usage", "auto", 1000, "high")], Owner().Overlay("game").Items);
+        Assert.Equal([new FrontendOverlayItem("software", "cpu.usage", "auto", 1000, "high")], PendingItems(Owner().Pending("game")!));
         Assert.DoesNotContain("\"metrics\"", File.ReadAllText(Cache));
     }
 
@@ -667,11 +623,13 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         File.WriteAllText(expectedPath, Preferences(FrontendPreferencesOwner.NvmlFbUsedField));
         var expected = Serialize(new FrontendPreferencesOwner(expectedPath).Read());
 
-        var loaded = Owner().Read();
+        var owner = Owner();
+        var loaded = owner.Read();
         Assert.Equal(expected, Serialize(loaded));
         // The renamed field reaches the converted overlay item source ("<field>@<device identity>").
-        Assert.Equal(FrontendPreferencesOwner.NvmlFbUsedField + "@gpu:a", loaded.Overlays["game"].Items[0].Source);
-        Assert.Equal(v1 + "@gpu:a", loaded.Overlays["game"].Items[1].Source);
+        var items = PendingItems(owner.Pending("game")!);
+        Assert.Equal(FrontendPreferencesOwner.NvmlFbUsedField + "@gpu:a", items[0].Source);
+        Assert.Equal(v1 + "@gpu:a", items[1].Source);
         var written = File.ReadAllText(Cache);
         Assert.DoesNotContain(FrontendPreferencesOwner.RetiredNvmlFbUsedField, written);
         Assert.Contains(v1, written);
@@ -680,6 +638,8 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
 
     private FrontendPreferencesOwner Owner() => new(Cache, App, Overlay);
     private static string Serialize(FrontendPreferences value) => JsonSerializer.Serialize(value, FrontendPreferencesOwner.Json);
+    private static FrontendOverlayItem[] PendingItems(System.Text.Json.Nodes.JsonObject entry) =>
+        entry["items"]!.Deserialize<FrontendOverlayItem[]>(FrontendPreferencesOwner.Json)!;
 
     private void WriteLegacy()
     {
@@ -705,4 +665,13 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         foreach (var file in Directory.EnumerateFiles(root)) File.Delete(file);
         Directory.Delete(root);
     }
+}
+
+// Overlay settings are backend settings since 2026-10-31; an older cache's entries wait in the file for the window process's
+// backend migration (frontend-preferences-overlays-to-backend-v1). The tests check what waits for one software.
+internal static class FrontendPreferencesOwnerOverlayReads
+{
+    internal static System.Text.Json.Nodes.JsonObject? Pending(this FrontendPreferencesOwner owner, string softwareId) =>
+        owner.PendingOverlayEntries().FirstOrDefault(pair =>
+            pair.Key.Equals(softwareId, StringComparison.OrdinalIgnoreCase)).Value;
 }

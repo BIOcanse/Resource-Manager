@@ -34,8 +34,8 @@ switch ($Action) {
     'SetItem' {
         if (-not $PSBoundParameters.ContainsKey('Uid') -or $Uid -lt 1) { throw 'SetItem requires a positive -Uid.' }
         foreach ($parameter in $PSBoundParameters.Keys) {
-            if ($parameter -notin @('Action', 'Registry', 'Uid', 'Comment', 'OwnerBlock', 'OwnerComponent', 'ChangeEvent')) {
-                throw "SetItem does not accept -$parameter; it changes only an item's comment, owner or change event."
+            if ($parameter -notin @('Action', 'Registry', 'Uid', 'Comment', 'OwnerBlock', 'OwnerComponent', 'ChangeEvent', 'Type')) {
+                throw "SetItem does not accept -$parameter; it changes only an item's comment, owner, change event or type."
             }
         }
         $table = Read-StateRegistry -Path $registryPath
@@ -45,13 +45,15 @@ switch ($Action) {
         $ownerBlockSpecified = $PSBoundParameters.ContainsKey('OwnerBlock')
         $ownerComponentSpecified = $PSBoundParameters.ContainsKey('OwnerComponent')
         if ($ownerBlockSpecified -and $ownerComponentSpecified) { throw 'SetItem requires exactly one owner form.' }
-        if (-not $PSBoundParameters.ContainsKey('Comment') -and -not $ownerBlockSpecified -and -not $ownerComponentSpecified -and -not $PSBoundParameters.ContainsKey('ChangeEvent')) {
-            throw 'SetItem requires a comment, owner or change event.'
+        if (-not $PSBoundParameters.ContainsKey('Comment') -and -not $ownerBlockSpecified -and -not $ownerComponentSpecified -and -not $PSBoundParameters.ContainsKey('ChangeEvent') -and -not $PSBoundParameters.ContainsKey('Type')) {
+            throw 'SetItem requires a comment, owner, change event or type.'
         }
         if ($PSBoundParameters.ContainsKey('Comment')) { $entry[0].comment = $Comment }
         if ($ownerBlockSpecified) { $entry[0].owner = [ordered]@{ block = $OwnerBlock } }
         if ($ownerComponentSpecified) { $entry[0].owner = [ordered]@{ component = $OwnerComponent } }
         if ($PSBoundParameters.ContainsKey('ChangeEvent')) { $entry[0].changeEvent = $ChangeEvent }
+        # A type change keeps the UID and storage: the same payload moved to another implementation.
+        if ($PSBoundParameters.ContainsKey('Type')) { $entry[0].type = $Type }
         Write-StateRegistry -Path $registryPath -Registry $table
         $Uid
     }

@@ -63,9 +63,8 @@ public sealed partial class MainForm
             case "taskManager.shortcutReplacement:off":
                 taskManagerShortcutReplacementChanged(false);
                 break;
-            case "editableHotkeys:reload":
-                editableHotkeysChanged();
-                break;
+            // "editableHotkeys:reload" is no longer handled: the resident reads the hotkeys from its
+            // settings subscription, so the page's reload message has no consumer in the window process.
         }
     }
 

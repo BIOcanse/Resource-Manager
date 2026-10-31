@@ -6,7 +6,9 @@ import {
   startupModuleSelectionDecoder,
   type StartupModuleSelection
 } from "./features/overlay/startupModuleSelection.ts";
-import { frontendPreferencesClient, pointOverlayPresentation, cachedOverlay } from "./preferences/frontendPreferences.ts";
+import { getAppSettings, saveAppSettingsPatch } from "./data/appSettings/appSettingsApi.ts";
+import { decodePerformanceOverlayAppSettings, findPerformanceOverlayEntry, performanceOverlaySoftwareDecoder } from "./data/appSettings/performanceOverlaySettingsDecoder.ts";
+import type { RequestClient } from "./frontendRuntime/request/RequestClient.ts";
 import type {
   BackendMessage,
   AiGatewayCompatibilityProfile,
@@ -21,6 +23,9 @@ import type {
   GpuPlacementSoftwarePolicy,
   GpuPlacementSoftwareProcessHistory,
   GpuPlacementSoftwareSettingsSnapshot,
+  OverlayInjectionModules,
+  PerformanceOverlayEntry,
+  PerformanceOverlayEditorSettings,
   PerformanceOverlaySettings,
   GpuPerformanceScoreOverrideRequest,
   GpuPerformanceScoreOverrideResult,
@@ -87,26 +92,56 @@ export async function getMetricCatalog() {
   return metricCatalogDecoder.decode(await getJson<unknown>("/api/metrics/catalog"));
 }
 
-/** 叠加层设置：显示方式和外观归前端偏好；是否注入看后端登记的启动模块，读取时总是一并读出。signal 取消启动模块的读取。 */
-export async function getPerformanceOverlaySettings(softwareId: string, signal?: AbortSignal): Promise<PerformanceOverlaySettings> {
-  const preferences = await frontendPreferencesClient().read();
-  const presentation = { ...pointOverlayPresentation(), ...cachedOverlay(preferences, softwareId) };
-  const injectionModules = overlayInjectionModules(await getStartupModuleSelection(softwareId, signal));
-  if (presentation.mode === "injected") {
-    presentation.enabled = injectionModules === "complete";
-  }
-  return { softwareId, injectionModules, ...presentation, items: presentation.items.map((item) => ({ ...item })) };
+type OverlayRequestClient = Pick<RequestClient, "request">;
+
+function performanceOverlaySoftwarePath(softwareId: string) {
+  return `/api/performance-overlay/software/${encodeURIComponent(softwareId)}`;
+}
+
+function overlaySettings(softwareId: string, revision: string, stored: boolean,
+    injectionModules: OverlayInjectionModules, entry: PerformanceOverlayEntry): PerformanceOverlaySettings {
+  return { softwareId, revision, stored, injectionModules, ...entry, items: entry.items.map((item) => ({ ...item })) };
+}
+
+/** 浮窗设置里属于后端条目的字段（不含软件 ID、修订号、是否存着、启动模块登记）。 */
+export function performanceOverlayEntry(settings: PerformanceOverlaySettings): PerformanceOverlayEntry {
+  const { enabled, mode, items, sizeMode, fontSizePx, regionWidthRatio, regionHeightRatio, anchor, marginPx } = settings;
+  return { enabled, mode, items: items.map((item) => ({ ...item })), sizeMode, fontSizePx,
+    regionWidthRatio, regionHeightRatio, anchor, marginPx };
 }
 
 /**
- * 设置 → 性能浮层的总览：前端偏好里有浮层设置的每个软件，按浮层分页同一读法（getPerformanceOverlaySettings）
- * 得出是否启用，只留启用的。不读运行状态。signal 取消各软件的启动模块读取。
+ * 一个软件的浮窗设置：整份读后端（GET /api/performance-overlay/software/{id}，没有条目时是后端的默认条目，关），
+ * 是否已登记注入看后端的启动模块选择，一并读出。signal 取消两次读取。
  */
-export async function listEnabledPerformanceOverlays(signal: AbortSignal): Promise<PerformanceOverlaySettings[]> {
-  const preferences = await frontendPreferencesClient().read();
-  const settings = await Promise.all(Object.keys(preferences.overlays)
-    .map((softwareId) => getPerformanceOverlaySettings(softwareId, signal)));
-  return settings.filter((overlay) => overlay.enabled);
+export async function getPerformanceOverlaySettings(requestClient: OverlayRequestClient, softwareId: string,
+    signal?: AbortSignal): Promise<PerformanceOverlayEditorSettings> {
+  const [read, selection] = await Promise.all([
+    requestClient.request({
+      key: "performance-overlay.software.get",
+      url: performanceOverlaySoftwarePath(softwareId),
+      fallbackError: uiText.apiError.readFailed,
+      decoder: performanceOverlaySoftwareDecoder,
+      signal,
+      request: { method: "GET" }
+    }),
+    getStartupModuleSelection(softwareId, signal)
+  ]);
+  return { ...overlaySettings(read.softwareId, read.revision, read.stored, overlayInjectionModules(selection), read.settings),
+    editingConstraints: read.editingConstraints };
+}
+
+/**
+ * 设置 → 性能浮层的总览：后端设置 performanceOverlay 里启用的每个软件，带它的启动模块登记（和浮窗分页同一读法）。
+ * 不读运行状态。signal 取消设置和各软件启动模块的读取。
+ */
+export async function listEnabledPerformanceOverlays(requestClient: OverlayRequestClient,
+    signal: AbortSignal): Promise<PerformanceOverlaySettings[]> {
+  const result = await getAppSettings(requestClient, signal);
+  const section = decodePerformanceOverlayAppSettings(result.settings.performanceOverlay, "$.settings.performanceOverlay");
+  const enabled = Object.entries(section.software).filter(([, entry]) => entry.enabled);
+  return Promise.all(enabled.map(async ([softwareId, entry]) => overlaySettings(softwareId, result.revision, true,
+    overlayInjectionModules(await getStartupModuleSelection(softwareId, signal)), entry)));
 }
 
 function startupModuleSelectionPath(softwareId: string) {
@@ -117,56 +152,65 @@ async function getStartupModuleSelection(softwareId: string, signal?: AbortSigna
   return startupModuleSelectionDecoder.decode(await getJson<unknown>(startupModuleSelectionPath(softwareId), { signal }));
 }
 
-/** 启动模块已经在后端改好，但叠加层偏好没有保存成功。界面据此提示“后端已更新、偏好未保存”。 */
-export class OverlayPreferencesSaveError extends Error {
+/** 启动模块已经在后端改好，但浮窗设置没有保存成功。界面据此提示“启动模块已更新、浮窗设置未保存”。 */
+export class OverlaySettingsSaveError extends Error {
   constructor(cause: unknown) {
-    super("The startup modules were saved, but the overlay preferences were not.", { cause });
-    this.name = "OverlayPreferencesSaveError";
+    super("The startup modules were saved, but the overlay settings were not.", { cause });
+    this.name = "OverlaySettingsSaveError";
   }
 }
 
-export async function savePerformanceOverlaySettings(settings: PerformanceOverlaySettings,
-    previous?: Pick<PerformanceOverlaySettings, "enabled" | "mode">): Promise<PerformanceOverlaySettings> {
-  const { softwareId, injectionModules: readModules, ...presentation } = settings;
-  // 不合规的项不写进偏好（界面在保存前就不让保存，这里拦住其他调用方）。
-  const itemsIssue = overlayItemsIssue(presentation.items);
+/** 把一个软件的条目写进后端设置（整条替换），返回后端归一化后的条目和新修订号。 */
+async function patchPerformanceOverlayEntry(requestClient: OverlayRequestClient, softwareId: string, expectedRevision: string,
+    entry: Partial<PerformanceOverlayEntry>) {
+  const result = await saveAppSettingsPatch(requestClient, expectedRevision,
+    { performanceOverlay: { software: { [softwareId]: entry } } });
+  const saved = findPerformanceOverlayEntry(result.settings.performanceOverlay, softwareId);
+  if (!saved) throw new Error(`performance-overlay-entry-missing: ${softwareId}`);
+  return { softwareId: saved.softwareId, revision: result.revision, entry: saved.entry };
+}
+
+/**
+ * 保存浮窗分页的草稿：开关或方式改变，或后端登记的注入模块与这里的选择不一致时，先按选择更新启动模块
+ * （启用且注入 => 两个浮层模块都登记），再把整条写进后端设置（expectedRevision 取读到时的修订号）。
+ */
+export async function savePerformanceOverlaySettings(requestClient: OverlayRequestClient,
+    settings: PerformanceOverlayEditorSettings, saved: PerformanceOverlayEditorSettings): Promise<PerformanceOverlayEditorSettings> {
+  const entry = performanceOverlayEntry(settings);
+  // 不合规的项不写进后端设置（界面在保存前就不让保存，这里拦住其他调用方）。
+  const itemsIssue = overlayItemsIssue(entry.items, saved.editingConstraints);
   if (itemsIssue !== null) throw new Error(`overlay-items-invalid: ${itemsIssue}`);
-  const expected = expectedOverlayInjectionModules(settings);
-  let injectionModules = readModules;
+  const expected = expectedOverlayInjectionModules(entry);
+  let injectionModules = saved.injectionModules;
   let modulesChanged = false;
-  // 开关或方式改变，或后端登记与这里的选择不一致时，按这里的选择更新后端登记。
-  if (!previous || previous.enabled !== settings.enabled || previous.mode !== settings.mode || readModules !== expected) {
-    const path = startupModuleSelectionPath(softwareId);
-    const current = await getStartupModuleSelection(softwareId);
+  if (saved.enabled !== entry.enabled || saved.mode !== entry.mode || saved.injectionModules !== expected) {
+    const path = startupModuleSelectionPath(settings.softwareId);
+    const current = await getStartupModuleSelection(settings.softwareId);
     const overlayIds: readonly string[] = overlayStartupModuleIds;
     const unrelated = current.moduleIds.filter(id => !overlayIds.includes(id));
     const moduleIds = [...unrelated, ...(expected === "complete" ? overlayStartupModuleIds : [])];
     if (JSON.stringify([...current.moduleIds].sort()) !== JSON.stringify([...moduleIds].sort())) {
-      await putJson<StartupModuleSelection>(path, { softwareId, moduleIds }, uiText.apiError.saveGpuSoftwarePolicyFailed);
+      await putJson<StartupModuleSelection>(path, { softwareId: settings.softwareId, moduleIds }, uiText.apiError.saveGpuSoftwarePolicyFailed);
       modulesChanged = true;
     }
     injectionModules = expected;
   }
-  const owner = frontendPreferencesClient();
   try {
-    const preferences = await owner.read();
-    await owner.save({ ...preferences, overlays: { ...preferences.overlays, [softwareId]: presentation } }, { overlay: softwareId });
+    const result = await patchPerformanceOverlayEntry(requestClient, settings.softwareId, saved.revision, entry);
+    return { ...overlaySettings(result.softwareId, result.revision, true, injectionModules, result.entry),
+      editingConstraints: saved.editingConstraints };
   } catch (error) {
-    throw modulesChanged ? new OverlayPreferencesSaveError(error) : error;
+    throw modulesChanged ? new OverlaySettingsSaveError(error) : error;
   }
-  return { softwareId, injectionModules, ...presentation, items: presentation.items.map((item) => ({ ...item })) };
 }
 
-export async function resetPerformanceOverlayPresentation(softwareId: string) {
-  const owner = frontendPreferencesClient();
-  const preferences = await owner.read();
-  const overlays = { ...preferences.overlays };
-  const current = cachedOverlay(preferences, softwareId) ?? pointOverlayPresentation();
-  const presentation = { ...pointOverlayPresentation(), enabled: current.enabled, mode: current.mode };
-  for (const id of Object.keys(overlays)) if (id.toLowerCase() === softwareId.toLowerCase()) delete overlays[id];
-  overlays[softwareId] = presentation;
-  await owner.save({ ...preferences, overlays }, { overlay: softwareId });
-  return presentation;
+/** 恢复默认外观：只写开关和方式，其余字段由后端展开成默认值（项、大小、位置）。 */
+export async function resetPerformanceOverlayPresentation(requestClient: OverlayRequestClient,
+    saved: PerformanceOverlayEditorSettings): Promise<PerformanceOverlayEditorSettings> {
+  const result = await patchPerformanceOverlayEntry(requestClient, saved.softwareId, saved.revision,
+    { enabled: saved.enabled, mode: saved.mode });
+  return { ...overlaySettings(result.softwareId, result.revision, true, saved.injectionModules, result.entry),
+    editingConstraints: saved.editingConstraints };
 }
 
 export async function getDashboardSettings() {

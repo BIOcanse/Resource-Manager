@@ -29,7 +29,7 @@ interface OverlayRow {
 
 /*
  * 设置 → 性能浮层：哪些软件启用了浮层。
- * 数据只用前端已有的：浮层前端偏好，加上浮层分页本来就读的启动模块登记（getPerformanceOverlaySettings，同一读法），
+ * 数据是后端设置的 performanceOverlay 一节，加上浮层分页本来就读的启动模块登记（listEnabledPerformanceOverlays），
  * 只列启用的。没有运行状态（是否找到窗口、是否已注入），这里写明显示的是保存的设置。
  * 修改在软件详细信息的浮层分页里做：每一行的按钮直接打开那个分页。
  */

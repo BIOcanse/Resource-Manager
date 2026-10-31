@@ -10,7 +10,6 @@ public sealed partial class StateRegistryTests
 {
     [Theory]
     [InlineData("backend")]
-    [InlineData("desktop")]
     [InlineData("window")]
     public void GeneratedVersionAndConstantsMatchRepositoryBytes(string process)
     {
@@ -21,16 +20,13 @@ public sealed partial class StateRegistryTests
         var version = Convert.ToHexStringLower(hash.GetHashAndReset());
         Assert.Equal(version, process switch {
             "backend" => ResourceManager.App.StateItems.StateRegistry.Version,
-            "desktop" => ResourceManager.NativeUi.DesktopStateItems.StateRegistry.Version,
             _ => ResourceManager.NativeUi.StateItems.StateRegistry.Version });
         using var document = JsonDocument.Parse(bytes);
         var blockType = process switch {
             "backend" => typeof(BackendUids),
-            "desktop" => typeof(ResourceManager.NativeUi.DesktopStateItems.BlockUids),
             _ => typeof(ResourceManager.NativeUi.StateItems.BlockUids) };
         var itemType = process switch {
             "backend" => typeof(ResourceManager.App.StateItems.StateItemUids),
-            "desktop" => typeof(ResourceManager.NativeUi.DesktopStateItems.StateItemUids),
             _ => typeof(ResourceManager.NativeUi.StateItems.StateItemUids) };
         foreach (var kind in new[] { "block", "item" })
         {
@@ -48,7 +44,6 @@ public sealed partial class StateRegistryTests
     {
 #if RM_STATE_NAMES
         Assert.Equal("Program", ResourceManager.App.StateItems.StateNames.Name(BackendUids.Program));
-        Assert.Equal("Program", ResourceManager.NativeUi.LegacyStateItems.StateNames.Name(UiUids.Program));
         Assert.Equal("Program", ResourceManager.NativeUi.StateItems.StateNames.Name(ResourceManager.NativeUi.StateItems.BlockUids.Program));
         Assert.Null(ResourceManager.App.StateItems.StateNames.Name(0));
         Assert.Null(ResourceManager.NativeUi.StateItems.StateNames.Comment(-1));
@@ -59,12 +54,11 @@ public sealed partial class StateRegistryTests
     }
 
     [Fact]
-    public void LegacyBridgePreservesTheOriginalTreeAndCatalogHasNoUiEntries()
+    public void WindowProcessGeneratesOnlyItsOwnTreeAndCatalogHasNoUiEntries()
     {
-        Assert.Equal(new[] { 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50 },
-            ResourceManager.NativeUi.LegacyStateItems.StateRegistry.Blocks.Order());
-        Assert.Equal(new[] { 58, 59, 60, 61 },
-            ResourceManager.NativeUi.LegacyStateItems.StateRegistry.Items.Select(item => item.Uid).Order());
+        // The window process carries only the window tree; the desktop entries are the resident's (Zig) table.
+        Assert.Null(typeof(UiUids).Assembly.GetType("ResourceManager.NativeUi.DesktopStateItems.StateRegistry"));
+        Assert.Null(typeof(UiUids).Assembly.GetType("ResourceManager.NativeUi.LegacyStateItems.StateRegistry"));
         using var document = JsonDocument.Parse(File.ReadAllBytes(RegistryPath()));
         Assert.DoesNotContain(document.RootElement.GetProperty("entries").EnumerateArray(),
             entry => entry.GetProperty("process").GetString() == "ui");
@@ -134,7 +128,6 @@ public sealed partial class StateRegistryTests
     {
         var blockType = process switch {
             "backend" => typeof(BackendUids),
-            "desktop" => typeof(ResourceManager.NativeUi.DesktopStateItems.BlockUids),
             "window" => typeof(ResourceManager.NativeUi.StateItems.BlockUids),
             "ui" => typeof(UiUids),
             _ => throw new ArgumentOutOfRangeException(nameof(process)) };

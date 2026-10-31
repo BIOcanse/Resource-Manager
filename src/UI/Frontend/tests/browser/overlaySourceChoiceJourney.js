@@ -1,6 +1,6 @@
 import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
-import { frontendPreferencesKey, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 const languages = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU"];
 const item = { kind: "metric", id: "cpu.temperature" };
@@ -37,19 +37,17 @@ export default async function overlaySourceChoiceJourney(page, baseUrl) {
     await dialog.locator(".item-picker").waitFor({ state: "visible" });
     return dialog;
   };
+  // 浮窗设置（含项）整份在后端设置 performanceOverlay 里（docs/frontend_block_trees_2026-10-26.md「浮窗设置归后端」）。
+  const overlayPath = "/api/performance-overlay/software/frontend-harness.software";
   const cachedItems = async () => {
-    const cache = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "null"), frontendPreferencesKey);
-    // 这个旅程只编辑示例软件一个浮层。
-    const overlays = Object.values(cache?.overlays ?? {});
-    if (overlays.length > 1) throw new Error(`Expected one cached overlay, found ${overlays.length}`);
-    return overlays[0]?.items ?? null;
+    const read = await (await fetch(`${baseUrl}${overlayPath}`)).json();
+    return read.stored ? read.settings.items : null;
   };
   const cachedItem = async () => (await cachedItems())?.find((entry) => entry.kind === item.kind && entry.id === item.id);
-  // 浮层开关和方式存在后端的启动模块登记里（可能经提权通道发送）；项只在前端偏好缓存里，
-  // 所以任何发给后端的写请求都不能带它们。
+  // 启动模块登记只收软件 ID 和模块：项只进后端设置的浮窗条目，不能混进启动模块的写请求。
   const backendBodies = [];
   page.on("request", (request) => {
-    if (request.method() !== "GET" && request.url().includes("/api/")) backendBodies.push(request.postData() ?? "");
+    if (request.method() !== "GET" && request.url().includes("/api/startup-modules/")) backendBodies.push(request.postData() ?? "");
   });
   const save = async (copy) => {
     const button = editor.getByRole("button", { name: copy.softwareDetail.save, exact: true });
@@ -59,7 +57,7 @@ export default async function overlaySourceChoiceJourney(page, baseUrl) {
       .find((element) => element.innerText?.trim() === label)?.disabled === true, copy.softwareDetail.save);
     for (const body of backendBodies) {
       if (body.includes("syncPrecision") || body.includes(alternate)) {
-        throw new Error(`An overlay item entered a backend request: ${body}`);
+        throw new Error(`An overlay item entered a startup-module request: ${body}`);
       }
     }
   };
@@ -110,11 +108,17 @@ export default async function overlaySourceChoiceJourney(page, baseUrl) {
   if (await cachedItem() !== undefined) throw new Error(`Removing the item left it cached: ${JSON.stringify(await cachedItems())}`);
   await close(app);
 
-  // 九种语言的文字：直接把这一项写回偏好缓存，再逐个语言打开。
-  await writeFrontendPreferences(page, (value) => {
-    const overlay = Object.values(value.overlays ?? {})[0];
-    overlay.items = [...overlay.items, { ...item, source: alternate, intervalMs: 2500, syncPrecision: "high" }];
-  });
+  // 九种语言的文字：直接把这一项写回后端设置的浮窗条目，再逐个语言打开。
+  {
+    const current = await (await fetch(`${baseUrl}${overlayPath}`)).json();
+    const settings = { ...current.settings, items: [...current.settings.items, { ...item, source: alternate, intervalMs: 2500, syncPrecision: "high" }] };
+    const response = await fetch(`${baseUrl}/api/settings/app`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedRevision: current.revision,
+        changes: { performanceOverlay: { software: { [current.softwareId]: settings } } } })
+    });
+    if (!response.ok) throw new Error(`Backend overlay settings fixture failed: ${response.status}`);
+  }
   const localized = [];
   for (const language of languages) {
     const copy = await loadAppCopy(language);

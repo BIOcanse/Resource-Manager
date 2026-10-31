@@ -220,7 +220,13 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
             : null,
         TargetedRecording = settings.TargetedRecording is { } recording
             ? new AppTargetedRecordingSettings(Array.AsReadOnly((recording.Profiles ?? []).Select(static profile => profile with
-                { Items = Array.AsReadOnly((profile.Items ?? []).ToArray()) }).ToArray())) : null
+                { Items = Array.AsReadOnly((profile.Items ?? []).ToArray()) }).ToArray())) : null,
+        PerformanceOverlay = settings.PerformanceOverlay is { } overlay
+            ? new AppPerformanceOverlaySettings(new System.Collections.ObjectModel.ReadOnlyDictionary<string, AppPerformanceOverlaySoftwareSettings>(
+                (overlay.Software ?? new Dictionary<string, AppPerformanceOverlaySoftwareSettings>()).ToDictionary(
+                    static entry => entry.Key, static entry => entry.Value with
+                    { Items = entry.Value.Items is null ? null : Array.AsReadOnly(entry.Value.Items.ToArray()) },
+                    StringComparer.OrdinalIgnoreCase))) : null
     };
 
     public async IAsyncEnumerable<AppSettings> SubscribeAsync(string holder,

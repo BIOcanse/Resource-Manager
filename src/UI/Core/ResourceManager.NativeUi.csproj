@@ -26,28 +26,25 @@
   <Target Name="GenerateStateItems"
           Condition="'$(DesignTimeBuild)' != 'true'"
           Inputs="$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-StateItems.ps1;$(MSBuildProjectDirectory)/../../../scripts/build/StateItemRegistry.psm1"
-          Outputs="$(IntermediateOutputPath)StateItems.g.cs;$(IntermediateOutputPath)DesktopStateItems.g.cs">
+          Outputs="$(IntermediateOutputPath)StateItems.g.cs">
     <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-StateItems.ps1&quot; -Registry &quot;$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json&quot; -Process window -Namespace ResourceManager.NativeUi.StateItems -Output &quot;$(IntermediateOutputPath)StateItems.g.cs&quot;" />
-    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-StateItems.ps1&quot; -Registry &quot;$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json&quot; -Process desktop -Namespace ResourceManager.NativeUi.DesktopStateItems -Output &quot;$(IntermediateOutputPath)DesktopStateItems.g.cs&quot;" />
   </Target>
   <Target Name="IncludeStateItems" BeforeTargets="CoreCompile;FreedomPointCompilerInputs" DependsOnTargets="GenerateStateItems" Condition="'$(DesignTimeBuild)' != 'true'">
     <ItemGroup>
       <Compile Include="$(IntermediateOutputPath)StateItems.g.cs" />
-      <Compile Include="$(IntermediateOutputPath)DesktopStateItems.g.cs" />
     </ItemGroup>
   </Target>
   <Target Name="GenerateFrontendPreferenceValues" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
-    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-FrontendPreferences.ps1&quot; -WorkRoot &quot;$(ResourceManagerLedgerWorkRoot)&quot; -GeneratorPath &quot;$(ResourceManagerFrontendGeneratorPath)&quot;" />
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-FrontendPreferences.ps1&quot; -WorkRoot &quot;$(ResourceManagerLedgerWorkRoot)&quot; -GeneratorPath &quot;$(ResourceManagerFrontendGeneratorPath)&quot; -DesktopGeneratorPath &quot;$(ResourceManagerDesktopGeneratorPath)&quot;" />
     <ItemGroup>
       <Compile Remove="@(Compile)" Condition="'%(Compile.Filename)%(Compile.Extension)' == 'FrontendPoints.Values.g.cs'" />
       <Compile Include="$(MSBuildProjectDirectory)\Preferences\Generated\FrontendPoints.Values.g.cs" />
+      <Compile Remove="@(Compile)" Condition="'%(Compile.Filename)%(Compile.Extension)' == 'DesktopPoints.Structure.g.cs'" />
+      <Compile Include="$(MSBuildProjectDirectory)\Preferences\Generated\DesktopPoints.Structure.g.cs" />
+      <Compile Include="$(ResourceManagerLedgerWorkRoot)\desktop-points\DesktopPoints.Values.g.cs" />
     </ItemGroup>
   </Target>
   <ItemGroup>
-    <EmbeddedResource Include="Overlay\metric-labels.json"
-                      LogicalName="ResourceManager.NativeUi.Overlay.metric-labels.json" />
-    <EmbeddedResource Include="Overlay\overlay-item-labels.json"
-                      LogicalName="ResourceManager.NativeUi.Overlay.overlay-item-labels.json" />
     <ProjectReference Include="..\..\Shared\ResourceManager.Shared.csproj" />
     <None Include="..\..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\..\NOTICE" Link="NOTICE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

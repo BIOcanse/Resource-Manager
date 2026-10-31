@@ -11,12 +11,12 @@ pub const Scratch = struct {
     json: [64 * 1024]u8 = undefined,
 };
 
-const Gate = struct {
+pub const Gate = struct {
     scratch: *identity.Scratch,
     expected: identity.Identity,
     path: []const u16,
     service_name: [:0]const u16,
-    fn verify(self: Gate, client: identity.Endpoint, server: identity.Endpoint) !void {
+    pub fn verify(self: Gate, client: identity.Endpoint, server: identity.Endpoint) !void {
         const current = try identity.capture(self.scratch, self.path, self.service_name);
         if (!std.meta.eql(current, self.expected)) return error.ServiceChanged;
         if (!identity.verifyPeer(self.scratch, self.expected, self.path, client, server)) return error.UntrustedConnectedPeer;

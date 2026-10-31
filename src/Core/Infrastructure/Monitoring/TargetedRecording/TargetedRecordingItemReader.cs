@@ -25,7 +25,7 @@ public readonly record struct TargetedRecordingItemReading(double? Value, string
 /// both use it, so one item means the same value in both.</summary>
 public static class TargetedRecordingItemReader
 {
-    public const int MaximumOverlayItems = 64;
+    public static int MaximumOverlayItems => ResourceManager.App.Application.Settings.AppSettingsDefaults.PerformanceOverlay.MaximumItems;
 
     /// <summary>A specific metric source is a catalog id fieldName@deviceIdentity; auto reads the metric id.</summary>
     public static string MetricAddress(TargetedRecordingItem item)

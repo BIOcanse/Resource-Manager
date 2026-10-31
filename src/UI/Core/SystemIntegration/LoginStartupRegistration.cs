@@ -5,6 +5,14 @@ namespace ResourceManager.NativeUi.SystemIntegration;
 // The current user's Task Scheduler logon task is the single persisted truth for frontend logon startup.
 // The frontend manifest requires an elevated administrator, and Windows does not start such a program
 // from a Run value; the task starts it with the user's elevated token.
+//
+// Persistent-entry compatibility (docs/frontend_block_trees_2026-10-26.md, 安装与持久入口): the logon task this
+// class writes, the Task Manager IFEO Debugger value (TaskManagerShortcutReplacementController) and old shortcuts
+// still start ResourceManager.NativeUi.exe directly. Started without the resident's pipe it only hands its
+// single-instance command to ResourceManager.Desktop.exe (ResidentHandoff) and exits. Layout step 6 points these
+// entries at the resident and rewrites existing ones on read. Delete ResidentHandoff, NativeUiLaunchOptions and this
+// note, and make Program reject a start without the pipe, once a released version has rewritten the entries and
+// every installation before that version has upgraded.
 internal sealed class LoginStartupRegistration
 {
     private readonly string executablePath;

@@ -145,6 +145,14 @@ public sealed class InteractiveDesktopObservationStore
             .InheritHelperStates(expected, helperOwnerByProcessId, verifiedProcesses);
     }
 
+    /// <summary>The foreground process of a session's current observation. Null when the session has no
+    /// selected publisher's observation; Known false when that observation does not know the foreground.</summary>
+    internal (bool Known, DesktopProcessWindowObservation? Foreground)? ReadForeground(int sessionId)
+    {
+        lock (gate)
+            return sessions.TryGetValue(sessionId, out var sample) ? (sample.ForegroundKnown, sample.Foreground) : null;
+    }
+
     internal bool? IsForeground(int processId, long creationFileTimeUtc)
         => Read([new(processId, creationFileTimeUtc)]).Processes.TryGetValue(new(processId, creationFileTimeUtc), out var fact)
             ? fact.ForegroundFocused : null;

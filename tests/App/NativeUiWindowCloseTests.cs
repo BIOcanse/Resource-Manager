@@ -112,24 +112,18 @@ public sealed class NativeUiWindowCloseTests
     });
 
     [Fact]
-    public void TrayAndContextDisposalKeepHideBeforePollingAndClose()
+    public void WindowProcessStopHidesBeforeDrainingAndClosesBeforeDisposal()
     {
         var source = File.ReadAllText(Path.Combine(RepositoryRoot(),
-            "src/UI/Core/Shell/ResourceManagerApplicationContext.cs"));
-        var exit = source[source.IndexOf("private void ExitApplication(string cause", StringComparison.Ordinal)..];
-        AssertBefore(exit, "mainForm?.Hide();", "shutdownCoordinator.ShutdownAsync");
-        Assert.Contains("await trees.ShutdownAsync", exit, StringComparison.Ordinal);
-        AssertBefore(exit, "await trees.ShutdownAsync", "ExitMessageLoop: ExitThread");
-        var contextDisposal = source[source.IndexOf("protected override void Dispose(bool disposing)", StringComparison.Ordinal)..];
-        AssertBefore(contextDisposal, "RunDisposalAction(() => mainForm?.Hide());", "RunDisposalAction(shutdown.Cancel);");
-        var dispose = source[source.IndexOf("private void DisposeMainForm()", StringComparison.Ordinal)..];
-        AssertBefore(dispose, "form.Hide();", "form.StopPolling();");
-        AssertBefore(dispose, "form.StopPolling();", "form.Dispose();");
-        // The tray lifetime still clears the closed window and recreates it on show.
-        Assert.Contains("form.FormClosed += OnMainFormClosed;", source, StringComparison.Ordinal);
-        Assert.Contains("mainForm = null;", source, StringComparison.Ordinal);
-        Assert.Contains("trees.SetWindowWantedAsync(true", source, StringComparison.Ordinal);
-        Assert.Contains("form.CompleteClose();", dispose, StringComparison.Ordinal);
+            "src/UI/Core/Shell/NativeWindowApplicationContext.cs"));
+        var stop = source[source.IndexOf("private void BeginStop()", StringComparison.Ordinal)..];
+        AssertBefore(stop, "form?.Hide();", "stopRun = StopAsync();");
+        var drain = source[source.IndexOf("private async Task StopAsync()", StringComparison.Ordinal)..];
+        AssertBefore(drain, "await trees.DisposeAsync();", "ExitThread();");
+        var window = source[source.IndexOf("private async Task RunWindowAsync(", StringComparison.Ordinal)..];
+        window = window[window.IndexOf("finally", StringComparison.Ordinal)..];
+        AssertBefore(window, "await window.StopFrontendAsync();", "window.CompleteClose();");
+        AssertBefore(window, "window.CompleteClose();", "window.Dispose();");
     }
 
     private static FrontendLoopbackProxy CreateOfflineProxy() => new(
@@ -140,7 +134,7 @@ public sealed class NativeUiWindowCloseTests
     {
         // The form gets its WebView paths from this test's own folder. It never
         // resolves the installed package, initializes WebView2, or registers an instance.
-        var form = new MainForm(_ => { }, () => { }, new WebView2HostConfiguration(
+        var form = new MainForm(_ => { }, new WebView2HostConfiguration(
             Path.Combine(root, "webview"), Path.Combine(root, "frontend-preferences.cache.json"), proxy))
         {
             ShowInTaskbar = false,

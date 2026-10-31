@@ -49,11 +49,11 @@ test("software detail uses the shared item picker in the overlay context", () =>
   const detail = readFileSync(new URL("../src/components/SoftwareDetailModal.tsx", import.meta.url), "utf8");
   const overlay = readFileSync(new URL("../src/features/overlay/SoftwareOverlaySettings.tsx", import.meta.url), "utf8");
   assert.match(detail, /<TabsPanel value="overlay"/);
-  assert.match(overlay, /<ItemPicker[^>]*use="overlay"[^>]*maximumItems=\{maximumOverlayItems\}/s);
+  assert.match(overlay, /<ItemPicker[^>]*use="overlay"[^>]*maximumItems=\{constraints\(\)\.maximumItems\}/s);
   assert.match(overlay, /moveView\(current\(\)\.items, index\(\), -1\)/);
   assert.match(overlay, /moveView\(current\(\)\.items, index\(\), 1\)/);
   assert.match(overlay, /performanceOverlay\.injectionWarning/);
-  assert.match(overlay, /savePerformanceOverlaySettings\(current, saved\(\)/);
+  assert.match(overlay, /savePerformanceOverlaySettings\(runtime\.requestClient, current, before\)/);
 });
 
 
@@ -66,7 +66,7 @@ test("overlay editors and the picker cannot mutate the draft during a save", () 
     assert.match(button[0], /disabled=\{[^}]*saving\(\)/, button[0]);
   }
   assert.match(overlay, /current && !saving\(\) \?/);
-  assert.match(overlay, /if \(!current \|\| saving\(\)\) return/);
+  assert.match(overlay, /if \(!current \|\| !before \|\| saving\(\)\) return/);
   assert.match(overlay, /open=\{pickerOpen\(\) && !saving\(\)\}/);
   // 项不合规时不能保存。
   assert.match(overlay, /itemsIssue\(\) !== null \|\| saving\(\)/);

@@ -63,7 +63,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
             if (std.mem.eql(u8, mode, "session") and generation == 22 and !object.get("ready").?.bool)
                 try wp.writeAll(output, "{\"type\":\"preferences-changed\",\"scope\":\"frontend\"}\n");
             if (std.mem.eql(u8, mode, "session") and generation == 23 and object.get("ready").?.bool)
-                try wp.writeAll(output, "{\"type\":\"preferences-changed\",\"scope\":\"backend\"}\n");
+                try wp.writeAll(output, "{\"type\":\"preferences-changed\",\"scope\":\"frontend\"}\n");
         }
         if (std.mem.eql(u8, kind, "language")) {
             if (!got_session and !got_start) return error.InitialFactsOutOfOrder;

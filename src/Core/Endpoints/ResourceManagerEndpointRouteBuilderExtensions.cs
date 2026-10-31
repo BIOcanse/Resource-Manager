@@ -22,7 +22,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             app.MapAiGatewayCredentialEndpoints();
         }
         app.MapMetricsEndpoints();
-        app.MapPerformanceOverlayEndpoints();
+        app.MapPerformanceOverlayEndpoints(startupCapabilities);
         app.MapStartupModuleEndpoints(startupCapabilities);
         app.MapSubscriptionChannelEndpoints();
         app.MapSystemEndpoints(startupCapabilities);

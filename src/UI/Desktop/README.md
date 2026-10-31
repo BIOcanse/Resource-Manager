@@ -1,4 +1,4 @@
-# Desktop 常驻进程（phase A）
+# Desktop 常驻进程
 
 使用 Zig 0.17.0 和 `src/Shared/Control` 的 `rm_control`。运行入口由宿主线程执行，控制器回调只排队。运行时存储有固定上限；控制器仅以 ReleaseSafe 编译。
 
@@ -12,6 +12,7 @@ Program
    │  ├─ SingleInstance
    │  ├─ SystemIntegration
    │  │  ├─ ForceTerminateHotkey
+   │  │  ├─ OverlayToggleHotkey
    │  │  └─ TaskManagerReplacement
    │  ├─ BackendConnection
    │  │  ├─ DesktopObservation
@@ -21,7 +22,7 @@ Program
       └─ TrayNotifications
 ```
 
-Program → Frontend 使用固定条件 ProgramActive，只读 ProgramStarted。Frontend 是包装块，运行时通过同一条按块 AlwaysWanted 条件要求 MainFrontend 和 Tray 两支。MainFrontend 通过 AlwaysWanted 要求 SystemIntegration；系统集成节点接管 ForceTerminateHotkeyWanted 与 TaskManagerReplacementWanted，读项及规则不变。SystemIntegration 只报告运行并等待停止，即使两个开关都关也保持运行，两个子块按各自条件停止。Tray 保留图标、菜单和通知分支。兄弟之间只读写事实，不互相启停。
+Program → Frontend 使用固定条件 ProgramActive，只读 ProgramStarted。Frontend 是包装块，通过 AlwaysWanted 要求 MainFrontend 和 Tray；MainFrontend 同样要求 SystemIntegration。系统集成的三个子块各自读取后端开关和有效键位，包装块只报告运行并等待停止。Tray 保留图标、菜单和通知分支。兄弟之间只读写事实，不互相启停。
 
 托盘退出、第二实例的 exit、页面 applyExit、Windows 确认结束会话均进入同一个 beginEnding，调用 controller.shutdown()。Config.shutdown_item 为 ProgramShuttingDown，写入口只由控制器持有，条件不读这一项。shutdown 撤回根的许可，即使 ProgramStarted 仍为真也停止 Frontend 整支。根等待包装块及其全部子孙汇合后才退出消息循环；生产循环与真实进程场景共用退出判断。窗口进程自己的树及无 pipe 参数的过渡组合保持原行为。
 
@@ -30,11 +31,13 @@ Program → Frontend 使用固定条件 ProgramActive，只读 ProgramStarted。
 ```powershell
 $work = '<workset-root>\desktop-resident'
 & scripts/build/Generate-DesktopPoints.ps1 -WorkRoot $work
+& scripts/build/Generate-DesktopLedger.ps1 -WorkRoot "$work/desktop-ledger"
 & scripts/build/Generate-DesktopText.ps1
+& scripts/build/Generate-DesktopFrontendDefaults.ps1
 $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 & <tools>\JobQueue\JobQueue.ps1 -Action Run -Label 'desktop Debug' `
   -FilePath <tools>\Zig\zig-0.17.0\zig.exe `
-  -ArgumentList @('build', '-Doptimize=Debug', "-Dpoints-root=$work/desktop-points", '--cache-dir', "$work\zig-cache", '--prefix', "$work\debug", '-j1') `
+  -ArgumentList @('build', "-Dpoints-root=$work/desktop-points", "-Dledger-root=$work/desktop-ledger", '--cache-dir', "$work\zig-cache", '--prefix', "$work\debug", '-j1') `
   -WorkingDirectory "$PWD\src\UI\Desktop"
 ```
 
@@ -46,11 +49,13 @@ $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 
 普通交互身份的文件夹具验收独立为 `test-key-fixture`：先由维护会话用既有 Initialize-BackendKeyFixture.ps1 准备，再以 `-Dkey-fixture-work-root=<同一 WorkRoot>` 运行该入口（未给出时跳过），原 owner/ACL/重复读取/取消断言不变。`check-key-fixture` 只编译此入口；默认 `test` 不访问该真实夹具。`-Dpipe-filter=<名称子串>` 可只补失败的管道测试。
 
-十一个可调默认值只在 `src/Development/DesktopBuild/desktop.points.json` 声明，通过 FreedomPoint SDK 生成 Zig 值。窗口停止期限和超期策略归窗口包装块；策略为正式枚举 `terminate`（默认强制结束）或 `wait`（继续等待）。固定队列、缓冲区和表容量属于结构上限，耗尽时明确失败。
+可调值在 `src/Development/DesktopBuild/desktop.points.json` 声明，通过 FreedomPoint SDK 投影；浮窗的软件条目、默认值和编辑约束由后端设置拥有。窗口停止期限和超期策略归窗口包装块；策略为 `terminate` 或 `wait`。浮窗容量、缓冲区、字号拟合范围、字体、颜色、格式精度和订阅间隔也有声明，耗尽时明确失败。Windows ABI、协议布局和数学单位定义是格式事实。
 
 部署路径在打包步骤 6 接入前通过 `--package-root`、`--window-executable`、`--backend-path` 指定；未指定时只采用可执行文件所在目录与同级程序的布局。`--background-startup` 不启动窗口。已有单实例协议和默认管道名保持不变；测试必须显式传入 `--instance-pipe ResourceManager.Desktop.Test.<unique>`，并指定独立 `--backend-port`、不存在的 `--backend-service`，不得使用安装产品端口或服务。
 
 `--preferences-path` 可显式指定缓存，否则读取包根下当前用户 SID 的前端缓存；只在初始化及 `preferences-changed` 时重读。常驻进程不写前端偏好。管道消息与行为见最终报告。
+
+浮窗读取已有 `/api/settings/app/subscribe` 的 `performanceOverlay`，不读取偏好的 overlay 节，也不轮询设置。每个启用软件的订阅请求携带有序 items；每个选中项保留一行，缺值显示后端原因，未知原因或显式来源不可读显示“—”。目标窗口跟随由 WinEvent 驱动。热键 `toggle-performance-overlay-foreground` 和托盘项通过后端 toggle API 改设置，后端订阅驱动已有目标更新。旧偏好的迁移只由窗口进程执行，提交确认后移除，兼容代码的删除条件见该迁移所有者。
 
 `--diagnostics <file>` 是显式开发入口：导出带登记表版本的控制器快照、进程与 HWND，并在同目录 `<file>.log` 写诊断。仅在此模式下，托盘窗口接受 `WM_APP+10` 的坐标参数，用于副屏菜单的目标窗口截图；不移动鼠标或抓取桌面。真实验收入口为 `tests/Desktop/Invoke-ResidentSmoke.ps1`，同样经 JobQueue 运行。
 
@@ -58,4 +63,4 @@ $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 
 窗口包装块通过 `JOB_LIST` 在创建子进程时直接指定非继承 Job，并设置 `KILL_ON_JOB_CLOSE`。普通窗口块停止时先发送 stop/关闭管道，在已声明期限内汇合。超期按选择强制结束或继续等待；程序结束的独立 stop 会取消等待并关闭 Job 收尾。三种停止结果均回报宿主日志；没有 detach，崩溃仍先撤回开窗意愿。
 
-phase A 的热键、任务管理器替换、桌面观察、通知流和覆盖层均为等待停止的占位入口。真实托盘、NativeUi 管道入口、密钥文件夹具及 CPU/内存/窗口截图由维护会话以普通交互用户复测；本轮不执行 RunAs 或真实托盘回合。当前树形和自动验证见 `.local/reports/final-report-5.md`；真实交互复测步骤及两项裁定证据见 `final-report-2.md`，第一轮历史证据见 `final-report.md`。
+热键、任务管理器键盘替换、桌面观察上传流、托盘通知和 Zig 覆盖层均有实际入口；持久启动入口和安装打包仍由后续批次接入。验证结果以本轮工作账本的 report.md 为准。真实托盘、CPU/内存、安装包和游戏验收由维护会话执行，定向构建与测试不接触已安装产品。

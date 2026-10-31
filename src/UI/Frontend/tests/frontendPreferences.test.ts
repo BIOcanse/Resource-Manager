@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { ResourceManager } from "../src/preferences/generated/frontendPoints.values.ts";
-import { backendSettings, cachedOverlay, createFrontendPreferencesClient, pointOverlayPresentation, pointPreferences, resolveFrontendRefresh } from "../src/preferences/frontendPreferences.ts";
+import { backendSettings, createFrontendPreferencesClient, pointPreferences, resolveFrontendRefresh } from "../src/preferences/frontendPreferences.ts";
 import { readDashboardPreferences } from "../src/preferences/dashboardPreferences.ts";
 import { defaultAppSettings } from "../src/stores/settingsStore.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
 import { loadSettingsText } from "../src/i18n/settingsLoader.ts";
+import { forceTerminateHotkeyActionId, normalizeEditableHotkeys,
+  performanceOverlayHotkeyActionId } from "../src/features/settings/editableHotkeys.ts";
 
 const points = ResourceManager.FrontendPoints;
 function storage() {
@@ -16,7 +18,7 @@ function storage() {
     removeItem: (key: string) => { values.delete(key); } };
 }
 
-test("frontend changes survive restart; reset restores presentation while retaining module choices", async () => {
+test("frontend changes survive restart; reset restores every preference", async () => {
   const disk = storage();
   const first = createFrontendPreferencesClient(disk);
   assert.deepEqual(await first.read(), pointPreferences());
@@ -25,19 +27,15 @@ test("frontend changes survive restart; reset restores presentation while retain
   const changed = await first.read();
   changed.appearance.theme = "dark";
   changed.refresh.monitor = { mode: "custom", preset: "quiet", customValue: 4321 };
-  changed.overlays.game = { ...pointOverlayPresentation(), enabled: true, mode: "injected", fontSizePx: 26,
-    items: [{ kind: "software", id: "gpu.0.usage", source: "auto", intervalMs: 1000, syncPrecision: "high" },
-      { kind: "frames", id: "frames.fps", source: "auto", intervalMs: null, syncPrecision: "low" }] };
   await first.save(changed);
   const restarted = createFrontendPreferencesClient(disk);
   assert.deepEqual(await restarted.read(), changed);
   await restarted.reset();
-  assert.deepEqual(await createFrontendPreferencesClient(disk).read(), {
-    ...pointPreferences(), overlays: { game: { ...pointOverlayPresentation(), enabled: true, mode: "injected" } }
-  });
+  assert.deepEqual(await createFrontendPreferencesClient(disk).read(), pointPreferences());
+  assert.equal(disk.getItem("resource-manager:frontend-preferences:v1"), null);
   assert.equal((await restarted.read()).appearance.theme, points.Theme);
-  assert.equal(pointOverlayPresentation().enabled, false);
-  assert.equal(pointOverlayPresentation().mode, "external");
+  // The per-software overlay settings are backend settings (performanceOverlay), not frontend preferences.
+  assert.equal("overlays" in pointPreferences(), false);
 });
 
 test("every refresh preset and custom interval resolve locally from the manual setting only", () => {
@@ -70,14 +68,11 @@ test("concurrent scoped frontend writes preserve the other view's choices", asyn
   const old = await client.read();
   await Promise.all([
     client.save({ ...old, appearance: { ...old.appearance, theme: "dark" } }, "global"),
-    client.save({ ...old, overlays: { GAME: { ...pointOverlayPresentation(), fontSizePx: 28 } } }, { overlay: "game" })
+    client.save({ ...old, targetedReportViewTemplates: [] }, "targetedReportViewTemplates")
   ]);
   const current = await client.read();
   assert.equal(current.appearance.theme, "dark");
-  assert.equal(current.overlays.game.fontSizePx, 28);
-  assert.equal(cachedOverlay(current, "GAME")?.fontSizePx, 28);
-  await client.save({ ...current, overlays: {} }, { overlay: "GAME" });
-  assert.equal(cachedOverlay(await client.read(), "game"), undefined);
+  assert.deepEqual(current.targetedReportViewTemplates, []);
 });
 
 test("frontend settings never enter the backend settings view", () => {
@@ -122,12 +117,12 @@ test("the notification section has three switches per kind, defaults to its poin
   assert.deepEqual(loaded.notifications, pointPreferences().notifications);
   const chosen = { ...allNotifications("off"), updateSystem: "on" as const, memoryProtectionInApp: "on" as const };
   await client.save({ ...loaded, notifications: chosen }, "global");
-  // Dashboard and overlay saves from views holding the old section do not write it.
+  // Dashboard and report-template saves from views holding the old section do not write it.
   await client.save({ ...loaded, dashboard: null }, "dashboard");
-  await client.save({ ...loaded, overlays: { game: pointOverlayPresentation() } }, { overlay: "game" });
+  await client.save({ ...loaded, targetedReportViewTemplates: [] }, "targetedReportViewTemplates");
   const current = await createFrontendPreferencesClient(disk).read();
   assert.deepEqual(current.notifications, chosen);
-  assert.ok(current.overlays.game);
+  assert.deepEqual(current.targetedReportViewTemplates, []);
   // The switches are frontend preferences and never enter an app-settings request.
   assert.equal("notifications" in backendSettings({ ...defaultAppSettings(), notifications: allNotifications("off") }), false);
   // Reset restores every switch; nothing else of the section is kept.
@@ -243,64 +238,84 @@ test("the removed self-scheduling animation switch is dropped on cache read and 
   assert.equal("autoDisableAnimations" in pointPreferences().appearance, false);
 });
 
-test("the retired NVML v2 used field name is renamed in card slots and overlay sources on cache read", async () => {
+test("card slot names are migrated while pending overlay entries stay opaque until backend commit", async () => {
   // Migration frontend-preferences-nvml-fb-used-v1: only the retired name changes; the v1 field, metric ids and everything else stay.
   const v1 = "gpu_nvidia_fb_used_v1_including_reserved_bytes";
-  // 旧缓存的浮层是 metrics、metricSources；读入时先改名，再换成 items（frontend-preferences-overlay-items-v1）。
-  const { items: _items, ...presentation } = pointOverlayPresentation();
-  const metricItem = (id: string, source: string) => ({ kind: "metric" as const, id, source, intervalMs: null, syncPrecision: "mid" as const });
-  const legacyOverlay = (field: string) => ({ ...presentation, enabled: true, metrics: ["gpu.vram", "gpu.vramV1"], metricSources: {
+  // Migration frontend-preferences-overlays-to-backend-v1 (browser half): the standalone browser frontend has no window process
+  // to write old overlay entries to the backend. Keep the old input on disk without exposing it as a current preference.
+  const legacyOverlay = (field: string) => ({ enabled: true, mode: "external", metrics: ["gpu.vram", "gpu.vramV1"], metricSources: {
     "gpu.vram": { fieldName: field, deviceIdentity: "gpu:a" }, "gpu.vramV1": { fieldName: v1, deviceIdentity: "gpu:a" } } });
-  const migratedOverlay = (field: string) => ({ ...presentation, enabled: true,
-    items: [metricItem("gpu.vram", `${field}@gpu:a`), metricItem("gpu.vramV1", `${v1}@gpu:a`)] });
-  const preferences = (field: string, overlay: object) => ({ ...pointPreferences(),
+  const preferences = (field: string) => ({ ...pointPreferences(),
     dashboard: { version: 17, usesFactoryDefaults: false, cards: [{ id: "gpu-card", slots: [
       { metricId: `${field}@gpu:a`, size: "medium" as const, binding: { scopeKind: "device-field", scopeKey: "gpu:a" } },
       { metricId: `${v1}@gpu:a`, size: "small" as const, binding: { scopeKind: "device-field", scopeKey: "gpu:a" } },
       { metricId: "gpu.0.nvmlFbUsedBytes", size: "small" as const, binding: { scopeKind: "gpu", scopeKey: "gpu:a" } }] }],
       resourceBars: [{ id: "gpu-bar", metricId: "gpu.0.vram", scaleMode: "capacity" as const }],
-      resourceTableColumns: [], resourceTableProcessColumns: [] },
-    overlays: { game: overlay } });
+      resourceTableColumns: [], resourceTableProcessColumns: [] } });
   const disk = storage();
   const retired = "gpu_nvidia_fb_used_including_reserved_bytes";
-  disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify(preferences(retired, legacyOverlay(retired))));
+  disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify({ ...preferences(retired), overlays: { game: legacyOverlay(retired) } }));
   const client = createFrontendPreferencesClient(disk);
   const renamed = "gpu_nvidia_fb_used_excluding_reserved_bytes";
-  const expected = preferences(renamed, migratedOverlay(renamed));
+  const expected = preferences(renamed);
   const loaded = await client.read();
   assert.deepEqual(loaded, expected);
   await client.save(loaded, "dashboard");
-  await client.save(loaded, { overlay: "game" });
-  assert.equal(disk.getItem("resource-manager:frontend-preferences:v1")!.includes("gpu_nvidia_fb_used_including_reserved_bytes"), false);
+  const written = disk.getItem("resource-manager:frontend-preferences:v1")!;
+  assert.deepEqual(JSON.parse(written).dashboard, expected.dashboard);
+  assert.deepEqual(JSON.parse(written).overlays, { game: legacyOverlay(retired) });
   assert.deepEqual(await createFrontendPreferencesClient(disk).read(), expected);
+  await client.reset();
+  assert.deepEqual(JSON.parse(disk.getItem("resource-manager:frontend-preferences:v1")!).overlays, { game: legacyOverlay(retired) });
+  assert.deepEqual(await createFrontendPreferencesClient(disk).read(), pointPreferences());
 });
 
-test("malformed card slots and overlay sources pass the NVML rename untouched and are left to the validators", async () => {
-  // The rename runs before any validation: a null slot, a numeric metricId or a null overlay source must not fail the whole read.
-  // The overlay-items migration then turns the legacy overlay into items: a null source is automatic selection.
-  const { items: _items, ...presentation } = pointOverlayPresentation();
-  const metricItem = (id: string, source: string) => ({ kind: "metric" as const, id, source, intervalMs: null, syncPrecision: "mid" as const });
+test("a stale preference caller cannot replace pending overlays and reset is serialized with saves", async () => {
+  const disk = storage();
+  const key = "resource-manager:frontend-preferences:v1";
+  const pending = { game: { enabled: true, mode: "injected", fontSizePx: 27 } };
+  disk.setItem(key, JSON.stringify({ ...pointPreferences(), overlays: pending }));
+  const client = createFrontendPreferencesClient(disk);
+  const stale = { ...await client.read(), overlays: { other: { enabled: false } } };
+  const saved = await client.save(stale);
+  assert.equal("overlays" in saved, false);
+  assert.deepEqual(JSON.parse(disk.getItem(key)!).overlays, pending);
+  await Promise.all([
+    client.reset(),
+    client.save({ ...saved, appearance: { ...saved.appearance, language: "de-DE" } }, "global"),
+    client.save({ ...saved, targetedReportViewTemplates: [] }, "targetedReportViewTemplates")
+  ]);
+  const current = await client.read();
+  assert.equal(current.appearance.language, "de-DE");
+  assert.deepEqual(current.targetedReportViewTemplates, []);
+  assert.deepEqual(JSON.parse(disk.getItem(key)!).overlays, pending);
+});
+
+test("hotkey normalization never supplies missing backend actions or their defaults", () => {
+  assert.deepEqual(normalizeEditableHotkeys(), []);
+  assert.deepEqual(normalizeEditableHotkeys([]), []);
+  const overlay = { actionId: performanceOverlayHotkeyActionId, enabled: true, encoding: [65, 0, 0, 0, 0, 0, 0] };
+  assert.deepEqual(normalizeEditableHotkeys([overlay]), [overlay]);
+  assert.equal(normalizeEditableHotkeys([overlay]).some(hotkey => hotkey.actionId === forceTerminateHotkeyActionId), false);
+});
+
+test("malformed card slots pass the NVML rename untouched and are left to the validators", async () => {
+  // The rename runs before any validation: a null slot or a numeric metricId must not fail the whole read.
   const malformed = { ...pointPreferences(), appearance: { ...pointPreferences().appearance, theme: "dark" as const },
-    dashboard: { version: 17, usesFactoryDefaults: false, cards: [{ id: "broken", slots: [null, { metricId: 42, size: "small" }] }] },
-    overlays: { game: { ...presentation, metrics: ["gpu.vram"], metricSources: { "gpu.vram": null } } } };
+    dashboard: { version: 17, usesFactoryDefaults: false, cards: [{ id: "broken", slots: [null, { metricId: 42, size: "small" }] }] } };
   const disk = storage();
   disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify(malformed));
   const client = createFrontendPreferencesClient(disk);
-  assert.deepEqual(await client.read(), { ...malformed, overlays: { game: { ...presentation, items: [metricItem("gpu.vram", "auto")] } } },
-    "the read keeps the malformed card slots exactly as before the migration existed");
+  assert.deepEqual(await client.read(), malformed, "the read keeps the malformed card slots exactly as before the migration existed");
   await assert.rejects(readDashboardPreferences(undefined, client), /Invalid frontend dashboard cache/, "the dashboard validator still rejects only that section");
-  // A well-formed retired slot or source next to malformed ones is still renamed; the malformed ones stay as they are.
+  // A well-formed retired slot next to malformed ones is still renamed; the malformed ones stay as they are.
   const mixedSlot = (field: string) => ({ metricId: `${field}@gpu:a`, size: "small" });
-  const mixedSource = (field: string) => ({ fieldName: field, deviceIdentity: "gpu:a" });
   const mixed = (field: string) => ({ ...malformed,
-    dashboard: { ...malformed.dashboard, cards: [{ id: "broken", slots: [...malformed.dashboard.cards[0].slots, mixedSlot(field)] }] },
-    overlays: { game: { ...malformed.overlays.game, metrics: ["gpu.vram", "gpu.vramV2"],
-      metricSources: { "gpu.vram": null, "gpu.vramV2": mixedSource(field) } } } });
+    dashboard: { ...malformed.dashboard, cards: [{ id: "broken", slots: [...malformed.dashboard.cards[0].slots, mixedSlot(field)] }] } });
   const mixedDisk = storage();
   mixedDisk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify(mixed("gpu_nvidia_fb_used_including_reserved_bytes")));
   const renamed = "gpu_nvidia_fb_used_excluding_reserved_bytes";
-  assert.deepEqual(await createFrontendPreferencesClient(mixedDisk).read(), { ...mixed(renamed), overlays: { game: { ...presentation,
-    items: [metricItem("gpu.vram", "auto"), metricItem("gpu.vramV2", `${renamed}@gpu:a`)] } } });
+  assert.deepEqual(await createFrontendPreferencesClient(mixedDisk).read(), mixed(renamed));
 });
 
 test("retired reading-source choices are dropped on cache read and subsequent save", async () => {

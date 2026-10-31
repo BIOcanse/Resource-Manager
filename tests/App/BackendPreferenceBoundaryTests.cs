@@ -40,12 +40,14 @@ public sealed class BackendPreferenceBoundaryTests
             Assert.Equal(v2, await ReadCommitted(path));
             if (existingBackup) Assert.Equal(original, await ReadCommitted(backup));
             var owner = new FrontendPreferencesOwner(cache, null, path);
-            // The legacy file's metric IDs become items (migration frontend-preferences-overlay-items-v1), in the same order.
+            // The legacy file's metric IDs become items (migration frontend-preferences-overlay-items-v1), in the same order;
+            // the entry waits in the cache for the backend migration (frontend-preferences-overlays-to-backend-v1).
             Assert.Equal(new FrontendOverlayItem[] { new("software", "memory.usage", "auto", null, "mid"), new("frames", "frames.fps", "auto", null, "mid") },
-                owner.Read().Overlays["legacy-game"].Items);
+                owner.Pending("legacy-game")!["items"].Deserialize<FrontendOverlayItem[]>(FrontendPreferencesOwner.Json));
             Assert.Equal(v2, await ReadCommitted(path));
+            var enabled = owner.Pending("legacy-game")!["enabled"]?.ToJsonString();
             owner.Reset();
-            Assert.Equal(owner.Read().Overlays["legacy-game"].Enabled, new FrontendPreferencesOwner(cache, null, path).Read().Overlays["legacy-game"].Enabled);
+            Assert.Equal(enabled, new FrontendPreferencesOwner(cache, null, path).Pending("legacy-game")!["enabled"]?.ToJsonString());
         }
         finally
         {
@@ -63,28 +65,23 @@ public sealed class BackendPreferenceBoundaryTests
         using var files = new TrustedAccessTemporaryDirectory();
         var cache = Path.Combine(files.Root, "frontend.cache.json");
         var legacy = Path.Combine(files.Root, "performance-overlay.local.json");
-        var old = JsonSerializer.SerializeToNode(new FrontendPreferences
-        {
-            Overlays = new Dictionary<string, FrontendOverlayPresentation> { ["game"] = new() { Items = [new("software", "memory.usage", "auto", null, "mid")] } }
-        }, FrontendPreferencesOwner.Json)!.AsObject();
-        old.Remove("overlaySelectionVersion");
-        old["overlays"]!["game"]!.AsObject().Remove("enabled");
-        old["overlays"]!["game"]!.AsObject().Remove("mode");
-        File.WriteAllText(cache, old.ToJsonString());
+        File.WriteAllText(cache, """
+            {"overlays":{"game":{"items":[{"kind":"software","id":"memory.usage","source":"auto","intervalMs":null,"syncPrecision":"mid"}]}}}
+            """);
         File.WriteAllText(legacy, """{"software":[{"softwareId":"game","enabled":true,"mode":"injected"}]}""");
         var owner = new FrontendPreferencesOwner(cache, null, legacy);
-        var imported = owner.Read().Overlays["game"];
-        Assert.True(imported.Enabled);
-        Assert.Equal("injected", imported.Mode);
-        Assert.Equal(new FrontendOverlayItem[] { new("software", "memory.usage", "auto", null, "mid") }, imported.Items);
+        owner.Read();
+        var imported = owner.Pending("game")!;
+        Assert.True(imported["enabled"]!.GetValue<bool>());
+        Assert.Equal("injected", imported["mode"]!.GetValue<string>());
+        Assert.Equal(new FrontendOverlayItem[] { new("software", "memory.usage", "auto", null, "mid") },
+            imported["items"].Deserialize<FrontendOverlayItem[]>(FrontendPreferencesOwner.Json));
+        // A preference reset keeps the entry for the backend migration, and the import does not run again.
         owner.Reset();
-        var reset = new FrontendPreferencesOwner(cache, null, legacy).Read().Overlays["game"];
-        Assert.True(reset.Enabled);
-        Assert.Equal("injected", reset.Mode);
-        Assert.Equal(FrontendOverlayItems.PointItems(), reset.Items);
-        var disabled = owner.Read() with { Overlays = new Dictionary<string, FrontendOverlayPresentation> { ["game"] = reset with { Enabled = false } } };
-        owner.Save(disabled);
-        Assert.False(new FrontendPreferencesOwner(cache, null, legacy).Read().Overlays["game"].Enabled);
+        var reset = new FrontendPreferencesOwner(cache, null, legacy).Pending("game")!;
+        Assert.Equal(imported.ToJsonString(), reset.ToJsonString());
+        Assert.True(owner.CompleteOverlayMigration());
+        Assert.Null(new FrontendPreferencesOwner(cache, null, legacy).Pending("game"));
     }
 
     private static Task<byte[]> ReadCommitted(string path) =>
@@ -109,7 +106,7 @@ public sealed class BackendPreferenceBoundaryTests
             await File.WriteAllBytesAsync(appPath, await File.ReadAllBytesAsync(Fixture("app-settings.json")));
             await File.WriteAllBytesAsync(overlayPath, original);
             var frontend = new FrontendPreferencesOwner(cache, appPath, overlayPath);
-            if (startupOrder == 1) Assert.Single(frontend.Read().Overlays);
+            if (startupOrder == 1) Assert.Single(frontend.PendingOverlayEntries());
             var environment = new Environment(application);
             async Task Migrate()
             {
@@ -119,10 +116,9 @@ public sealed class BackendPreferenceBoundaryTests
                 await Task.WhenAll(Task.Run(Migrate), Task.Run(() => frontend.Read()));
             else await Migrate();
             Assert.Equal(original, await ReadCommitted(overlayPath));
-            var imported = frontend.Read();
-            Assert.Equal(FrontendPoints.FontSizePx, imported.Overlays["legacy-game"].FontSizePx);
+            var imported = frontend.Pending("legacy-game")!;
             frontend.Reset();
-            Assert.Equal(imported.Overlays["legacy-game"].Mode, new FrontendPreferencesOwner(cache, appPath, overlayPath).Read().Overlays["legacy-game"].Mode);
+            Assert.Equal(imported.ToJsonString(), new FrontendPreferencesOwner(cache, appPath, overlayPath).Pending("legacy-game")!.ToJsonString());
         }
         finally
         {

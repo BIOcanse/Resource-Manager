@@ -287,6 +287,8 @@ export interface AppSettings {
   publicService?: AppLocalPublicServiceSettings;
   aiModelService?: AppAiModelServiceSettings;
   update?: AppUpdateSettings;
+  /** 每个软件的浮窗设置；只由软件详细信息的浮窗分页按软件改（PATCH 只带那个软件的条目）。 */
+  performanceOverlay?: PerformanceOverlayAppSettings;
   /** 前端偏好（原生壳持有的偏好缓存），不进入后端设置请求。 */
   notifications?: AppNotificationSettings;
 }
@@ -1206,15 +1208,14 @@ export interface PerformanceOverlayItem {
   syncPrecision: "low" | "mid" | "high";
 }
 
-export interface PerformanceOverlaySettings {
-  softwareId: string;
-  injectionModules: OverlayInjectionModules;
+/**
+ * 一个软件的浮窗设置：后端设置 performanceOverlay.software[softwareId] 的一条（docs/frontend_block_trees_2026-10-26.md
+ * 「浮窗设置归后端」）。后端归一化后总是完整的；没有条目就是关。编辑限制由单软件读取的 editingConstraints 提供。
+ */
+export interface PerformanceOverlayEntry {
   enabled: boolean;
   mode: "external" | "injected";
-  /**
-   * 浮层的项，顺序就是绘制顺序，每个软件最多 64 项。存在前端偏好缓存里，不进后端设置；
-   * 原生壳把它原样放进浮层订阅的 items（请求体）。
-   */
+  /** 浮层的项，顺序就是绘制顺序；常驻进程把它原样放进浮层订阅的 items。 */
   items: PerformanceOverlayItem[];
   sizeMode: "absolutePixels" | "windowRatio";
   fontSizePx: number;
@@ -1222,6 +1223,37 @@ export interface PerformanceOverlaySettings {
   regionHeightRatio: number;
   anchor: "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
   marginPx: number;
+}
+
+/** 后端设置的 performanceOverlay 一节：按软件 ID 存的浮窗设置，软件 ID 不区分大小写，数量由后端校验。 */
+export interface PerformanceOverlayAppSettings {
+  software: Record<string, PerformanceOverlayEntry>;
+}
+
+/** 浮窗分页读到的一个软件：后端的条目（或没有条目时后端给的默认条目）、读到时的设置修订号和启动模块登记。 */
+export interface PerformanceOverlaySettings extends PerformanceOverlayEntry {
+  softwareId: string;
+  /** 后端设置的修订号，保存时作为 expectedRevision。 */
+  revision: string;
+  /** 后端是否存着这个软件的条目；false 时其余字段是后端的默认条目（关）。 */
+  stored: boolean;
+  injectionModules: OverlayInjectionModules;
+}
+
+/** 单软件 GET 提供的只读编辑限制；不属于持久化条目，也不进入 PATCH。 */
+export interface PerformanceOverlayEditingConstraints {
+  readonly maximumItems: number;
+  readonly fontSizePxMinimum: number;
+  readonly fontSizePxMaximum: number;
+  readonly marginPxMinimum: number;
+  readonly marginPxMaximum: number;
+  readonly regionRatioMinimum: number;
+  readonly regionRatioMaximum: number;
+  readonly regionRatioStep: number;
+}
+
+export interface PerformanceOverlayEditorSettings extends PerformanceOverlaySettings {
+  readonly editingConstraints: PerformanceOverlayEditingConstraints;
 }
 
 

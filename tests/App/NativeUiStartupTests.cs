@@ -66,22 +66,25 @@ public sealed class NativeUiStartupTests
         }
     }
 
-    [Fact]
-    public void Parse_BackgroundStartupEnsuresExistingInstanceWithoutShowingWindow()
+    [Theory]
+    [InlineData("--background-startup", "ensure-running")]
+    [InlineData("--show-existing", "show")]
+    [InlineData("--show-existing-passive", "show-passive")]
+    [InlineData("--show-existing-passive-secondary", "show-passive-secondary")]
+    [InlineData("--exit-existing", "exit")]
+    [InlineData("--SHOW-EXISTING", "show")]
+    public void ParseCommand_MapsEachPersistedEntryToItsSingleInstanceCommand(string argument, string command)
     {
-        var options = NativeUiLaunchOptions.Parse(["--background-startup"]);
-
-        Assert.True(options.StartInBackground);
-        Assert.Equal("ensure-running", options.SingleInstanceCommand);
+        Assert.Equal(command, NativeUiLaunchOptions.ParseCommand([argument]));
     }
 
     [Fact]
-    public void Parse_PassiveSecondaryShowUsesDedicatedSingleInstanceCommand()
+    public void ParseCommand_DirectStartAndTaskManagerDebuggerShow()
     {
-        var options = NativeUiLaunchOptions.Parse(["--show-existing-passive-secondary"]);
-
-        Assert.False(options.StartInBackground);
-        Assert.Equal("show-passive-secondary", options.SingleInstanceCommand);
+        Assert.Equal("show", NativeUiLaunchOptions.ParseCommand([]));
+        // The IFEO Debugger appends taskmgr's own path after its marker.
+        Assert.Equal("show", NativeUiLaunchOptions.ParseCommand(
+            ["--show-existing", "--resource-manager-task-manager-replacement", @"C:\Windows\System32\Taskmgr.exe"]));
     }
 
     [Fact]

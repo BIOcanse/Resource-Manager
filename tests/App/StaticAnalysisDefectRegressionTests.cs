@@ -1,43 +1,15 @@
 using System.Collections;
-using System.IO.MemoryMappedFiles;
 using System.Reflection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.NativeUi.Overlay;
 using ResourceManager.ReadWrite.Windows.Results.Explicit;
-using ResourceManager.Shared.Overlay;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class StaticAnalysisDefectRegressionTests
 {
-    [Fact]
-    public void OverlayRejectsSmallExistingMappingDespiteFullCapacityHeader()
-    {
-        var id = new OverlayTargetId(Environment.ProcessId, 0x1234567800000000UL + (ulong)Random.Shared.Next());
-        using var mapping = MemoryMappedFile.CreateNew(
-            PerformanceOverlaySharedMemory.SectionName(id.ProcessId, checked((long)id.ProcessStartKey)), 4096);
-        using var view = mapping.CreateViewAccessor();
-        var header = new PerformanceOverlayHeader
-        {
-            Magic = PerformanceOverlaySharedMemory.Magic,
-            Version = PerformanceOverlaySharedMemory.Version,
-            HeaderBytes = PerformanceOverlaySharedMemory.HeaderBytes,
-            PixelCapacity = PerformanceOverlaySharedMemory.MaximumPixelBytes
-        };
-        view.Write(0, ref header);
-        var error = Assert.Throws<InvalidDataException>(() =>
-        {
-            using var section = new InjectedOverlaySection(id, 0);
-        });
-        Assert.Contains("4096", error.Message);
-        Assert.Contains("capacity", error.Message);
-        // Rejection leaves the pre-existing producer's view intact.
-        Assert.Equal(header.Magic, view.ReadUInt32(0));
-    }
-
     [Fact]
     public void WorkspaceCapacityPublishesEveryUidByteAndDistinguishesScratchIdentities()
     {

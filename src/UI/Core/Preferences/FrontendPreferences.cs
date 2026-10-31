@@ -61,31 +61,6 @@ internal sealed record FrontendRefresh
     }
 }
 
-internal sealed record FrontendOverlayPresentation
-{
-    public bool Enabled { get; init; }
-    public string Mode { get; init; } = "external";
-    // 浮层显示的项，顺序就是绘制顺序（FrontendOverlayItems.cs）。
-    public IReadOnlyList<FrontendOverlayItem> Items { get; init; } = FrontendOverlayItems.PointItems();
-    public string SizeMode { get; init; } = FrontendPoints.SizeMode;
-    public int FontSizePx { get; init; } = FrontendPoints.FontSizePx;
-    public double RegionWidthRatio { get; init; } = FrontendPoints.RegionWidthRatio;
-    public double RegionHeightRatio { get; init; } = FrontendPoints.RegionHeightRatio;
-    public string Anchor { get; init; } = FrontendPoints.Anchor;
-    public int MarginPx { get; init; } = FrontendPoints.MarginPx;
-
-    internal void Validate()
-    {
-        if (Mode is not ("external" or "injected") || FrontendOverlayItems.Issue(Items) is not null
-            || SizeMode is not ("absolutePixels" or "windowRatio")
-            || FontSizePx is < 8 or > 72 || MarginPx is < 0 or > 256
-            || !double.IsFinite(RegionWidthRatio) || RegionWidthRatio is < 0.05 or > 1
-            || !double.IsFinite(RegionHeightRatio) || RegionHeightRatio is < 0.05 or > 1
-            || Anchor is not ("topLeft" or "topRight" or "bottomLeft" or "bottomRight"))
-            throw new InvalidDataException("Invalid frontend overlay cache.");
-    }
-}
-
 // 每类通知三项（docs/notifications_2026-10-29.md“设置在前端”）：是否弹（Notify）、Windows 通知（System，托盘读）、
 // 软件内提示（InApp，网页前端读）。总开关关掉时两条渠道都不弹，两条渠道各自的选择保留。
 internal sealed record FrontendNotifications
@@ -112,31 +87,29 @@ internal sealed record FrontendNotifications
     }
 }
 
+// The per-software overlay settings are not frontend preferences: since 2026-10-31 they are the backend setting
+// performanceOverlay (user: 「前端几乎不拥有任何功能，他只是一个使用后端的软件而已」). Overlay entries an older cache
+// still carries are kept out of this record by FrontendPreferencesOwner until the window process has written them to
+// the backend (Migration frontend-preferences-overlays-to-backend-v1, FrontendPreferencesOwner.OverlayMigration.cs).
 internal sealed record FrontendPreferences
 {
+    // Marker of the frontend-preferences-v1 import of the backend-era overlay file (ImportLegacyOverlayChoices): a cache
+    // written by this owner always carries 1, so that import never runs again over a cache the user has used.
     public int OverlaySelectionVersion { get; init; } = 1;
     public FrontendAppearance Appearance { get; init; } = new();
     public FrontendRefresh Refresh { get; init; } = new();
     public FrontendNotifications Notifications { get; init; } = new();
     public JsonElement? Dashboard { get; init; }
     public JsonElement? TargetedReportViewTemplates { get; init; }
-    public IReadOnlyDictionary<string, FrontendOverlayPresentation> Overlays { get; init; } =
-        new Dictionary<string, FrontendOverlayPresentation>(StringComparer.OrdinalIgnoreCase);
 
     internal void Validate()
     {
-        if (OverlaySelectionVersion != 1 || Appearance is null || Refresh is null || Notifications is null || Overlays is null)
+        if (OverlaySelectionVersion != 1 || Appearance is null || Refresh is null || Notifications is null)
             throw new InvalidDataException("Invalid frontend preferences cache.");
         Appearance.Validate();
         Refresh.Validate();
         Notifications.Validate();
         FrontendDashboardCache.Validate(Dashboard);
         FrontendReportViewTemplatesCache.Validate(TargetedReportViewTemplates);
-        foreach (var (id, overlay) in Overlays)
-        {
-            if (string.IsNullOrWhiteSpace(id) || overlay is null)
-                throw new InvalidDataException("Invalid frontend overlay cache key.");
-            overlay.Validate();
-        }
     }
 }

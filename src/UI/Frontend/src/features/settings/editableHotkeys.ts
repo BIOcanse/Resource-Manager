@@ -2,6 +2,16 @@ import { uiText } from "../../text.ts";
 import type { AppEditableHotkeySettings } from "../../types";
 
 export const forceTerminateHotkeyActionId = "force-terminate-unresponsive-and-foreground";
+/** 打开或关闭前台软件的性能浮窗（后端 POST /api/performance-overlay/toggle，不带 softwareId）。默认关，键位可改。 */
+export const performanceOverlayHotkeyActionId = "toggle-performance-overlay-foreground";
+/** 编辑器列出的热键动作，按显示顺序；每个动作的完整值和默认值由后端设置提供。 */
+export const editableHotkeyActionIds = [forceTerminateHotkeyActionId, performanceOverlayHotkeyActionId] as const;
+export type EditableHotkeyActionId = typeof editableHotkeyActionIds[number];
+
+/** 会强制结束进程的动作：启用时必须有批准的修饰键和一个非修饰键（后端 AppSettingsHotkeySafetyValidator 同一规则）。 */
+export function isDestructiveHotkeyAction(actionId: string): boolean {
+  return actionId === forceTerminateHotkeyActionId;
+}
 
 const approvedDestructiveHotkeyModifiers = new Set([17, 18, 91, 92, 162, 163, 164, 165]);
 const allHotkeyModifiers = new Set([16, 17, 18, 91, 92, 160, 161, 162, 163, 164, 165]);
@@ -215,7 +225,7 @@ export function normalizeEditableHotkeys(hotkeys?: readonly AppEditableHotkeySet
       const encoding = normalizeHotkeyEncoding(hotkey.encoding);
       const enabled = hotkey.enabled === true
         && encoding[0] !== 0
-        && (hotkey.actionId.trim() !== forceTerminateHotkeyActionId
+        && (!isDestructiveHotkeyAction(hotkey.actionId.trim())
           || isSafeDestructiveHotkeyEncoding(encoding));
       return {
         actionId: hotkey.actionId.trim(),
@@ -223,11 +233,7 @@ export function normalizeEditableHotkeys(hotkeys?: readonly AppEditableHotkeySet
         encoding
       };
     })
-    .filter((hotkey, index, all) => all.findIndex((item) => item.actionId === hotkey.actionId) === index)
-    .slice(0, 32);
-  if (!normalized.some((hotkey) => hotkey.actionId === forceTerminateHotkeyActionId)) {
-    normalized.push(defaultForceTerminateHotkey());
-  }
+    .filter((hotkey, index, all) => all.findIndex((item) => item.actionId === hotkey.actionId) === index);
   return normalized;
 }
 
@@ -237,14 +243,6 @@ export function isSafeDestructiveHotkeyEncoding(encoding?: readonly number[] | n
   return keys.length >= 2
     && keys.some((key) => approvedDestructiveHotkeyModifiers.has(key))
     && keys.some((key) => !allHotkeyModifiers.has(key));
-}
-
-export function defaultForceTerminateHotkey(): AppEditableHotkeySettings {
-  return {
-    actionId: forceTerminateHotkeyActionId,
-    enabled: false,
-    encoding: [0, 0, 0, 0, 0, 0, 0]
-  };
 }
 
 function encodeNormalized(keys: number[], relations: Array<0 | 1>): number[] {

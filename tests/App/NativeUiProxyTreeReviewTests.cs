@@ -28,10 +28,10 @@ public sealed class NativeUiProxyTreeReviewTests
         {
             Assert.Equal(UiUids.LoopbackProxy,
                 trees.Read().Graph.Single(node => node.Id == UiUids.WebViewHost).ParentId);
-            await trees.StartAsync(true);
-            await trees.SetBackendSessionReadyAsync(true, 1);
+            await trees.SetParentWantsRunningAsync(true);
+            await trees.SetBackendSessionAsync(true, 1);
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await trees.SetWindowWantedAsync(false, "close");
+            await trees.SetParentWantsRunningAsync(false);
             await stopBrowser.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.False(stopProxy.Task.IsCompleted);
             Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.LoopbackProxy));
@@ -62,31 +62,31 @@ public sealed class NativeUiProxyTreeReviewTests
         }));
         try
         {
-            await trees.StartAsync(true);
+            await trees.SetParentWantsRunningAsync(true);
             await trees.WaitForStateAsync(UiUids.MainWindow, BusinessBlockState.Running)
                 .WaitAsync(TimeSpan.FromSeconds(10));
-            await trees.SetBackendSessionReadyAsync(false, 0);
+            await trees.SetBackendSessionAsync(false, 0);
             Assert.Contains(trees.Read().CurrentDecisions, decision => decision.ParentId == UiUids.MainWindow);
             Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(UiUids.LoopbackProxy));
             Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(UiUids.WebViewHost));
             Assert.False(entered.Task.IsCompleted);
 
-            await trees.SetBackendSessionReadyAsync(true, 1);
+            await trees.SetBackendSessionAsync(true, 1);
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(BusinessBlockState.Starting, trees.ReadState(UiUids.LoopbackProxy));
-            await trees.SetBackendSessionReadyAsync(false, 1);
+            await trees.SetBackendSessionAsync(false, 1);
             Assert.False(stopBrowser.Task.IsCompleted);
             Assert.Equal(BusinessBlockState.Starting, trees.ReadState(UiUids.LoopbackProxy));
             reportRunning.SetResult();
             await trees.WaitForStateAsync(UiUids.WebViewHost, BusinessBlockState.Running)
                 .WaitAsync(TimeSpan.FromSeconds(10));
-            await trees.SetBackendSessionReadyAsync(false, 2);
+            await trees.SetBackendSessionAsync(false, 2);
             Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.WebViewHost));
         }
         finally { reportRunning.TrySetResult(); }
     }
 
-    private static NativeUiBlockTrees Create(Func<int, IBusinessBlock> create)
+    private static NativeWindowBlockTrees Create(Func<int, IBusinessBlock> create)
         => new(create, NullLogger.Instance, NullLogger<BusinessBlockController>.Instance);
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static async Task Stopped(CancellationToken token)

@@ -85,7 +85,7 @@ async function featureText(language: ConcreteAppLanguageMode) {
   const overlay = {
     externalModeModulesPresent: app.performanceOverlay.externalModeModulesPresent,
     injectedModulesPartial: app.performanceOverlay.injectedModulesPartial,
-    modulesSavedPreferencesFailed: app.performanceOverlay.modulesSavedPreferencesFailed
+    modulesSavedSettingsFailed: app.performanceOverlay.modulesSavedSettingsFailed
   };
   return {
     copy: integration.trustedAccess,

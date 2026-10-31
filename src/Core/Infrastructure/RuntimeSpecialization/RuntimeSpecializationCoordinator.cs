@@ -145,6 +145,9 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
                 RuntimeFailureCode = tierRejection.Code, RuntimeFailurePath = tierRejection.Path };
         if (TargetedRecordingProfileShape.Validate(settings.TargetedRecording) is { } recordingReason)
             return previous with { RuntimeApplicationDisposition = "rejectedBeforeCommit", RuntimeFailureCode = recordingReason };
+        settings = settings with { PerformanceOverlay = AppSettingsNormalizer.NormalizePerformanceOverlay(settings.PerformanceOverlay) };
+        if (AppSettingsDefaults.PerformanceOverlay.Validate(settings.PerformanceOverlay) is { } overlayReason)
+            return previous with { RuntimeApplicationDisposition = "rejectedBeforeCommit", RuntimeFailureCode = overlayReason };
         if (!AppSettingsHotkeySafetyValidator.AreEnabledDestructiveHotkeysSafe(settings))
         {
             return previous with

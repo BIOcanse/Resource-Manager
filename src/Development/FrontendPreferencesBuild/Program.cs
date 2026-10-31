@@ -163,9 +163,6 @@ internal static partial class Program
                 && value.GetProperty("preset").GetString() is "responsive" or "balanced" or "lowPower" or "quiet"
                 && value.GetProperty("customValue").GetInt32() is >= 500 and <= 300000,
             "presets" => new[] { "responsive", "balanced", "lowPower", "quiet" }.All(name => value.GetProperty(name).GetInt32() is >= 500 and <= 300000),
-            "metricOrder" => value.ValueKind == JsonValueKind.Array && value.GetArrayLength() <= 64
-                && value.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 and <= 128 })
-                && value.EnumerateArray().Select(item => item.GetString()).Distinct(StringComparer.OrdinalIgnoreCase).Count() == value.GetArrayLength(),
             "dashboardDefaults" => ValidateDashboardDefaults(value),
             "dashboardLimits" => value.GetProperty("smallMetricLimit").GetInt32() is >= 0 and <= 64
                 && value.GetProperty("cardUnits").GetInt32() is >= 3 and <= 64
@@ -185,7 +182,6 @@ internal static partial class Program
         "choiceSet" => new("ImmutableArray<string>", "void", "", ""),
         "refresh" => new("PointRefreshSetting", "void", "public sealed record PointRefreshSetting(string Mode, string Preset, int CustomValue);", ""),
         "presets" => new("PointRefreshPresets", "void", "public sealed record PointRefreshPresets(int Responsive, int Balanced, int LowPower, int Quiet);", ""),
-        "metricOrder" => new("ImmutableArray<string>", "void", "", ""),
         "dashboardDefaults" => new("global::System.Text.Json.JsonElement", "void", "", ""),
         "dashboardLimits" => new("PointDashboardLayoutLimits", "void", "public sealed record PointDashboardLayoutLimits(int SmallMetricLimit, int CardUnits, int MinimumColumnWidth, int MaximumColumnWidth, int DefaultColumnWidth);", ""),
         _ => throw new InvalidDataException(type)
@@ -198,7 +194,6 @@ internal static partial class Program
         "refresh" => "new(" + string.Join(",", JsonSerializer.Serialize(value.GetProperty("mode").GetString()),
             JsonSerializer.Serialize(value.GetProperty("preset").GetString()), value.GetProperty("customValue").GetRawText()) + ")",
         "presets" => "new(" + string.Join(",", new[] { "responsive", "balanced", "lowPower", "quiet" }.Select(name => value.GetProperty(name).GetRawText())) + ")",
-        "metricOrder" => "ImmutableArray.Create<string>(" + string.Join(",", value.EnumerateArray().Select(item => JsonSerializer.Serialize(item.GetString()))) + ")",
         "dashboardDefaults" => "global::System.Text.Json.JsonSerializer.Deserialize<global::System.Text.Json.JsonElement>(" + JsonSerializer.Serialize(value.GetRawText()) + ")",
         "dashboardLimits" => "new(" + string.Join(",", new[] { "smallMetricLimit", "cardUnits", "minimumColumnWidth", "maximumColumnWidth", "defaultColumnWidth" }.Select(name => value.GetProperty(name).GetRawText())) + ")",
         _ => throw new InvalidDataException(type)
@@ -210,7 +205,6 @@ internal static partial class Program
         "choiceSet" => "readonly (" + string.Join(" | ", definition.GetProperty("options").EnumerateArray().Select(value => JsonSerializer.Serialize(value.GetString()))) + ")[]",
         "refresh" => "{ readonly mode: \"aotu\" | \"preset\" | \"custom\"; readonly preset: \"responsive\" | \"balanced\" | \"lowPower\" | \"quiet\"; readonly customValue: number }",
         "presets" => "{ readonly responsive: number; readonly balanced: number; readonly lowPower: number; readonly quiet: number }",
-        "metricOrder" => "readonly string[]",
         "dashboardDefaults" => "{ readonly builtInMetricIds: readonly string[]; readonly cards: readonly { readonly id: string; readonly main: string; readonly small: readonly string[]; readonly scope: \"system\" | \"gpu\"; readonly required: boolean }[]; readonly resourceBars: readonly { readonly id: string; readonly metricId: string; readonly scaleMode: \"capacity\" | \"active\"; readonly scope: \"system\" | \"gpu\"; readonly required: boolean }[]; readonly softwareColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: \"system\" | \"gpu\" }[]; readonly processColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: \"system\" | \"gpu\" }[] }",
         "dashboardLimits" => "{ readonly smallMetricLimit: number; readonly cardUnits: number; readonly minimumColumnWidth: number; readonly maximumColumnWidth: number; readonly defaultColumnWidth: number }",
         _ => throw new InvalidDataException(type)

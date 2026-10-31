@@ -68,8 +68,30 @@ const rawSnapshot = { version: 5, capturedAt: observedAt, catalogRevision: "reco
 const snapshot = metricSnapshotDecoder.decode(rawSnapshot);
 const catalog = metricCatalogDecoder.decode(readings.map(([id, unit]) => ({ id, unit, selectable: true, candidateSources: [] })));
 
-// The already shipped overlay manifest records the established nine-language alias names.
-const recordedLabels = JSON.parse(readFileSync(new URL("../../Core/Overlay/metric-labels.json", import.meta.url), "utf8")) as Record<string, Record<string, string>>;
+// The resident overlay's generated label table records the nine-language alias names it draws.
+// The same file's reason table records the text drawn for an item without a value, by backend reason code (performanceOverlay.itemReasons).
+const overlayTableSource = readFileSync(new URL("../../Desktop/src/text/generated/overlay_metric_labels.zig", import.meta.url), "utf8");
+const recordedLabels = readOverlayLabelTable(overlayTableSource, "pub const entries");
+const recordedReasons = readOverlayLabelTable(overlayTableSource, "pub const reasons");
+function readOverlayLabelTable(source: string, tableStart: string): Record<string, Record<string, string>> {
+  const zigString = /"((?:[^"\\]|\\.)*)"/g;
+  const unescape = (text: string) => text.replace(/\\x([0-9a-f]{2})|\\(.)/g, (_, hex: string | undefined, character: string) =>
+    hex === undefined ? character : String.fromCharCode(parseInt(hex, 16)));
+  const lines = source.split(/\r?\n/);
+  const languageLine = lines.find(line => line.startsWith("pub const languages"));
+  if (languageLine === undefined) throw new Error("overlay label table has no languages line");
+  const languageIds = [...languageLine.matchAll(zigString)].map(match => unescape(match[1]));
+  const start = lines.findIndex(line => line.startsWith(tableStart));
+  if (start < 0) throw new Error(`overlay label table has no ${tableStart}`);
+  const end = lines.findIndex((line, index) => index > start && line === "};");
+  const table: Record<string, Record<string, string>> = {};
+  for (const line of lines.slice(start + 1, end).filter(entry => entry.trimStart().startsWith(".{ .key = "))) {
+    const [key, ...labels] = [...line.matchAll(zigString)].map(match => unescape(match[1]));
+    if (labels.length !== languageIds.length) throw new Error(`overlay label table entry ${key} has ${labels.length} labels`);
+    table[key] = Object.fromEntries(languageIds.map((id, index) => [id, labels[index]]));
+  }
+  return table;
+}
 const allAliasDefinitions = Object.keys(recordedLabels).map(id => ({ id: id.replaceAll("{index}", "2"), unit: "%", candidateSources: [] }));
 const aliasCatalog = metricCatalogDecoder.decode(allAliasDefinitions);
 const unavailable = metricCatalogDecoder.decode([{
@@ -92,6 +114,11 @@ for (const language of languages) {
   for (const [pattern, names] of Object.entries(recordedLabels)) {
     const id = pattern.replaceAll("{index}", "2");
     assert.equal(aliasCatalog.find(item => item.id === id)?.label, names[language.id].replaceAll("{index}", "2"), `${language.id}: ${id}`);
+  }
+  const itemReasons = copy.performanceOverlay.itemReasons;
+  assert.deepEqual(Object.keys(recordedReasons).sort(), Object.keys(itemReasons).sort(), `${language.id}: overlay reason codes`);
+  for (const [code, texts] of Object.entries(recordedReasons)) {
+    assert.equal(texts[language.id], itemReasons[code as keyof typeof itemReasons], `${language.id}: overlay reason ${code}`);
   }
   for (const [id, , , display, group] of readings) {
     const definition = catalog.find(item => item.id === id)!;

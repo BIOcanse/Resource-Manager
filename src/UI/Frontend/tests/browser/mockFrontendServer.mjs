@@ -332,9 +332,28 @@ const defaultAppSettings = {
   debug: {
     debugModeEnabled: scenario.debugMode
   },
-  update: { mode: "automatic", periodicCheckEnabled: false, checkIntervalHours: 24 }
+  update: { mode: "automatic", periodicCheckEnabled: false, checkIntervalHours: 24 },
+  // 每个软件的浮窗设置（docs/frontend_block_trees_2026-10-26.md「浮窗设置归后端」）：没有条目就是关。
+  performanceOverlay: { software: {} }
 };
 const appSettings = structuredClone(defaultAppSettings);
+// 后端的浮窗默认条目：PATCH 里省略的字段展开成这些值，GET 一个没有条目的软件时给这一条（关）。
+const performanceOverlayDefaults = () => ({
+  enabled: false, mode: "external",
+  items: ["frames:frames.fps", "frames:frames.low1", "frames:frames.present", "software:cpu.usage", "software:gpu.usage"]
+    .map((value) => ({ kind: value.split(":")[0], id: value.split(":")[1], source: "auto", intervalMs: null, syncPrecision: "mid" })),
+  sizeMode: "absolutePixels", fontSizePx: 14, regionWidthRatio: 0.25, regionHeightRatio: 0.2, anchor: "topLeft", marginPx: 12
+});
+const performanceOverlayKey = (softwareId) => Object.keys(appSettings.performanceOverlay.software)
+  .find((key) => key.toLowerCase() === softwareId.toLowerCase());
+// 整条替换：对象换成归一化后的完整条目，null 删掉；软件 ID 不区分大小写。
+function applyPerformanceOverlayChanges(software) {
+  for (const [softwareId, entry] of Object.entries(software)) {
+    const key = performanceOverlayKey(softwareId);
+    if (key !== undefined) delete appSettings.performanceOverlay.software[key];
+    if (entry !== null) appSettings.performanceOverlay.software[key ?? softwareId] = { ...performanceOverlayDefaults(), ...entry };
+  }
+}
 const memoryProtection = createMemoryProtectionFixture(() => appSettings.memoryProtection);
 const softwarePolicies = new Map();
 let appSettingsRuntimeDisposition = "committedAndApplied";
@@ -649,6 +668,15 @@ async function handleApi(request, response, url) {
   if (path === "/api/optimization/smart/status" && request.method === "GET") {
     return json(response, 200, smartCoordinatorStatus());
   }
+  if (path.startsWith("/api/performance-overlay/software/") && request.method === "GET") {
+    const id = decodeURIComponent(path.slice("/api/performance-overlay/software/".length)).trim();
+    if (!id) return json(response, 400, { error: "Software ID is required." });
+    const key = performanceOverlayKey(id);
+    return json(response, 200, { softwareId: key ?? id, stored: key !== undefined, revision: scenario.settingsRevision,
+      settings: structuredClone(key !== undefined ? appSettings.performanceOverlay.software[key] : performanceOverlayDefaults()),
+      editingConstraints: { maximumItems: 7, fontSizePxMinimum: 9, fontSizePxMaximum: 57, marginPxMinimum: 0, marginPxMaximum: 97,
+        regionRatioMinimum: 0.1, regionRatioMaximum: 0.85, regionRatioStep: 0.025 } });
+  }
   if (path === "/api/startup-modules/settings" && request.method === "GET") {
     return json(response, 200, { version: 1, software: [...startupModuleSelections.values()] });
   }
@@ -886,7 +914,9 @@ async function handleApi(request, response, url) {
         const memoryProblem = memoryProtection.validate({ ...appSettings.memoryProtection, ...patch.changes.memoryProtection });
         if (memoryProblem) return json(response, 409, { ...appSettingsResult("rejectedBeforeCommit"), runtimeFailureCode: memoryProblem });
       }
-      mergeRecord(appSettings, patch.changes);
+      const { performanceOverlay: overlayChanges, ...mergedChanges } = patch.changes;
+      mergeRecord(appSettings, mergedChanges);
+      if (isRecord(overlayChanges?.software)) applyPerformanceOverlayChanges(overlayChanges.software);
       // memoryCpuTier 整节替换：清除一项单独设置就是补丁里少了这个键，逐键合并会把旧值留下。
       if (Object.hasOwn(patch.changes, "memoryCpuTier")) appSettings.memoryCpuTier = structuredClone(patch.changes.memoryCpuTier);
       if (appSettings.memoryProtection) appSettings.memoryProtection.reserves ??= [];

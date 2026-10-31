@@ -26,6 +26,7 @@ internal sealed class NativeWindowApplicationContext : ApplicationContext
     private bool drained;
     private bool started;
     private bool parentVisible = true;
+    private bool overlayMigrationStarted;
     private long generation;
     private long projectionRevision;
     private string command = "show";
@@ -73,6 +74,12 @@ internal sealed class NativeWindowApplicationContext : ApplicationContext
                 await trees.SetBackendSessionAsync(ready, generation);
                 if (changed && ready && form is { } window && trees.ReadState(BlockUids.WebViewHost) == BusinessBlockState.Running)
                     SendFrontendStart(window);
+                if (changed && ready && transport is not null && !overlayMigrationStarted)
+                {
+                    overlayMigrationStarted = true;
+                    messages.RemoveWhere(task => task.IsCompleted);
+                    messages.Add(MigrateOverlaySettingsAsync());
+                }
                 break;
             case "language":
                 NativeUiText.Apply(message.Value);
@@ -104,10 +111,11 @@ internal sealed class NativeWindowApplicationContext : ApplicationContext
         var host = (services.CreateFrontendHost ?? (static configuration => new WebView2FrontendHost(configuration)))(
             new(services.WebViewUserDataFolder ?? NativeUiPaths.WebViewUserDataFolder,
                 services.FrontendPreferencesPath ?? NativeUiPaths.FrontendPreferencesPath, proxy));
-        var window = form = new MainForm(
-            _ => Send("preferences-changed", "scope", "backend"),
-            () => Send("preferences-changed", "scope", "backend"), host,
-            services.WebViewStartupFailurePath);
+        // The page's Task Manager switch writes the IFEO value here (this process is elevated); the resident's
+        // hook follows the same setting through its own settings subscription.
+        var applyTaskManagerReplacement = services.ApplyTaskManagerReplacement
+            ?? (static enabled => _ = new SystemIntegration.TaskManagerShortcutReplacementController().Apply(enabled));
+        var window = form = new MainForm(applyTaskManagerReplacement, host, services.WebViewStartupFailurePath);
         void LanguageChanged(object? _, EventArgs __)
         {
             if (!window.IsDisposed) window.ApplyInterfaceLanguage();
@@ -224,6 +232,30 @@ internal sealed class NativeWindowApplicationContext : ApplicationContext
         if (ready && transport is not null && projection is { IsReady: true } current) window.ShowBackendReady(current);
         else if (projection is { IsReady: false } unavailable) window.ShowBackendUnavailable(NativeUiText.Current.NoVerifiedSession, unavailable);
         else window.ShowBackendConnecting(reconnecting: generation != 0);
+    }
+    // Migration frontend-preferences-overlays-to-backend-v1 (Preferences/FrontendOverlayBackendMigration.cs): once per
+    // process, on the first ready backend session, the overlay entries an older preference cache still carries are written to
+    // the backend settings through this process's own backend transport; afterwards the resident rereads the preferences.
+    // A failure keeps the entries for the next start. Delete with the migration once every supported upgrade starts from
+    // this version.
+    private static readonly TimeSpan OverlayMigrationTimeout = TimeSpan.FromMilliseconds(ResourceManager.Desktop.DesktopPoints.backend_timeout_ms);
+    private async Task MigrateOverlaySettingsAsync()
+    {
+        if (transport is not { } activeTransport) return;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
+            timeout.CancelAfter(OverlayMigrationTimeout);
+            var owner = Preferences.FrontendPreferencesOwner.ForCache(services.FrontendPreferencesPath ?? NativeUiPaths.FrontendPreferencesPath);
+            var apiBase = activeTransport.ApiBaseAddress;
+            var outcome = await Preferences.FrontendOverlayBackendMigration.RunAsync(owner, apiBase, SendFrontendRequestAsync, timeout.Token);
+            if (outcome == Preferences.FrontendOverlayBackendMigration.Outcome.Completed && !draining)
+                Send("preferences-changed", "scope", "frontend");
+        }
+        catch (Exception error)
+        {
+            System.Diagnostics.Trace.TraceError("Overlay settings migration stopped: {0}", error);
+        }
     }
     private void SendFrontendStart(MainForm window)
     {

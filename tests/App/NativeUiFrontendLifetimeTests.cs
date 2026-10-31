@@ -43,7 +43,7 @@ public sealed class NativeUiFrontendLifetimeTests
     public Task CloseDuringInitializationHidesAndRetainsWindowUntilBrowserExit() => OnStaAsync(async () =>
     {
         using var host = new ControlledHost();
-        using var form = new MainForm(_ => { }, () => { }, host)
+        using var form = new MainForm(_ => { }, host)
         {
             ShowInTaskbar = false,
             Location = new Point(-30000, -30000)

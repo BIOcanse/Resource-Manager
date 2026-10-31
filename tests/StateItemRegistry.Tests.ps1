@@ -165,6 +165,9 @@ Assert-True ($changed -eq 3 -and $updated.comment -ceq 'Updated: café, 中文.'
 Assert-True ($updated.changeEvent -ceq 'Fixture owner publication') 'SetItem updates event publication metadata.'
 & $tool -Action SetItem -Registry $mutationPath -Uid 3 -ChangeEvent 'Fixture owner changed again' | Out-Null
 Assert-True (@((Read-StateRegistry -Path $mutationPath).entries | Where-Object uid -EQ 3)[0].changeEvent -ceq 'Fixture owner changed again') 'SetItem permits a change-event-only update.'
+& $tool -Action SetItem -Registry $mutationPath -Uid 3 -Type 'Fixture.MovedPayload' | Out-Null
+$retyped = @((Read-StateRegistry -Path $mutationPath).entries | Where-Object uid -EQ 3)[0]
+Assert-True ($retyped.type -ceq 'Fixture.MovedPayload' -and $retyped.uid -eq 3 -and $retyped.changeEvent -ceq 'Fixture owner changed again') 'SetItem changes only the type when only -Type is given.'
 $mutationBytes = [IO.File]::ReadAllBytes($mutationPath)
 Assert-True ([Convert]::ToBase64String((ConvertTo-StateRegistryBytes (Read-StateRegistry -Path $mutationPath))) -ceq [Convert]::ToBase64String($mutationBytes)) 'SetItem round trip is canonical.'
 Assert-Rejected { & $tool -Action Rename -Registry $mutationPath -Uid 3 -Name Program } 'duplicate name'
@@ -257,10 +260,10 @@ $volume = @($production.entries | Where-Object name -CEQ 'DeviceTopologyVolumeFr
 Assert-True ($volume.Count -eq 1) 'The independent volume free-space current is registered.'
 Assert-True ($volume[0].kind -ceq 'item' -and $volume[0].owner.block -eq 33 -and $volume[0].trigger -ceq 'event') 'Volume free-space current belongs to the topology owner and publishes change events.'
 # Catalog counts retain all dev desktop/window entries and include the replayed no-demand facts.
-Assert-True ($production.entries.Count -eq 168) 'Production catalog contains 62 blocks, 67 items and 39 conditions.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 62) 'Production catalog contains 62 blocks.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 67) 'Production catalog contains 67 items.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 39) 'Production catalog contains 39 conditions.'
+Assert-True ($production.entries.Count -eq 173) 'Production catalog contains 63 blocks, 70 items and 40 conditions.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 63) 'Production catalog contains 63 blocks.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 70) 'Production catalog contains 70 items.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 40) 'Production catalog contains 40 conditions.'
 Assert-True (($production.entries | Where-Object uid -EQ 41).name -ceq 'MainFrontend') 'MainRoot is renamed without changing UID 41.'
 Assert-True (($production.entries | Where-Object uid -EQ 42).name -ceq 'Tray') 'TrayRoot is renamed without changing UID 42.'
 Assert-True (@($production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'Frontend' -and $_.kind -ceq 'block' }).Count -eq 1) 'The resident has one Frontend wrapper declaration.'
@@ -310,7 +313,7 @@ Assert-True (-not $zigSource.Contains('"Program" ,') -and -not $zigSource.Contai
 Assert-True (-not $zigSource.Contains('pub const @"MainWindow"')) 'The resident table excludes child window process blocks.'
 Assert-True ($zigSource.Contains('.uid = 109, .storage = .reference, .value_type = .host') -and $zigSource.Contains('pub const @"BackendSession" = 109;')) 'The full resident backend session maps to a host-valued reference.'
 $session = $production.entries | Where-Object uid -EQ 109
-Assert-True ($session.owner.block -eq 44 -and $session.type -ceq 'ResourceManager.NativeUi.LegacyStateItems.DesktopBackendSession') 'The complete session has the backend connection as its sole owner and a concrete host payload type.'
+Assert-True ($session.owner.block -eq 44 -and $session.type -ceq 'ResourceManager.Desktop.main.Session') 'The complete session has the backend connection as its sole owner and a concrete host payload type.'
 Assert-True (@($production.entries | Where-Object kind -CEQ 'condition' | ForEach-Object items | Where-Object item -EQ 109).Count -eq 0) 'No decision condition reads a host payload.'
 Write-StateRegistry $path (Get-Fixture)
 & $tool -Action Rename -Registry $path -Uid 1 -Name MainFrontend -Comment 'Renamed wrapper.'

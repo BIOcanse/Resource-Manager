@@ -28,6 +28,7 @@ internal static class MonitoringSettings
             SessionBuffers(freedom, BackendFreedomPointPaths.VidMmSessionBuffers),
             SessionBuffers(freedom, BackendFreedomPointPaths.GpuAllocationSessionBuffers),
             SessionBuffers(freedom, BackendFreedomPointPaths.PresentSessionBuffers),
+            freedom.Consume<PerformanceOverlayOptions>(BackendFreedomPointPaths.PerformanceOverlay, Consumer).ToDefaults(),
             freedom.Consume<FramePipelineOptions>(BackendFreedomPointPaths.FramePipeline, Consumer).Validate());
     }
 

@@ -2,7 +2,8 @@ const std = @import("std");
 pub const max_line = 16 * 1024; // Includes LF; limit is bytes, not characters.
 pub const BackendSession = struct { ready: bool = false, generation: i64 = 0, reason: ?[]const u8 = null };
 pub const ShowCommand = enum { show, @"show-passive", @"show-passive-secondary" };
-pub const Scope = enum { frontend, backend };
+/// The window process reports only frontend preference changes; backend settings reach the resident by subscription.
+pub const Scope = enum { frontend };
 pub const StopOutcome = enum { normal, deadline_terminated, wait_cancelled };
 pub const StopResult = struct { outcome: StopOutcome, elapsed_ms: u64, exit_code: u32 };
 pub const Event = union(enum) {

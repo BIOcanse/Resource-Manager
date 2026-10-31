@@ -5,6 +5,7 @@ import {
   decodeEditableHotkey,
   encodeEditableHotkey,
   hotkeyKeyOptions,
+  isDestructiveHotkeyAction,
   isSafeDestructiveHotkeyEncoding
 } from "../editableHotkeys";
 import type { SettingsTextBundle } from "../../../text.ts";
@@ -17,16 +18,24 @@ const addKeyDefaults = [17, 18, 46, 123];
 
 export function EditableHotkeyEditor(props: {
   hotkey: AppEditableHotkeySettings;
+  title: string;
+  description: string;
+  /** 会强制结束进程的动作给出的警告；其他动作不显示。 */
+  warning?: string;
   labels: SettingsTextBundle["systemIntegration"];
   onChange: (hotkey: AppEditableHotkeySettings) => void;
 }) {
   const model = () => decodeEditableHotkey(props.hotkey.encoding);
-  const safeToEnable = () => isSafeDestructiveHotkeyEncoding(props.hotkey.encoding);
+  const destructive = () => isDestructiveHotkeyAction(props.hotkey.actionId);
+  // 能不能启用：强制结束类动作要有批准的修饰键和一个非修饰键（后端同一规则），其他动作至少要有一个键。
+  const canEnable = (encoding: readonly number[]) => destructive()
+    ? isSafeDestructiveHotkeyEncoding(encoding) : decodeEditableHotkey(encoding).keys.length > 0;
+  const safeToEnable = () => canEnable(props.hotkey.encoding);
   const commit = (keys: number[], relations: Array<0 | 1>, enabled = props.hotkey.enabled) => {
     const encoding = encodeEditableHotkey({ keys, relations });
     props.onChange({
       ...props.hotkey,
-      enabled: enabled && isSafeDestructiveHotkeyEncoding(encoding),
+      enabled: enabled && canEnable(encoding),
       encoding
     });
   };
@@ -63,13 +72,13 @@ export function EditableHotkeyEditor(props: {
     <div class="settings-hotkey-editor">
       <div class="settings-hotkey-editor-head">
         <div class="settings-row-copy">
-          <strong>{props.labels.forceTerminateTitle}</strong>
-          <span>{props.labels.forceTerminateDescription}</span>
-          <Show when={!safeToEnable()}><span role="note">{uiText.hotkeyEditor.destructiveModifierRequired}</span></Show>
+          <strong>{props.title}</strong>
+          <span>{props.description}</span>
+          <Show when={destructive() && !safeToEnable()}><span role="note">{uiText.hotkeyEditor.destructiveModifierRequired}</span></Show>
         </div>
-        <SwitchControl ariaLabel={props.labels.forceTerminateTitle} checked={props.hotkey.enabled} disabled={!safeToEnable()} onChange={(checked) => commit(model().keys, model().relations, checked)} />
+        <SwitchControl ariaLabel={props.title} checked={props.hotkey.enabled} disabled={!safeToEnable()} onChange={(checked) => commit(model().keys, model().relations, checked)} />
       </div>
-      <div class="settings-hotkey-warning">{props.labels.forceTerminateWarning}</div>
+      <Show when={props.warning}>{(warning) => <div class="settings-hotkey-warning">{warning()}</div>}</Show>
       <Show when={model().keys.length > 0} fallback={<div class="settings-hotkey-empty">{props.labels.hotkeyEmpty}</div>}>
         <div class="settings-hotkey-keys">
           <For each={model().keys}>

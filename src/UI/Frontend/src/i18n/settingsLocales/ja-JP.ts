@@ -350,6 +350,8 @@ export default createSettingsLocale("ja-JP", {
     "forceTerminateTitle": "強制終了のショートカット",
     "forceTerminateDescription": "前面のアプリと、応答しない表示中のウィンドウを持つすべてのアプリを終了します。初期状態では無効です。",
     "forceTerminateWarning": "このショートカットは即座にプロセスを終了し、未保存の内容は失われます。有効にするには Ctrl、Alt、Win のいずれかと通常のキーの組み合わせが必要です。",
+    "performanceOverlayHotkeyTitle": "パフォーマンス オーバーレイのショートカット",
+    "performanceOverlayHotkeyDescription": "前面のソフトウェアのパフォーマンス オーバーレイをオンまたはオフにします。結果はトレイの通知で表示されます。初期状態では無効です。",
     "hotkeyEmpty": "キーが未設定です",
     "hotkeyAddKey": "キーを追加",
     "hotkeyKeyLabel": "キー",

@@ -1,8 +1,9 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$WorkRoot,
+    [string]$WorkRoot = $env:RM_LEDGER_WORK_ROOT,
     [string]$Profile = 'default',
-    [string]$GeneratorPath,
+    [string]$GeneratorPath = $env:RM_DESKTOP_GENERATOR,
+    [switch]$ConsumersOnly,
     [string[]]$BuildProperties = @(),
     # Outside a JobQueue job the generator build is queued; defaults to <ToolsRoot>\JobQueue\JobQueue.ps1 (scripts/dev/MachineRoots.psm1).
     [string]$Queue
@@ -10,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 [Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-if (-not [IO.Path]::IsPathFullyQualified($WorkRoot)) { throw 'WorkRoot must be an absolute running registered workspace.' }
+if (-not $WorkRoot -or -not [IO.Path]::IsPathFullyQualified($WorkRoot)) { throw 'WorkRoot must be an absolute running registered workspace.' }
 $WorkRoot = [IO.Path]::GetFullPath($WorkRoot)
 $cursor = $WorkRoot
 $registered = $false
@@ -47,5 +48,21 @@ if (-not $GeneratorPath) {
     if ($LASTEXITCODE -ne 0) { throw "Desktop generator build failed: $LASTEXITCODE" }
     $GeneratorPath = Join-Path $artifacts 'bin/ResourceManager.DesktopBuild/release/ResourceManager.DesktopBuild.dll'
 }
-& dotnet @([IO.Path]::GetFullPath($GeneratorPath), $repository, $output, $Profile)
+$generationArgs = @([IO.Path]::GetFullPath($GeneratorPath), $repository, $output, $Profile)
+if ($ConsumersOnly) { $generationArgs += 'consumers' }
+& dotnet @generationArgs
 if ($LASTEXITCODE -ne 0) { throw "Desktop projection failed: $LASTEXITCODE" }
+$generation = Get-Content -LiteralPath (Join-Path $output 'generation.json') -Raw | ConvertFrom-Json
+$declarationHash = (Get-FileHash -LiteralPath (Join-Path $repository 'src/Development/DesktopBuild/desktop.points.json') -Algorithm SHA256).Hash
+if ($generation.consumerProjectionVersion -ne 1 -or $generation.sourceSeal -cne $declarationHash -or $generation.profile -cne $Profile) {
+    throw 'Desktop consumer projection is missing, stale or selected for another profile; rebuild the generator from this checkout.'
+}
+foreach ($entry in @(
+    @{ Path = (Join-Path $output 'DesktopPoints.Values.g.cs'); Hash = $generation.csharpValuesSha256 },
+    @{ Path = (Join-Path $output 'desktopPoints.values.ts'); Hash = $generation.typeScriptValuesSha256 },
+    @{ Path = (Join-Path $repository 'src/UI/Frontend/src/preferences/generated/desktopPoints.values.ts'); Hash = $generation.typeScriptValuesSha256 }
+)) {
+    if (-not (Test-Path -LiteralPath $entry.Path -PathType Leaf) -or (Get-FileHash -LiteralPath $entry.Path -Algorithm SHA256).Hash -cne $entry.Hash) {
+        throw "Desktop consumer selected values do not match the completed SDK generation: $($entry.Path)"
+    }
+}

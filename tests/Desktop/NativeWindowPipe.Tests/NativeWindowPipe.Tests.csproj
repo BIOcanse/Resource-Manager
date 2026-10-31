@@ -13,8 +13,8 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
     <Using Include="Xunit" />
     <ProjectReference Include="../../../src/UI/Core/ResourceManager.NativeUi.csproj" />
-    <!-- Exercise the unchanged standalone composition while layout step 6 still owns its removal. -->
-    <Compile Include="../../App/NativeUi*.cs" Link="Legacy/%(Filename)%(Extension)" />
+    <!-- The window process's own tests that live in the App suite: WebView host, proxy, window chrome and startup. -->
+    <Compile Include="../../App/NativeUi*.cs" Link="Window/%(Filename)%(Extension)" />
     <Compile Include="../../App/BackendFrontendProxyTests.cs" Link="Security/BackendFrontendProxyTests.cs" />
     <Compile Include="../../App/EnvironmentVariableFactAttribute.cs" Link="Security/EnvironmentVariableFactAttribute.cs" />
   </ItemGroup>

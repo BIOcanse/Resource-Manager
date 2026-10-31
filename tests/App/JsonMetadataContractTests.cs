@@ -409,8 +409,8 @@ public sealed partial class JsonMetadataContractTests
             typeof(ResourceManager.NativeUi.BackendServiceSession).Assembly })
         foreach (var name in new[] { "ManagementInventoryJsonContext", "SoftwareContentJsonContext", "TrustedAccessInvocationJsonContext",
             "UserShellExecuteJsonContext", "LoginStartupJsonContext",
-            "PackageRuntimeCatalogJson", "StartupModuleStorageJson", "OverlayStartupModulesJson",
-            "NativeBackendProbeJsonContext", "DeviceFingerprintJsonContext", "MetricCatalogJsonContext", "ExternalGpuPlacementJsonContext" })
+            "PackageRuntimeCatalogJson", "StartupModuleStorageJson",
+            "DeviceFingerprintJsonContext", "MetricCatalogJsonContext", "ExternalGpuPlacementJsonContext" })
         {
             var type = assembly.GetTypes().FirstOrDefault(t => t.Name == name);
             if (type is null) continue;
@@ -475,16 +475,16 @@ public sealed partial class JsonMetadataContractTests
     {
         var plain = owner is "host-profile" or "metric-profile" or "freedom-point" or "freedom-declarations" or "software-profile"
             or "plan-identity" or "MetricCatalogJsonContext" or "ManagementInventoryJsonContext"
-            or "SoftwareContentJsonContext" or "TrustedAccessInvocationJsonContext" or "NativeBackendProbeJsonContext"
+            or "SoftwareContentJsonContext" or "TrustedAccessInvocationJsonContext"
             or "UserShellExecuteJsonContext" or "LoginStartupJsonContext"
-            or "PackageRuntimeCatalogJson" or "StartupModuleStorageJson" or "OverlayStartupModulesJson"
+            or "PackageRuntimeCatalogJson" or "StartupModuleStorageJson"
             or "DeviceFingerprintJsonContext" or "ExternalGpuPlacementJsonContext";
         var options = new JsonSerializerOptions(plain ? JsonSerializerDefaults.General : JsonSerializerDefaults.Web)
         { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
         if (owner is "host-profile" or "metric-profile" or "freedom-point" or "freedom-declarations")
             options.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
         if (owner is "plan-identity" or "MetricCatalogJsonContext" or "LoginStartupJsonContext"
-            or "PackageRuntimeCatalogJson" or "StartupModuleStorageJson" or "OverlayStartupModulesJson")
+            or "PackageRuntimeCatalogJson" or "StartupModuleStorageJson")
             options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         if (owner == "StartupModuleStorageJson") options.WriteIndented = true;
         if (owner == "software-profile") options.PropertyNameCaseInsensitive = true;

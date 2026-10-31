@@ -27,10 +27,15 @@ internal sealed partial class FrontendPreferencesOwner
     {
         if (dashboardInitialized) return;
         var current = pointValues;
+        JsonObject? overlays = null;
         if (File.Exists(cachePath))
         {
-            using var stream = Configuration.SettingsFileReader.Open(cachePath);
-            current = JsonSerializer.Deserialize<FrontendPreferences>(stream, Json)
+            JsonObject node;
+            using (var stream = Configuration.SettingsFileReader.Open(cachePath))
+                node = JsonNode.Parse(stream) as JsonObject ?? throw new InvalidDataException("Frontend preferences cache must be an object.");
+            // Overlay entries waiting for the backend migration stay in the file (FrontendPreferencesOwner.OverlayMigration.cs).
+            overlays = TakeLegacyOverlays(node);
+            current = node.Deserialize<FrontendPreferences>(Json)
                 ?? throw new InvalidDataException("Frontend preferences cache is empty.");
             current.Validate();
         }
@@ -51,7 +56,9 @@ internal sealed partial class FrontendPreferencesOwner
                     using var document = JsonDocument.Parse(image.ToJsonString());
                     var next = current with { Dashboard = document.RootElement.Clone() };
                     next.Validate();
-                    WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(next, Json));
+                    var written = JsonSerializer.SerializeToNode(next, Json)!.AsObject();
+                    if (overlays is not null) written["overlays"] = overlays;
+                    WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(written, Json));
                 }
                 catch (Exception error) when (error is JsonException or InvalidDataException)
                 {

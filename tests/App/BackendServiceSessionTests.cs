@@ -26,114 +26,14 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class BackendServiceSessionTests
 {
-    [Theory]
-    [InlineData("elevated-administrator-required")]
-    [InlineData("access-scope-required")]
-    public async Task TerminationReportsBackendDenialAfterOneOrdinaryRequest(string error)
-    {
-        var requests = 0;
-        using var session = new BackendServiceSession("http://127.0.0.1:1/", () => string.Empty,
-            () => new(1, 1, "unused-test-backend.exe"),
-            handlerFactory: () => new DeniedTerminationHandler(async request =>
-            {
-                requests++;
-                Assert.Equal(HttpMethod.Post, request.Method);
-                Assert.Equal("/api/system/processes/terminate", request.RequestUri!.AbsolutePath);
-                Assert.False(request.Headers.Contains(TrustedAccessHeaders.KeyHeader));
-                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
-                var target = Assert.Single(body.RootElement.GetProperty("targets").EnumerateArray());
-                Assert.Equal(71, target.GetProperty("processId").GetInt32());
-                Assert.Equal("132537599910000000", target.GetProperty("processStartKey").GetString());
-                return new HttpResponseMessage(HttpStatusCode.Forbidden)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(new { error, message = "denied" }),
-                        Encoding.UTF8, "application/json")
-                };
-            }));
-        session.PrepareWindowTransport();
-        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => session.TerminateProcessesAsync(
-            [new(71, "132537599910000000")], default));
-        Assert.Equal("denied", failure.Message);
-        Assert.Equal(1, requests);
-    }
-
-    private sealed class DeniedTerminationHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send)
-        : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => send(request);
-    }
-
-    [Fact]
-    public async Task TrayStreamRequestsOnlyTheNotificationSelectorUsingCurrentCredentials()
-    {
-        await using var backend = await Backend.StartAsync(enabled: true);
-        using var session = backend.Session();
-        await session.EnsureConnectedAsync(default);
-        using (var response = await session.OpenTrayNotificationStreamAsync(default))
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var requestBody = Assert.Single(backend.SubscriptionBodies);
-        using (var body = JsonDocument.Parse(requestBody))
-        {
-            Assert.Equal(1, body.RootElement.GetProperty("version").GetInt32());
-            var subscription = Assert.Single(body.RootElement.GetProperty("subscriptions").EnumerateArray());
-            Assert.Equal("notifications", subscription.GetProperty("id").GetString());
-            Assert.Equal("/api/notifications/subscribe", subscription.GetProperty("path").GetString());
-        }
-        // The two domain streams the old tray notices subscribed are no longer part of the tray request.
-        Assert.DoesNotContain("updates", requestBody);
-        Assert.DoesNotContain("access-requests", requestBody);
-        Assert.DoesNotContain(TrustedAccessApiContract.AccessRequestsSubscriptionPath, requestBody);
-        Assert.Equal(backend.CurrentKey, backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
-        await backend.SetDefaultAsync(false);
-        var denied = await Assert.ThrowsAsync<HttpRequestException>(() => session.OpenTrayNotificationStreamAsync(default));
-        Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
-        Assert.Null(backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
-        await backend.SetDefaultAsync(true);
-        using (var response = await session.OpenTrayNotificationStreamAsync(default))
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(3, backend.KeyReads);
-        Assert.Equal(backend.CurrentKey, backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
-    }
-
-    [Fact]
-    public async Task ProductUpdateStreamUsesUnifiedSubscriptionAndReadsCurrentKeyForEveryRequest()
-    {
-        await using var backend = await Backend.StartAsync(enabled: true);
-        using var session = backend.Session();
-        await session.EnsureConnectedAsync(default);
-        using (var response = await session.OpenProductUpdateStreamAsync(default))
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(1, backend.KeyReads);
-        var firstKey = backend.CurrentKey;
-        Assert.Equal(firstKey, backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
-        using (var request = JsonDocument.Parse(Assert.Single(backend.SubscriptionBodies)))
-        {
-            Assert.Equal(1, request.RootElement.GetProperty("version").GetInt32());
-            var subscription = Assert.Single(request.RootElement.GetProperty("subscriptions").EnumerateArray());
-            Assert.Equal("updates", subscription.GetProperty("id").GetString());
-            Assert.Equal("/api/updates/product/status/subscribe", subscription.GetProperty("path").GetString());
-        }
-        await backend.SetDefaultAsync(false);
-        var denied = await Assert.ThrowsAsync<HttpRequestException>(() => session.OpenProductUpdateStreamAsync(default));
-        Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
-        Assert.Equal(2, backend.KeyReads);
-        Assert.Null(backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
-        await backend.SetDefaultAsync(true);
-        using (var response = await session.OpenProductUpdateStreamAsync(default))
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(3, backend.KeyReads);
-        Assert.Equal(backend.CurrentKey, backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
-    }
-
     [Fact]
     public async Task EmptyDefaultColdStartIsReadyAndProtectedProxyKeepsTheBackendDenial()
     {
         await using var backend = await Backend.StartAsync(enabled: false);
         using var session = backend.Session();
-        Assert.Equal(NativeUiText.Current.StatusReady, await session.EnsureConnectedAsync(default));
+        session.PrepareWindowTransport();
         Assert.Equal(0, backend.KeyReads);
-        Assert.All(backend.Requests, item => Assert.True(item.Key is null, "The reachability probe must not send a key."));
+        Assert.Empty(backend.Requests);
         Assert.Empty(await backend.Keys.ListAsync(default));
         await using var proxy = new FrontendLoopbackProxy(backend.Address, session.SendFrontendRequestAsync);
         await proxy.StartAsync();
@@ -149,13 +49,11 @@ public sealed class BackendServiceSessionTests
     }
 
     [Fact]
-    public async Task DisablingDefaultDoesNotLoseReachabilityOrSendTheOldKey()
+    public async Task DisablingDefaultDoesNotSendTheOldKey()
     {
         await using var backend = await Backend.StartAsync(enabled: true);
         using var session = backend.Session();
-        var lost = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        session.AvailabilityLost += (_, _) => lost.TrySetResult();
-        await session.EnsureConnectedAsync(default);
+        session.PrepareWindowTransport();
         await using var proxy = new FrontendLoopbackProxy(backend.Address, session.SendFrontendRequestAsync);
         await proxy.StartAsync();
         using var client = Client(proxy);
@@ -164,20 +62,13 @@ public sealed class BackendServiceSessionTests
         var oldKey = backend.CurrentKey;
         Assert.Equal(1, backend.KeyReads);
         await backend.SetDefaultAsync(false);
-        // Initial probe plus three real monitor probes: the old implementation
-        // publishes availability loss instead of reaching this barrier.
-        var completed = await Task.WhenAny(backend.FourProbes.Task, lost.Task).WaitAsync(TimeSpan.FromSeconds(20));
-        Assert.Same(backend.FourProbes.Task, completed);
-        Assert.False(lost.Task.IsCompleted);
         Assert.Equal(1, backend.KeyReads);
-        Assert.Equal(NativeUiText.Current.StatusReady, await session.EnsureConnectedAsync(default));
         using var after = Request(proxy, "/api/access-keys");
         using var denied = await client.SendAsync(after);
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         Assert.True(backend.Requests.Last(item => item.Path == "/api/access-keys").Key is null);
         Assert.False(string.IsNullOrEmpty(oldKey));
-        Assert.All(backend.Requests.Where(item => item.Path == "/api/runtime/capabilities"),
-            item => Assert.True(item.Key is null, "The reachability probe must not send a key."));
+
     }
 
     [Fact]
@@ -185,7 +76,7 @@ public sealed class BackendServiceSessionTests
     {
         await using var backend = await Backend.StartAsync(enabled: false);
         using var session = backend.Session();
-        await session.EnsureConnectedAsync(default);
+        session.PrepareWindowTransport();
         await using var proxy = new FrontendLoopbackProxy(backend.Address, session.SendFrontendRequestAsync);
         await proxy.StartAsync();
         using var client = Client(proxy);
@@ -211,7 +102,7 @@ public sealed class BackendServiceSessionTests
     {
         await using var backend = await Backend.StartAsync(enabled: true);
         using var session = backend.Session();
-        await session.EnsureConnectedAsync(default);
+        session.PrepareWindowTransport();
         using (var warm = new HttpRequestMessage(HttpMethod.Get, new Uri(backend.Address, "/api/access-keys")))
         using (var response = await session.SendFrontendRequestAsync(warm, default)) Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var forwardedBeforeFailure = backend.Requests.Count(item => item.Path == "/api/access-keys");
@@ -239,7 +130,6 @@ public sealed class BackendServiceSessionTests
             Assert.True(backend.Requests.Last(item => item.Path == path).Key is null);
         }
         Assert.Equal(4, backend.KeyReads);
-        Assert.Equal(NativeUiText.Current.StatusReady, await session.EnsureConnectedAsync(default));
         backend.ReadFailure = null; // Same file identity: a failed read must not have cached the old secret.
         using var restored = Request(proxy, "/api/access-keys");
         using var recovered = await client.SendAsync(restored);
@@ -253,7 +143,7 @@ public sealed class BackendServiceSessionTests
         await using var backend = await Backend.StartAsync(enabled: false);
         File.Delete(backend.NativeKeyPath);
         using var session = backend.Session();
-        await session.EnsureConnectedAsync(default);
+        session.PrepareWindowTransport();
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(backend.Address, "/api/access-keys"));
         await Assert.ThrowsAsync<IOException>(() => session.SendFrontendRequestAsync(request, default));
         Assert.DoesNotContain(backend.Requests, item => item.Path == "/api/access-keys");
@@ -276,10 +166,7 @@ public sealed class BackendServiceSessionTests
         private readonly NativeTrustedAccessKeyReader reader;
         private WebApplication app = null!;
         private int keyReads;
-        private int probes;
         public readonly ConcurrentQueue<(string Path, string? Key)> Requests = new();
-        public readonly ConcurrentQueue<string> SubscriptionBodies = new();
-        public readonly TaskCompletionSource FourProbes = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Exception? ReadFailure { get; set; }
         public ITrustedAccessKeyService Keys { get; }
         public int KeyReads => Volatile.Read(ref keyReads);
@@ -324,25 +211,12 @@ public sealed class BackendServiceSessionTests
                     fixture.Requests.Enqueue((context.Request.Path.Value!, context.Request.Headers.TryGetValue(
                         TrustedAccessHeaders.KeyHeader, out var key) ? key.ToString() : null));
                     await next(context);
-                    if (context.Request.Path == "/api/runtime/capabilities" && Interlocked.Increment(ref fixture.probes) >= 4)
-                        fixture.FourProbes.TrySetResult();
                 });
                 pipeline.ConfigureApplication(fixture.app);
                 fixture.app.MapGet("/api/runtime/capabilities", () => Results.Json(new { profileId = "native-recovery-test" }));
                 fixture.app.MapGet("/", () => Results.Content("<!doctype html><title>Recovery</title>", "text/html"));
                 fixture.app.MapGet("/assets/recovery.js", () => Results.Text("/* recovery shell */", "application/javascript"));
                 fixture.app.MapTrustedAccessEndpoints();
-                fixture.app.MapPost("/api/subscriptions/stream", async Task<IResult> (HttpContext context) =>
-                {
-                    // This fake stream does not compile selectors like the production endpoint;
-                    // explicitly model its denied-credential response before returning frames.
-                    if (!context.Request.Headers.TryGetValue(TrustedAccessHeaders.KeyHeader, out var key)
-                        || string.IsNullOrEmpty(fixture.CurrentKey) || key.ToString() != fixture.CurrentKey)
-                        return Results.Unauthorized();
-                    using var reader = new StreamReader(context.Request.Body);
-                    fixture.SubscriptionBodies.Enqueue(await reader.ReadToEndAsync());
-                    return Results.Text("{\"subscriptionId\":\"updates\",\"value\":{\"availableVersion\":null}}\n", "application/x-ndjson");
-                });
                 await fixture.app.StartAsync();
                 return fixture;
             }

@@ -350,6 +350,8 @@ export default createSettingsLocale("es-ES", {
     "forceTerminateTitle": "Atajo de cierre forzado",
     "forceTerminateDescription": "Cerrar la aplicación en primer plano y todas las que tengan ventanas visibles sin respuesta. Desactivado por defecto.",
     "forceTerminateWarning": "Este atajo termina los procesos inmediatamente y se pierde el trabajo sin guardar. Debe incluir Ctrl, Alt o Win y una tecla que no sea modificadora.",
+    "performanceOverlayHotkeyTitle": "Atajo de la superposición de rendimiento",
+    "performanceOverlayHotkeyDescription": "Activar o desactivar la superposición de rendimiento del software en primer plano. El resultado se muestra en una notificación de la bandeja. Desactivado por defecto.",
     "hotkeyEmpty": "No hay teclas configuradas",
     "hotkeyAddKey": "Añadir tecla",
     "hotkeyKeyLabel": "Tecla",

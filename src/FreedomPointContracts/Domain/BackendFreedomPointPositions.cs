@@ -16,6 +16,7 @@ internal static class BackendFreedomPointPositions
     public const ulong PresentSessionBuffers = 0x0001000200050007UL;
     public const ulong NativeBuildPolicy = 0x0001000200050008UL;
     public const ulong FramePipeline = 0x0001000200050009UL;
+    public const ulong PerformanceOverlay = 0x000100020005000AUL;
     public const ulong ObservationWindowMs = 0x0001000200080000UL;
     public const ulong ExecutionTimeSource = 0x0001000200090000UL;
     public const ulong SubscriptionIntervalMs = 0x00010002000C0000UL;

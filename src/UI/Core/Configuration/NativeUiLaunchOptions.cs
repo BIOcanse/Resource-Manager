@@ -1,34 +1,22 @@
 namespace ResourceManager.NativeUi;
 
-internal sealed record NativeUiLaunchOptions(
-    bool StartInBackground,
-    string? SingleInstanceCommand)
+/// <summary>
+/// The single-instance command named by a command line that started this program without the resident's pipe.
+/// The flags are the ones persistent entries and scripts already pass; <see cref="ResidentHandoff"/> forwards the
+/// command to the resident unchanged.
+/// </summary>
+internal static class NativeUiLaunchOptions
 {
-    public static NativeUiLaunchOptions Parse(IReadOnlyList<string> args)
+    public static string ParseCommand(IReadOnlyList<string> args)
     {
-        if (args.Any(static arg => arg.Equals("--exit-existing", StringComparison.OrdinalIgnoreCase)))
-        {
-            return new NativeUiLaunchOptions(false, "exit");
-        }
-
-        if (args.Any(static arg => arg.Equals("--show-existing", StringComparison.OrdinalIgnoreCase)))
-        {
-            return new NativeUiLaunchOptions(false, "show");
-        }
-
-        if (args.Any(static arg => arg.Equals("--show-existing-passive", StringComparison.OrdinalIgnoreCase)))
-        {
-            return new NativeUiLaunchOptions(false, "show-passive");
-        }
-
-        if (args.Any(static arg => arg.Equals("--show-existing-passive-secondary", StringComparison.OrdinalIgnoreCase)))
-        {
-            return new NativeUiLaunchOptions(false, "show-passive-secondary");
-        }
-
-        var background = args.Any(static arg => arg.Equals("--background-startup", StringComparison.OrdinalIgnoreCase));
-        return new NativeUiLaunchOptions(
-            background,
-            background ? "ensure-running" : null);
+        if (Has(args, "--exit-existing")) return "exit";
+        if (Has(args, "--show-existing")) return "show";
+        if (Has(args, "--show-existing-passive")) return "show-passive";
+        if (Has(args, "--show-existing-passive-secondary")) return "show-passive-secondary";
+        if (Has(args, "--background-startup")) return "ensure-running";
+        return "show";
     }
+
+    private static bool Has(IReadOnlyList<string> args, string flag)
+        => args.Any(arg => arg.Equals(flag, StringComparison.OrdinalIgnoreCase));
 }

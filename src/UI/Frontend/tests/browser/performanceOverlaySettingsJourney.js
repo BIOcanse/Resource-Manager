@@ -5,14 +5,14 @@ import { fileURLToPath } from "node:url";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
-import { pointOverlayPresentation } from "../../src/preferences/frontendPreferences.ts";
 import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { NOT_GHOST } from "./liveLocator.js";
 
 const injectedModules = ["performance-overlay-preload", "performance-overlay-vulkan"];
-const overlay = (patch) => ({ ...pointOverlayPresentation(), ...patch });
+// 浮窗设置是后端设置 performanceOverlay 的条目：省略的字段由后端展开成默认值（docs/frontend_block_trees_2026-10-26.md）。
+const overlay = (patch) => patch;
 const item = (kind, id) => ({ kind, id, source: "auto", intervalMs: null, syncPrecision: "mid" });
-// 多软件的情形：外置、注入（模块已登记）各一个启用；一个关闭、一个注入但模块没有登记（浮层分页按未启用读），都不列出；
+// 多软件的情形：外置、注入（模块已登记）、注入但模块没有登记（开关是后端的值，照样列出）各一个启用；一个关闭的不列出；
 // 一个启用但软件列表里已经没有它，按软件 ID 列出、不能打开。
 const mixed = {
   overlays: {
@@ -34,9 +34,9 @@ const mixed = {
  * 设置 → 性能浮层（外观之后）：启用浮层的软件总览。
  * - 没有：写没有软件启用，并说明在软件详细信息的浮层分页里启用；
  * - 一个外置：一行，写显示方式、指标数和位置；按钮打开这个软件的详细信息并停在浮层分页，关上后总览重新读；
- * - 多个混合：只列启用的（注入要模块已登记，与浮层分页同一读法），软件列表里没有的按 ID 列出且不能打开；
+ * - 多个混合：只列后端设置里启用的，软件列表里没有的按 ID 列出且不能打开；
  * - 九种语言在 1280×800 和 800×600 下不溢出、没有被截掉的按钮；简体中文和英文截图。
- * 只读前端偏好和浮层分页本来就读的启动模块登记。
+ * 只读后端设置的 performanceOverlay 一节和浮层分页本来就读的启动模块登记。
  */
 export default async function performanceOverlaySettingsJourney(page, baseUrl) {
   const shots = process.env.RM_BROWSER_ARTIFACT_DIR
@@ -50,9 +50,20 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
     });
     assert.ok(response.ok, "Scenario update failed");
   };
+  // 后端设置里整节换成这些条目：已有而这里没有的软件写 null 删掉。
+  const writeBackendOverlays = async (overlays) => {
+    const current = await (await fetch(`${baseUrl}/api/settings/app`)).json();
+    const software = Object.fromEntries(Object.keys(current.settings.performanceOverlay?.software ?? {}).map(id => [id, null]));
+    const response = await fetch(`${baseUrl}/api/settings/app`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedRevision: current.revision, changes: { performanceOverlay: { software: { ...software, ...overlays } } } })
+    });
+    assert.ok(response.ok, "Backend overlay settings fixture failed");
+  };
   const prepare = async ({ overlays, software = [], modules = [] }, language) => {
     await scenario({ extraSoftware: software, startupModuleSelections: modules });
-    await writeFrontendPreferences(page, (value) => { value.overlays = overlays; value.appearance.language = language; });
+    await writeBackendOverlays(overlays);
+    await writeFrontendPreferences(page, (value) => { value.appearance.language = language; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(expected => document.documentElement.lang === expected, language);
   };
@@ -113,7 +124,7 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
     assert.ok(await dialog.getByRole("tab", { name: app.performanceOverlay.tab, exact: true, selected: true }).isVisible(), `${language}: the detail dialog left the overlay tab`);
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "hidden" });
-    await writeFrontendPreferences(page, (value) => { value.overlays["frontend-harness.software"].anchor = "bottomLeft"; });
+    await writeBackendOverlays({ "frontend-harness.software": { ...mixed.overlays["frontend-harness.software"], anchor: "bottomLeft" } });
     await page.getByRole("button", { name: settings.performanceOverlay.openLabel("示例软件"), exact: true }).click();
     await dialog.getByRole("tab", { name: app.performanceOverlay.tab, exact: true, selected: true }).waitFor();
     await page.keyboard.press("Escape");
@@ -123,9 +134,10 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
     // 多个混合。
     await prepare(mixed, language);
     ({ app, settings, panel } = await openSection(language));
-    await rowsOf(panel).nth(2).waitFor();
+    await rowsOf(panel).nth(3).waitFor();
     const ids = await rowsOf(panel).evaluateAll(rows => rows.map(row => row.dataset.softwareId));
-    assert.deepEqual([...ids].sort(), ["frontend-harness.software", "overlay.injected.app", "overlay.removed.app"], `${language}: wrong rows ${ids}`);
+    assert.deepEqual([...ids].sort(), ["frontend-harness.software", "overlay.injected.app", "overlay.removed.app", "overlay.unregistered.app"],
+      `${language}: wrong rows ${ids}`);
     const injected = rowsOf(panel).filter({ hasText: "Injected Sample" });
     assert.equal((await injected.locator(".settings-row-copy span:not([role='note'])").textContent()).trim(), [app.performanceOverlay.injected,
       settings.performanceOverlay.itemCount(1), settings.performanceOverlay.position(app.performanceOverlay.bottomLeft)].join(" · "));
@@ -145,7 +157,7 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
   for (const option of languageOptions.filter(option => option.id !== "system")) {
     await prepare(mixed, option.id);
     const { panel } = await openSection(option.id);
-    await rowsOf(panel).nth(2).waitFor();
+    await rowsOf(panel).nth(3).waitFor();
     await page.waitForFunction(() => !document.querySelector(".settings-content > [data-exit-ghost]"));
     for (const size of [{ width: 1280, height: 800 }, { width: 800, height: 600 }]) {
       await page.setViewportSize(size);

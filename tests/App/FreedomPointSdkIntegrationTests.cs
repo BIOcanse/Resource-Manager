@@ -12,6 +12,26 @@ namespace Resource_Manager_APP.Tests;
 public sealed class FreedomPointSdkIntegrationTests
 {
     [Fact]
+    public void OverlayDefaultsAndTheirConsumerLimitComeFromTheDeclaredPoint()
+    {
+        var registry = FreedomPointTestFactory.Load(root =>
+        {
+            var value = FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.PerformanceOverlay)["value"]!;
+            value["default_font_size_px"] = 23;
+            value["maximum_items"] = 5;
+            value["default_items"] = JsonNode.Parse("""[{"kind":"software","id":"cpu.usage","source":"resource-breakdown","intervalMs":250,"syncPrecision":"high"}]""");
+        });
+        var compilation = registry.BeginCompilation(Profile(), new(1.25, CompiledCpuCoreWeights.Empty));
+        var defaults = ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.Compile(compilation).PerformanceOverlay;
+        var entry = defaults.Complete(new());
+        Assert.Equal(23, entry.FontSizePx);
+        Assert.Equal(5, defaults.MaximumItems);
+        Assert.Equal(new ResourceManager.App.Domain.Settings.TargetedRecordingItem("software", "cpu.usage", "resource-breakdown", 250, "high"),
+            Assert.Single(entry.Items!));
+        Assert.Equal("performance-overlay-too-many-items", defaults.ValidateEntry(entry with { Items = Enumerable.Repeat(entry.Items![0], 6).ToArray() }));
+    }
+
+    [Fact]
     public void BackendGroupingDataNamesTheCurrentDeclarationContractAndGroupsTheReportPoints()
     {
         var registry = FreedomPointRegistry.LoadEmbedded().Sdk.Registry;
@@ -21,7 +41,7 @@ public sealed class FreedomPointSdkIntegrationTests
         Assert.Equal(registry.ContractFingerprint, groups["contractFingerprint"]!.GetValue<string>());
         var monitoring = groups["groups"]!.AsArray().Single(group => group!["key"]!.GetValue<string>() == "resource-manager/backend/monitoring");
         Assert.Equal(["0001000200040001", "0001000200040002", "0001000200050000", "0001000200050001", "0001000200050002",
-                "0001000200050003", "0001000200050004", "0001000200050005", "0001000200050006", "0001000200050007", "0001000200050008", "0001000200050009"],
+                "0001000200050003", "0001000200050004", "0001000200050005", "0001000200050006", "0001000200050007", "0001000200050008", "0001000200050009", "000100020005000A"],
             monitoring!["points"]!.AsArray().Select(point => point!.GetValue<string>()));
         var tiers = groups["groups"]!.AsArray().Single(group => group!["key"]!.GetValue<string>() == "resource-manager/backend/memory_cpu_tiers");
         Assert.Equal(Enumerable.Range(0, 12).Select(static index => $"00010002003500{index:X2}"),
@@ -52,8 +72,8 @@ public sealed class FreedomPointSdkIntegrationTests
                     .Select(attribute => (Member: member, Path: PointPath.FromRaw(attribute.Path)))))
             .ToArray();
         // Kernel ETW and native policy each have one managed SDK projection in addition to their plan binding.
-        Assert.Equal(79, members.Length);
-        Assert.Equal(77, members.Select(static m => m.Path).Distinct().Count());
+        Assert.Equal(80, members.Length);
+        Assert.Equal(78, members.Select(static m => m.Path).Distinct().Count());
         Assert.All(registry.Points, point =>
         {
             if (point.Status == DeclarationStatus.Active)
@@ -105,7 +125,7 @@ public sealed class FreedomPointSdkIntegrationTests
         var cpu = new CompiledCpuScoringPlan(1.25, CompiledCpuCoreWeights.Empty);
         var compilation = host.BeginCompilation(Profile(), cpu);
         // Includes build-selected optimization, persistence and native policy declarations.
-        Assert.Equal(77, compilation.Facts.Items.Length);
+        Assert.Equal(78, compilation.Facts.Items.Length);
         // The native kernel owner adds one active compiled limits declaration.
         _ = compilation.Facts.Require(host.Sdk.RequirePath(BackendFreedomPointPaths.KernelEtwLimits));
         var availability = host.Sdk.RequirePath(BackendFreedomPointPaths.HardwareBridgeAvailabilityCheckInterval);

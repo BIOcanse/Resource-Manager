@@ -21,6 +21,7 @@ import { decodeCrashDumpDiagnostics } from "./crashDumpDiagnosticsDecoder.ts";
 import { decodeReportSettings } from "./reportRuleSettingsDecoder.ts";
 import { decodeHostMemoryProtectionSettings } from "../memoryProtection/memoryProtectionDecoders.ts";
 import { decodeMemoryCpuTierSettings } from "../memoryCpuTier/memoryCpuTierDecoder.ts";
+import { decodePerformanceOverlayAppSettings } from "./performanceOverlaySettingsDecoder.ts";
 
 export type AppSettingsApplicationDisposition = NonNullable<
   AppSettingsResult["runtimeApplicationDisposition"]
@@ -94,6 +95,10 @@ export const appSettingsResultDecoder =
       if (settingsRecord.memoryProtection !== undefined && settingsRecord.memoryProtection !== null) {
         decodeHostMemoryProtectionSettings(settingsRecord.memoryProtection, "$.settings.memoryProtection");
       }
+      const decodedSettings = { ...settingsRecord };
+      if (settingsRecord.performanceOverlay !== undefined) {
+        decodedSettings.performanceOverlay = decodePerformanceOverlayAppSettings(settingsRecord.performanceOverlay, "$.settings.performanceOverlay");
+      }
 
       const result: AppSettingsResult = {
         updatedAt: optional(record.updatedAt, "$.updatedAt", requireString),
@@ -101,7 +106,7 @@ export const appSettingsResultDecoder =
           : requireNullable(record.serviceRecovery, "$.serviceRecovery", decodeServiceRecovery),
         crashDumps: record.crashDumps === undefined ? undefined
           : requireNullable(record.crashDumps, "$.crashDumps", decodeCrashDumpDiagnostics),
-        settings: deepFreezeClone(settingsRecord) as BackendAppSettings,
+        settings: deepFreezeClone(decodedSettings) as BackendAppSettings,
         revision: requireNonEmptyString(record.revision, "$.revision"),
         storagePath: optional(record.storagePath, "$.storagePath", requireString),
         source: decodeSource(record.source),

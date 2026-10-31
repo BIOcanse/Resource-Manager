@@ -350,6 +350,8 @@ export default createSettingsLocale("de-DE", {
     "forceTerminateTitle": "Tastenkürzel zum sofortigen Beenden",
     "forceTerminateDescription": "Die fokussierte Vordergrund-App und alle Apps mit sichtbaren, nicht reagierenden Fenstern beenden. Standardmäßig deaktiviert.",
     "forceTerminateWarning": "Dieses Kürzel beendet Prozesse sofort; ungespeicherte Arbeit geht verloren. Erforderlich ist Ctrl, Alt oder Win zusammen mit einer normalen Taste.",
+    "performanceOverlayHotkeyTitle": "Tastenkürzel für das Leistungs-Overlay",
+    "performanceOverlayHotkeyDescription": "Das Leistungs-Overlay für die Software im Vordergrund ein- oder ausschalten. Das Ergebnis wird als Benachrichtigung im Infobereich angezeigt. Standardmäßig deaktiviert.",
     "hotkeyEmpty": "Keine Tasten festgelegt",
     "hotkeyAddKey": "Taste hinzufügen",
     "hotkeyKeyLabel": "Taste",

@@ -282,10 +282,10 @@ export function createFrontendSources(
       load: (signal, options) => getManagementSoftware(requestClient, signal, options),
       retainLastGood: false
     }),
-    // 设置 → 性能浮层的总览：启用了浮层的软件（前端偏好加启动模块登记，和浮层分页同一读法）。
+    // 设置 → 性能浮层的总览：后端设置里启用了浮层的软件，带启动模块登记（和浮层分页同一读法）。
     performanceOverlays: sourceRegistry.define<PerformanceOverlaySettings[]>({
       key: "settings.performance-overlays",
-      load: signal => listEnabledPerformanceOverlays(signal),
+      load: signal => listEnabledPerformanceOverlays(requestClient, signal),
       retainLastGood: false
     }),
     managementBrowserRuntimes: sourceRegistry.define({

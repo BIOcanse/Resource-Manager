@@ -12,25 +12,40 @@ pub fn build(b: *std.Build) void {
     });
     // Win32 headers go through the build's translate-C step; src/backend/c.zig imports the result.
     const win32_c = b.addTranslateC(.{ .root_source_file = b.path("src/backend/win32.h"), .target = target, .optimize = optimize }).createModule();
+    const points_root = b.option([]const u8, "points-root", "Directory containing selected points.values.zig") orelse @panic("Desktop requires -Dpoints-root=<generated Desktop points directory>");
+    const values = b.createModule(.{ .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ points_root, "points.values.zig" }) }, .target = target, .optimize = optimize });
+    const structure = b.createModule(.{ .root_source_file = b.path("src/generated/points.structure.zig"), .target = target, .optimize = optimize });
+    values.addImport("desktop_points_structure", structure);
+    const ledger = if (b.option([]const u8, "ledger-root", "Generate-DesktopLedger.ps1 WorkRoot")) |root| ledgerModules(b, root, target, optimize) else null;
     const module = b.createModule(.{ .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize });
     const states = stateItems(b, control, target, optimize, state_names);
     module.addImport("desktop_state_items", states);
-    configure(module, control, win32_c);
-    if (b.option([]const u8, "points-root", "Directory containing selected FreedomPoint values")) |root| {
-        const values = b.createModule(.{ .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ root, "points.values.zig" }) }, .target = target, .optimize = optimize });
-        const structure = b.createModule(.{ .root_source_file = b.path("src/generated/points.structure.zig"), .target = target, .optimize = optimize });
-        values.addImport("desktop_points_structure", structure);
-        module.addImport("desktop_points_values", values);
-    }
+    configure(module, control, win32_c, values, ledger);
     const executable = b.addExecutable(.{ .name = "ResourceManager.Desktop", .root_module = module });
+    if (ledger) |inputs| executable.step.dependOn(&inputs.verify.step);
     executable.subsystem = .windows;
     b.installArtifact(executable);
     const tests = b.createModule(.{ .root_source_file = b.path("src/tests.zig"), .target = target, .optimize = optimize });
     tests.addImport("desktop_state_items", states);
-    configure(tests, control, win32_c);
-    const run = b.addRunArtifact(b.addTest(.{ .root_module = tests }));
+    configure(tests, control, win32_c, values, ledger);
+    const block_filter = b.option([]const u8, "block-filter", "Run only matching block tests after a failure");
+    const block_tests = b.addTest(.{ .root_module = tests, .filters = if (block_filter) |filter| &.{filter} else &.{} });
+    if (ledger) |inputs| block_tests.step.dependOn(&inputs.verify.step);
+    b.step("check-blocks", "Compile resident block tests without input or processes").dependOn(&block_tests.step);
+    const run = b.addRunArtifact(block_tests);
     const test_step = b.step("test", "Run resident tree and block tests");
     test_step.dependOn(&run.step);
+    const memory_tests_module = b.createModule(.{ .root_source_file = b.path("src/memory_tests.zig"), .target = target, .optimize = optimize });
+    memory_tests_module.addImport("desktop_state_items", states);
+    configure(memory_tests_module, control, win32_c, values, ledger);
+    if (ledger) |inputs| memory_tests_module.addImport("ledger_values", inputs.values);
+    const memory_filter = b.option([]const u8, "memory-filter", "Run only matching Ledger/replay tests");
+    const memory_tests = b.addTest(.{ .root_module = memory_tests_module, .filters = if (memory_filter) |filter| &.{filter} else &.{} });
+    if (ledger) |inputs| memory_tests.step.dependOn(&inputs.verify.step);
+    const memory_run = b.addRunArtifact(memory_tests);
+    b.step("test-memory", "Run scoped Ledger, mock action and settings replay tests without input hooks").dependOn(&memory_run.step);
+    b.step("check-memory", "Compile scoped Ledger and replay tests without running").dependOn(&memory_tests.step);
+    test_step.dependOn(&memory_run.step);
     const pipe = b.createModule(.{ .root_source_file = b.path("src/window_process/root.zig"), .target = target, .optimize = optimize });
     const fixture_module = b.createModule(.{ .root_source_file = b.path("../../../tests/Desktop/window_process_child.zig"), .target = target, .optimize = optimize });
     fixture_module.addImport("window_process", pipe);
@@ -91,12 +106,22 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&integration_run.step);
     b.step("test-integration", "Run the resident controller with real child processes").dependOn(&integration_run.step);
     b.step("test-blocks", "Run resident declarations and block unit tests").dependOn(&run.step);
+    const overlay = b.createModule(.{ .root_source_file = b.path("src/overlay_tests.zig"), .target = target, .optimize = optimize });
+    configure(overlay, control, win32_c, values, ledger);
+    const overlay_filter = b.option([]const u8, "overlay-filter", "Run only matching overlay tests after a failure");
+    const overlay_tests = b.addTest(.{ .root_module = overlay, .filters = if (overlay_filter) |filter| &.{filter} else &.{} });
+    if (ledger) |inputs| overlay_tests.step.dependOn(&inputs.verify.step);
+    b.step("check-overlay", "Compile overlay tests without creating windows").dependOn(&overlay_tests.step);
+    const overlay_run = b.addRunArtifact(overlay_tests);
+    test_step.dependOn(&overlay_run.step);
+    b.step("test-overlay", "Run the performance overlay unit tests").dependOn(&overlay_run.step);
     const key_fixture = b.createModule(.{ .root_source_file = b.path("src/backend/key_fixture_test.zig"), .target = target, .optimize = optimize });
-    configure(key_fixture, control, win32_c);
+    configure(key_fixture, control, win32_c, values, ledger);
     const key_fixture_options = b.addOptions();
     key_fixture_options.addOption([]const u8, "work_root", b.option([]const u8, "key-fixture-work-root", "WorkRoot given to Initialize-BackendKeyFixture.ps1; unset skips test-key-fixture") orelse "");
     key_fixture.addOptions("key_fixture_options", key_fixture_options);
     const key_fixture_tests = b.addTest(.{ .root_module = key_fixture, .filters = &.{"prepared trusted"} });
+    if (ledger) |inputs| key_fixture_tests.step.dependOn(&inputs.verify.step);
     const key_fixture_run = b.addRunArtifact(key_fixture_tests);
     b.step("check-key-fixture", "Compile protected key acceptance without running it").dependOn(&key_fixture_tests.step);
     b.step("test-key-fixture", "Read prepared protected key storage as an ordinary user (explicit acceptance)").dependOn(&key_fixture_run.step);
@@ -113,12 +138,45 @@ pub fn build(b: *std.Build) void {
     b.step("fixture", "Install the pipe test child").dependOn(&b.addInstallArtifact(fixture, .{}).step);
 }
 
-fn configure(module: *std.Build.Module, control: *std.Build.Module, win32_c: *std.Build.Module) void {
+fn configure(module: *std.Build.Module, control: *std.Build.Module, win32_c: *std.Build.Module, values: *std.Build.Module, ledger: ?LedgerModules) void {
+    module.addImport("desktop_points_values", values);
+    if (ledger) |inputs| {
+        module.addImport("ledger_sdk", inputs.sdk);
+        module.addImport("ledger_entry", inputs.entry);
+        module.addImport("desktop_ledger_resources", inputs.resources);
+    }
     module.addImport("desktop_win32_c", win32_c);
     module.addImport("rm_control", control);
     module.link_libc = true;
-    for ([_][]const u8{ "user32", "shell32", "advapi32", "winhttp", "iphlpapi", "ws2_32", "ole32" }) |library|
+    for ([_][]const u8{ "user32", "shell32", "advapi32", "winhttp", "iphlpapi", "ws2_32", "ole32", "gdi32", "d2d1", "dwrite" }) |library|
         module.linkSystemLibrary(library, .{});
+}
+
+const LedgerModules = struct {
+    values: *std.Build.Module,
+    sdk: *std.Build.Module,
+    entry: *std.Build.Module,
+    resources: *std.Build.Module,
+    verify: *std.Build.Step.Run,
+};
+
+fn ledgerModules(b: *std.Build, root: []const u8, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) LedgerModules {
+    const structure = b.createModule(.{ .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ root, "structure/ledger_structure.zig" }) }, .target = target, .optimize = optimize });
+    const values = b.createModule(.{ .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ root, "values/ledger_values.zig" }) }, .target = target, .optimize = optimize });
+    values.addImport("ledger_structure", structure);
+    const sdk = b.createModule(.{ .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ root, "native-source/src/ledger.zig" }) }, .target = target, .optimize = optimize });
+    sdk.addImport("ledger_values", values);
+    const shape = b.createModule(.{ .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ root, "generated/LedgerOwnerShape.zig" }) }, .target = target, .optimize = optimize });
+    shape.addImport("ledger_sdk", sdk);
+    shape.addImport("ledger_values", values);
+    const entry = b.createModule(.{ .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ root, "generated/LedgerNativeEntry.zig" }) }, .target = target, .optimize = optimize });
+    entry.addImport("ledger_sdk", sdk);
+    entry.addImport("ledger_owner_shape", shape);
+    const resources = b.createModule(.{ .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ root, "resources.zig" }) }, .target = target, .optimize = optimize });
+    const verify = b.addSystemCommand(&.{ "pwsh", "-NoProfile", "-NonInteractive", "-File" });
+    verify.addFileArg(b.path("../../../scripts/build/Generate-DesktopLedger.ps1"));
+    verify.addArgs(&.{ "-WorkRoot", root, "-Verify" });
+    return .{ .values = values, .sdk = sdk, .entry = entry, .resources = resources, .verify = verify };
 }
 
 fn stateItems(b: *std.Build, control: *std.Build.Module, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize, state_names: bool) *std.Build.Module {

@@ -23,7 +23,7 @@ public sealed class BackendProcessOwnershipContractTests
             "WindowsInteractiveUserSessionBroker.cs"));
         var program = File.ReadAllText(Path.Combine(appRoot, "Program.cs"));
 
-        Assert.Contains("EnsureConnectedAsync", backendSession, StringComparison.Ordinal);
+        Assert.Contains("PrepareWindowTransport", backendSession, StringComparison.Ordinal);
         Assert.DoesNotContain("Process.Start", backendSession, StringComparison.Ordinal);
         Assert.DoesNotContain(".Kill(", backendSession, StringComparison.Ordinal);
         Assert.DoesNotContain("ownedProcess", backendSession, StringComparison.Ordinal);

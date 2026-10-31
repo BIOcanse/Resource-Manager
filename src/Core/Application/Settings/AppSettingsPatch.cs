@@ -15,7 +15,10 @@ public sealed class AppSettingsPatchException(string message, string? fieldPath 
 
 public static class AppSettingsPatchApplier
 {
-    private static readonly JsonSerializerOptions JsonOptions = new AppSettingsJsonContext(new(JsonSerializerDefaults.Web)).Options;
+    private static readonly JsonSerializerOptions JsonOptions = new AppSettingsJsonContext(new(JsonSerializerDefaults.Web)
+    {
+        AllowDuplicateProperties = false
+    }).Options;
 
     public static AppSettings Apply(AppSettings current, JsonElement changes)
     {
@@ -29,13 +32,12 @@ public static class AppSettingsPatchApplier
         var target = JsonSerializer.SerializeToNode(current, JsonOptions) as JsonObject
             ?? throw new AppSettingsPatchException(
                 "The current application settings could not be represented as an object.");
-        var patch = JsonNode.Parse(changes.GetRawText()) as JsonObject
-            ?? throw new AppSettingsPatchException(
-                "Application settings changes must be a JSON object.");
-
-        ApplyObjectPatch(target, patch);
         try
         {
+            var patch = JsonNode.Parse(changes.GetRawText()) as JsonObject
+                ?? throw new AppSettingsPatchException(
+                    "Application settings changes must be a JSON object.");
+            ApplyObjectPatch(target, patch);
             var candidate = target.Deserialize<AppSettings>(JsonOptions)
                 ?? throw new AppSettingsPatchException("invalid-settings-value-type", "$");
             return AppSettingsNormalizer.Normalize(candidate);
@@ -44,9 +46,36 @@ public static class AppSettingsPatchApplier
         {
             throw new AppSettingsPatchException("invalid-settings-value-type", error.Path ?? "$");
         }
+        catch (ArgumentException)
+        {
+            // JsonObject rejects repeated JSON property names when its map is materialized.
+            throw new AppSettingsPatchException("invalid-settings-value-type", "$");
+        }
     }
 
     private const string MemoryCpuTierPath = "$.memoryCpuTier";
+    private const string PerformanceOverlaySoftwarePath = "$.performanceOverlay.software";
+
+    // performanceOverlay.software is keyed by software id: an object replaces that software's entry whole
+    // (fields it leaves out take the declared defaults when the result is normalized), null removes the
+    // entry, and an id the settings do not hold yet is added. Ids match ignoring case.
+    private static void PatchOverlaySoftware(JsonObject target, JsonNode? value)
+    {
+        if (value is not JsonObject patch)
+            throw new AppSettingsPatchException("invalid-settings-value-type", PerformanceOverlaySoftwarePath);
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in patch)
+        {
+            var path = $"{PerformanceOverlaySoftwarePath}.{property.Key}";
+            var id = property.Key.Trim();
+            if (string.IsNullOrWhiteSpace(id) || !ids.Add(id) || property.Value is not (null or JsonObject))
+                throw new AppSettingsPatchException("invalid-settings-value-type", path);
+            foreach (var existing in target.Select(static entry => entry.Key)
+                         .Where(key => string.Equals(key, id, StringComparison.OrdinalIgnoreCase)).ToArray())
+                target.Remove(existing);
+            if (property.Value is JsonObject entry) target[id] = entry.DeepClone();
+        }
+    }
 
     private static JsonObject MemoryCpuTierSection(JsonNode? value)
     {
@@ -92,6 +121,14 @@ public static class AppSettingsPatchApplier
                 if (propertyPath == MemoryCpuTierPath)
                 {
                     item.Target[property.Key] = MemoryCpuTierSection(property.Value);
+                    continue;
+                }
+
+                if (propertyPath == PerformanceOverlaySoftwarePath)
+                {
+                    if (currentValue is not JsonObject software)
+                        throw new AppSettingsPatchException("invalid-settings-value-type", propertyPath);
+                    PatchOverlaySoftware(software, property.Value);
                     continue;
                 }
 

@@ -103,7 +103,7 @@ public sealed class ResidentWindowPipeTests
             ["--resident-pipe-read", "123", "--resident-pipe-write", "456", "--resident-cancel-poll-ms", value]));
 
     [Fact]
-    public void NoParentKeepsLegacyPathWithoutRequiringCancellationPolicy()
+    public void NoParentMeansStartedWithoutThePipeAndNeedsNoCancellationPolicy()
         => Assert.Null(ResidentWindowPipe.FromArguments([]));
 
     [Fact]

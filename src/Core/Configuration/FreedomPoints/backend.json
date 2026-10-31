@@ -295,6 +295,84 @@
                   "provider_enable_timeout_ms": 2000,
                   "session_release_timeout_ms": 2000
                 }
+              },
+              {
+                "id": "performance_overlay",
+                "index": 10,
+                "description": "Performance overlay settings per software (backend settings performanceOverlay): the value each omitted field of a software's entry takes (default_*; default_items declare kind, id, source, intervalMs and syncPrecision), the accepted ranges and counts, and the initial state of the toggle-performance-overlay-foreground hotkey (encoding as systemIntegration.hotkeys: up to four virtual keys with relations, all zero = no key). The resident draws only entries it receives; it never fills a value itself.",
+                "value_type": "object",
+                "value_source": "registry",
+                "status": "active",
+                "update_class": "rebuild_backend",
+                "consumers": [
+                  "MonitoringSettings.Compile"
+                ],
+                "value": {
+                  "default_enabled": false,
+                  "default_mode": "external",
+                  "default_items": [
+                    {
+                      "kind": "frames",
+                      "id": "frames.fps",
+                      "source": "auto",
+                      "intervalMs": null,
+                      "syncPrecision": "mid"
+                    },
+                    {
+                      "kind": "frames",
+                      "id": "frames.low1",
+                      "source": "auto",
+                      "intervalMs": null,
+                      "syncPrecision": "mid"
+                    },
+                    {
+                      "kind": "frames",
+                      "id": "frames.present",
+                      "source": "auto",
+                      "intervalMs": null,
+                      "syncPrecision": "mid"
+                    },
+                    {
+                      "kind": "software",
+                      "id": "cpu.usage",
+                      "source": "auto",
+                      "intervalMs": null,
+                      "syncPrecision": "mid"
+                    },
+                    {
+                      "kind": "software",
+                      "id": "gpu.usage",
+                      "source": "auto",
+                      "intervalMs": null,
+                      "syncPrecision": "mid"
+                    }
+                  ],
+                  "default_size_mode": "absolutePixels",
+                  "default_font_size_px": 14,
+                  "default_region_width_ratio": 0.25,
+                  "default_region_height_ratio": 0.2,
+                  "default_anchor": "topLeft",
+                  "default_margin_px": 12,
+                  "font_size_px_minimum": 8,
+                  "font_size_px_maximum": 72,
+                  "margin_px_minimum": 0,
+                  "margin_px_maximum": 256,
+                  "region_ratio_minimum": 0.05,
+                  "region_ratio_maximum": 1,
+                  "region_ratio_step": 0.01,
+                  "maximum_software": 64,
+                  "maximum_items": 64,
+                  "toggle_hotkey_enabled": false,
+                  "toggle_hotkey_encoding": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ]
+                }
               }
             ]
           },

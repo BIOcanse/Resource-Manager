@@ -15,6 +15,7 @@ internal static class BackendFreedomPointPaths
     public const string VidMmSessionBuffers = "resource-manager/backend/monitoring/build/complex/5";
     public const string GpuAllocationSessionBuffers = "resource-manager/backend/monitoring/build/complex/6";
     public const string PresentSessionBuffers = "resource-manager/backend/monitoring/build/complex/7";
+    public const string PerformanceOverlay = "resource-manager/backend/monitoring/build/complex/10";
     public const string FramePipeline = "resource-manager/backend/monitoring/build/complex/9";
     public const string ServiceRecoveryCounterReset = "resource-manager/backend/service_recovery/build/simple/0";
     public const string CrashReports = "resource-manager/backend/service_recovery/build/complex/0";

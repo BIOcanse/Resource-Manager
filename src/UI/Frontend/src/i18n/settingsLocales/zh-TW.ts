@@ -349,6 +349,8 @@ export default createSettingsLocale("zh-TW", {
     "forceTerminateTitle": "強制結束快捷鍵",
     "forceTerminateDescription": "結束目前前景焦點程式，以及所有具有可見無回應視窗的程式。預設關閉。",
     "forceTerminateWarning": "觸發後會立即強制結束處理程式，未儲存的內容將遺失。啟用時必須同時包含 Ctrl、Alt 或 Win 修飾鍵以及一個非修飾鍵。",
+    "performanceOverlayHotkeyTitle": "效能浮層快捷鍵",
+    "performanceOverlayHotkeyDescription": "開啟或關閉目前前景軟體的效能浮層，結果以系統匣通知顯示。預設關閉。",
     "hotkeyEmpty": "尚未設定按鍵",
     "hotkeyAddKey": "新增按鍵",
     "hotkeyKeyLabel": "按鍵",

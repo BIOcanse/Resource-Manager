@@ -1,0 +1,12 @@
+{
+  "attributeSource": "src/Core/Configuration/Ledger/self-owner.json",
+  "attributeTable": 1,
+  "resources": [
+    "overlay_block",
+    "backend_settings_subscription",
+    "overlay_settings_json",
+    "overlay_hotkey_call",
+    "tray_call",
+    "force_terminate_call"
+  ]
+}

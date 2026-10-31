@@ -7,8 +7,9 @@ import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVi
 import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
 import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import {
-  defaultForceTerminateHotkey,
-  forceTerminateHotkeyActionId
+  forceTerminateHotkeyActionId,
+  performanceOverlayHotkeyActionId,
+  type EditableHotkeyActionId
 } from "../editableHotkeys";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
@@ -36,17 +37,13 @@ interface SystemIntegrationSettingsSectionProps {
 
 /**
  * 设置 → 系统集成：崩溃转储的请求卡片（尚未决定时）、崩溃后重启、崩溃转储和崩溃记录、登录后启动到托盘、开机自启、
- * 替换任务管理器和强制结束快捷键。
+ * 替换任务管理器、强制结束快捷键和性能浮窗快捷键。
  */
 export function SystemIntegrationSettingsSection(props: SystemIntegrationSettingsSectionProps) {
-  const systemIntegration = (): AppSystemIntegrationSettings => props.settings ?? {
-    autoStartEnabled: false,
-    taskManagerShortcutReplacementEnabled: false,
-    hotkeys: [defaultForceTerminateHotkey()]
-  };
-  const forceTerminateHotkey = () => systemIntegration().hotkeys?.find(
-    (hotkey) => hotkey.actionId === forceTerminateHotkeyActionId
-  ) ?? defaultForceTerminateHotkey();
+  const systemIntegration = (): AppSystemIntegrationSettings => props.settings!;
+  const hotkey = (actionId: EditableHotkeyActionId) => systemIntegration().hotkeys?.find(
+    (item) => item.actionId === actionId
+  );
   // 这个分区的可见区域：登录启动项按它读取（常驻页隐藏时退掉，回来时重读）。
   const workId = frontendWorkIds.settingsSystemIntegration;
   useFrontendVisibilityDemand(workId, [workId]);
@@ -54,6 +51,7 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
   return (
     <div class="settings-section-panel" {...frontendVisibilitySurface(workId, [workId])}>
       <CrashDumpRequestCard diagnostics={props.crashDumps} onChoose={props.onChooseCrashDumpMode} />
+      <Show when={props.settings}>
       <ServiceRecoverySetting settings={systemIntegration()} diagnostics={props.serviceRecovery}
         text={props.text.systemIntegration} onChange={props.onServiceRecoveryChange} />
       <Show when={systemIntegration().crashDumps}>{(settings) =>
@@ -74,11 +72,22 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
         </div>
         <SwitchControl ariaLabel={props.text.systemIntegration.taskManagerTitle} checked={systemIntegration().taskManagerShortcutReplacementEnabled} onChange={(checked) => props.onTaskManagerShortcutReplacementChange(checked)} />
       </div>
-      <EditableHotkeyEditor
-        hotkey={forceTerminateHotkey()}
+      <Show when={hotkey(forceTerminateHotkeyActionId)}>{(binding) => <EditableHotkeyEditor
+        hotkey={binding()}
+        title={props.text.systemIntegration.forceTerminateTitle}
+        description={props.text.systemIntegration.forceTerminateDescription}
+        warning={props.text.systemIntegration.forceTerminateWarning}
         labels={props.text.systemIntegration}
         onChange={props.onEditableHotkeyChange}
-      />
+      />}</Show>
+      <Show when={hotkey(performanceOverlayHotkeyActionId)}>{(binding) => <EditableHotkeyEditor
+        hotkey={binding()}
+        title={props.text.systemIntegration.performanceOverlayHotkeyTitle}
+        description={props.text.systemIntegration.performanceOverlayHotkeyDescription}
+        labels={props.text.systemIntegration}
+        onChange={props.onEditableHotkeyChange}
+      />}</Show>
+      </Show>
     </div>
   );
 }

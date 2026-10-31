@@ -1,17 +1,475 @@
 {
   "tree": "resource-manager-desktop",
-  "profiles": ["default"],
+  "profiles": [
+    "default"
+  ],
   "points": [
-    { "id": 0, "symbol": "controller_workers", "default": 2, "min": 1, "max": 8 },
-    { "id": 1, "symbol": "history_capacity", "default": 32, "min": 1, "max": 4096 },
-    { "id": 2, "symbol": "worker_arena_bytes", "default": 65536, "min": 4096, "max": 16777216 },
-    { "id": 3, "symbol": "thread_stack_bytes", "default": 262144, "min": 65536, "max": 16777216 },
-    { "id": 4, "symbol": "backend_probe_interval_ms", "default": 2000, "min": 100, "max": 60000 },
-    { "id": 5, "symbol": "backend_timeout_ms", "default": 2000, "min": 100, "max": 60000 },
-    { "id": 6, "symbol": "window_cancel_poll_ms", "default": 10, "min": 1, "max": 1000 },
-    { "id": 7, "symbol": "instance_connect_timeout_ms", "default": 1500, "min": 1, "max": 60000 },
-    { "id": 8, "symbol": "instance_connect_poll_ms", "default": 10, "min": 1, "max": 1000 },
-    { "id": 9, "symbol": "window_stop_deadline_ms", "default": 1000, "min": 1, "max": 60000 },
-    { "id": 10, "symbol": "window_stop_timeout_policy", "kind": "enum", "default": "terminate", "members": { "terminate": 0, "wait": 1 } }
+    {
+      "id": 0,
+      "symbol": "controller_workers",
+      "default": 2,
+      "min": 1,
+      "max": 8
+    },
+    {
+      "id": 1,
+      "symbol": "history_capacity",
+      "default": 32,
+      "min": 1,
+      "max": 4096
+    },
+    {
+      "id": 2,
+      "symbol": "worker_arena_bytes",
+      "default": 65536,
+      "min": 4096,
+      "max": 16777216
+    },
+    {
+      "id": 3,
+      "symbol": "thread_stack_bytes",
+      "default": 262144,
+      "min": 65536,
+      "max": 16777216
+    },
+    {
+      "id": 4,
+      "symbol": "backend_probe_interval_ms",
+      "default": 2000,
+      "min": 100,
+      "max": 60000
+    },
+    {
+      "id": 5,
+      "symbol": "backend_timeout_ms",
+      "default": 2000,
+      "min": 100,
+      "max": 60000
+    },
+    {
+      "id": 6,
+      "symbol": "window_cancel_poll_ms",
+      "default": 10,
+      "min": 1,
+      "max": 1000
+    },
+    {
+      "id": 7,
+      "symbol": "instance_connect_timeout_ms",
+      "default": 1500,
+      "min": 1,
+      "max": 60000
+    },
+    {
+      "id": 8,
+      "symbol": "instance_connect_poll_ms",
+      "default": 10,
+      "min": 1,
+      "max": 1000
+    },
+    {
+      "id": 9,
+      "symbol": "window_stop_deadline_ms",
+      "default": 1000,
+      "min": 1,
+      "max": 60000
+    },
+    {
+      "id": 10,
+      "symbol": "window_stop_timeout_policy",
+      "kind": "enum",
+      "default": "terminate",
+      "members": {
+        "terminate": 0,
+        "wait": 1
+      }
+    },
+    {
+      "id": 11,
+      "symbol": "overlay_sample_interval_ms",
+      "default": 500,
+      "min": 100,
+      "max": 60000
+    },
+    {
+      "id": 12,
+      "symbol": "overlay_stream_retry_ms",
+      "default": 1000,
+      "min": 100,
+      "max": 60000
+    },
+    {
+      "id": 13,
+      "symbol": "overlay_render_target",
+      "kind": "enum",
+      "default": "software",
+      "members": {
+        "software": 0,
+        "hardware": 1
+      }
+    },
+    {
+      "id": 14,
+      "symbol": "overlay_text_rendering_mode",
+      "kind": "enum",
+      "default": "default",
+      "members": {
+        "default": 0,
+        "aliased": 1,
+        "gdi_classic": 2,
+        "gdi_natural": 3,
+        "natural": 4,
+        "natural_symmetric": 5
+      }
+    },
+    {
+      "id": 15,
+      "symbol": "overlay_settings_bytes",
+      "default": 1048576,
+      "min": 65536,
+      "max": 16777216
+    },
+    {
+      "id": 16,
+      "symbol": "overlay_maximum_software",
+      "default": 64,
+      "min": 1,
+      "max": 4096
+    },
+    {
+      "id": 17,
+      "symbol": "overlay_maximum_items",
+      "default": 64,
+      "min": 1,
+      "max": 1024
+    },
+    {
+      "id": 18,
+      "symbol": "overlay_maximum_module_software",
+      "default": 256,
+      "min": 1,
+      "max": 16384
+    },
+    {
+      "id": 19,
+      "symbol": "overlay_maximum_targets",
+      "default": 32,
+      "min": 1,
+      "max": 60
+    },
+    {
+      "id": 20,
+      "symbol": "overlay_maximum_round_targets",
+      "default": 256,
+      "min": 1,
+      "max": 16384
+    },
+    {
+      "id": 21,
+      "symbol": "overlay_store_bytes",
+      "default": 4194304,
+      "min": 65536,
+      "max": 67108864
+    },
+    {
+      "id": 22,
+      "symbol": "overlay_parse_bytes",
+      "default": 4194304,
+      "min": 65536,
+      "max": 67108864
+    },
+    {
+      "id": 23,
+      "symbol": "overlay_presentation_bytes",
+      "default": 2097152,
+      "min": 65536,
+      "max": 67108864
+    },
+    {
+      "id": 24,
+      "symbol": "overlay_module_bytes",
+      "default": 262144,
+      "min": 4096,
+      "max": 16777216
+    },
+    {
+      "id": 25,
+      "symbol": "overlay_request_bytes",
+      "default": 65536,
+      "min": 1024,
+      "max": 16777216
+    },
+    {
+      "id": 26,
+      "symbol": "overlay_settings_parse_factor",
+      "default": 4,
+      "min": 1,
+      "max": 64
+    },
+    {
+      "id": 27,
+      "symbol": "subscription_line_bytes",
+      "default": 1048576,
+      "min": 4096,
+      "max": 67108864
+    },
+    {
+      "id": 28,
+      "symbol": "subscription_parse_bytes",
+      "default": 8388608,
+      "min": 65536,
+      "max": 268435456
+    },
+    {
+      "id": 29,
+      "symbol": "overlay_padding_px",
+      "default": 6,
+      "min": 0,
+      "max": 256
+    },
+    {
+      "id": 30,
+      "symbol": "overlay_ratio_font_minimum_px",
+      "default": 1,
+      "min": 1,
+      "max": 4096
+    },
+    {
+      "id": 31,
+      "symbol": "overlay_ratio_font_maximum_px",
+      "default": 256,
+      "min": 1,
+      "max": 4096
+    },
+    {
+      "id": 32,
+      "symbol": "overlay_maximum_dimension",
+      "default": 8192,
+      "min": 1,
+      "max": 8192
+    },
+    {
+      "id": 33,
+      "symbol": "overlay_maximum_line_units",
+      "default": 1024,
+      "min": 64,
+      "max": 65536
+    },
+    {
+      "id": 34,
+      "symbol": "overlay_maximum_line_bytes",
+      "default": 1024,
+      "min": 64,
+      "max": 65536
+    },
+    {
+      "id": 35,
+      "symbol": "overlay_device_retries",
+      "default": 1,
+      "min": 0,
+      "max": 16
+    },
+    {
+      "id": 36,
+      "symbol": "overlay_text_layout_extent_px",
+      "default": 1000000,
+      "min": 1,
+      "max": 16777216
+    },
+    {
+      "id": 37,
+      "symbol": "overlay_foreground_red",
+      "default": 255,
+      "min": 0,
+      "max": 255
+    },
+    {
+      "id": 38,
+      "symbol": "overlay_foreground_green",
+      "default": 255,
+      "min": 0,
+      "max": 255
+    },
+    {
+      "id": 39,
+      "symbol": "overlay_foreground_blue",
+      "default": 255,
+      "min": 0,
+      "max": 255
+    },
+    {
+      "id": 40,
+      "symbol": "overlay_foreground_alpha",
+      "default": 255,
+      "min": 0,
+      "max": 255
+    },
+    {
+      "id": 41,
+      "symbol": "overlay_background_red",
+      "default": 0,
+      "min": 0,
+      "max": 255
+    },
+    {
+      "id": 42,
+      "symbol": "overlay_background_green",
+      "default": 0,
+      "min": 0,
+      "max": 255
+    },
+    {
+      "id": 43,
+      "symbol": "overlay_background_blue",
+      "default": 0,
+      "min": 0,
+      "max": 255
+    },
+    {
+      "id": 44,
+      "symbol": "overlay_background_alpha",
+      "default": 168,
+      "min": 0,
+      "max": 255
+    },
+    {
+      "id": 45,
+      "symbol": "overlay_font_weight",
+      "default": 400,
+      "min": 1,
+      "max": 999
+    },
+    {
+      "id": 46,
+      "symbol": "overlay_font_style",
+      "default": 0,
+      "min": 0,
+      "max": 2
+    },
+    {
+      "id": 47,
+      "symbol": "overlay_font_stretch",
+      "default": 5,
+      "min": 1,
+      "max": 9
+    },
+    {
+      "id": 48,
+      "symbol": "overlay_text_antialias_mode",
+      "default": 2,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "id": 49,
+      "symbol": "overlay_antialias_mode",
+      "default": 0,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "id": 50,
+      "symbol": "overlay_custom_cleartype_percent",
+      "default": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": 51,
+      "symbol": "overlay_number_significant_digits",
+      "default": 15,
+      "min": 1,
+      "max": 17
+    },
+    {
+      "id": 52,
+      "symbol": "overlay_number_fraction_digits",
+      "default": 1,
+      "min": 0,
+      "max": 15
+    },
+    {
+      "id": 53,
+      "symbol": "overlay_toggle_request_bytes",
+      "default": 1024,
+      "min": 128,
+      "max": 1048576
+    },
+    {
+      "id": 54,
+      "symbol": "overlay_toggle_response_bytes",
+      "default": 8192,
+      "min": 256,
+      "max": 1048576
+    },
+    {
+      "id": 55,
+      "symbol": "overlay_toggle_parse_bytes",
+      "default": 32768,
+      "min": 1024,
+      "max": 16777216
+    },
+    {
+      "id": 56,
+      "symbol": "overlay_menu_identity_bytes",
+      "default": 512,
+      "min": 64,
+      "max": 32768
+    },
+    {
+      "id": 57,
+      "symbol": "force_terminate_maximum_targets",
+      "default": 64,
+      "min": 1,
+      "max": 4096
+    },
+    {
+      "id": 58,
+      "symbol": "force_terminate_maximum_candidates",
+      "default": 1024,
+      "min": 1,
+      "max": 65536
+    },
+    {
+      "id": 59,
+      "symbol": "force_terminate_request_bytes",
+      "default": 8192,
+      "min": 256,
+      "max": 4194304
+    },
+    {
+      "id": 60,
+      "symbol": "force_terminate_response_bytes",
+      "default": 32768,
+      "min": 256,
+      "max": 4194304
+    },
+    {
+      "id": 61,
+      "symbol": "force_terminate_parse_bytes",
+      "default": 131072,
+      "min": 4096,
+      "max": 16777216
+    },
+    {
+      "id": 62,
+      "symbol": "overlay_font_family",
+      "kind": "string",
+      "default": "Segoe UI"
+    },
+    {
+      "id": 63,
+      "symbol": "overlay_pixel_capacity_bytes",
+      "default": 67108864,
+      "min": 4,
+      "max": 67108864
+    },
+    {
+      "id": 64,
+      "symbol": "ledger_tick_interval_ms",
+      "default": 1000,
+      "min": 1,
+      "max": 60000
+    }
   ]
 }

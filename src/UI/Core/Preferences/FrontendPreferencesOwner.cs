@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace ResourceManager.NativeUi.Preferences;
 
-/// <summary>One native frontend owner shared by the WebView, startup appearance and overlay.</summary>
+/// <summary>One native frontend owner shared by the WebView and startup appearance.</summary>
 internal sealed partial class FrontendPreferencesOwner
 {
     internal const string LegacyBackupSuffix = ".frontend-preferences-v1.bak";
@@ -33,7 +33,6 @@ internal sealed partial class FrontendPreferencesOwner
     private bool initialized;
     private bool overlayChoicesInitialized;
     private readonly FrontendPreferences pointValues = new();
-    private long revision;
     // This process's owner is the cache's only writer (the resident host only reads it on its
     // preferences-changed event), so the cache is read from disk once and every Save or Reset
     // replaces this copy; later reads never stat or reopen the file.
@@ -62,16 +61,19 @@ internal sealed partial class FrontendPreferencesOwner
             InitializeDashboardImport();
             if (!File.Exists(cachePath))
             {
-                revision++;
+                legacyOverlaysLoaded = true;
                 cached = pointValues;
                 return pointValues; // No cached user choice: use this build's generated points.
             }
-            using var stream = Configuration.SettingsFileReader.Open(cachePath);
-            var value = JsonSerializer.Deserialize<FrontendPreferences>(stream, Json)
+            JsonObject node;
+            using (var stream = Configuration.SettingsFileReader.Open(cachePath))
+                node = JsonNode.Parse(stream) as JsonObject ?? throw new InvalidDataException("Frontend preferences cache must be an object.");
+            legacyOverlays = TakeLegacyOverlays(node);
+            legacyOverlaysLoaded = true;
+            var value = node.Deserialize<FrontendPreferences>(Json)
                 ?? throw new InvalidDataException("Frontend preferences cache is empty.");
             value.Validate();
             cached = value;
-            revision++;
             return value;
         }
     }
@@ -82,14 +84,14 @@ internal sealed partial class FrontendPreferencesOwner
         value.Validate();
         lock (gate)
         {
+            LoadLegacyOverlays();
             // Initialization must never import over an explicit user update.
-            WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(value, Json));
+            WriteAtomic(cachePath, SerializeCache(value));
             WriteImportMarker();
             WriteDashboardImportMarker();
             overlayChoicesInitialized = true;
             initialized = true;
             cached = value;
-            revision++;
             return value;
         }
     }
@@ -103,49 +105,20 @@ internal sealed partial class FrontendPreferencesOwner
         }
     }
 
-    internal FrontendPreferences SaveOverlay(string softwareId, FrontendPreferences value)
-    {
-        if (string.IsNullOrWhiteSpace(softwareId)) throw new InvalidDataException("Missing overlay cache key.");
-        lock (gate)
-        {
-            var current = Read();
-            var overlays = new Dictionary<string, FrontendOverlayPresentation>(current.Overlays, StringComparer.OrdinalIgnoreCase);
-            var presentation = value.Overlays.FirstOrDefault(pair => pair.Key.Equals(softwareId, StringComparison.OrdinalIgnoreCase)).Value;
-            if (presentation is not null) overlays[softwareId] = presentation;
-            else overlays.Remove(softwareId);
-            return Save(current with { Overlays = overlays });
-        }
-    }
-
     internal FrontendPreferences Reset()
     {
         lock (gate)
         {
-            var current = Read();
-            var choices = current.Overlays.ToDictionary(static pair => pair.Key,
-                static pair => new FrontendOverlayPresentation { Enabled = pair.Value.Enabled, Mode = pair.Value.Mode },
-                StringComparer.OrdinalIgnoreCase);
-            if (choices.Count != 0) return Save(pointValues with { Overlays = choices });
+            Read();
+            // Overlay entries still waiting for the backend migration are not preferences a reset clears.
+            if (legacyOverlays is not null) return Save(pointValues);
             WriteImportMarker();
             WriteDashboardImportMarker();
             File.Delete(cachePath);
             initialized = overlayChoicesInitialized = true;
             cached = pointValues;
-            revision++;
             return pointValues;
         }
-    }
-
-    internal FrontendOverlayPresentation Overlay(string softwareId)
-    {
-        var value = Read();
-        return value.Overlays.FirstOrDefault(pair =>
-            pair.Key.Equals(softwareId, StringComparison.OrdinalIgnoreCase)).Value ?? new();
-    }
-
-    internal long Revision
-    {
-        get { Read(); lock (gate) return revision; }
     }
 
     // Read-time cache migrations, applied once per owner and written back atomically when they
@@ -272,6 +245,7 @@ internal sealed partial class FrontendPreferencesOwner
             return;
         }
         var node = JsonSerializer.SerializeToNode(new FrontendPreferences(), Json)!.AsObject();
+        var overlays = new JsonObject();
         var imported = false;
         var app = ReadLegacy(legacyAppPath, static value => value["appearance"] is JsonObject
             || value["performance"] is JsonObject performance && performance.ContainsKey("monitorRefreshIntervalMs"));
@@ -304,17 +278,15 @@ internal sealed partial class FrontendPreferencesOwner
             && entries.OfType<JsonObject>().Any(static item => item.ContainsKey("fontSizePx") || item.ContainsKey("metrics") || item.ContainsKey("enabled")));
         if (overlay?["software"] is JsonArray software)
         {
-            var overlays = node["overlays"]!.AsObject();
             foreach (var item in software.OfType<JsonObject>())
             {
                 if (item["softwareId"] is not JsonValue idValue || !idValue.TryGetValue<string>(out var id)
                     || string.IsNullOrWhiteSpace(id)) continue;
-                var presentation = JsonSerializer.SerializeToNode(new FrontendOverlayPresentation(), Json)!.AsObject();
-                // The legacy file stores metrics (metric IDs); they become items like the cache's old metrics.
+                // The legacy file stores metrics (metric IDs); they become items like the cache's old metrics. The entry
+                // waits in the cache's overlays for the backend migration (frontend-preferences-overlays-to-backend-v1).
                 var legacy = item.DeepClone().AsObject();
                 FrontendOverlayItems.MigrateLegacyPresentation(legacy, id);
-                CopyKnown(legacy, presentation);
-                overlays[id] = presentation;
+                overlays[id] = LegacyOverlayFields(legacy);
                 imported = true;
             }
         }
@@ -324,7 +296,8 @@ internal sealed partial class FrontendPreferencesOwner
             {
                 var value = node.Deserialize<FrontendPreferences>(Json)!;
                 value.Validate();
-                WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(value, Json));
+                if (overlays.Count != 0) node["overlays"] = overlays;
+                WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(node, Json));
             }
             catch (Exception error) when (error is JsonException or InvalidDataException)
             {
@@ -349,8 +322,9 @@ internal sealed partial class FrontendPreferencesOwner
                 ?? throw new InvalidDataException("Frontend preferences cache must be an object.");
             // Missing fields use the same defaults as Read; malformed committed values
             // must fail before a migration can replace the cache.
-            var current = node.Deserialize<FrontendPreferences>(Json)!;
-            current.Validate();
+            var current = node.DeepClone().AsObject();
+            TakeLegacyOverlays(current);
+            current.Deserialize<FrontendPreferences>(Json)!.Validate();
             if (node["overlaySelectionVersion"]?.GetValue<int>() == 1) { overlayChoicesInitialized = true; return; }
             var entries = (node["overlays"] ??= new JsonObject()).AsObject();
             JsonObject? legacy = null;
@@ -374,16 +348,15 @@ internal sealed partial class FrontendPreferencesOwner
                     var key = entries.Select(static pair => pair.Key).FirstOrDefault(key => key.Equals(id, StringComparison.OrdinalIgnoreCase)) ?? id;
                     var existing = entries[key] as JsonObject;
                     if (existing?.ContainsKey("enabled") == true && existing.ContainsKey("mode")) continue;
-                    var target = existing ?? JsonSerializer.SerializeToNode(new FrontendOverlayPresentation(), Json)!.AsObject();
+                    var target = existing ?? new JsonObject();
                     if (existing?.ContainsKey("enabled") != true && item["enabled"] is JsonValue enabled && enabled.TryGetValue<bool>(out var value))
                         target["enabled"] = value;
                     if (existing?.ContainsKey("mode") != true && item["mode"] is JsonValue mode && mode.TryGetValue<string>(out var text))
                         target["mode"] = text.Equals("injected", StringComparison.OrdinalIgnoreCase) ? "injected" : "external";
                     if (existing is null) entries[key] = target;
                 }
-            var migrated = node.Deserialize<FrontendPreferences>(Json)!;
-            migrated.Validate();
-            WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(migrated, Json));
+            if (entries.Count == 0) node.Remove("overlays");
+            WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(node, Json));
         }
         overlayChoicesInitialized = true;
     }

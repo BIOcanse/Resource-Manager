@@ -2,6 +2,7 @@
 //! preferences-changed notices; this module owns no watcher or retained buffer.
 const std = @import("std");
 const catalog = @import("text/generated/tray.zig");
+const frontend_defaults = @import("generated/frontend_defaults.zig");
 const c = @import("backend/c.zig").win;
 
 pub const Config = struct {
@@ -11,8 +12,12 @@ pub const Config = struct {
 pub const Snapshot = struct {
     language: [32]u8 = @splat(0),
     language_len: usize = 0,
-    overlay_enabled: ?bool = null,
+    /// Any notification kind's system balloon is on (the TrayNotifications condition).
     notifications_enabled: ?bool = null,
+    memory_protection: ?bool = null,
+    update: ?bool = null,
+    access_request: ?bool = null,
+    crash_report: ?bool = null,
 
     pub fn languageSlice(self: *const Snapshot) []const u8 {
         return self.language[0..self.language_len];
@@ -20,7 +25,18 @@ pub const Snapshot = struct {
     pub fn system() Snapshot {
         var result: Snapshot = .{};
         result.setLanguage(resolveLanguage(null, systemLanguage()));
+        result.applyNotifications(null) catch unreachable;
         return result;
+    }
+    /// Every kind is known: a switch the cache does not hold has its declared
+    /// frontend point value (NativeUi's FrontendPoints read the same declaration).
+    fn applyNotifications(self: *Snapshot, notifications: ?std.json.Value) !void {
+        if (notifications) |value| if (value != .object) return error.InvalidPreferences;
+        self.memory_protection = try kindSwitch(notifications, "memoryProtectionNotify", frontend_defaults.memory_protection_notify, "memoryProtectionSystem", frontend_defaults.memory_protection_system);
+        self.update = try kindSwitch(notifications, "updateNotify", frontend_defaults.update_notify, "updateSystem", frontend_defaults.update_system);
+        self.access_request = try kindSwitch(notifications, "accessRequestNotify", frontend_defaults.access_request_notify, "accessRequestSystem", frontend_defaults.access_request_system);
+        self.crash_report = try kindSwitch(notifications, "crashReportNotify", frontend_defaults.crash_report_notify, "crashReportSystem", frontend_defaults.crash_report_system);
+        self.notifications_enabled = self.memory_protection.? or self.update.? or self.access_request.? or self.crash_report.?;
     }
     fn setLanguage(self: *Snapshot, language: []const u8) void {
         @memset(&self.language, 0);
@@ -32,6 +48,8 @@ pub const Snapshot = struct {
 const file_limit = 1024 * 1024;
 const parse_limit = 4 * 1024 * 1024;
 
+/// The overlay settings are not here: they are the backend settings section
+/// `performanceOverlay`, received through the settings subscription.
 pub fn read(config: Config) !Snapshot {
     // A single bounded allocation is released on every return, including parse
     // failures. No cache data or parser arena survives the snapshot operation.
@@ -103,32 +121,31 @@ fn parse(allocator: std.mem.Allocator, bytes: []const u8, system_language: ?[]co
         }
     }
     result.setLanguage(resolveLanguage(language, system_language));
-    if (document.value.object.get("overlays")) |overlays| {
-        if (overlays != .object) return error.InvalidPreferences;
-        var enabled: ?bool = if (overlays.object.count() == 0) false else null;
-        for (overlays.object.values()) |overlay| {
-            if (overlay != .object) return error.InvalidPreferences;
-            if (overlay.object.get("enabled")) |value| {
-                if (value != .bool) return error.InvalidPreferences;
-                enabled = (enabled orelse false) or value.bool;
-            }
-        }
-        result.overlay_enabled = enabled;
-    }
-    if (document.value.object.get("notifications")) |notifications| {
-        if (notifications != .object) return error.InvalidPreferences;
-        var enabled: ?bool = null;
-        for ([_][]const u8{ "updateSystem", "accessRequestSystem" }) |key| {
-            if (notifications.object.get(key)) |value| {
-                if (value != .string) return error.InvalidPreferences;
-                const on = std.mem.eql(u8, value.string, "on");
-                if (!on and !std.mem.eql(u8, value.string, "off")) return error.InvalidPreferences;
-                enabled = (enabled orelse false) or on;
-            }
-        }
-        result.notifications_enabled = enabled;
-    }
+    try result.applyNotifications(document.value.object.get("notifications"));
     return result;
+}
+
+/// A system balloon needs both the kind's Notify and System switch on (C#
+/// TrayBackendNotifications). A switch the cache does not hold is its declared default.
+fn kindSwitch(notifications: ?std.json.Value, notify_key: []const u8, notify_default: bool, system_key: []const u8, system_default: bool) !bool {
+    return try switchValue(notifications, notify_key, notify_default) and try switchValue(notifications, system_key, system_default);
+}
+fn switchValue(notifications: ?std.json.Value, key: []const u8, default: bool) !bool {
+    const value = (notifications orelse return default).object.get(key) orelse return default;
+    if (value != .string) return error.InvalidPreferences;
+    if (std.mem.eql(u8, value.string, "on")) return true;
+    if (std.mem.eql(u8, value.string, "off")) return false;
+    return error.InvalidPreferences;
+}
+
+/// The frontend cache path this snapshot reads; the tray's notification record sits beside it.
+pub fn cachePath(config: Config, output: []u8) ![]const u8 {
+    if (config.preferences_path) |explicit| {
+        if (explicit.len > output.len) return error.NoSpaceLeft;
+        @memcpy(output[0..explicit.len], explicit);
+        return output[0..explicit.len];
+    }
+    return defaultPath(config.package_root, output);
 }
 
 fn normalize(input: []const u8, output: *[128]u8) ?[]const u8 {
@@ -165,17 +182,34 @@ fn matchSystem(input: []const u8) ?[]const u8 {
     return null;
 }
 
+const default_memory_protection = frontend_defaults.memory_protection_notify and frontend_defaults.memory_protection_system;
+const default_update = frontend_defaults.update_notify and frontend_defaults.update_system;
+const default_access_request = frontend_defaults.access_request_notify and frontend_defaults.access_request_system;
+const default_crash_report = frontend_defaults.crash_report_notify and frontend_defaults.crash_report_system;
+const default_any = default_memory_protection or default_update or default_access_request or default_crash_report;
+
 test "cache fields remain optional and native toggles follow frontend fields" {
     const absent = try parse(std.testing.allocator, "{}", "en-GB");
     try std.testing.expectEqualStrings("en-US", absent.languageSlice());
-    try std.testing.expectEqual(@as(?bool, null), absent.overlay_enabled);
-    try std.testing.expectEqual(@as(?bool, null), absent.notifications_enabled);
+    // No notifications object: every kind has its declared frontend point values.
+    try std.testing.expectEqual(@as(?bool, default_any), absent.notifications_enabled);
+    try std.testing.expectEqual(@as(?bool, default_update), absent.update);
     const present = try parse(std.testing.allocator,
-        \\{"appearance":{"language":"zh_TW"},"overlays":{"one":{"enabled":false},"two":{"enabled":true}},"notifications":{"updateSystem":"off","accessRequestSystem":"on"}}
+        \\{"appearance":{"language":"zh_TW"},"notifications":{"updateSystem":"off","accessRequestNotify":"on","accessRequestSystem":"on","memoryProtectionSystem":"on"}}
     , "en-US");
     try std.testing.expectEqualStrings("zh-TW", present.languageSlice());
-    try std.testing.expectEqual(@as(?bool, true), present.overlay_enabled);
     try std.testing.expectEqual(@as(?bool, true), present.notifications_enabled);
+    try std.testing.expectEqual(@as(?bool, false), present.update);
+    try std.testing.expectEqual(@as(?bool, true), present.access_request);
+    // System on and Notify missing: Notify has its declared value.
+    try std.testing.expectEqual(@as(?bool, frontend_defaults.memory_protection_notify), present.memory_protection);
+    const off = try parse(std.testing.allocator,
+        \\{"notifications":{"updateNotify":"on","updateSystem":"off","memoryProtectionNotify":"off"}}
+    , "en-US");
+    try std.testing.expectEqual(@as(?bool, false), off.update);
+    try std.testing.expectEqual(@as(?bool, false), off.memory_protection);
+    try std.testing.expectEqual(@as(?bool, default_access_request), off.access_request);
+    try std.testing.expectEqual(@as(?bool, default_access_request or default_crash_report), off.notifications_enabled);
 }
 
 test "language resolution matches delivered AppLanguage policy" {
@@ -186,7 +220,26 @@ test "language resolution matches delivered AppLanguage policy" {
     try std.testing.expectError(error.InvalidPreferences, parse(std.testing.allocator, "{\"notifications\":{\"updateSystem\":true}}", null));
 }
 
-test "missing cache reads do not synthesize frontend defaults" {
+test "batch13 crash Notify and System control native demand while InApp does not" {
+    const only_crash = try parse(std.testing.allocator,
+        \\{"notifications":{"memoryProtectionNotify":"off","updateNotify":"off","accessRequestNotify":"off","crashReportNotify":"on","crashReportSystem":"on","crashReportInApp":"off"}}
+    , "en-US");
+    try std.testing.expectEqual(@as(?bool, true), only_crash.crash_report);
+    try std.testing.expectEqual(@as(?bool, true), only_crash.notifications_enabled);
+    const no_system = try parse(std.testing.allocator,
+        \\{"notifications":{"memoryProtectionNotify":"off","updateNotify":"off","accessRequestNotify":"off","crashReportNotify":"on","crashReportSystem":"off","crashReportInApp":"on"}}
+    , "en-US");
+    try std.testing.expectEqual(@as(?bool, false), no_system.crash_report);
+    try std.testing.expectEqual(@as(?bool, false), no_system.notifications_enabled);
+    const no_notify = try parse(std.testing.allocator,
+        \\{"notifications":{"memoryProtectionNotify":"off","updateNotify":"off","accessRequestNotify":"off","crashReportNotify":"off","crashReportSystem":"on","crashReportInApp":"on"}}
+    , "en-US");
+    try std.testing.expectEqual(@as(?bool, false), no_notify.notifications_enabled);
+    try std.testing.expectEqual(@as(?bool, default_crash_report), (try parse(std.testing.allocator, "{}", "en-US")).crash_report);
+    try std.testing.expectError(error.InvalidPreferences, parse(std.testing.allocator, "{\"notifications\":{\"crashReportSystem\":true}}", "en-US"));
+}
+
+test "a missing cache reads the declared frontend defaults" {
     // A nonexistent child of this process's existing temp path exercises the
     // complete Win32 path, token/SID lookup and transient-allocation boundary.
     var wide: [32768]u16 = undefined;
@@ -197,8 +250,7 @@ test "missing cache reads do not synthesize frontend defaults" {
     var root_buffer: [32768]u8 = undefined;
     const root = try std.fmt.bufPrint(&root_buffer, "{s}rm-preferences-missing-{d}", .{ temporary[0..length], c.GetCurrentProcessId() });
     const result = try read(.{ .package_root = root });
-    try std.testing.expectEqual(@as(?bool, null), result.overlay_enabled);
-    try std.testing.expectEqual(@as(?bool, null), result.notifications_enabled);
+    try std.testing.expectEqual(@as(?bool, default_any), result.notifications_enabled);
     try std.testing.expect(result.language_len > 0);
 }
 
@@ -216,7 +268,7 @@ test "explicit cache path reads saved values and rejects oversized files" {
     const file = c.CreateFileW(&wide, c.DELETE, c.FILE_SHARE_READ | c.FILE_SHARE_WRITE | c.FILE_SHARE_DELETE, null, c.CREATE_NEW, c.FILE_ATTRIBUTE_TEMPORARY | c.FILE_FLAG_DELETE_ON_CLOSE, null);
     if (file == c.INVALID_HANDLE_VALUE) return error.FixtureCreate;
     defer _ = c.CloseHandle(file);
-    const json = "{\"appearance\":{\"language\":\"ja-JP\"},\"overlays\":{},\"notifications\":{\"updateSystem\":\"off\",\"accessRequestSystem\":\"off\"}}";
+    const json = "{\"appearance\":{\"language\":\"ja-JP\"},\"notifications\":{\"updateSystem\":\"off\",\"accessRequestSystem\":\"off\"}}";
     {
         const writer = c.CreateFileW(&wide, c.GENERIC_WRITE, c.FILE_SHARE_READ | c.FILE_SHARE_WRITE | c.FILE_SHARE_DELETE, null, c.OPEN_EXISTING, 0, null);
         if (writer == c.INVALID_HANDLE_VALUE) return error.FixtureCreate;
@@ -226,8 +278,8 @@ test "explicit cache path reads saved values and rejects oversized files" {
     }
     const snapshot = try read(.{ .package_root = "", .preferences_path = path });
     try std.testing.expectEqualStrings("ja-JP", snapshot.languageSlice());
-    try std.testing.expectEqual(@as(?bool, false), snapshot.overlay_enabled);
-    try std.testing.expectEqual(@as(?bool, false), snapshot.notifications_enabled);
+    // Update and access requests are off; memory protection keeps its declared values.
+    try std.testing.expectEqual(@as(?bool, default_memory_protection or default_crash_report), snapshot.notifications_enabled);
     {
         const writer = c.CreateFileW(&wide, c.GENERIC_WRITE, c.FILE_SHARE_READ | c.FILE_SHARE_WRITE | c.FILE_SHARE_DELETE, null, c.OPEN_EXISTING, 0, null);
         if (writer == c.INVALID_HANDLE_VALUE) return error.FixtureCreate;

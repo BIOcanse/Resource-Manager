@@ -178,6 +178,7 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.VidmmSessionBuffers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "VidMmSessionBuffers"),
             BackendFreedomPointPositions.GpuAllocationSessionBuffers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "GpuAllocationSessionBuffers"),
             BackendFreedomPointPositions.PresentSessionBuffers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "PresentSessionBuffers"),
+            BackendFreedomPointPositions.PerformanceOverlay => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "PerformanceOverlay"),
             BackendFreedomPointPositions.FramePipeline => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledMonitoringSettings", "FramePipeline"),
             BackendFreedomPointPositions.HelperRequestTimeoutMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHardwareControlSettings", "HelperRequestTimeout"),
             BackendFreedomPointPositions.HelperProcessTiming => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHardwareControlSettings", "HelperProcessTiming"),

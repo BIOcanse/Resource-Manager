@@ -12,24 +12,19 @@ public sealed partial class MainForm : Form
     private Task<bool>? frontendHostInitializationTask;
     private bool appNavigationStarted;
     private bool backendContentEnabled;
-    private FrontendConnectionState frontendConnectionState =
-        FrontendConnectionState.NotStarted;
-    private string? frontendConnectionDetail;
     private bool? lastPublishedHostVisibility;
     private bool desktopOccluded;
     private readonly ResizeGripMessageFilter resizeGripMessageFilter;
     private readonly Action<bool> taskManagerShortcutReplacementChanged;
-    private readonly Action editableHotkeysChanged;
     // Omitted, startup failures go to the package's per-user diagnostics file.
     private readonly string? startupFailurePath;
     private FrontendBackendSessionProjection? backendSessionProjection;
 
     internal MainForm(
         Action<bool> taskManagerShortcutReplacementChanged,
-        Action editableHotkeysChanged,
         WebView2HostConfiguration hostConfiguration,
         string? startupFailurePath = null)
-        : this(taskManagerShortcutReplacementChanged, editableHotkeysChanged,
+        : this(taskManagerShortcutReplacementChanged,
             new WebView2FrontendHost(hostConfiguration),
             startupFailurePath)
     {
@@ -37,13 +32,11 @@ public sealed partial class MainForm : Form
 
     internal MainForm(
         Action<bool> taskManagerShortcutReplacementChanged,
-        Action editableHotkeysChanged,
         IFrontendHost frontendHost,
         string? startupFailurePath = null)
     {
         this.startupFailurePath = startupFailurePath;
         this.taskManagerShortcutReplacementChanged = taskManagerShortcutReplacementChanged;
-        this.editableHotkeysChanged = editableHotkeysChanged;
         this.frontendHost = frontendHost;
         frontendHost.MessageReceived += HandleFrontendMessageReceived;
         frontendHost.NavigationCompleted += HandleFrontendNavigationCompleted;
@@ -70,9 +63,6 @@ public sealed partial class MainForm : Form
     }
 
     internal event EventHandler? BackendRetryRequested;
-
-    internal event EventHandler<FrontendConnectionStateChangedEventArgs>?
-        FrontendConnectionStateChanged;
 
     internal event EventHandler? DiagnosticsRequested;
 
@@ -221,7 +211,6 @@ public sealed partial class MainForm : Form
         appNavigationStarted = false;
         frontendHost.View.Visible = false;
         SetStatusText(NativeUiText.Current.StatusBackendReady);
-        SetFrontendConnectionState(FrontendConnectionState.NotStarted);
     }
 
     protected override void OnFormClosing(FormClosingEventArgs args)
@@ -231,7 +220,7 @@ public sealed partial class MainForm : Form
         // from the screen before any closing handler can tear down the surface.
         Hide();
         // WinForms labels a raw WM_CLOSE (including taskbar close) TaskManagerClosing.
-        // Session messages retain the window; SystemEvents owns confirmed program exit.
+        // Session messages retain the window; the resident owns confirmed program exit.
         if (!finalClose
             && args.CloseReason is (CloseReason.UserClosing or CloseReason.TaskManagerClosing)
             && WindowCloseRequested is not null)
@@ -263,7 +252,6 @@ public sealed partial class MainForm : Form
         appNavigationStarted = false;
         lastPublishedHostVisibility = null;
         frontendHost.View.Visible = false;
-        SetFrontendConnectionState(FrontendConnectionState.NotStarted);
         if (!frontendHost.IsReady)
         {
             return;
@@ -283,7 +271,6 @@ public sealed partial class MainForm : Form
         frontendHost.View.Visible = false;
         SetStatusText(NativeUiText.Current.StatusFrontendLoading);
         backendAvailabilityPanel.ShowFrontendLoading();
-        SetFrontendConnectionState(FrontendConnectionState.Loading);
     }
 
     private void ShowFrontendReady()
@@ -294,7 +281,6 @@ public sealed partial class MainForm : Form
         // 不交过去的话，用户得先在页面里点一下滚轮和键盘才生效。
         frontendHost.FocusContent();
         SetStatusText(NativeUiText.Current.StatusReady);
-        SetFrontendConnectionState(FrontendConnectionState.Ready);
     }
 
     /// <summary>
@@ -316,28 +302,6 @@ public sealed partial class MainForm : Form
         frontendHost.View.Visible = false;
         SetStatusText(NativeUiText.Current.StatusFrontendUnavailable);
         backendAvailabilityPanel.ShowFrontendUnavailable(detail);
-        SetFrontendConnectionState(FrontendConnectionState.Unavailable, detail);
-    }
-
-    private void SetFrontendConnectionState(
-        FrontendConnectionState state,
-        string? detail = null)
-    {
-        var normalizedDetail = string.IsNullOrWhiteSpace(detail) ? null : detail;
-        if (frontendConnectionState == state
-            && string.Equals(
-                frontendConnectionDetail,
-                normalizedDetail,
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        frontendConnectionState = state;
-        frontendConnectionDetail = normalizedDetail;
-        FrontendConnectionStateChanged?.Invoke(
-            this,
-            new FrontendConnectionStateChangedEventArgs(state, normalizedDetail));
     }
 
     protected override void OnVisibleChanged(EventArgs args)

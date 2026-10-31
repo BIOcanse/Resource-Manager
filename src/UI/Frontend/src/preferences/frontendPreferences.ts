@@ -2,10 +2,9 @@ import { ResourceManager } from "./generated/frontendPoints.values.ts";
 import { getHostMessageTransport } from "../host/hostMessageTransport.ts";
 import type {
   AppAppearanceSettings, AppNotificationSettings, AppPerformanceSettings, AppSettings, AppPresetNumericSetting, DashboardSettings,
-  FrontendRefreshIntervals, PerformanceOverlaySettings
+  FrontendRefreshIntervals
 } from "../types.ts";
 import type { TargetedReportViewTemplate } from "../features/targetedReport/views/viewTemplates.ts";
-import { migrateLegacyOverlayPresentation, pointOverlayItems } from "../features/overlay/overlayItems.ts";
 
 const points = ResourceManager.FrontendPoints;
 const resetListeners = new Set<() => void>();
@@ -19,27 +18,25 @@ export type FrontendRefresh = {
   resourceTable: AppPresetNumericSetting;
   localSystem: AppPresetNumericSetting;
 };
-export type OverlayPresentation = Omit<PerformanceOverlaySettings, "softwareId" | "injectionModules">;
+/**
+ * 前端偏好：外观、刷新、通知、监视台和报告视图模板。浮窗设置不在这里，归后端设置 performanceOverlay
+ * （用户 2026-10-31：「前端几乎不拥有任何功能，他只是一个使用后端的软件而已」）。
+ */
 export interface FrontendPreferencesCache {
   overlaySelectionVersion?: 1;
   appearance: AppAppearanceSettings;
   refresh: FrontendRefresh;
   notifications: AppNotificationSettings;
-  overlays: Record<string, OverlayPresentation>;
   dashboard?: DashboardSettings | null;
   /** 定向录制结果页的视图模板（features/targetedReport/views/viewTemplates.ts）；null 或缺省 = 没有模板。 */
   targetedReportViewTemplates?: TargetedReportViewTemplate[] | null;
 }
 /** 保存范围：只替换这一段，其他段取写入时的当前值；不带范围时整份替换。 */
-export type FrontendPreferencesScope = "global" | "dashboard" | "targetedReportViewTemplates" | { overlay: string };
+export type FrontendPreferencesScope = "global" | "dashboard" | "targetedReportViewTemplates";
 export interface FrontendPreferencesClient {
   read(): Promise<FrontendPreferencesCache>;
   save(value: FrontendPreferencesCache, scope?: FrontendPreferencesScope): Promise<FrontendPreferencesCache>;
   reset(): Promise<FrontendPreferencesCache>;
-}
-
-export function cachedOverlay(preferences: FrontendPreferencesCache, softwareId: string): OverlayPresentation | undefined {
-  return Object.entries(preferences.overlays).find(([id]) => id.toLowerCase() === softwareId.toLowerCase())?.[1];
 }
 
 export function pointPreferences(): FrontendPreferencesCache {
@@ -60,7 +57,7 @@ export function pointPreferences(): FrontendPreferencesCache {
       accessRequestSystem: points.AccessRequestSystem, memoryProtectionNotify: points.MemoryProtectionNotify,
       memoryProtectionInApp: points.MemoryProtectionInApp, memoryProtectionSystem: points.MemoryProtectionSystem,
       crashReportNotify: points.CrashReportNotify, crashReportInApp: points.CrashReportInApp, crashReportSystem: points.CrashReportSystem },
-    overlays: {}, dashboard: null, targetedReportViewTemplates: null
+    dashboard: null, targetedReportViewTemplates: null
   };
 }
 
@@ -83,7 +80,8 @@ export function migrateAnimationAppearance(appearance: AppAppearanceSettings): A
 /**
  * Migration frontend-preferences-nvml-fb-used-v1：2026-10-29 后端把 NVML v2 已用显存字段 gpu_nvidia_fb_used_including_reserved_bytes
  * 改名为 gpu_nvidia_fb_used_excluding_reserved_bytes（这个值本来就不含保留部分）。之前保存的卡片槽位（「字段名@设备身份」）
- * 和浮窗来源（fieldName）读入时换成新名字，其他不动。原生壳的 FrontendPreferencesOwner 对它的缓存文件做同一份迁移。
+ * 读入时换成新名字，其他不动。原生壳的 FrontendPreferencesOwner 对它的缓存文件做同一份迁移（那里还换浮窗来源，
+ * 旧浮窗条目随窗口进程的 frontend-preferences-overlays-to-backend-v1 迁移写进后端设置）。
  * 迁移在校验之前运行：只改形状对的值，其他原样交给后面的校验（例如 dashboardPreferences.ts 只拒绝坏的监视台段）。
  * 删除条件：下一个不再读旧版本缓存的发行。
  */
@@ -92,7 +90,6 @@ const nvmlFbUsedField = "gpu_nvidia_fb_used_excluding_reserved_bytes";
 export function migrateNvmlFbUsedField(value: FrontendPreferencesCache): FrontendPreferencesCache {
   const isObject = (item: unknown): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item);
   const retiredSlot = (slot: unknown) => isObject(slot) && typeof slot.metricId === "string" && slot.metricId.startsWith(`${retiredNvmlFbUsedField}@`);
-  const retiredSource = (source: unknown): source is Record<string, unknown> => isObject(source) && source.fieldName === retiredNvmlFbUsedField;
   const result = { ...value };
   const cards: unknown = isObject(value.dashboard) ? value.dashboard.cards : undefined;
   if (value.dashboard && Array.isArray(cards) && cards.some(card => isObject(card) && Array.isArray(card.slots) && card.slots.some(retiredSlot))) {
@@ -100,33 +97,7 @@ export function migrateNvmlFbUsedField(value: FrontendPreferencesCache): Fronten
       slots: card.slots.map(slot => !retiredSlot(slot) ? slot
         : { ...slot, metricId: nvmlFbUsedField + slot.metricId.slice(retiredNvmlFbUsedField.length) }) }) };
   }
-  if (isObject(value.overlays)) {
-    // 旧缓存的浮层还是 metrics、metricSources 的形状（之后由 migrateOverlayItems 换成 items），这里按未知对象读。
-    result.overlays = Object.fromEntries(Object.entries(value.overlays as Record<string, unknown>).map(([id, overlay]) => [id,
-      !isObject(overlay) || !isObject(overlay.metricSources) || !Object.values(overlay.metricSources).some(retiredSource) ? overlay
-        : { ...overlay, metricSources: Object.fromEntries(Object.entries(overlay.metricSources).map(([metric, source]) => [metric,
-          retiredSource(source) ? { ...source, fieldName: nvmlFbUsedField } : source])) }])) as FrontendPreferencesCache["overlays"];
-  }
   return result;
-}
-
-/**
- * Migration frontend-preferences-overlay-items-v1（features/overlay/overlayItems.ts 写明对应表）：旧缓存的浮层 metrics 和
- * metricSources 读入时换成 items。在 NVML 改名迁移之后运行，换出来的来源已经是新字段名。
- */
-export function migrateOverlayItems(value: FrontendPreferencesCache): FrontendPreferencesCache {
-  const overlays: unknown = value.overlays;
-  if (typeof overlays !== "object" || overlays === null || Array.isArray(overlays)) return value;
-  return { ...value, overlays: Object.fromEntries(Object.entries(overlays)
-    .map(([id, overlay]) => [id, migrateLegacyOverlayPresentation(overlay as OverlayPresentation)])) };
-}
-
-export function pointOverlayPresentation(): OverlayPresentation {
-  return {
-    enabled: false, mode: "external", items: pointOverlayItems(), fontSizePx: points.FontSizePx, sizeMode: points.SizeMode,
-    regionWidthRatio: points.RegionWidthRatio, regionHeightRatio: points.RegionHeightRatio,
-    anchor: points.Anchor, marginPx: points.MarginPx
-  };
 }
 
 export function resolveFrontendRefresh(refresh: FrontendRefresh): FrontendRefreshIntervals {
@@ -164,7 +135,7 @@ export function preferencesFromSettings(value: AppSettings, existing: FrontendPr
       monitor: { ...performance.monitorRefreshIntervalMs }, resourceTable: { ...performance.resourceTableRefreshIntervalMs },
       localSystem: { ...performance.localSystemRefreshIntervalMs } },
     notifications: { ...value.notifications! },
-    overlays: existing.overlays, dashboard: existing.dashboard,
+    dashboard: existing.dashboard,
     targetedReportViewTemplates: existing.targetedReportViewTemplates ?? null
   };
 }
@@ -196,8 +167,7 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
         else resolve(response.value);
       });
       if (!unsubscribe) { clearTimeout(timer); reject(new Error("preferences-unavailable")); return; }
-      host.postMessage({ type, requestId, ...(value ? { value } : {}),
-        ...(typeof scope === "string" ? { scope } : scope ? { scope: "overlay", softwareId: scope.overlay } : {}) });
+      host.postMessage({ type, requestId, ...(value ? { value } : {}), ...(scope ? { scope } : {}) });
     });
     return { read: () => request("preferences.get"), save: async (value, scope) => {
       const result = await request("preferences.save", value, scope);
@@ -208,10 +178,13 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
   // Standalone browser frontend uses its own WebView/browser storage, never the API.
   const key = "resource-manager:frontend-preferences:v1";
   const browserStorage = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-  const readCache = () => {
+  const readStored = () => {
     const text = browserStorage?.getItem(key);
-    if (text == null) return pointPreferences();
-    const value = JSON.parse(text) as FrontendPreferencesCache;
+    return text == null ? undefined : JSON.parse(text) as FrontendPreferencesCache & { overlays?: unknown };
+  };
+  const readCache = () => {
+    const value = readStored();
+    if (value === undefined) return pointPreferences();
     // 与原生壳相同：旧缓存缺少的通知字段按本次构建的点值读取，保留已有选择；旧的动画两项按迁移换成动画风格。
     const appearance = value.appearance ? migrateAnimationAppearance(value.appearance) : undefined;
     // 2026-10-26 删除读数来源设置；旧缓存只丢弃这一项，后续保存不再写回。
@@ -225,44 +198,48 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     // 2026-10-29 起跟随通知序号，旧缓存的已提示版本记录丢弃。删除条件：下一个不再读旧版本缓存的发行。
     const { updateInAppNotifiedVersion: _notified, ...notifications } =
       (value.notifications ?? {}) as Partial<AppNotificationSettings> & { updateInAppNotifiedVersion?: unknown };
-    return { ...migrateOverlayItems(migrateNvmlFbUsedField(value)), ...(appearance ? { appearance } : {}),
+    // Migration frontend-preferences-overlays-to-backend-v1（浏览器这一半）：独立浏览器前端没有窗口进程，
+    // 没有后端提交回执，不能删除旧条目。页面不读它，保存和重置只把磁盘上已有的旧条目原样保留。
+    // 删除条件：所有受支持的升级都从这一版之后开始，且待迁移条目已经有后端提交回执。
+    const { overlays: _overlays, ...current } = migrateNvmlFbUsedField(value) as FrontendPreferencesCache & { overlays?: unknown };
+    return { ...current, ...(appearance ? { appearance } : {}),
       notifications: { ...pointPreferences().notifications, ...notifications } };
   };
   let writes = Promise.resolve();
+  const enqueue = (operation: () => FrontendPreferencesCache) => {
+    const write = writes.then(operation);
+    writes = write.then(() => undefined, () => undefined);
+    return write;
+  };
+  const preservePendingOverlays = (value: FrontendPreferencesCache) => {
+    const stored = readStored();
+    const { overlays: _overlays, ...preferences } = value as FrontendPreferencesCache & { overlays?: unknown };
+    // Only carry forward the stored migration input. A stale caller cannot supply or overwrite backend choices.
+    return stored && Object.hasOwn(stored, "overlays") ? { ...preferences, overlays: stored.overlays } : preferences;
+  };
   const save = (value: FrontendPreferencesCache, scope?: FrontendPreferencesScope) => {
-    const write = writes.then(() => {
+    return enqueue(() => {
       if (!browserStorage) throw new Error("preferences-unavailable");
       const current = readCache();
       let next = value;
       if (scope === "global") next = { ...current, appearance: value.appearance, refresh: value.refresh, notifications: value.notifications };
       else if (scope === "dashboard") next = { ...current, dashboard: value.dashboard ?? null };
       else if (scope === "targetedReportViewTemplates") next = { ...current, targetedReportViewTemplates: value.targetedReportViewTemplates ?? null };
-      else if (scope) {
-        const overlays = { ...current.overlays };
-        const presentation = cachedOverlay(value, scope.overlay);
-        for (const id of Object.keys(overlays)) if (id.toLowerCase() === scope.overlay.toLowerCase()) delete overlays[id];
-        if (presentation) overlays[scope.overlay] = presentation;
-        next = { ...current, overlays };
-      }
-      browserStorage.setItem(key, JSON.stringify(next));
+      browserStorage.setItem(key, JSON.stringify(preservePendingOverlays(next)));
       if (scope === "dashboard" && value.dashboard == null) notifyReset();
-      return structuredClone(next);
+      const { overlays: _overlays, ...preferences } = next as FrontendPreferencesCache & { overlays?: unknown };
+      return structuredClone(preferences);
     });
-    writes = write.then(() => undefined, () => undefined);
-    return write;
   };
-  return { read: async () => { await writes; return readCache(); }, save, reset: async () => {
-    await writes;
+  return { read: async () => { await writes; return readCache(); }, save, reset: () => enqueue(() => {
     if (!browserStorage) throw new Error("preferences-unavailable");
-    const current = readCache();
     const value = pointPreferences();
-    value.overlays = Object.fromEntries(Object.entries(current.overlays).map(([id, overlay]) =>
-      [id, { ...pointOverlayPresentation(), enabled: overlay.enabled ?? false, mode: overlay.mode ?? "external" }]));
-    if (Object.keys(value.overlays).length) browserStorage.setItem(key, JSON.stringify(value));
+    const persisted = preservePendingOverlays(value);
+    if (Object.hasOwn(persisted, "overlays")) browserStorage.setItem(key, JSON.stringify(persisted));
     else browserStorage.removeItem(key);
     notifyReset();
     return value;
-  } };
+  }) };
 }
 
 let client: FrontendPreferencesClient | undefined;

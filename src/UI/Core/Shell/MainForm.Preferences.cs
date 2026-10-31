@@ -47,7 +47,6 @@ public sealed partial class MainForm
             "global" => owner.SaveGlobal(value),
             "dashboard" => owner.SaveDashboard(value),
             "targetedReportViewTemplates" => owner.SaveTargetedReportViewTemplates(value),
-            "overlay" => owner.SaveOverlay(message.GetProperty("softwareId").GetString()!, value),
             null => owner.Save(value),
             _ => throw new InvalidDataException("Invalid frontend cache update scope.")
         };

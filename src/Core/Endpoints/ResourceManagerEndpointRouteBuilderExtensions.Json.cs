@@ -669,5 +669,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessRequestPendingWireSnapshot[]>))]
     [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.MetricCatalogWireSnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.FrontendSubscriptionChannelFrame<global::ResourceManager.App.Endpoints.Transport.MetricCatalogWireSnapshot>))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Infrastructure.Settings.PerformanceOverlayToggleRequest))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Infrastructure.Settings.PerformanceOverlayToggleReceipt))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Infrastructure.Settings.PerformanceOverlayRejection))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Infrastructure.Settings.PerformanceOverlaySoftwareView))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Infrastructure.Settings.PerformanceOverlayEditingConstraints))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Infrastructure.Settings.PerformanceOverlayForegroundView))]
     private partial class BackendHttpJsonContext : JsonSerializerContext;
 }

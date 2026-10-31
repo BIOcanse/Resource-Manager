@@ -110,6 +110,9 @@ public sealed class NativeWindowApplicationTests
                 var services = new NativeUiApplicationServices
                 {
                     ApiBaseAddress = "http://127.0.0.1:19321/",
+                    // An isolated cache: the window process's overlay-settings migration reads it on the first ready session.
+                    FrontendPreferencesPath = Path.Combine(Path.GetTempPath(), "rm-window-test-" + Guid.NewGuid().ToString("N"),
+                        "frontend-preferences.cache.json"),
                     CreateFrontendHost = _ => Browser,
                     CreateSession = () => new("http://127.0.0.1:19321/", () => string.Empty,
                         () => new BackendProcessIdentity(Environment.ProcessId, 1, "isolated-fixture.exe")),

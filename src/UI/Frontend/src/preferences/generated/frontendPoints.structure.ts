@@ -47,13 +47,6 @@ export namespace ResourceManager {
       readonly LocalSystemPresets: __fpDeepReadonly<{ readonly responsive: number; readonly balanced: number; readonly lowPower: number; readonly quiet: number }>;
       readonly AutoForegroundPreset: __fpDeepReadonly<"responsive" | "balanced" | "lowPower" | "quiet">;
       readonly KeptPages: __fpDeepReadonly<readonly ("monitor" | "components" | "optimization" | "diskUsage" | "control" | "details" | "settings")[]>;
-      readonly FontSizePx: number;
-      readonly RegionWidthRatio: number;
-      readonly RegionHeightRatio: number;
-      readonly MarginPx: number;
-      readonly SizeMode: __fpDeepReadonly<"absolutePixels" | "windowRatio">;
-      readonly Anchor: __fpDeepReadonly<"topLeft" | "topRight" | "bottomLeft" | "bottomRight">;
-      readonly MetricOrder: __fpDeepReadonly<readonly string[]>;
       readonly DashboardLayoutDefaults: __fpDeepReadonly<{ readonly builtInMetricIds: readonly string[]; readonly cards: readonly { readonly id: string; readonly main: string; readonly small: readonly string[]; readonly scope: "system" | "gpu"; readonly required: boolean }[]; readonly resourceBars: readonly { readonly id: string; readonly metricId: string; readonly scaleMode: "capacity" | "active"; readonly scope: "system" | "gpu"; readonly required: boolean }[]; readonly softwareColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: "system" | "gpu" }[]; readonly processColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: "system" | "gpu" }[] }>;
       readonly DashboardLayoutLimits: __fpDeepReadonly<{ readonly smallMetricLimit: number; readonly cardUnits: number; readonly minimumColumnWidth: number; readonly maximumColumnWidth: number; readonly defaultColumnWidth: number }>;
       readonly UpdateInApp: __fpDeepReadonly<"on" | "off">;

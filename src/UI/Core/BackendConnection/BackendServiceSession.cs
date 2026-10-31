@@ -1,42 +1,24 @@
 using ResourceManager.NativeUi.Localization;
-using System.Buffers;
 using System.Net.Http;
-using System.Net.Http.Json;
-using System.Net;
-using System.ComponentModel;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Text.Json.Serialization.Metadata;
 using ResourceManager.Shared.Runtime;
 using ResourceManager.Shared.Runtime.TrustedAccess;
-using ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
 
 namespace ResourceManager.NativeUi;
 
-internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource, IDisposable, IAsyncDisposable
+/// <summary>
+/// The window process's direct transport to the backend. The resident owns the backend connection and publishes
+/// the backend-session fact over the pipe; this session only pins the installed service's process identity and
+/// carries the page's requests through the loopback proxy.
+/// </summary>
+internal sealed class BackendServiceSession : IDisposable, IAsyncDisposable
 {
     private const string ApiKeyHeaderName = TrustedAccessHeaders.KeyHeader;
-    private const int MaximumProbeResponseBytes = 16 * 1024;
-    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
-    // How long a stopped desktop publisher stream may take to send its terminating chunk before the
-    // request is aborted (the same bound a single desktop publication had).
-    private static readonly TimeSpan DesktopPublisherStopGrace = TimeSpan.FromSeconds(1);
-    private static readonly NativeBackendProbeJsonContext ProbeJsonContext = new(
-        new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-        });
 
-    private readonly HttpClient probeClient;
-    private readonly HttpClient actionClient;
-    private readonly HttpClient desktopPublisherClient;
-    private readonly HttpClient streamClient;
     private readonly HttpClient frontendClient;
     private readonly Uri endpoint;
     private readonly Func<string?> readApiKey;
     private readonly Func<BackendProcessIdentity?> captureIdentity;
     private BackendProcessIdentity? backendProcessIdentity;
-    private BackendServiceAvailabilityMonitor? availabilityMonitor;
     private readonly object disposalSync = new();
     private Task? generationEndCompletion;
     private Task? disposalCompletion;
@@ -47,48 +29,22 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     internal BackendServiceSession(string baseAddress,
         Func<string?>? apiKeyReader = null,
         Func<BackendProcessIdentity?>? identityReader = null,
-        BackendServiceAvailabilityMonitor? availabilityMonitor = null,
         Func<HttpMessageHandler>? handlerFactory = null)
     {
         endpoint = new Uri(baseAddress);
         BackendPath = ResolveBackendPath();
         readApiKey = apiKeyReader ?? NativeUiBackendCredential.ForCurrentProcess(NativeUiPaths.PackageRoot);
         captureIdentity = identityReader ?? (() => BackendProcessConnection.CaptureInstalledServiceIdentity(BackendPath));
-        HttpMessageHandler CreateHandler() => handlerFactory?.Invoke()
-            ?? BackendProcessConnection.CreateHandler(() => backendProcessIdentity);
-        probeClient = new HttpClient(CreateHandler(), disposeHandler: true)
-        {
-            BaseAddress = endpoint,
-            Timeout = ProbeTimeout
-        };
-        actionClient = new HttpClient(CreateHandler(), disposeHandler: true)
-        {
-            BaseAddress = endpoint,
-            Timeout = TimeSpan.FromSeconds(30)
-        };
-        // Carries only the desktop publisher stream, which lasts as long as the publisher runs.
-        desktopPublisherClient = new HttpClient(CreateHandler(), disposeHandler: true)
+        frontendClient = new HttpClient(handlerFactory?.Invoke()
+            ?? BackendProcessConnection.CreateHandler(() => backendProcessIdentity), disposeHandler: true)
         {
             BaseAddress = endpoint,
             Timeout = Timeout.InfiniteTimeSpan
         };
-        streamClient = new HttpClient(CreateHandler(), disposeHandler: true)
-        {
-            BaseAddress = endpoint,
-            Timeout = Timeout.InfiniteTimeSpan
-        };
-        frontendClient = new HttpClient(CreateHandler(), disposeHandler: true)
-        {
-            BaseAddress = endpoint,
-            Timeout = Timeout.InfiniteTimeSpan
-        };
-        this.availabilityMonitor = availabilityMonitor;
-        if (availabilityMonitor is not null) availabilityMonitor.AvailabilityLost += OnAvailabilityLost;
     }
 
     public string BackendPath { get; }
-
-    public event EventHandler<BackendServiceUnavailableEventArgs>? AvailabilityLost;
+    internal Uri ApiBaseAddress => endpoint;
 
     internal Hold? TryAcquire()
     {
@@ -135,203 +91,6 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         return frontendClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
-    internal Task<HttpResponseMessage> OpenPerformanceOverlayStreamAsync(
-        ResourceManager.NativeUi.Overlay.OverlaySubscription[] subscriptions,
-        CancellationToken cancellationToken)
-        => OpenSubscriptionStreamAsync(subscriptions, cancellationToken);
-
-    internal Task<HttpResponseMessage> OpenProductUpdateStreamAsync(CancellationToken cancellationToken)
-        => OpenSubscriptionStreamAsync(
-            new[] { new { id = "updates", path = "/api/updates/product/status/subscribe" } }, cancellationToken);
-
-    // The overlay's module selections are pushed: current value on open, then committed changes.
-    internal Task<HttpResponseMessage> OpenStartupModuleSettingsStreamAsync(CancellationToken cancellationToken)
-        => OpenSubscriptionStreamAsync(
-            new[] { new { id = ResourceManager.NativeUi.Overlay.OverlaySubscriptions.OperationsSubscriptionId,
-                path = ResourceManager.NativeUi.Overlay.OverlaySubscriptions.OperationsSubscriptionPath } },
-            cancellationToken);
-
-    internal Task<HttpResponseMessage> OpenTrayNotificationStreamAsync(CancellationToken cancellationToken)
-        => OpenSubscriptionStreamAsync(
-            new[] { new { id = TrayBackendNotifications.SubscriptionId, path = TrayBackendNotifications.SubscriptionPath } },
-            cancellationToken);
-
-    private async Task<HttpResponseMessage> OpenSubscriptionStreamAsync<T>(T subscriptions,
-        CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(disposed, this);
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
-        {
-            Content = JsonContent.Create(new
-            {
-                version = 1,
-                subscriptions
-            })
-        };
-        ApplyRequestAuthorization(request);
-        var response = await streamClient.SendAsync(request,
-            HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        if (response.IsSuccessStatusCode) return response;
-        var statusCode = response.StatusCode;
-        response.Dispose();
-        throw new HttpRequestException($"Subscription stream returned {(int)statusCode}.", null, statusCode);
-    }
-
-
-    public async Task<string> TerminateProcessesAsync(
-        IReadOnlyList<ForceTerminateProcessTarget> targets,
-        CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(disposed, this);
-        if (targets.Count == 0)
-        {
-            return NativeUiText.Current.NoProcessToTerminate;
-        }
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/system/processes/terminate")
-        {
-            Content = JsonContent.Create(new { targets })
-        };
-        ApplyRequestAuthorization(request);
-        using var response = await actionClient.SendAsync(request, cancellationToken);
-        var payload = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(ReadMessage(payload) ?? string.Format(NativeUiText.Current.BackendHttpErrorFormat, (int)response.StatusCode));
-        }
-        return SummarizeTermination(payload, NativeUiText.Current);
-    }
-
-    internal static string SummarizeTermination(string payload, NativeText text)
-    {
-        using var json = JsonDocument.Parse(payload);
-        if (json.RootElement.GetProperty("action").GetString() != "Terminate")
-            throw new InvalidDataException("The process result action does not match the termination request.");
-        var items = json.RootElement.GetProperty("items");
-        var succeeded = 0;
-        foreach (var item in items.EnumerateArray())
-        {
-            var outcome = item.GetProperty("outcome").GetString();
-            var expectedState = outcome switch
-            {
-                "Terminated" => "Succeeded",
-                "BackendProtected" or "CriticalProcessProtected" or "IdentityChanged" or "ProcessExited" => "Skipped",
-                "AccessDenied" or "NativeFailure" or "FileFailure" or "RequestRejected" => "Failed",
-                _ => throw new InvalidDataException("The termination outcome is unknown.")
-            };
-            if (item.GetProperty("state").GetString() != expectedState)
-                throw new InvalidDataException("The process state and outcome disagree.");
-            if (outcome == "Terminated") succeeded++;
-        }
-        return string.Format(text.TerminateResultFormat, succeeded, items.GetArrayLength());
-    }
-
-    // The desktop publisher stream: one long POST whose chunked application/x-ndjson body carries one
-    // observation per line, each line one chunk. The backend holds this process as its session's
-    // publisher for as long as the request lasts. writeLines runs as the body and writes lines through
-    // the writer it is given; the stream ends when writeLines ends or a write fails. This completes
-    // once the stream has ended.
-    //
-    // Over HTTP/1.1 SendAsync sends the whole body before it reads the response, so it returns only
-    // after writeLines has ended. Nothing here waits for the response before writing: the first line
-    // goes out as soon as the body starts, and the stream's end is the body's end, awaited on its own
-    // so a transport that returns at the response headers still keeps the stream open.
-    //
-    // A stop (cancellationToken) ends writeLines between lines and the body then ends with its
-    // terminating chunk, which the backend takes as the publisher's normal stop. The request itself
-    // is aborted only DesktopPublisherStopGrace after the stop, if it has not ended by then.
-    internal async Task RunDesktopPublisherStreamAsync(
-        Func<Func<InteractiveDesktopObservation, CancellationToken, Task>, CancellationToken, Task> writeLines,
-        CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(disposed, this);
-        using var abort = new CancellationTokenSource();
-        using var stopping = cancellationToken.Register(() => abort.CancelAfter(DesktopPublisherStopGrace));
-        var content = new DesktopObservationStreamContent(writeLines, cancellationToken);
-        using var request = new HttpRequestMessage(HttpMethod.Post, InteractiveDesktopObservation.PublisherStreamPath)
-        { Content = content };
-        request.Headers.TransferEncodingChunked = true;
-        ApplyRequestAuthorization(request);
-        using var response = await desktopPublisherClient.SendAsync(request,
-            HttpCompletionOption.ResponseHeadersRead, abort.Token);
-        if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException(
-                $"Interactive desktop publisher stream returned {(int)response.StatusCode}.", null, response.StatusCode);
-        await content.Ended.WaitAsync(abort.Token);
-    }
-
-    // No length: the body is chunked and each line goes out as its own chunk when it is written.
-    private sealed class DesktopObservationStreamContent : HttpContent
-    {
-        private static readonly JsonSerializerOptions LineJson = new(JsonSerializerDefaults.Web);
-        private readonly Func<Func<InteractiveDesktopObservation, CancellationToken, Task>, CancellationToken, Task> writeLines;
-        private readonly CancellationToken stop;
-        private readonly TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        internal DesktopObservationStreamContent(
-            Func<Func<InteractiveDesktopObservation, CancellationToken, Task>, CancellationToken, Task> writeLines,
-            CancellationToken stop)
-        {
-            this.writeLines = writeLines;
-            this.stop = stop;
-            Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-ndjson");
-        }
-
-        internal Task Ended => ended.Task;
-
-        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
-            => SerializeToStreamAsync(stream, context, CancellationToken.None);
-
-        // cancellationToken is the request's own: a line being written is bounded by the request, not
-        // cut off by the stop, so a stop always lands between lines.
-        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                var line = new ArrayBufferWriter<byte>();
-                await writeLines(async (observation, _) =>
-                {
-                    line.ResetWrittenCount();
-                    using (var writer = new Utf8JsonWriter(line)) JsonSerializer.Serialize(writer, observation, LineJson);
-                    line.Write("\n"u8);
-                    await stream.WriteAsync(line.WrittenMemory, cancellationToken).ConfigureAwait(false);
-                    await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                }, stop).ConfigureAwait(false);
-            }
-            // Returning normally lets HttpClient write the terminating chunk.
-            catch (OperationCanceledException) when (stop.IsCancellationRequested
-                && !cancellationToken.IsCancellationRequested) { }
-            finally { ended.TrySetResult(); }
-        }
-
-        protected override bool TryComputeLength(out long length)
-        {
-            length = 0;
-            return false;
-        }
-    }
-
-    public async Task<string> EnsureConnectedAsync(CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(disposed, this);
-
-        if (await TryConnectAsync(cancellationToken))
-        {
-            StartAvailabilityMonitor();
-            return NativeUiText.Current.StatusReady;
-        }
-
-        if (!File.Exists(BackendPath))
-        {
-            throw new FileNotFoundException(
-                NativeUiText.Current.BackendEntryMissing,
-                BackendPath);
-        }
-
-        throw new InvalidOperationException(
-            NativeUiText.Current.BackendNotOwned);
-    }
 
     public void Dispose()
         => _ = BeginDispose();
@@ -345,10 +104,8 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         {
             if (generationEndCompletion is not null) return generationEndCompletion;
             generationEnded = true;
-            var monitor = availabilityMonitor;
-            availabilityMonitor = null;
-            if (monitor is not null) monitor.AvailabilityLost -= OnAvailabilityLost;
-            generationEndCompletion = EndCoreAsync(monitor);
+            backendProcessIdentity = null;
+            generationEndCompletion = Task.CompletedTask;
             return generationEndCompletion;
         }
     }
@@ -361,15 +118,6 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             disposalCompletion = ReleaseOwnerAsync(EndAsync());
             return disposalCompletion;
         }
-    }
-
-    private async Task EndCoreAsync(BackendServiceAvailabilityMonitor? monitor)
-    {
-        try
-        {
-            if (monitor is not null) await monitor.DisposeAsync().ConfigureAwait(false);
-        }
-        finally { backendProcessIdentity = null; }
     }
 
     private async Task ReleaseOwnerAsync(Task generationEnd)
@@ -385,187 +133,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             if (--holdCount != 0) return;
             disposed = true;
         }
-        probeClient.Dispose();
-        actionClient.Dispose();
-        desktopPublisherClient.Dispose();
-        streamClient.Dispose();
         frontendClient.Dispose();
-    }
-
-    private Task<bool> TryConnectAsync(
-        CancellationToken cancellationToken) =>
-        ProbeBackendAsync(requireCurrentProcess: false, cancellationToken);
-
-    private Task<bool> ProbeCurrentConnectionAsync(
-        CancellationToken cancellationToken) =>
-        ProbeBackendAsync(requireCurrentProcess: true, cancellationToken);
-
-    private async Task<bool> ProbeBackendAsync(
-        bool requireCurrentProcess,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var identity = captureIdentity();
-            if (identity is null
-                || requireCurrentProcess && !SameProcess(identity, backendProcessIdentity))
-            {
-                return false;
-            }
-            backendProcessIdentity = identity;
-
-            using var request = new HttpRequestMessage(
-                HttpMethod.Get,
-                "/api/runtime/capabilities");
-
-            using var response = await probeClient.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
-            if (response.StatusCode != HttpStatusCode.OK)
-            {
-                return false;
-            }
-
-            var capabilities = await ReadBoundedJsonAsync(
-                response,
-                ProbeJsonContext.BackendStartupCapabilitiesResponse,
-                cancellationToken);
-            if (capabilities is null
-                || string.IsNullOrWhiteSpace(capabilities.ProfileId))
-            {
-                return false;
-            }
-
-            return true;
-        }
-        catch (HttpRequestException)
-        {
-            return false;
-        }
-        catch (TaskCanceledException)
-            when (!cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (Win32Exception)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-        catch (System.Security.SecurityException)
-        {
-            return false;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
-
-    private static async Task<T?> ReadBoundedJsonAsync<T>(
-        HttpResponseMessage response,
-        JsonTypeInfo<T> jsonTypeInfo,
-        CancellationToken cancellationToken)
-        where T : class
-    {
-        if (!string.Equals(
-                response.Content.Headers.ContentType?.MediaType,
-                "application/json",
-                StringComparison.OrdinalIgnoreCase)
-            || response.Content.Headers.ContentLength is > MaximumProbeResponseBytes)
-        {
-            return null;
-        }
-
-        await using var responseStream = await response.Content.ReadAsStreamAsync(
-            cancellationToken);
-        using var payload = new MemoryStream();
-        var buffer = new byte[4096];
-        while (true)
-        {
-            var read = await responseStream.ReadAsync(buffer, cancellationToken);
-            if (read == 0)
-            {
-                break;
-            }
-
-            if (payload.Length + read > MaximumProbeResponseBytes)
-            {
-                return null;
-            }
-
-            payload.Write(buffer, 0, read);
-        }
-
-        return JsonSerializer.Deserialize(
-            payload.GetBuffer().AsSpan(0, checked((int)payload.Length)),
-            jsonTypeInfo);
-    }
-
-    private static bool SameProcess(BackendProcessIdentity first, BackendProcessIdentity? second)
-        => second is not null
-            && first.ProcessId == second.ProcessId
-            && first.CreatedUtcTicks == second.CreatedUtcTicks
-            && StringComparer.OrdinalIgnoreCase.Equals(first.ExecutablePath, second.ExecutablePath);
-
-    private void StartAvailabilityMonitor()
-    {
-        lock (disposalSync)
-        {
-            ObjectDisposedException.ThrowIf(generationEnded, this);
-            if (availabilityMonitor is not null) return;
-
-            availabilityMonitor = new BackendServiceAvailabilityMonitor(
-                ProbeCurrentConnectionAsync,
-                waitForOwnedProcessExitAsync: null);
-            availabilityMonitor.AvailabilityLost += OnAvailabilityLost;
-            availabilityMonitor.Start();
-        }
-    }
-
-    private void OnAvailabilityLost(
-        object? sender,
-        BackendServiceUnavailableEventArgs unavailable)
-    {
-        if (!disposed)
-        {
-            backendProcessIdentity = null;
-            AvailabilityLost?.Invoke(this, unavailable);
-        }
-    }
-
-
-    private static string? ReadMessage(string payload)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(payload);
-            return document.RootElement.TryGetProperty("message", out var message)
-                && message.ValueKind == JsonValueKind.String
-                    ? message.GetString()
-                    : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
     }
 
     internal static string ResolveBackendPath()

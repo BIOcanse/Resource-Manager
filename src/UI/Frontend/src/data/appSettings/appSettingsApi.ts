@@ -40,7 +40,7 @@ export async function saveAppSettingsPatch(
   signal?: AbortSignal
 ): Promise<CommittedAppSettingsResult> {
   try {
-    return await requestClient.request({
+    const result = await requestClient.request({
       key: "app.settings.patch",
       url: "/api/settings/app",
       fallbackError: uiText.misc.saveSettingsFailed,
@@ -52,6 +52,15 @@ export async function saveAppSettingsPatch(
         body: JSON.stringify({ expectedRevision, changes })
       }
     });
+    // Disposition is authoritative even if a backend/proxy returned HTTP 200 for a failed write.
+    if (result.runtimeApplicationDisposition === "revisionConflict") throw new AppSettingsRevisionConflictError(result);
+    if (result.runtimeApplicationDisposition === "savedNotApplied") throw new Error(uiText.misc.settingsSavedNotApplied);
+    if (result.runtimeApplicationDisposition !== "committedAndApplied"
+        && result.runtimeApplicationDisposition !== "committedWithCapabilityConstraints"
+        && result.runtimeApplicationDisposition !== "committedWithDeliveryFailures") {
+      throw new Error(uiText.misc.saveSettingsFailed);
+    }
+    return result;
   } catch (error) {
     throwSettingsFailure(error);
   }

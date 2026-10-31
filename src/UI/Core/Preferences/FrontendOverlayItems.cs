@@ -5,7 +5,9 @@ namespace ResourceManager.NativeUi.Preferences;
 
 // 浮层的一项（docs/targeted_recording_views_2026-10-30.md §3.9）：和定向录制同一个项合同。Source 是 "auto" 或目录里的来源
 // （"字段@设备身份" 等）；IntervalMs 留空表示用目录的自然间隔或浮层订阅的默认间隔；帧项不带间隔。SyncPrecision 只存、只回显。
-// 前端 src/features/overlay/overlayItems.ts 是同一份形状和校验。
+// 浮窗设置 2026-10-31 起归后端设置 performanceOverlay，后端做同一份校验。这里只剩旧偏好缓存的浮窗条目写进后端时用的
+// 换算和检查（Migration frontend-preferences-overlays-to-backend-v1，FrontendPreferencesOwner.OverlayMigration.cs），
+// 和那个迁移一起删除。
 internal sealed record FrontendOverlayItem(string Kind, string Id, string Source, int? IntervalMs, string SyncPrecision);
 
 internal static class FrontendOverlayItems
@@ -18,18 +20,6 @@ internal static class FrontendOverlayItems
     internal const string DefaultSyncPrecision = "mid";
     internal static readonly string[] Kinds = ["frames", "metric", "software"];
     internal static readonly string[] SyncPrecisions = ["low", "mid", "high"];
-
-    // 默认的项：构建点 overlay-metric_order 的每个值是 "kind:id"，来源自动、间隔留空、同步精度中。
-    internal static IReadOnlyList<FrontendOverlayItem> PointItems() =>
-        FrontendPoints.MetricOrder.Select(static value =>
-        {
-            var separator = value.IndexOf(':');
-            var kind = separator > 0 ? value[..separator] : string.Empty;
-            var id = separator > 0 ? value[(separator + 1)..] : string.Empty;
-            if (id.Length == 0 || !Kinds.Contains(kind, StringComparer.Ordinal))
-                throw new InvalidDataException($"overlay-metric_order: {value} is not kind:id");
-            return new FrontendOverlayItem(kind, id, AutoSource, null, DefaultSyncPrecision);
-        }).ToArray();
 
     // 一组项不合规的原因；合规返回 null。检查顺序和前端 itemListIssue 相同，原因码也相同。
     internal static string? Issue(IReadOnlyList<FrontendOverlayItem>? items)
@@ -58,7 +48,7 @@ internal static class FrontendOverlayItems
     // - target.cpu → software cpu.usage，target.memory → software memory.usage（来源自动）；
     // - target.gpu → software gpu.usage，target.vram → software gpu.vram（目标在所有 GPU 上的合计，来源自动）；
     // - 其余 id 是整机和硬件指标 → metric 同一 id，选过来源时来源写成 "字段@设备身份"，没选是 "auto"。
-    // 前端的浏览器缓存读入做同一份迁移。删除条件：下一个不再读旧版本缓存的发行。
+    // 删除条件：下一个不再读旧版本缓存的发行，最晚和 frontend-preferences-overlays-to-backend-v1 一起删除。
     private static readonly Dictionary<string, (string Kind, string Id)> LegacyTargetItems = new(StringComparer.OrdinalIgnoreCase)
     {
         ["target.fps"] = ("frames", "frames.fps"),
