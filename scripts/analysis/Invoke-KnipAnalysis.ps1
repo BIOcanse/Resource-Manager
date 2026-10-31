@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 (Get-Process -Id $PID).PriorityClass = 'BelowNormal'
 $repo = [IO.Path]::GetFullPath($RepoRoot)
 $output = [IO.Path]::GetFullPath($OutputRoot)
-$node = (Get-Command node -CommandType Application).Source
+$node = (Get-Command node -CommandType Application | Select-Object -First 1).Source
 if (-not (Test-Path -LiteralPath "$repo/src/UI/Frontend/node_modules/solid-js/package.json")) { throw 'Restore frontend dependencies first' }
 # Knip 6 parses through oxc-parser raw transfer, which reserves a 4 GiB ArrayBuffer per parser and fails under the
 # queue's 4 GiB job ceiling. Knip's own switch turns raw transfer off; it only changes how parse results reach JavaScript.

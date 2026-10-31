@@ -17,7 +17,7 @@ $restart = if ($env:JOBQUEUE_RESTART_COUNT) { [int]$env:JOBQUEUE_RESTART_COUNT }
 if ($restart -gt 0) { $output += "-restart-$restart" }
 if (Test-Path -LiteralPath $output) { throw 'Use a fresh output directory; prior evidence is immutable.' }
 [void][IO.Directory]::CreateDirectory($output)
-$dotnet = (Get-Command dotnet -CommandType Application -ErrorAction Stop).Source
+$dotnet = (Get-Command dotnet -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $zig = Join-Path ([IO.Path]::GetFullPath($ToolsRoot)) 'Zig/zig-0.17.0/zig.exe'
 $env:PATH = @($PSHOME,(Split-Path -Parent $zig),(Split-Path -Parent $dotnet),(Join-Path $env:SystemRoot 'System32'),$env:SystemRoot) -join ';'
 $env:DOTNET_CLI_HOME = Join-Path $output 'dotnet-home'

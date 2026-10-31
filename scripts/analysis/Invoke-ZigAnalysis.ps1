@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath($RepoRoot)
 $output = [IO.Path]::GetFullPath($OutputRoot)
 Set-Location -LiteralPath $repo
-                $zig = (Get-Command zig -CommandType Application).Source
+                $zig = (Get-Command zig -CommandType Application | Select-Object -First 1).Source
                 $version = & $zig version
                 if ($LASTEXITCODE -ne 0 -or $version -ne '0.17.0') { throw 'Expected Zig 0.17.0 on launcher PATH' }
                 $pending = [Collections.Generic.Queue[string]]::new()

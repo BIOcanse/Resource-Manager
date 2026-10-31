@@ -21,8 +21,8 @@ if (-not $CodeQL -or -not $Queue) {
     if (-not $CodeQL) { $CodeQL = Join-Path $toolsRoot 'CodeQL/2.27.2/codeql/codeql.exe' }
     if (-not $Queue) { $Queue = Join-Path $toolsRoot 'JobQueue/JobQueue.ps1' }
 }
-$pwsh = (Get-Command pwsh -CommandType Application).Source
-$node = (Get-Command node -CommandType Application).Source
+$pwsh = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
+$node = (Get-Command node -CommandType Application | Select-Object -First 1).Source
 $manager = Join-Path $repo 'scripts/maintenance/Manage-GeneratedWorkspace.ps1'
 $output = Join-Path $repo ".local/$RunName"
 $dbRoot = Join-Path $repo ".local/$CodeQLRunName"

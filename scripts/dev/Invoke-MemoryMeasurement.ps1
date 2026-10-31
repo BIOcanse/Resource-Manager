@@ -13,7 +13,7 @@ function Invoke-MemoryMeasurement {
     if (-not (Test-Path -LiteralPath $ToolPath -PathType Leaf)) {
         throw "Build scripts/dev/MemoryMeasurement/MemoryMeasurement.csproj through JobQueue first, then pass its DLL via -ToolPath. Missing: $ToolPath"
     }
-    $dotnet = (Get-Command dotnet -CommandType Application -ErrorAction Stop).Source
+    $dotnet = (Get-Command dotnet -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     $pwsh = (Get-Process -Id $PID).Path
     $limit = Join-Path $PSScriptRoot 'Invoke-WithMemoryLimit.ps1'
     # ArgumentList is the remaining array argument of Invoke-WithMemoryLimit; direct invocation preserves it.

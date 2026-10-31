@@ -125,7 +125,7 @@ for ($tableIndex = 0; $tableIndex -lt 2; $tableIndex++) {
         throw "The product Ledger table $tableIndex does not match its declared payload role."
     }
 }
-$zig = (Get-Command $ZigPath -CommandType Application -ErrorAction Stop).Source
+$zig = (Get-Command $ZigPath -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $manifestPath = Join-Path $sdk "manifest.$version.json"
 $release = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($release.schema -cne 'resource-manager/ledger-sdk-local-release/v1' -or $release.version -cne $version -or

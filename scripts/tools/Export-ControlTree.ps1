@@ -35,7 +35,7 @@ function Invoke-ProcessExport([hashtable]$Process, [string]$Scratch) {
         [Console]::Error.WriteLine("$($Process.Name): no Zig declaration yet")
         return
     }
-    $zig = (Get-Command zig -CommandType Application -ErrorAction Stop).Source
+    $zig = (Get-Command zig -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
     $queue = Join-Path (Get-MachineRoot -Name ToolsRoot) 'JobQueue\JobQueue.ps1'
     if (-not (Test-Path -LiteralPath $queue)) { throw "JobQueue is required for builds: $queue" }

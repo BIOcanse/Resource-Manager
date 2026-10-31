@@ -34,7 +34,7 @@ try {
     if (-not (Test-Path -LiteralPath $reports -PathType Container)) { throw 'ReportDirectory must be an existing directory.' }
     if (-not (Test-Path -LiteralPath $ledger -PathType Container)) { throw 'LedgerWorkRoot must be an existing registered work root.' }
     if (-not (Test-Path -LiteralPath $Queue -PathType Leaf)) { throw "Build queue is unavailable: $Queue" }
-    $dotnet = (Get-Command dotnet -CommandType Application).Source
+    $dotnet = (Get-Command dotnet -CommandType Application | Select-Object -First 1).Source
     $projects = [ordered]@{
         Shared = 'src/Shared/ResourceManager.Shared.csproj'
         ReadWriteCore = 'src/ReadWriteCore/ResourceManager.ReadWriteCore.csproj'

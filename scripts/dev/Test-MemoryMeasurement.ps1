@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 if (-not $env:JOBQUEUE_JOB_ID) { throw 'Run this test through JobQueue.ps1 -Action Run.' }
 $Ledger = [IO.Path]::GetFullPath($Ledger)
 $ToolPath = [IO.Path]::GetFullPath($ToolPath)
-$dotnet = (Get-Command dotnet -CommandType Application).Source
+$dotnet = (Get-Command dotnet -CommandType Application | Select-Object -First 1).Source
 $pwsh = (Get-Process -Id $PID).Path
 $testClock = [Diagnostics.Stopwatch]::StartNew()
 $checks = [Collections.Generic.List[string]]::new()
