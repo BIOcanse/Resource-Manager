@@ -24,14 +24,16 @@ internal sealed class TraceEventPresentFrameEtwSession : IPresentFrameEtwSession
     private readonly TraceEventSessionProcessingRuntime cleanup;
     private ETWTraceEventSource? source;
 
-    internal TraceEventPresentFrameEtwSession(string name, ILogger logger)
+    internal TraceEventPresentFrameEtwSession(string name, EtwSessionBuffers buffers, ILogger logger)
     {
         this.name = name;
         this.logger = logger;
         session = new(name)
         {
             StopOnDispose = true,
-            BufferSizeMB = 16,
+            // The declared pool (present_session_buffers).
+            BufferQuantumKB = buffers.BufferKib,
+            BufferSizeMB = buffers.PoolMib,
             EnableProviderTimeoutMSec = 2000
         };
         cleanup = new(session, blockId: BlockUids.PresentFrameEtwSource);

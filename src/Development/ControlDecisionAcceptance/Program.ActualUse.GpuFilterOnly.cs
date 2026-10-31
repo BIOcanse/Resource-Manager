@@ -37,6 +37,8 @@ internal static partial class Program
         var names = new List<string>();
         var passed = true;
         int[]? controlNeededRundownIds = null;
+        // No host here: the product defaults are the pool the published plan would carry.
+        var buffers = ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.GpuAllocationSessionBuffers;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         var variants = new[] { (Name: "filtered-no-capture", Filter: true, Capture: false, Reenable: false),
             (Name: "filtered-capture", Filter: true, Capture: true, Reenable: false),
@@ -56,6 +58,8 @@ internal static partial class Program
             Exception? failure = null;
             KernelEtwSessionStopResult? release = null;
             var samples = new List<object>();
+            var queries = new List<NativeKernelQuery>();
+            UserSessionBufferRow? pool = null;
             var started = DateTimeOffset.UtcNow;
             var seconds = 0d;
             try
@@ -63,7 +67,8 @@ internal static partial class Program
                 if (QueryOwnedKernel(name).Exists) throw new InvalidDataException("The fresh private session already exists.");
                 native = new TraceEventSession(name);
                 native.StopOnDispose = true;
-                native.BufferSizeMB = 16;
+                native.BufferQuantumKB = buffers.BufferKib;
+                native.BufferSizeMB = buffers.PoolMib;
                 native.EnableProviderTimeoutMSec = 2000;
                 // No host logger here; fixed-layout rejections still show in the drop counters.
                 session = new TraceEventGpuAllocationSession(native, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
@@ -92,8 +97,10 @@ internal static partial class Program
                         if (variant.Reenable) session.EnableProvider(provider, 0x41, allowed);
                         captured = true;
                     }
+                    var query = QueryOwnedKernel(name);
+                    queries.Add(query);
                     samples.Add(new { at = DateTimeOffset.UtcNow, elapsedSeconds = clock.Elapsed.TotalSeconds,
-                        session = QueryOwnedKernel(name), drops = EtwEventDropDiagnostics.Read().Sessions.Single(value => value.Name == name) });
+                        session = query, drops = EtwEventDropDiagnostics.Read().Sessions.Single(value => value.Name == name) });
                     await Task.Delay(100, deadline.Token);
                 }
                 seconds = clock.Elapsed.TotalSeconds;
@@ -110,6 +117,10 @@ internal static partial class Program
                         throw new InvalidDataException($"Filtered re-enable variant missed same-run control rundown IDs [{string.Join(",", missing)}] during CaptureState. Missing-ID causality is unproven because the workload may have changed; no fallback or rebuild was applied.");
                 }
                 if (session.EventsLost != 0) throw new InvalidDataException("The filter comparison lost ETW events.");
+                // The declared pool must be the one ETW runs, and the rundown burst may not lose a buffer.
+                pool = SummarizeUserSession("GpuAllocation", variant.Name, queries)
+                    ?? throw new InvalidDataException("The private GPU session was never queried while alive.");
+                ValidateUserSessionBufferRow(pool, buffers);
                 if (measurement.Overflow != 0) throw new InvalidDataException("The filter comparison exceeded its bounded recording capacity.");
                 var current = EtwEventDropDiagnostics.Read().Sessions.Single(value => value.Name == name);
                 if (current.Kinds.Sum(value => value.Received) == 0)
@@ -161,7 +172,8 @@ internal static partial class Program
                     captureState = variant.Capture, keywords = "0x41", allowedIds = variant.Filter ? allowed : null,
                     filteredEnableAfterCaptureState = variant.Reenable,
                     captureStateAt = variant.Capture ? "after-one-second-of-enable-only-observation" : "none",
-                    release, error = failure?.ToString(), measurement = variant.Name + "-kinds-per-second.json" });
+                    release, declaredBuffers = buffers, sessionBuffers = pool,
+                    error = failure?.ToString(), measurement = variant.Name + "-kinds-per-second.json" });
             }
         }
         var remaining = names.Where(name => QueryOwnedKernel(name).Exists).ToArray();

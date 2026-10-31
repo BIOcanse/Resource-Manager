@@ -8,6 +8,7 @@ using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Application.CpuTopology;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 
 namespace ResourceManager.ControlDecisionAcceptance;
 
@@ -45,19 +46,27 @@ internal static partial class Program
             name =>
             {
                 RequireOwnSessionName(ResourceManagerEtwSessionNames.PresentFramesPrefix, name);
-                return new TraceEventPresentFrameEtwSession(name, provider.GetRequiredService<ILogger<PresentFrameEtwSource>>());
+                return new TraceEventPresentFrameEtwSession(name, ReadPublishedMonitoring(provider).PresentSessionBuffers,
+                    provider.GetRequiredService<ILogger<PresentFrameEtwSource>>());
             }, TimeProvider.System, provider.GetService<IEtwConsumerThreadObserver>())));
         services.Replace(ServiceDescriptor.Singleton<GpuAllocationCollector>(provider => new(
             provider.GetRequiredService<ILogger<GpuAllocationCollector>>(),
             provider.GetRequiredService<IConfiguration>(),
             provider.GetRequiredService<BusinessBlockDiagnosticsRegistry>(),
             provider.GetRequiredService<NativeEtwSessionAvailability>(),
-            new ActualUseGpuAllocationFactory(provider.GetRequiredService<ILogger<GpuAllocationCollector>>(), provider.GetService<IEtwConsumerThreadObserver>()),
+            new ActualUseGpuAllocationFactory(provider.GetRequiredService<ILogger<GpuAllocationCollector>>(),
+                () => ReadPublishedMonitoring(provider).GpuAllocationSessionBuffers, provider.GetService<IEtwConsumerThreadObserver>()),
             TimeProvider.System, consumerThreadObserver: provider.GetService<IEtwConsumerThreadObserver>())));
         // VidMm already directly constructs TraceEventVidMmSession(name, provider,
-        // keywords, logger). Neither that constructor nor the zone calls orphan recovery.
+        // keywords, buffers, logger) with the product's published buffer pool. Neither that
+        // constructor nor the zone calls orphan recovery.
         // It keeps the product's exact-own PID/start-time session name and cleanup.
     }
+
+    // The probe's own sessions use the same published pools as the product's.
+    private static CompiledMonitoringSettings ReadPublishedMonitoring(IServiceProvider provider)
+        => provider.GetRequiredService<IRuntimePlanProvider>().Current.HostManager.RequirePublished().Monitoring
+            ?? throw new InvalidOperationException("Monitoring settings are unpublished.");
 
     private static void RequireOwnSessionName(string prefix, string name)
     {
@@ -65,16 +74,21 @@ internal static partial class Program
             name, StringComparison.Ordinal)) throw new InvalidDataException("Private probe factory received another process's session name.");
     }
 
-    private sealed class ActualUseGpuAllocationFactory(ILogger logger, IEtwConsumerThreadObserver? observer) : IGpuAllocationSessionFactory
+    private sealed class ActualUseGpuAllocationFactory(ILogger logger, Func<EtwSessionBuffers> readBuffers,
+        IEtwConsumerThreadObserver? observer) : IGpuAllocationSessionFactory
     {
         public IGpuAllocationSession Create(string name)
         {
             RequireOwnSessionName(ResourceManagerEtwSessionNames.GpuAllocationsPrefix, name);
+            var buffers = readBuffers();
             TraceEventSession? session = null;
             try
             {
                 session = new TraceEventSession(name, TraceEventSessionOptions.Create)
-                    { StopOnDispose = true, BufferSizeMB = 16, EnableProviderTimeoutMSec = 2000 };
+                {
+                    StopOnDispose = true, BufferQuantumKB = buffers.BufferKib, BufferSizeMB = buffers.PoolMib,
+                    EnableProviderTimeoutMSec = 2000
+                };
                 return new TraceEventGpuAllocationSession(session, logger, observer);
             }
             catch (Exception failure)

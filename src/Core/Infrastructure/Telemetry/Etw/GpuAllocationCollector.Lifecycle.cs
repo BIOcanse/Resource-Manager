@@ -22,24 +22,25 @@ public sealed partial class GpuAllocationCollector
     private Run? activeRun;
     private readonly NativeEtwSessionAvailability availability;
 
+    // readSessionBuffers is read when each session is created (gpu_allocation_session_buffers).
     public GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration,
-        BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability, IEtwConsumerThreadObserver? consumerThreadObserver = null)
+        BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability,
+        Func<EtwSessionBuffers> readSessionBuffers, IEtwConsumerThreadObserver? consumerThreadObserver = null)
+        : this(logger, configuration, diagnostics, availability,
+            new TraceEventGpuAllocationSessionFactory(logger, readSessionBuffers, consumerThreadObserver),
+            TimeProvider.System, null, consumerThreadObserver)
     {
-        this.logger = logger;
-        this.diagnostics = diagnostics;
-        this.availability = availability;
-        plan = GpuAllocationCapturePlan.Compile(configuration);
-        sessionFactory = new TraceEventGpuAllocationSessionFactory(logger, consumerThreadObserver);
-        timeProvider = TimeProvider.System;
-        deliveryBudget = TimeSpan.FromSeconds(5);
     }
 
     internal GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration,
         BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability, IGpuAllocationSessionFactory sessionFactory,
         TimeProvider timeProvider, TimeSpan? deliveryBudget = null,
         IEtwConsumerThreadObserver? consumerThreadObserver = null)
-        : this(logger, configuration, diagnostics, availability, consumerThreadObserver)
     {
+        this.logger = logger;
+        this.diagnostics = diagnostics;
+        this.availability = availability;
+        plan = GpuAllocationCapturePlan.Compile(configuration);
         this.sessionFactory = sessionFactory;
         this.timeProvider = timeProvider;
         this.deliveryBudget = deliveryBudget ?? TimeSpan.FromSeconds(5);

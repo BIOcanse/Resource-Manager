@@ -25,8 +25,9 @@ internal static partial class Program
         return settle + TimeSpan.FromSeconds(10) + settle;
     }
 
+    // queries receives every read-only query of the product GPU allocation session in this phase.
     private static async Task RunActualUseGpuFilterPhaseAsync(IServiceProvider services, IKernelEtwSessionBroker broker,
-        string evidence, CancellationToken token)
+        string evidence, List<NativeKernelQuery> queries, CancellationToken token)
     {
         var collector = services.GetRequiredService<GpuAllocationCollector>();
         var sampler = services.GetRequiredService<WindowsResourceBreakdownSampler>();
@@ -82,6 +83,7 @@ internal static partial class Program
                 var holders = ReadActualUseHolders(services, broker);
                 var use = ReadGpuCaptureUse(collector);
                 var native = QueryOwnedKernel(name);
+                queries.Add(native);
                 var drops = EtwEventDropDiagnostics.Read().Sessions.SingleOrDefault(value => value.Name == name);
                 // This is an actual read of allocation output beneath the owned
                 // resource-field subscription; it never starts a capture itself.

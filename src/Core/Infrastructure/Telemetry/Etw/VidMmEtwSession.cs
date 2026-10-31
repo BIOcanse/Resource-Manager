@@ -22,9 +22,11 @@ internal sealed class TraceEventVidMmSession : IVidMmEtwSession
 
     // The provider is enabled by GUID: a provider name makes TraceEvent enumerate every
     // registered provider through TDH into a process-lifetime name table.
-    internal TraceEventVidMmSession(string name, Guid provider, ulong keywords, ILogger logger)
+    internal TraceEventVidMmSession(string name, Guid provider, ulong keywords, EtwSessionBuffers buffers, ILogger logger)
     {
-        session = new TraceEventSession(name) { StopOnDispose = true };
+        // The declared pool (vidmm_session_buffers), not TraceEvent's 64 MiB default.
+        session = new TraceEventSession(name)
+            { StopOnDispose = true, BufferQuantumKB = buffers.BufferKib, BufferSizeMB = buffers.PoolMib };
         cleanup = new(session, blockId: BlockUids.DxgkrnlVidMmEtwTelemetryZone);
         drops = EtwEventDropDiagnostics.Start(name, () => session.EventsLost);
         layouts = new(logger, "DxgKrnl VidMm", drops);

@@ -26,20 +26,24 @@ internal interface IGpuAllocationSession
     void JoinProcessing();
 }
 
+// readBuffers is read at each session creation: the declared pool (gpu_allocation_session_buffers).
 internal sealed class TraceEventGpuAllocationSessionFactory(
     ILogger logger,
+    Func<EtwSessionBuffers> readBuffers,
     IEtwConsumerThreadObserver? consumerThreadObserver = null) : IGpuAllocationSessionFactory
 {
     public IGpuAllocationSession Create(string sessionName)
     {
         ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
             ResourceManagerEtwSessionNames.GpuAllocationsPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName);
+        var buffers = readBuffers();
         TraceEventSession? session = null;
         try
         {
             session = new TraceEventSession(sessionName);
             session.StopOnDispose = true;
-            session.BufferSizeMB = 16;
+            session.BufferQuantumKB = buffers.BufferKib;
+            session.BufferSizeMB = buffers.PoolMib;
             session.EnableProviderTimeoutMSec = 2000;
             return WrapSession(session);
         }

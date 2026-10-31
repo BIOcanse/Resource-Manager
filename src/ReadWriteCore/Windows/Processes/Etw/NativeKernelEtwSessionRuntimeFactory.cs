@@ -8,7 +8,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 public sealed class NativeKernelEtwSessionRuntimeFactory(
     IKernelEtwRegionProvider regionProvider,
     Func<NativeKernelEtwSessionConfig> readConfig,
-    Func<KernelEtwSessionBuffers> readBuffers,
+    Func<EtwSessionBuffers> readBuffers,
     Action<string>? beforeCreate = null,
     IKernelEtwConsumerThreadObserver? observer = null) : IKernelEtwSessionRuntimeFactory
 {

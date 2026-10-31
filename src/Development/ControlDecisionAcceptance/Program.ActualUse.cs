@@ -76,7 +76,9 @@ internal static partial class Program
         var memorySamples = new List<ActualUseKernelMemorySample>();
         var eventRates = new List<ActualUseEventRateInterval>();
         var nativeSamples = new List<ActualUseNativeSample>();
-        KernelEtwSessionBuffers? declaredBuffers = null;
+        EtwSessionBuffers? declaredBuffers = null;
+        DeclaredUserSessionBuffers? declaredUserBuffers = null;
+        var gpuFilterQueries = new List<NativeKernelQuery>();
         var names = new[] { ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.PresentFramesPrefix,
             ResourceManagerEtwSessionNames.GpuAllocationsPrefix, ResourceManagerEtwSessionNames.DxgkrnlVidMmPrefix }
             .Select(prefix => ResourceManagerEtwSessionNames.Create(prefix, ResourceManagerEtwSessionNames.CurrentOwner)).ToArray();
@@ -273,6 +275,7 @@ internal static partial class Program
                 address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
                 if (new Uri(address).Port is 0 or 9321 or 9333) throw new InvalidDataException("Probe listener is not private.");
                 declaredBuffers = ReadKernelSessionBuffers(app.Services);
+                declaredUserBuffers = ReadUserSessionBuffers(app.Services);
                 await SaveAsync(evidence, "run-metadata.json", new { processId = Environment.ProcessId, names, address, pipe, image, root,
                     artifactManifest = artifacts, overrides = EffectBoundaries.Overrides, orphanRecovery = "disabled",
                     portableDiscovery = "existing host admission false in every phase; no portable ETW consumer",
@@ -473,7 +476,7 @@ internal static partial class Program
 
 
                 await RunCaseAsync(cases, evidence, "gpu-allocation-filter", ActualUseGpuFilterBudget(app.Services),
-                    token => RunActualUseGpuFilterPhaseAsync(app.Services, broker, evidence, token), deadline.Token);
+                    token => RunActualUseGpuFilterPhaseAsync(app.Services, broker, evidence, gpuFilterQueries, token), deadline.Token);
                 await RunCaseAsync(cases, evidence, "e-subscriptions-removed", TimeSpan.FromSeconds(75), async token =>
                 {
                     residencyLease?.Dispose(); residencyLease = null;
@@ -514,6 +517,17 @@ internal static partial class Program
                 var rows = SummarizeKernelSessionBuffers(samples);
                 await SaveAsync(evidence, "kernel-session-buffers.json", new { declared = declaredBuffers, rows });
                 ValidateKernelSessionBuffers(rows, declaredBuffers ?? throw new InvalidDataException("Startup did not read the declared kernel session buffers."));
+            }, CancellationToken.None);
+            await RunCaseAsync(cases, evidence, "user-session-buffers", TimeSpan.FromSeconds(5), async token =>
+            {
+                token.ThrowIfCancellationRequested();
+                var declared = declaredUserBuffers ?? throw new InvalidDataException("Startup did not read the declared user session buffers.");
+                var rows = SummarizeUserSessionBuffers(nativeSamples, gpuFilterQueries);
+                var notAlive = UserSessionNames.Where(session => rows.All(row => row.Session != session)).ToArray();
+                await SaveAsync(evidence, "user-session-buffers.json", new { declared,
+                    processorCount = Environment.ProcessorCount, raisedBufferSize = DescribeRaisedBufferSize(declared),
+                    notAlive = notAlive.Select(static session => session + " was never alive in any phase.").ToArray(), rows });
+                ValidateUserSessionBuffers(rows, declared);
             }, CancellationToken.None);
             await RunCaseAsync(cases, evidence, "managed-window-allocation", TimeSpan.FromSeconds(5), async token =>
             {

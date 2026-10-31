@@ -16,7 +16,8 @@ public sealed class GpuAllocationConsumerAccountingTests
         var observer = new RecordingObserver();
         await using var harness = new GpuAllocationTestSessionFactory().Harness(observer: observer);
         var collector = new GpuAllocationCollector(NullLogger<GpuAllocationCollector>.Instance,
-            new ConfigurationBuilder().Build(), harness.Diagnostics, harness.Availability, observer);
+            new ConfigurationBuilder().Build(), harness.Diagnostics, harness.Availability,
+            static () => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.GpuAllocationSessionBuffers, observer);
 
         var factory = Assert.IsType<TraceEventGpuAllocationSessionFactory>(ReadField(collector, "sessionFactory"));
         var session = (TraceEventSession)RuntimeHelpers.GetUninitializedObject(typeof(TraceEventSession));

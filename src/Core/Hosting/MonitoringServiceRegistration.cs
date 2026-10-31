@@ -294,8 +294,21 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddHostedServiceAlias<EtwPhysicalDiskIoAttributionReader>(BlockUids.EtwPhysicalDiskIoAttributionReader, static service => service.ExecuteTask, forwardRunFailureToHost: false);
 
-        services.AddSingleton<DxgkrnlVidMmEtwTelemetryZone>();
-        services.AddSingleton<PresentFrameEtwSource>();
+        // The three user-mode ETW owners read their declared buffer pools when they create a session.
+        services.AddSingleton<DxgkrnlVidMmEtwTelemetryZone>(static provider => new(
+            provider.GetRequiredService<ILogger<DxgkrnlVidMmEtwTelemetryZone>>(),
+            provider.GetRequiredService<Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockScheduler>(),
+            provider.GetRequiredService<Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockDiagnosticsRegistry>(),
+            provider.GetRequiredService<NativeEtwSessionAvailability>(),
+            () => ReadPublishedMonitoring(provider).VidMmSessionBuffers,
+            provider.GetService<ResourceManager.ReadWrite.Windows.Processes.Etw.IEtwConsumerThreadObserver>()));
+        services.AddSingleton<PresentFrameEtwSource>(static provider => new(
+            provider.GetRequiredService<ILogger<PresentFrameEtwSource>>(),
+            provider.GetRequiredService<Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockScheduler>(),
+            provider.GetRequiredService<Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockDiagnosticsRegistry>(),
+            provider.GetRequiredService<NativeEtwSessionAvailability>(),
+            () => ReadPublishedMonitoring(provider).PresentSessionBuffers,
+            provider.GetService<ResourceManager.ReadWrite.Windows.Processes.Etw.IEtwConsumerThreadObserver>()));
         services.AddSingleton<IFrameTimingObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         services.AddSingleton<DxgkrnlVidMmEtwResidualBreakdownProvider>();
         services.AddSingleton<WindowsResourceResidualBreakdownProvider>();
@@ -327,7 +340,13 @@ public static partial class ResourceManagerServiceCollectionExtensions
             gpuAllocations: provider.GetService<GpuAllocationCollector>(),
             interactiveDesktops: provider.GetService<InteractiveDesktopObservationStore>(),
             stateAuthority: provider.GetService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>()));
-        services.AddSingleton<GpuAllocationCollector>();
+        services.AddSingleton<GpuAllocationCollector>(static provider => new(
+            provider.GetRequiredService<ILogger<GpuAllocationCollector>>(),
+            provider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
+            provider.GetRequiredService<Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockDiagnosticsRegistry>(),
+            provider.GetRequiredService<NativeEtwSessionAvailability>(),
+            () => ReadPublishedMonitoring(provider).GpuAllocationSessionBuffers,
+            provider.GetService<ResourceManager.ReadWrite.Windows.Processes.Etw.IEtwConsumerThreadObserver>()));
         services.AddSingleton<IResourceBreakdownSampler>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<IResourceBreakdownObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<IResourceBreakdownPushSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
@@ -338,6 +357,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
             forwardRunFailureToHost: false);
         return services;
     }
+
+    private static Domain.RuntimeSpecialization.CompiledMonitoringSettings ReadPublishedMonitoring(IServiceProvider provider)
+        => provider.GetRequiredService<IRuntimePlanProvider>().Current.HostManager.RequirePublished().Monitoring
+            ?? throw new InvalidOperationException("Monitoring settings are unpublished.");
 
     private static IServiceCollection AddMonitoringSourceZone<TZone>(this IServiceCollection services)
         where TZone : MonitoringSourceZone

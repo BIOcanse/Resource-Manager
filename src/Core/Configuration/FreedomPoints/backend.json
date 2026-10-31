@@ -166,6 +166,39 @@
                   "session_buffer_kib": 64,
                   "session_minimum_buffers": 64
                 }
+              },
+              {
+                "id": "vidmm_session_buffers",
+                "index": 5,
+                "description": "The DxgKrnl VidMm real-time ETW session's buffer pool, held in kernel nonpaged memory while the VidMm zone runs: buffer_kib per buffer, minimum_buffers at start; together whole MiB. TraceEvent sets the maximum to 5/4 of the minimum plus 10 and raises the buffer size to at least 1 KiB per logical processor; ETW raises the minimum to 2 per logical processor.",
+                "value_type": "object",
+                "value_source": "registry",
+                "status": "active",
+                "update_class": "rebuild_backend",
+                "consumers": ["MonitoringSettings.Compile"],
+                "value": { "buffer_kib": 32, "minimum_buffers": 64 }
+              },
+              {
+                "id": "gpu_allocation_session_buffers",
+                "index": 6,
+                "description": "The GPU allocation real-time ETW session's buffer pool, held in kernel nonpaged memory while a capture or live ledger runs; each capture's rundown arrives as one burst: buffer_kib per buffer, minimum_buffers at start; together whole MiB. TraceEvent sets the maximum to 5/4 of the minimum plus 10 and raises the buffer size to at least 1 KiB per logical processor; ETW raises the minimum to 2 per logical processor.",
+                "value_type": "object",
+                "value_source": "registry",
+                "status": "active",
+                "update_class": "rebuild_backend",
+                "consumers": ["MonitoringSettings.Compile"],
+                "value": { "buffer_kib": 32, "minimum_buffers": 64 }
+              },
+              {
+                "id": "present_session_buffers",
+                "index": 7,
+                "description": "The Present frame real-time ETW session's buffer pool, held in kernel nonpaged memory while frame or graphics API observation runs: buffer_kib per buffer, minimum_buffers at start; together whole MiB. TraceEvent sets the maximum to 5/4 of the minimum plus 10 and raises the buffer size to at least 1 KiB per logical processor; ETW raises the minimum to 2 per logical processor.",
+                "value_type": "object",
+                "value_source": "registry",
+                "status": "active",
+                "update_class": "rebuild_backend",
+                "consumers": ["MonitoringSettings.Compile"],
+                "value": { "buffer_kib": 32, "minimum_buffers": 64 }
               }
             ]
           },

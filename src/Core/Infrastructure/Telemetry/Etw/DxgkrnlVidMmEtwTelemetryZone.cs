@@ -14,6 +14,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     BusinessBlockScheduler controller,
     BusinessBlockDiagnosticsRegistry diagnostics,
     NativeEtwSessionAvailability availability,
+    Func<EtwSessionBuffers> readSessionBuffers,
     IEtwConsumerThreadObserver? consumerThreadObserver = null) : IBusinessBlock
 {
     public const string ProviderStateId = "dxgkrnl-vidmm-etw";
@@ -26,18 +27,24 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     private long stoppedAtUtcTicks;
     private long nextPruneUtcTicks;
     private readonly Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess = WindowsNetworkEndpointProcessLease.Open;
-    private readonly Func<string, IVidMmEtwSession> createSession = name => new TraceEventVidMmSession(name, DxgkrnlVidMmEtwLayouts.Provider, DxgKrnlKeywords, logger);
+    // The buffer pool is read when each session is created.
+    private readonly Func<string, IVidMmEtwSession> createSession = name => new TraceEventVidMmSession(
+        name, DxgkrnlVidMmEtwLayouts.Provider, DxgKrnlKeywords, readSessionBuffers(), logger);
 
     public string State => controller.ReadState(BlockUids.DxgkrnlVidMmEtwTelemetryZone).ToString();
     public string Message => diagnostics.Read(BlockUids.DxgkrnlVidMmEtwTelemetryZone).Result?.Outcome == BusinessBlockOutcome.Failed ? "etw-session-failed" : string.Empty;
     internal DxgkrnlVidMmEtwTelemetryZone(ILogger<DxgkrnlVidMmEtwTelemetryZone> logger,
         BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability, Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess,
-        Func<string, IVidMmEtwSession>? createSession = null, IEtwConsumerThreadObserver? consumerThreadObserver = null)
-        : this(logger, controller, diagnostics, availability, consumerThreadObserver)
+        Func<string, IVidMmEtwSession> createSession, IEtwConsumerThreadObserver? consumerThreadObserver = null)
+        : this(logger, controller, diagnostics, availability, InjectedSessionBuffers, consumerThreadObserver)
     {
         this.openProcess = openProcess;
-        if (createSession is not null) this.createSession = createSession;
+        this.createSession = createSession;
     }
+
+    // An injected session creator sizes its own sessions; nothing reads this.
+    private static EtwSessionBuffers InjectedSessionBuffers()
+        => throw new InvalidOperationException("Injected VidMm sessions own their buffer pool.");
 
     public IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence> ReadEvidence(TimeSpan evidenceWindow)
     {

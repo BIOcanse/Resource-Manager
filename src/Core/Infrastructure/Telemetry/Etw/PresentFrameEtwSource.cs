@@ -18,6 +18,7 @@ public sealed partial class PresentFrameEtwSource(
     BusinessBlockScheduler controller,
     BusinessBlockDiagnosticsRegistry diagnostics,
     NativeEtwSessionAvailability availability,
+    Func<EtwSessionBuffers> readSessionBuffers,
     IEtwConsumerThreadObserver? consumerThreadObserver = null)
     : IFrameTimingObservationSource, IBusinessBlock, IDisposable
 {
@@ -55,7 +56,8 @@ public sealed partial class PresentFrameEtwSource(
     {
         ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
             ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner, name);
-        return new TraceEventPresentFrameEtwSession(name, logger);
+        // The buffer pool is read when each session is created.
+        return new TraceEventPresentFrameEtwSession(name, readSessionBuffers(), logger);
     };
     private readonly TimeProvider timeProvider = TimeProvider.System;
     private readonly Func<GpuPlacementProcessInstance, bool> isCurrentGraphicsApiProcess =
@@ -79,12 +81,17 @@ public sealed partial class PresentFrameEtwSource(
         Func<string, IPresentFrameEtwSession> createSession,
         TimeProvider? timeProvider = null,
         IEtwConsumerThreadObserver? consumerThreadObserver = null,
-        Func<GpuPlacementProcessInstance, bool>? isCurrentGraphicsApiProcess = null) : this(logger, controller, diagnostics, availability, consumerThreadObserver)
+        Func<GpuPlacementProcessInstance, bool>? isCurrentGraphicsApiProcess = null)
+        : this(logger, controller, diagnostics, availability, InjectedSessionBuffers, consumerThreadObserver)
     {
         this.createSession = createSession;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         if (isCurrentGraphicsApiProcess is not null) this.isCurrentGraphicsApiProcess = isCurrentGraphicsApiProcess;
     }
+
+    // An injected session creator sizes its own sessions; nothing reads this.
+    private static EtwSessionBuffers InjectedSessionBuffers()
+        => throw new InvalidOperationException("Injected Present sessions own their buffer pool.");
 
     public IDisposable AcquireSubscription()
     {

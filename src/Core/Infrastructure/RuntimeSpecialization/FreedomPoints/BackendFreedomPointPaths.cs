@@ -11,6 +11,9 @@ internal static class BackendFreedomPointPaths
     public const string OverlayFrameWindow = "resource-manager/backend/monitoring/build/simple/2";
     public const string TargetedRecording = "resource-manager/backend/monitoring/build/complex/3";
     public const string KernelEtwLimits = "resource-manager/backend/monitoring/build/complex/4";
+    public const string VidMmSessionBuffers = "resource-manager/backend/monitoring/build/complex/5";
+    public const string GpuAllocationSessionBuffers = "resource-manager/backend/monitoring/build/complex/6";
+    public const string PresentSessionBuffers = "resource-manager/backend/monitoring/build/complex/7";
     public const string ServiceRecoveryCounterReset = "resource-manager/backend/service_recovery/build/simple/0";
     public const string CpuResidencyObservationWindow = "resource-manager/backend/monitoring/cpu_residency/build/simple/0";
     public const string CpuResidencyExecutionTimeSource = "resource-manager/backend/monitoring/cpu_residency/build/complex/0";

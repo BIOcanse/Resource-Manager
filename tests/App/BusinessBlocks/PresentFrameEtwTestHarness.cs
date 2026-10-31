@@ -62,7 +62,8 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         var sourceLogger = logger ?? NullLogger<PresentFrameEtwSource>.Instance;
         if (useNativeSession)
         {
-            source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, availability, observer);
+            source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, availability,
+                static () => ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.PresentSessionBuffers, observer);
         }
         else
         {

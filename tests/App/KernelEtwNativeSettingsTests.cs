@@ -91,7 +91,7 @@ public sealed class KernelEtwNativeSettingsTests
         Assert.Equal(JsonSerializer.SerializeToUtf8Bytes(KernelEtwNativeSettings.CreateConfiguration(baseline.KernelEtwLimits!, baseline.CpuCoreResidency, 2), json),
             JsonSerializer.SerializeToUtf8Bytes(KernelEtwNativeSettings.CreateConfiguration(changed.KernelEtwLimits!, changed.CpuCoreResidency, 2), json));
         Assert.NotEqual(baseline.BuildSha256, changed.BuildSha256);
-        Assert.Throws<ArgumentOutOfRangeException>(() => new KernelEtwSessionBuffers(64, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new EtwSessionBuffers(64, 3));
     }
 
     [Theory]

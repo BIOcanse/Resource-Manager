@@ -98,7 +98,7 @@ public sealed unsafe partial class NativeKernelEtwSession : IKernelEtwNativeRunt
         if (!providerStopped) provider?.Flush();
     }
 
-    internal void Initialize(string name, NativeKernelEtwSessionConfig config, KernelEtwSessionBuffers buffers,
+    internal void Initialize(string name, NativeKernelEtwSessionConfig config, EtwSessionBuffers buffers,
         KernelTraceEventParser.Keywords keywords, Action<string>? beforeCreate, DateTimeOffset publicationOriginUtc,
         bool realtime = true)
     {

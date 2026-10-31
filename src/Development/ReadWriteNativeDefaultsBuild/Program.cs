@@ -71,7 +71,7 @@ internal static partial class Program
             source.Append("        value.Interrupts.MaximumPathUnits = value.MaximumPathUnits;\n        return value;\n    }\n\n");
             // Part of the same kernel_etw_limits value that SelectedLimits binds; the point has no second generation target.
             source.Append("    // From the same bound kernel_etw_limits value as SelectedLimits.\n");
-            source.Append("    internal static KernelEtwSessionBuffers SelectedSessionBuffers { get; } = new(")
+            source.Append("    internal static EtwSessionBuffers SelectedSessionBuffers { get; } = new(")
                 .Append(value.GetProperty(SessionBufferFields[0]).GetInt32().ToString(CultureInfo.InvariantCulture)).Append(", ")
                 .Append(value.GetProperty(SessionBufferFields[1]).GetInt32().ToString(CultureInfo.InvariantCulture)).Append(");\n}\n");
             var output = Path.GetFullPath(args[1]);
