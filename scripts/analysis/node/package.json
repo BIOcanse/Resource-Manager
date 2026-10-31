@@ -1,1 +1,1 @@
-{"name":"resource-manager-static-analysis","private":true,"type":"module","devDependencies":{"@microsoft/eslint-formatter-sarif":"3.1.0","eslint":"10.14.0","eslint-plugin-solid":"0.18.1","knip":"5.88.1","typescript":"6.0.3","typescript-eslint":"8.72.1"}}
+{"name":"resource-manager-static-analysis","private":true,"type":"module","devDependencies":{"@microsoft/eslint-formatter-sarif":"3.1.0","eslint":"10.14.0","eslint-plugin-solid":"0.18.1","knip":"6.44.0","typescript":"6.0.3","typescript-eslint":"8.72.1"}}

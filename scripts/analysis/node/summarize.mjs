@@ -23,10 +23,11 @@ for (const file of sarifFiles) {
 const knipFile=path.join(output,'knip.json');
 if (accepted.has('knip.json') && fs.existsSync(knipFile)) {
   const k=JSON.parse(fs.readFileSync(knipFile,'utf8').replace(/^\uFEFF/,''));
-  for (const file of k.files??[]) findings.push({tool:'knip',rule:'unused-file',severity:'warning',file:'src/UI/Frontend/' + (typeof file==='string'?file:file.file),line:1,message:'Unused file in configured build + tests graph'});
   for (const issue of k.issues??[]) {
     for (const [rule,values] of Object.entries(issue)) {
       if (!Array.isArray(values)) continue;
+      // Knip 6 reports an unused file as an entry in the issue's own `files` list.
+      if (rule==='files') { for (const value of values) findings.push({tool:'knip',rule:'unused-file',severity:'warning',file:'src/UI/Frontend/' + (value.name??issue.file),line:1,message:'Unused file in configured build + tests graph'}); continue; }
       for (const value of values) findings.push({tool:'knip',rule,severity:'warning',file:'src/UI/Frontend/' + issue.file,line:value.line??1,message:typeof value==='string'?value:value.name??JSON.stringify(value)});
     }
   }

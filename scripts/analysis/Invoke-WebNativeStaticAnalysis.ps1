@@ -17,9 +17,9 @@ Set-Location -LiteralPath $repo
 $policy = Join-Path $PSScriptRoot 'workspace-policy.json'
 if (-not $CodeQL -or -not $Queue) {
     Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
-    $tools = Get-MachineRoot -Name ToolsRoot
-    if (-not $CodeQL) { $CodeQL = Join-Path $tools 'CodeQL/2.27.2/codeql/codeql.exe' }
-    if (-not $Queue) { $Queue = Join-Path $tools 'JobQueue/JobQueue.ps1' }
+    $toolsRoot = Get-MachineRoot -Name ToolsRoot
+    if (-not $CodeQL) { $CodeQL = Join-Path $toolsRoot 'CodeQL/2.27.2/codeql/codeql.exe' }
+    if (-not $Queue) { $Queue = Join-Path $toolsRoot 'JobQueue/JobQueue.ps1' }
 }
 $pwsh = (Get-Command pwsh -CommandType Application).Source
 $node = (Get-Command node -CommandType Application).Source

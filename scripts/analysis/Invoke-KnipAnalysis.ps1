@@ -7,6 +7,9 @@ $repo = [IO.Path]::GetFullPath($RepoRoot)
 $output = [IO.Path]::GetFullPath($OutputRoot)
 $node = (Get-Command node -CommandType Application).Source
 if (-not (Test-Path -LiteralPath "$repo/src/UI/Frontend/node_modules/solid-js/package.json")) { throw 'Restore frontend dependencies first' }
+# Knip 6 parses through oxc-parser raw transfer, which reserves a 4 GiB ArrayBuffer per parser and fails under the
+# queue's 4 GiB job ceiling. Knip's own switch turns raw transfer off; it only changes how parse results reach JavaScript.
+$env:KNIP_DISABLE_RAW_TRANSFER = '1'
 Set-Location -LiteralPath "$repo/src/UI/Frontend"
 foreach ($config in @('knip','knip-product')) {
     & $node "$PSScriptRoot/node/node_modules/knip/bin/knip.js" --config "$PSScriptRoot/$config.json" --reporter json --no-progress 1> "$output/$config.json" 2> "$output/$config.log"
@@ -14,5 +17,5 @@ foreach ($config in @('knip','knip-product')) {
     $raw = Get-Content -LiteralPath "$output/$config.json" -Raw
     if ([string]::IsNullOrWhiteSpace($raw)) { throw 'Knip returned empty output' }
     $parsed = $raw | ConvertFrom-Json
-    if ($null -eq $parsed -or $null -eq $parsed.PSObject.Properties['files'] -or $null -eq $parsed.PSObject.Properties['issues']) { throw 'Knip did not return its findings object' }
+    if ($null -eq $parsed -or $null -eq $parsed.PSObject.Properties['issues']) { throw 'Knip did not return its findings object' }
 }
