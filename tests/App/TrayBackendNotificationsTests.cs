@@ -29,8 +29,11 @@ public sealed class TrayBackendNotificationsTests : IDisposable
     private FrontendPreferencesOwner Owner() => new(Cache);
 
     // A new consumer over a new owner of the same files is what a tray restart creates.
-    private TrayBackendNotifications Consumer(string language = "en-US") =>
-        new(Owner(), (title, message) => { balloons.Add((title, message)); afterBalloon?.Invoke(); }, () => language);
+    // Within one process the consumer shares the single preferences owner (FrontendPreferencesOwner.Current), so a switch
+    // changed while it runs must be saved through that owner: since cefe8f51 an owner reads the file once and later reads
+    // see only its own saves.
+    private TrayBackendNotifications Consumer(string language = "en-US", FrontendPreferencesOwner? owner = null) =>
+        new(owner ?? Owner(), (title, message) => { balloons.Add((title, message)); afterBalloon?.Invoke(); }, () => language);
 
     public TrayBackendNotificationsTests() => Directory.CreateDirectory(root);
 
@@ -164,18 +167,20 @@ public sealed class TrayBackendNotificationsTests : IDisposable
     {
         var (notify, system, _) = Switches(kind);
         Owner().RecordLastHandledNotificationSequence(0);
-        var consumer = Consumer();
+        // The running tray and the settings it reads share one owner; switches change through it.
+        var owner = Owner();
+        var consumer = Consumer(owner: owner);
         // Turning a switch off after the first balloon stops the next one in the same frame.
-        afterBalloon = () => Set(system, "off");
+        afterBalloon = () => Set(system, "off", owner);
         consumer.ObserveFrame(Frame((1, kind, FactsFor(kind)), (2, kind, FactsFor(kind))));
         Assert.Single(balloons);
         Assert.Equal(2, Owner().ReadLastHandledNotificationSequence());
         afterBalloon = null;
-        Set(system, "on");
-        Set(notify, "off");
+        Set(system, "on", owner);
+        Set(notify, "off", owner);
         consumer.ObserveFrame(Frame((3, kind, FactsFor(kind))));
         Assert.Single(balloons);
-        Set(notify, "on");
+        Set(notify, "on", owner);
         consumer.ObserveFrame(Frame((4, kind, FactsFor(kind))));
         Assert.Equal(2, balloons.Count);
     }
@@ -471,9 +476,9 @@ public sealed class TrayBackendNotificationsTests : IDisposable
         Assert.Equal(0, Owner().ReadLastHandledNotificationSequence());
     }
 
-    private void Set(string property, string value)
+    private void Set(string property, string value, FrontendPreferencesOwner? owner = null)
     {
-        var owner = Owner();
+        owner ??= Owner();
         var current = owner.Read().Notifications;
         var next = property switch
         {

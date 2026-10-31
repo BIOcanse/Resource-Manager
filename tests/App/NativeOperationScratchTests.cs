@@ -158,7 +158,10 @@ public sealed class NativeOperationScratchTests
     public void ScoringLayoutUseOldOperationRegistrationAndCandidateExportUseAllThreeSlots()
     {
         using var owner = new ResourceManagerLedgerOwner();
-        var scoringLayout = new ComputeScoringScratchLayout(8, 16, 56, 1, 0, 1);
+        // The scoring work area is the one Ledger registration here. Since 084dfdfb output rows are 16 B instead of 96 B, so
+        // 56 outputs (3,088 B) fall below one native page and become managed; 128 outputs keep it a Ledger allocation.
+        var scoringLayout = new ComputeScoringScratchLayout(8, 16, 128, 1, 0, 1);
+        Assert.True(scoringLayout.Length >= owner.NativePageSize);
         using var score = owner.CreateScratch(scoringLayout.Length);
         using var scoring = score.Acquire();
         scoring.Complete();

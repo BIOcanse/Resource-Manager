@@ -69,7 +69,7 @@ public sealed class KernelEtwConsumerDropTests
         using var flow = resource.Acquire(new("independent-residency-owner", keywords, static (_, _) => { })
             { NativeOutputs = KernelEtwNativeOutputs.Residency });
         KernelEtwNativeReaders.ConfigureProcessors(resource.Session, [0]);
-        resource.Publish(0);
+        BeginFiniteWindow(0);
         var dispatcher = new KernelEtwSubscriptionDispatcher(resource.Session, _ => { });
         var kinds = new[] { "ProcessStartGroup", "ProcessEndGroup", "ThreadStartGroup", "ThreadEndGroup", "ThreadCSwitch" };
         var context = new KernelEtwSessionContext(resource.Generation, resource.StartedAt);
@@ -88,6 +88,9 @@ public sealed class KernelEtwConsumerDropTests
             AssertHolder();
             AssertPublishedProcess(1010, 41);
             dispatcher.UpdateSubscriptions([], context, _ => throw new InvalidOperationException("Last return must not update keywords."));
+            // A finite window covers [S, S + W] only (4004bd25), so the independent owner begins its next window, as
+            // RunWindowAsync does for each window, before the second delivery; without it the run after E counts nothing.
+            BeginFiniteWindow(1010);
             DeliverFive(1010, 42, 102);
             AssertHolder();
             AssertPublishedProcess(2020, 42);
@@ -107,6 +110,12 @@ public sealed class KernelEtwConsumerDropTests
                     Counts(Assert.Single(counts, value => value.Kind == prefix)));
                 Assert.Equal((0L, 0L), Counts(Assert.Single(counts, value => value.Kind == prefix + "/rejected:generation-mismatch")));
             }
+        }
+        void BeginFiniteWindow(long tick)
+        {
+            // Window begin at this floor with 0 slots = finite; the publish drains the staged command.
+            KernelEtwNativeReaders.ResetContinuity(resource.Session, tick, 0);
+            resource.Publish(tick);
         }
         void DeliverFive(long offset, uint pid, uint tid)
         {

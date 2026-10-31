@@ -24,7 +24,9 @@ public sealed class NativeKernelEtwSessionRuntimeTests
     {
         Assert.Equal(64, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwResidencyConfig>());
         Assert.Equal(64, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwInterruptConfig>());
-        Assert.Equal(272, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwSessionConfig>());
+        // 4004bd25 grew the embedded residency config by 8 B (processor count, reserved word, processor pointer replace
+        // bucket_ms and max_cells), so the shared config is 280 B; shared_abi.zig asserts the same size for shared.Config.
+        Assert.Equal(280, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwSessionConfig>());
     }
 
     [Fact]
