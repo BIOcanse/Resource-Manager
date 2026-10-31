@@ -68,7 +68,7 @@ This inventory covers the resolved product, desktop, installer, uninstaller, ext
 | Mono.Posix.NETStandard/1.0.0 | Microsoft | See package license URL | src/Core, tests/App |
 | NETStandard.Library.Ref/2.1.0 | Microsoft | MIT | sdk/csharp/ResourceManager.Adapter.Abstractions runtime/reference pack |
 | RAMSPDToolkit-NDD/1.4.2 | RAMSPDToolkit-NDD | MPL-2.0 | src/Core, tests/App |
-| ResourceManager.Ledger/0.1.0-dev.6 | BIOcanse | Not declared in package metadata | src/Core, tests/App |
+| ResourceManager.Ledger/0.1.0-dev.7 | BIOcanse | Not declared in package metadata | src/Core, tests/App |
 | runtime.android-arm.runtime.native.System.IO.Ports/10.0.3 | Microsoft | MIT | src/Core, tests/App |
 | runtime.android-arm64.runtime.native.System.IO.Ports/10.0.3 | Microsoft | MIT | src/Core, tests/App |
 | runtime.android-x64.runtime.native.System.IO.Ports/10.0.3 | Microsoft | MIT | src/Core, tests/App |

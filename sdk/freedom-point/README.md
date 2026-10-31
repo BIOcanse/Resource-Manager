@@ -9,8 +9,8 @@
 | 0.1.0-dev.48 | FreedomPoint.Core | 后端与 native 前端产品依赖 |
 | 0.1.0-dev.48 | FreedomPoint.SourceTracking | 后端、前端开发期源码检查 |
 | 0.1.0-dev.48 | FreedomPoint.Generators | 前端 TS 与 C# 正式投影 |
-| 0.1.0-dev.39 | FreedomPoint.Core | Ledger dev.6 构建时依赖 |
-| 0.1.0-dev.39 | FreedomPoint.Generators | Ledger dev.6 构建时生成器；依赖同版 Core |
+| 0.1.0-dev.39 | FreedomPoint.Core | Ledger dev.7 构建时依赖 |
+| 0.1.0-dev.39 | FreedomPoint.Generators | Ledger dev.7 构建时生成器；依赖同版 Core |
 
 RM 构建和测试直接调用已引用包的 SDK API，不运行 FreedomPoint.BuildCheckTool，也不携带其工具闭包或未消费的 Compilation 包。SourceTracking 自带的 Roslyn 用于源码检查，不进入产品运行图。Ledger 自身的 dev.39 pin 不变。
 

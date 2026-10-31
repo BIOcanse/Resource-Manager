@@ -206,7 +206,7 @@ if([IO.File]::Exists((Join-Path $taskRoot 'package-prerequisites.json'))){
     $taskInputs+=@($taskPrerequisites.nativeSourceInputs|ForEach-Object path)
     $taskInputs+=@($taskPrerequisites.nativeAssets|ForEach-Object path)
 }
-$taskInputs+=@('artifacts/sdk/manifest.0.1.0-dev.6.json','artifacts/sdk/packages/ResourceManager.Ledger.0.1.0-dev.6.nupkg','artifacts/sdk/packages/ResourceManager.Ledger.Build.0.1.0-dev.6.nupkg','artifacts/sdk/packages/ResourceManager.Ledger.Configuration.0.1.0-dev.6.nupkg','artifacts/sdk/native/0.1.0-dev.6/ResourceManager.Ledger.NativeSources.0.1.0-dev.6.zip','artifacts/sdk/tools/0.1.0-dev.6/.config/dotnet-tools.json')
+$taskInputs+=@('artifacts/sdk/manifest.0.1.0-dev.7.json','artifacts/sdk/packages/ResourceManager.Ledger.0.1.0-dev.7.nupkg','artifacts/sdk/packages/ResourceManager.Ledger.Build.0.1.0-dev.7.nupkg','artifacts/sdk/packages/ResourceManager.Ledger.Configuration.0.1.0-dev.7.nupkg','artifacts/sdk/native/0.1.0-dev.7/ResourceManager.Ledger.NativeSources.0.1.0-dev.7.zip','artifacts/sdk/tools/0.1.0-dev.7/.config/dotnet-tools.json')
 $taskInputs+=@(Get-ChildItem (Join-Path $taskRepo 'sdk/freedom-point/packages') -File -Filter '*0.1.0-dev.48.nupkg'|ForEach-Object FullName)
 if($Stage -in @('Sources','Pack','Consumers')) {
     $taskCompileBuildContext=Get-Content -LiteralPath (Join-Path $taskRoot 'build-context.json') -Raw|ConvertFrom-Json

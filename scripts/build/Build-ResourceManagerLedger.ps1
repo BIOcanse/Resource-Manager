@@ -17,7 +17,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$version = '0.1.0-dev.6'
+$version = '0.1.0-dev.7'
 $utf8 = [Text.UTF8Encoding]::new($false)
 
 function Write-Json([string]$Path, $Value) {

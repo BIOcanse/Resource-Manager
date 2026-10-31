@@ -60,7 +60,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.48" />
-    <PackageReference Include="ResourceManager.Ledger" Version="0.1.0-dev.6" />
+    <PackageReference Include="ResourceManager.Ledger" Version="0.1.0-dev.7" />
     <PackageReference Include="FanControlCore.Library" Version="0.1.0-dev.6" />
     <PackageReference Include="Disk.ReadWrite" Version="0.1.0" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="4.0.0" />

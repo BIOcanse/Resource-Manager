@@ -1,0 +1,74 @@
+{
+  "schema": "resource-manager/ledger-sdk-local-release/v1",
+  "status": "accepted-package-consumer",
+  "version": "0.1.0-dev.7",
+  "target": "win-x64",
+  "candidateManifest": {
+    "path": "rm-product-workspaces:ledger-ledger-sdk-dev7/ledger-sdk-candidates/0.1.0-dev.7-c7f4c1fedd3a4f5895065cb868ddc6ce/manifest.json",
+    "sha256": "c2bc14655bdc449dd099d5cc62fc3d9451cc9cd51235086baf4e4ae22dfb73b6"
+  },
+  "packages": [
+    {
+      "id": "ResourceManager.Ledger",
+      "version": "0.1.0-dev.7",
+      "file": "packages/ResourceManager.Ledger.0.1.0-dev.7.nupkg",
+      "length": 44661,
+      "sha256": "6818634af061e525f3380afae03a3c58649eaf29facb0e76951bb3cf241d31ea"
+    },
+    {
+      "id": "ResourceManager.Ledger.Build",
+      "version": "0.1.0-dev.7",
+      "file": "packages/ResourceManager.Ledger.Build.0.1.0-dev.7.nupkg",
+      "length": 34565,
+      "sha256": "4e2c5da1e165a67c9366ff23b8c6d9f8c0db27bee3d19a95083c600fd8e13f78"
+    },
+    {
+      "id": "ResourceManager.Ledger.Configuration",
+      "version": "0.1.0-dev.7",
+      "file": "packages/ResourceManager.Ledger.Configuration.0.1.0-dev.7.nupkg",
+      "length": 141422,
+      "sha256": "9f1eebad52ffbeae19f46254e23d2279058d20ee403d3dc2253dcc598592c206"
+    }
+  ],
+  "freedomPointDependencies": [
+    {
+      "id": "FreedomPoint.Core",
+      "version": "0.1.0-dev.39",
+      "feedPath": "FreedomPoint.Core.0.1.0-dev.39.nupkg",
+      "length": 66137,
+      "sha256": "6e914dd4aee911b26850a79156dce3cdd68467a2bb910f15445689dd5739cbd7",
+      "role": "official-package-baseline-for-embedded-source-rebuild"
+    },
+    {
+      "id": "FreedomPoint.Generators",
+      "version": "0.1.0-dev.39",
+      "feedPath": "FreedomPoint.Generators.0.1.0-dev.39.nupkg",
+      "length": 28880,
+      "sha256": "5b48217611a902f877e4cc3dcf7f8dc5642f4bd6c91a242d4b595012599296c1",
+      "role": "official-package-baseline-for-embedded-source-rebuild"
+    }
+  ],
+  "nativeSource": {
+    "file": "native/0.1.0-dev.7/ResourceManager.Ledger.NativeSources.0.1.0-dev.7.zip",
+    "sha256": "b82cf1a47711d5483de6a632d3d5d052682dd179a8bb8013c19eb257fade69ab",
+    "headerSha256": "ee097374a901c2bb77d45007fb8d14acb25d63a843b4ed57cd7fd4a3a1e74f27"
+  },
+  "toolManifest": {
+    "file": "tools/0.1.0-dev.7/.config/dotnet-tools.json",
+    "sha256": "cf456b580caa235879fb1f29c44f7b828ecd8a066d266144b146c8987e271b24"
+  },
+  "consumer": {
+    "receiptPath": "rm-product-workspaces:ledger-ledger-sdk-dev7/consumer-04/consumer-receipt.json",
+    "receiptSha256": "d77db11e3f3207152d2115ef51a7b6d8000881d4499b2e6b4a539f03a79fc4e1",
+    "resultPath": "rm-product-workspaces:ledger-ledger-sdk-dev7/consumer-04/consumer-result.json",
+    "resultSha256": "4227693ea6b5d02d13405812dd44afd569b1b30f4e0acd536c938bfd308f1714",
+    "nativeBuildResultPath": "rm-product-workspaces:ledger-ledger-sdk-dev7/consumer-04/profiles/u128-statistics0/native-output/native-build-result.json",
+    "nativeBuildResultSha256": "b22641f690450d11d7df531ef314e04bfc440e60b5c66d0867ba54449090d3c7",
+    "nativeDllPath": "rm-product-workspaces:ledger-ledger-sdk-dev7/consumer-04/profiles/u128-statistics0/native-output/ResourceManager.Ledger.Native.u128.dll",
+    "nativeDllSha256": "9fb2f0291e4d85956e8f6dbb0d643349686736afe3e5da9c3bd38e0dd132a5a9"
+  },
+  "publishedAtUtc": "2026-10-31T03:33:36.1725745Z",
+  "capabilities": [
+    "optional-development-allocation-statistics"
+  ]
+}
