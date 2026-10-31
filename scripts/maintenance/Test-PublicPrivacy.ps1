@@ -245,6 +245,8 @@ function Test-Text([string]$Path, [string]$Line, [string]$Text, [bool]$Binary, [
         foreach ($match in $compiled[$key].Matches($Text)) {
             if ($key -eq 'email') {
                 if ($Binary -or $Path -match $thirdParty -or $allowedEmailSet.Contains($match.Value) -or $match.Value -match $reservedEmail) { continue }
+                # A domain with an all-digit label is a dotted identifier such as field@gpu.0.usage, not a mail host.
+                if ($match.Value -match '@(?:[A-Za-z0-9-]+\.)*[0-9]+\.') { continue }
                 $at = $match.Index + $match.Value.IndexOf('@')
                 if (@($urlUserInfo.Matches($Text) | Where-Object { $_.Index + $_.Length - 1 -eq $at }).Count -gt 0) { continue }
             }

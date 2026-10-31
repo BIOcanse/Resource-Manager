@@ -119,6 +119,7 @@ Write-Lines (Join-Path $dev 'ignored/secret.txt') @("cache = $profilePath")
 [IO.File]::WriteAllBytes((Join-Path $dev 'recorded.json.gz'), (New-GzipBytes ([Text.Encoding]::UTF8.GetBytes("{""source"":""$($localRootPath.Replace('\', '\\'))""}"))))
 $pdb = New-PortablePdbBytes (Join-Path $fixture 'src\Fixture.cs') ([Text.Encoding]::UTF8.GetBytes("// cache = $profilePath\.nuget`n"))
 [IO.File]::WriteAllBytes((Join-Path $dev 'symbols.nupkg'), (New-ZipBytes 'lib/net10.0/Fixture.pdb' $pdb))
+Write-Lines (Join-Path $dev 'sources.txt') @('sources = load@gpu.0.usage, clock@cpu.12.core')
 Write-Lines (Join-Path $dev 'posix.txt') @("bash = /$posixDrive/$posixRest", "wsl = /mnt/$posixDrive/$posixRest", "url = https://example.com/$posixDrive/$posixRest")
 Write-Lines (Join-Path $dev 'ids.txt') @(
     $(if ($gpuFirstGroup) { "truncated = $gpuFirstGroup (first group only)" } else { 'no NVIDIA GPU' }),
@@ -139,6 +140,7 @@ Assert-True ((Find-Hit $full 'leak.txt' '6' 'email').Count -eq 1) 'a foreign e-m
 Assert-True ((Find-Hit $full 'leak.txt' '7' 'token').Count -eq 1) 'a GitHub token shape is a hit'
 Assert-True (@($full | Where-Object { $_.Path -ceq 'leak.txt' -and [string]$_.Line -in @('1', '8', '9') }).Count -eq 0) 'invented paths, ids, URL user info and reserved domains are not hits'
 Assert-True (@($full | Where-Object { $_.Path -like 'ignored/*' }).Count -eq 0) 'ignored files are not scanned'
+Assert-True (@($full | Where-Object { $_.Path -ceq 'sources.txt' }).Count -eq 0) 'field@device identifiers with an all-digit label are not e-mail hits'
 Assert-True ((Find-Hit $full 'package.nupkg!lib/net10.0/Fixture.dll' 'bin' 'profile').Count -eq 1) 'a UTF-16 profile path inside a package entry is a hit'
 Assert-True ((Find-Hit $full 'recorded.json.gz!gunzip' 'bin' 'local-root').Count -eq 1) 'a local root inside a gzip stream is a hit'
 Assert-True ((Find-Hit $full 'symbols.nupkg!lib/net10.0/Fixture.pdb!pdb-documents' '1' 'local-root').Count -eq 1) 'a PDB document name, stored in parts, is joined and checked'
