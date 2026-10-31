@@ -22,7 +22,7 @@ public sealed class NativeKernelEtwSessionRuntimeTests
     [Fact]
     public void SharedConfigurationMatchesTheNativeAbiLayout()
     {
-        Assert.Equal(56, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwResidencyConfig>());
+        Assert.Equal(64, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwResidencyConfig>());
         Assert.Equal(64, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwInterruptConfig>());
         Assert.Equal(272, System.Runtime.InteropServices.Marshal.SizeOf<NativeKernelEtwSessionConfig>());
     }
