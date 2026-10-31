@@ -19,7 +19,7 @@ param(
     [Parameter(ParameterSetName = 'Prepare')][string]$BeforeSourceRoot,
     [Parameter(ParameterSetName = 'Prepare')][string]$BeforeReaderOverlay,
     [Parameter(ParameterSetName = 'Prepare')][string]$BeforeImage,
-    # Defaults to <WorkRoot>\Resource-Manager-Development\ledger-control-actual-first-round (scripts/dev/MachineRoots.psm1).
+    # Defaults to a child of this task; existing -LedgerWorkRoot inputs remain explicit.
     [Parameter(ParameterSetName = 'Prepare')][string]$LedgerWorkRoot,
     # Defaults to <ToolsRoot>\JobQueue\JobQueue.ps1 (scripts/dev/MachineRoots.psm1).
     [string]$JobQueueScript,
@@ -32,7 +32,7 @@ if (-not $JobQueueScript -or ($Prepare -and -not $LedgerWorkRoot)) {
     Import-Module (Join-Path $PSScriptRoot '..\dev\MachineRoots.psm1') -DisableNameChecking
     if (-not $JobQueueScript) { $JobQueueScript = Join-Path (Get-MachineRoot -Name ToolsRoot) 'JobQueue\JobQueue.ps1' }
     if ($Prepare -and -not $LedgerWorkRoot) {
-        $LedgerWorkRoot = Join-Path (Get-MachineRoot -Name WorkRoot) 'Resource-Manager-Development\ledger-control-actual-first-round'
+        $LedgerWorkRoot = Join-Path $RegisteredWorkspaceRoot 'ledger'
     }
 }
 $owner = [IO.Path]::GetFullPath($RegisteredWorkspaceRoot).TrimEnd('\')

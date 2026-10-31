@@ -10,8 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $owner = [IO.Path]::GetFullPath($RegisteredWorkspaceRoot)
-if (-not $owner.StartsWith('F:\', [StringComparison]::OrdinalIgnoreCase) -or
-    -not [IO.File]::Exists((Join-Path $owner '.generated-workspace.json'))) { throw 'An existing registered task root on F: is required.' }
+if (-not [IO.File]::Exists((Join-Path $owner '.generated-workspace.json'))) { throw 'An existing registered task root is required.' }
 if ($BuildDirectoryName -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,80}$') { throw 'BuildDirectoryName must be one child name.' }
 $build = Join-Path $owner $BuildDirectoryName
 if (Test-Path -LiteralPath $build) { throw 'Use a fresh build directory for a new accepted build.' }

@@ -79,7 +79,6 @@ Assert-Registered $scratch
 Assert-Registered $run
 Assert-SafePath $repo
 Assert-SafePath $work
-if ([IO.Path]::GetPathRoot($scratch) -ine 'F:\') { throw 'Product Native outputs must be in the registered F workset.' }
 if ([IO.Directory]::Exists($work) -or [IO.File]::Exists($work)) { throw "Native projection needs a fresh output: $work" }
 if ($Build -and ([string]::IsNullOrWhiteSpace($env:RM_REVIEW_SCRATCH) -or
     [IO.Path]::GetFullPath($env:RM_REVIEW_SCRATCH) -ine $scratch)) { throw '-Build requires the bounded ProductSdk child scratch environment.' }

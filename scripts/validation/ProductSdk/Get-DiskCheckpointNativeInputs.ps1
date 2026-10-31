@@ -26,11 +26,20 @@ function Json([string]$Path){Require ((Get-Item -LiteralPath $Path).Length-le16M
 $profile=Json $profilePath;Require ($profile.schema-ceq'rm/disk-checkpoint-inputs/v1') 'Unknown Disk qualification profile.'
 foreach($name in @('declaration','sdkRoot','bindingRoot','toolsRoot','builderPath','nativeOwner','worksetRoot','projectRoot')){[void](Full ([string]$profile.$name))}
 Import-Module (Join-Path $PSScriptRoot '..\..\dev\MachineRoots.psm1') -DisableNameChecking
-$repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..')).TrimEnd('\');$workset=Join-Path (Get-MachineRoot -Name WorkRoot) 'Resource-Manager-Development\generated'
+$repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..')).TrimEnd('\')
+# The input profile owns the exact existing location. Resolve the canonical owner
+# for that path, rather than rebinding old source-bound evidence to a new default.
+$workset=Full ([string]$profile.worksetRoot)
+$policy=Json (Join-Path $repo 'scripts\maintenance\generated-workspace-policy.json')
+$worksetRoots=@($policy.roots|Where-Object {$_.id -in @('rm-disk-native-artifacts','rm-active-disk-native-artifacts')}|Where-Object {
+    $resolved=Resolve-MachinePathTokens -Path ([string]$_.path) -RepositoryRoot $repo
+    $null-ne$resolved-and(Full $resolved)-ieq$workset
+})
+Require ($worksetRoots.Count-eq1) 'Disk workset is not a configured canonical artifact root.'
 $zig=Join-Path (Get-MachineRoot -Name ToolsRoot) 'Zig\zig-0.17.0\zig.exe'
 Require ((Full $profile.projectRoot)-ieq$repo-and(Full $profile.worksetRoot)-ieq$workset-and[IO.Path]::GetDirectoryName((Full $profile.nativeOwner))-ieq$workset) 'Disk project/workset/owner differs.'
 $ownerMarker=Join-Path $profile.nativeOwner '.generated-workspace.json';$owner=Json $ownerMarker
-Require ($owner.rootId-ceq'rm-disk-native-artifacts'-and(Full $owner.rootPath)-ieq$workset-and(Full $owner.workspacePath)-ieq(Full $profile.nativeOwner)-and$owner.state-cin@('running','completed')-and$owner.references-icontains$task) 'Disk artifact owner is not registered for this task.'
+Require ($owner.rootId-ceq$worksetRoots[0].id-and(Full $owner.rootPath)-ieq$workset-and(Full $owner.workspacePath)-ieq(Full $profile.nativeOwner)-and$owner.state-cin@('running','completed')-and$owner.references-icontains$task) 'Disk artifact owner is not registered for this task.'
 if($Producer){Require ($owner.state-ceq'running') 'Do not reopen completed Disk Native owner.'}
 Require (@($profile.formalInputs).Count-gt0-and@($profile.formalInputs).Count-le4096) 'Disk formal input count bound.'
 $rows=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::OrdinalIgnoreCase)

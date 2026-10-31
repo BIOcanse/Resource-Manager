@@ -45,6 +45,19 @@ $raceTarget=Add-Task $race 'was-completed' -Complete
 $policy.enabled=$true
 $inspect=Invoke-GeneratedWorkspaceRetention -RootPath $root -Policy $policy -ReferenceRoots $roots
 Assert-Check (-not $inspect.safeToPrune) 'Full Inspect retains its original traversal budget and safely refuses the oversized unknown tree.'
+Assert-Check (@($inspect.issues).Count -gt 0 -and $inspect.issues[0].rootPath -eq $root -and $inspect.issues[0].path -in @($unknown,$running,$keep) -and $inspect.issues[0].reason -match 'nodes=501/500') 'Expanded catalogue refusal names the root, offending workspace and original node-bound failure.'
+Assert-Check (@($inspect.deleted).Count -eq 0 -and (Test-Path -LiteralPath (Join-Path $unknown 'f699.bin'))) 'An incomplete catalogue changes no workspace.'
+$module=Get-Module GeneratedWorkspaceRetention
+$directCatalog=& $module { param($Root,$Policy) Get-GWRootCatalog -RootPath $Root -Policy $Policy } $root $policy
+Assert-Check (-not $directCatalog.Complete -and @($directCatalog.Issues).Count -gt 0 -and $directCatalog.Issues[0].path -in @($unknown,$running,$keep) -and $directCatalog.Issues[0].reason -match 'nodes=501/500') 'Direct catalogue preserves the exact payload node-bound issue too.'
+$expandedCatalog=& $module {
+ param($Root,$Policy)
+ $metadata=Get-GWRootCatalog -RootPath $Root -Policy $Policy -MetadataOnly
+ $metadata.Issues=@([pscustomobject]@{rootPath=$Root;path=$Root;reason='existing metadata issue'})
+ $expanded=Expand-GWTargetCatalog -MetadataCatalog $metadata -Selection $null
+ [pscustomobject]@{Expanded=$expanded;Metadata=$metadata}
+} $root $policy
+Assert-Check (@($expandedCatalog.Expanded.Issues).Count -eq 2 -and $expandedCatalog.Expanded.Issues[0].reason -eq 'existing metadata issue' -and $expandedCatalog.Metadata.Issues.Count -eq 1) 'Payload issues append to metadata issues without mutating the shared metadata catalogue.'
 $trigger=Join-Path $root 'new-active'
 $created=New-GeneratedWorkspace -RootPath $root -WorkspacePath $trigger -Purpose 'isolated automatic trigger' -Policy $policy -ReferenceRoots $roots
 Assert-Check ($created.retention.safeToPrune -and @($created.retention.deleted|Where-Object path -eq $old).Count -eq 1) 'New automatically prunes an old registered completed task despite protected large trees.'

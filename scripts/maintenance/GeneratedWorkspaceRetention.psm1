@@ -79,6 +79,15 @@ namespace ResourceManager.GeneratedWorkspaces {
             if (!GetFileSizeEx(handle, out length)) throw new Win32Exception(Marshal.GetLastWin32Error());
             return length;
         }
+        public static string Sha256(SafeFileHandle handle) {
+            // Borrow the already-exclusive native handle; do not close its owner.
+            using (var borrowed = new SafeFileHandle(handle.DangerousGetHandle(), false))
+            using (var input = new System.IO.FileStream(borrowed, System.IO.FileAccess.Read))
+            using (var sha = System.Security.Cryptography.SHA256.Create()) {
+                input.Position = 0;
+                return Convert.ToBase64String(sha.ComputeHash(input));
+            }
+        }
         public static long LastWriteTicks(SafeFileHandle handle) {
             long write;
             if (!GetFileTime(handle, IntPtr.Zero, IntPtr.Zero, out write)) throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -192,10 +201,10 @@ function Get-GeneratedWorkspacePolicy {
     if (@(Get-GWProperty $policy 'roots' @()).Count -eq 0) { throw 'Retention policy has no managed roots.' }
     $unconfigured = @(foreach ($root in @(Get-GWProperty $policy 'roots' @())) {
         $configuredPath = [string](Get-GWProperty $root 'path' '')
-        if (-not [string]::IsNullOrWhiteSpace($configuredPath) -and $null -eq (Resolve-GWConfiguredPath -Path $configuredPath)) { [string](Get-GWProperty $root 'id' '') }
+        if (-not [string]::IsNullOrWhiteSpace($configuredPath) -and $null -eq (Resolve-GWConfiguredPath -Path $configuredPath)) { [string](Get-GWProperty $root 'id' '') + '=' + $configuredPath }
     })
     if ($unconfigured.Count -gt 0) {
-        Write-Warning "Retention roots under {WorkRoot} are inactive because WorkRoot is not configured on this machine (set RM_WORK_ROOT or git config rm.workRoot): $($unconfigured -join ', ')"
+        Write-Warning "Retention roots need the machine-root settings named in their paths (environment or git overrides in MachineRoots.psm1): $($unconfigured -join ', ')"
     }
     return $policy
 }
@@ -225,7 +234,7 @@ function Get-GeneratedWorkspaceRoot {
             if ([string]::IsNullOrWhiteSpace($configuredPath)) { throw "Managed root has no path: $RootId" }
             $resolvedPath = Resolve-GWConfiguredPath -Path $configuredPath
             if ($null -eq $resolvedPath) {
-                throw "Managed root $RootId is under {WorkRoot}, which this machine has not configured. Set RM_WORK_ROOT, or run: git config --global rm.workRoot <folder>"
+                throw "Managed root $RootId requires unconfigured machine-root settings: $configuredPath. Configure its named roots through MachineRoots.psm1 environment or git overrides."
             }
             return [pscustomobject]@{
                 RootId = $RootId
@@ -279,6 +288,19 @@ function Assert-GWManagedWorkspacePath {
         }
     }
     return [pscustomobject]@{ RootPath = $rootFull; WorkspacePath = $workspaceFull; Name = $relative }
+}
+
+function Initialize-GeneratedWorkspaceRoot {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$RootPath, [object]$Policy = (Get-GeneratedWorkspacePolicy))
+    $root = ConvertTo-GWFullPath -Path $RootPath -ParameterName 'RootPath'
+    $configured = Get-GWPolicyRoot -Policy $Policy -RootPath $root
+    Assert-GWNoReparsePath -Path $root
+    if ([IO.File]::Exists($root)) { throw "Managed root is a file: $root" }
+    $created = -not [IO.Directory]::Exists($root)
+    if ($created) { [void][IO.Directory]::CreateDirectory($root) }
+    Assert-GWNoReparsePath -Path $root -RequireLeaf
+    [pscustomobject]@{rootId=$configured.id;rootPath=$root;created=$created}
 }
 
 function Get-GWReferenceRootPaths {
@@ -1198,7 +1220,10 @@ function Get-GWRootCatalog {
             $item.Bytes = [long]$snapshot.Bytes
             $item.SizeKnown = [bool]$snapshot.Complete -and [int]$snapshot.ReparseCount -eq 0
             Add-GWSnapshotBlockedReason -Item $item -Snapshot $snapshot
-            if (-not $snapshot.Complete -and $budget.Exceeded) { $catalogComplete = $false }
+            if (-not $snapshot.Complete) {
+                $issues.Add([pscustomobject]@{ rootPath = $rootFull; path = $item.Path; reason = $snapshot.Error })
+                if ($budget.Exceeded) { $catalogComplete = $false }
+            }
             if ($item.Registered -and $item.State -eq 'completed' -and -not $item.Keep -and $null -eq $item.BlockedReason -and $item.SizeKnown) {
                 $occupancy = Test-GWFilesUnoccupied -FilePaths @($snapshot.Files) -RootPath $entry.FullName -Limits $limits
                 if (-not $occupancy.Unoccupied) { $item.BlockedReason = 'Workspace is locked or a file cannot be checked: ' + $occupancy.Path + ' (' + $occupancy.Reason + ')' }
@@ -1516,14 +1541,22 @@ function New-GWRetentionPlan {
 }
 
 function Remove-GWWorkspaceSnapshot {
-    param([Parameter(Mandatory)][object]$Item, [Parameter(Mandatory)][object]$Limits)
+    param([Parameter(Mandatory)][object]$Item, [Parameter(Mandatory)][object]$Limits,
+        [AllowNull()][object]$VerifiedArchive = $null)
 
     $workspacePath = [System.IO.Path]::GetFullPath($Item.Path)
     $rootPath = [System.IO.Path]::GetFullPath($Item.RootPath)
     if (-not (Test-GWPathWithin -Path $workspacePath -Root $rootPath)) { throw "Workspace escaped its root before deletion: $workspacePath" }
     Assert-GWNoReparsePath -Path $workspacePath -RequireLeaf
+    if ($null -ne $VerifiedArchive) {
+        Assert-GWNoReparsePath -Path $VerifiedArchive.Path -RequireLeaf
+        $archived = Read-GWStateRecord -RootPath $VerifiedArchive.RootPath -WorkspacePath $VerifiedArchive.Path
+        if (-not $archived.Valid -or $archived.State.state -ne 'completed' -or -not $archived.State.keep -or
+            $archived.State.workspaceId -cne $VerifiedArchive.WorkspaceId -or
+            $archived.State.workspaceId -cne $Item.StateRecord.workspaceId) { throw 'Verified archive identity or protection changed before source cleanup.' }
+    }
     $read = Read-GWStateRecord -RootPath $rootPath -WorkspacePath $workspacePath
-    if (-not $read.Valid -or [string]$read.State.state -ne 'completed' -or [bool]$read.State.keep -or
+    if (-not $read.Valid -or [string]$read.State.state -ne 'completed' -or ([bool]$read.State.keep -and $null -eq $VerifiedArchive) -or
         -not [string]::Equals([string]$read.State.workspaceId, [string]$Item.StateRecord.workspaceId, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw 'Workspace lifecycle state changed after retention planning.'
     }
@@ -1570,18 +1603,30 @@ function Remove-GWWorkspaceSnapshot {
             Add-GWScanNode -Budget $deletionBudget -RootPath $workspacePath
             Assert-GWNoReparsePath -Path $filePath -RequireLeaf
             $expected = $current.FileEntries[$filePath]
-            $stream = [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Open($filePath, 4)
+            $stream = if ($null -eq $VerifiedArchive) { [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Open($filePath, 0) }
+                else { [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::OpenReadDelete($filePath, 0) }
+            $archiveHandle = $null
             try {
                 if ([ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Length($stream) -ne [long]$expected.Item1 -or
                     [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::LastWriteTicks($stream) -ne [long]$expected.Item2) { throw "File changed immediately before deletion: $filePath" }
+                if ($null -ne $VerifiedArchive) {
+                    $target = $VerifiedArchive.Path + $filePath.Substring($workspacePath.Length)
+                    if ($VerifiedArchive.RecordedPaths.ContainsKey($filePath)) { $target = $VerifiedArchive.RecordedPaths[$filePath] }
+                    Assert-GWNoReparsePath -Path $target -RequireLeaf
+                    $archiveHandle = [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::OpenReadDelete($target,0)
+                    if (-not $VerifiedArchive.Hashes.ContainsKey($filePath) -or
+                        [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Length($archiveHandle) -ne $expected.Item1 -or
+                        [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Sha256($stream) -cne $VerifiedArchive.Hashes[$filePath] -or
+                        [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Sha256($archiveHandle) -cne $VerifiedArchive.Hashes[$filePath]) { throw "Archive/source content changed immediately before source deletion: $filePath" }
+                }
                 # File.Delete refuses read-only files; git object files in test fixtures are read-only (10-27).
                 $attributes = [System.IO.File]::GetAttributes($filePath)
                 if ($attributes -band [System.IO.FileAttributes]::ReadOnly) {
                     [System.IO.File]::SetAttributes($filePath, $attributes -band -bnot [System.IO.FileAttributes]::ReadOnly)
                 }
-                [System.IO.File]::Delete($filePath)
+                [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Delete($stream)
             }
-            finally { $stream.Dispose() }
+            finally { if ($null -ne $archiveHandle) { $archiveHandle.Dispose() }; $stream.Dispose() }
             if ([System.IO.File]::Exists($filePath)) { throw "File remained during workspace deletion: $filePath" }
             $removedFiles++
             $removedBytes += [long]$expected.Item1
@@ -1598,11 +1643,11 @@ function Remove-GWWorkspaceSnapshot {
             $markerInfo = [System.IO.FileInfo]::new($markerPath)
             $markerInfo.Refresh()
             $markerLength = [long]$markerInfo.Length
-            $markerStream = [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Open($markerPath, 4)
+            $markerStream = [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Open($markerPath, 0)
             try {
                 if ([ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Length($markerStream) -ne $markerLength -or
                     [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::LastWriteTicks($markerStream) -ne $markerInfo.LastWriteTimeUtc.Ticks) { throw "Lifecycle marker changed immediately before deletion: $markerPath" }
-                [System.IO.File]::Delete($markerPath)
+                [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Delete($markerStream)
             }
             finally { $markerStream.Dispose() }
             if ([System.IO.File]::Exists($markerPath)) { throw "Lifecycle marker remained during workspace deletion: $markerPath" }
@@ -1627,6 +1672,8 @@ function Expand-GWTargetCatalog {
     $budget.MaxMilliseconds -= [long]$MetadataCatalog.ElapsedMilliseconds
     $items = [System.Collections.Generic.List[object]]::new()
     $complete = [bool]$MetadataCatalog.Complete
+    $issues = [System.Collections.Generic.List[object]]::new()
+    foreach ($issue in $MetadataCatalog.Issues) { $issues.Add($issue) }
     foreach ($original in $MetadataCatalog.Items) {
         $item = $original.PSObject.Copy()
         $outsideSelection = $null -ne $Selection -and -not $Selection.Contains($item.Path)
@@ -1643,7 +1690,10 @@ function Expand-GWTargetCatalog {
         $item.Bytes = [long]$snapshot.Bytes
         $item.SizeKnown = [bool]$snapshot.Complete -and [int]$snapshot.ReparseCount -eq 0
         Add-GWSnapshotBlockedReason -Item $item -Snapshot $snapshot
-        if (-not $snapshot.Complete -and $budget.Exceeded) { $complete = $false }
+        if (-not $snapshot.Complete) {
+            $issues.Add([pscustomobject]@{ rootPath = $MetadataCatalog.RootPath; path = $item.Path; reason = $snapshot.Error })
+            if ($budget.Exceeded) { $complete = $false }
+        }
         if ($capture -and $null -eq $item.BlockedReason -and $item.SizeKnown) {
             $occupancy = Test-GWFilesUnoccupied -FilePaths @($snapshot.Files) -RootPath $item.Path -Limits $MetadataCatalog.Limits
             if (-not $occupancy.Unoccupied) { $item.BlockedReason = 'Workspace is locked or a file cannot be checked: ' + $occupancy.Path + ' (' + $occupancy.Reason + ')' }
@@ -1660,7 +1710,7 @@ function Expand-GWTargetCatalog {
         AllSizesKnown = (@($items | Where-Object { -not $_.SizeKnown }).Count -eq 0)
         TotalBytes = $totalBytes; NodeCount = $budget.Nodes
         ElapsedMilliseconds = [long]$MetadataCatalog.ElapsedMilliseconds + $budget.Timer.ElapsedMilliseconds
-        Issues = $MetadataCatalog.Issues
+        Issues = @($issues.ToArray())
     }
 }
 
@@ -1910,9 +1960,12 @@ function Invoke-GeneratedWorkspaceRetention {
     Invoke-GWRetentionGroups -WorkspaceGroups @($group) -Policy $Policy -ReferenceRoots $ReferenceRoots -Apply:$Apply -CompletedPool:$CompletedOnly
 }
 
+. (Join-Path $PSScriptRoot 'GeneratedWorkspaceArchive.ps1')
+
 Export-ModuleMember -Function @(
     'Get-GeneratedWorkspacePolicy',
     'Get-GeneratedWorkspaceRoot',
+    'Initialize-GeneratedWorkspaceRoot',
     'Resolve-GeneratedWorkspacePolicyPath',
     'Get-GeneratedWorkspaceState',
     'New-GeneratedWorkspace',
@@ -1923,5 +1976,8 @@ Export-ModuleMember -Function @(
     'Set-GeneratedWorkspaceKeep',
     'Set-GeneratedWorkspaceReferences',
     'Invoke-GeneratedWorkspaceRetention',
-    'Invoke-GeneratedWorkspaceRetentionBatch'
+    'Invoke-GeneratedWorkspaceRetentionBatch',
+    'Move-GeneratedWorkspaceToArchive',
+    'Retire-GeneratedWorkspaceReferences',
+    'Repair-GeneratedWorkspaceArchiveDocuments'
 )

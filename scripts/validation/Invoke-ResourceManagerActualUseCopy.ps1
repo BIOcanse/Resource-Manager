@@ -20,8 +20,7 @@ foreach ($name in @($BuildDirectoryName, $RuntimeDirectoryName)) {
     if ($name -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,80}$') { throw 'Directory names must be single child names.' }
 }
 $owner = [IO.Path]::GetFullPath($RegisteredWorkspaceRoot).TrimEnd('\')
-if (-not $owner.StartsWith('F:\', [StringComparison]::OrdinalIgnoreCase) -or
-    -not [IO.File]::Exists((Join-Path $owner '.generated-workspace.json'))) { throw 'An existing registered task root on F: is required.' }
+if (-not [IO.File]::Exists((Join-Path $owner '.generated-workspace.json'))) { throw 'An existing registered task root is required.' }
 $build = Join-Path $owner $BuildDirectoryName
 if (-not [IO.Directory]::Exists($build)) { throw 'The accepted build must exist inside its registered parent task.' }
 $image = Join-Path $build 'image'

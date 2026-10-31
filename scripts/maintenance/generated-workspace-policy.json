@@ -77,6 +77,113 @@
       "id": "rm-full-app-batches",
       "path": "{WorkRoot}\\Resource-Manager-Development\\full-app-validation\\.validation\\batches",
       "excludedNames": []
+    },
+    {
+      "id": "rm-active-workspaces",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-validation-batches",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\.validation\\batches",
+      "maxBytes": 8589934592,
+      "excludedNames": [
+        "shared-artifacts"
+      ]
+    },
+    {
+      "id": "rm-active-product-validation-batches",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\product-validation\\.validation\\batches",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-product-sdk38-batches",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\product-sdk38-validation\\.validation\\batches",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-product-sdk40-batches",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\product-sdk40-validation\\.validation\\batches",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-npu-device-batches",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\npu-device-validation\\.validation\\batches",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-nvidia-fan-batches",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\nvidia-fan-validation\\.validation\\batches",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-product-composition-batches",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\product-composition-validation\\.validation\\batches",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-intel-psys-batches",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\intel-psys-validation\\.validation\\batches",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-full-app-batches",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\full-app-validation\\.validation\\batches",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-worktrees",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Worktrees",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-cold-archives",
+      "path": "{ColdArchiveRoot}",
+      "maxBytes": 68719476736,
+      "excludedNames": [],
+      "archiveOnly": true
+    },
+    {
+      "id": "rm-legacy-worktree-backups",
+      "path": "{WorkRoot}\\disk-audit",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-disk-native-artifacts",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\generated",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-active-disk-native-artifacts",
+      "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces\\generated",
+      "maxBytes": 8589934592,
+      "excludedNames": []
+    },
+    {
+      "id": "rm-legacy-worktrees",
+      "path": "{WorkRoot}\\Resource-Manager-Worktrees",
+      "maxBytes": 8589934592,
+      "excludedNames": []
     }
-  ]
+  ],
+  "archiveLimits": {
+    "maxNodes": 750000,
+    "maxMilliseconds": 3600000,
+    "maxDocumentBytes": 8388608,
+    "maxDocumentNodes": 20000,
+    "maxDocumentMilliseconds": 300000,
+    "flushToDiskPerFile": false
+  }
 }

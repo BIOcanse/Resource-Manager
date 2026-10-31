@@ -55,7 +55,6 @@ function Assert-Row($Row) {
 Assert-Running $task
 Assert-Running $run
 Assert-Running $scratch
-if ([IO.Path]::GetPathRoot($scratch) -ine 'F:\') { throw 'Legacy output must be in the new registered F batch.' }
 if ($Build -and ([string]::IsNullOrWhiteSpace($env:RM_REVIEW_SCRATCH) -or [IO.Path]::GetFullPath($env:RM_REVIEW_SCRATCH) -ine $scratch)) { throw 'Use the bounded ProductSdk child.' }
 if (-not $NativeProjectionRoot -or -not $NativeRunDirectory) {
     $previous = Get-Content -LiteralPath $contextPath -Raw | ConvertFrom-Json

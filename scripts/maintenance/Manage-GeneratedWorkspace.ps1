@@ -1,9 +1,16 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('New', 'Adopt', 'Complete', 'Keep', 'References', 'Inspect', 'Prune')]
+    [ValidateSet('New', 'Adopt', 'Complete', 'Keep', 'References', 'Inspect', 'Prune', 'Archive', 'Initialize', 'RetireReferences', 'RepairArchiveDocuments')]
     [string]$Action = 'Inspect',
 
     [string]$RootId,
+    [string]$DestinationRootId,
+    [string]$DestinationName,
+    [string[]]$DocumentRoots = @(),
+    [string]$RecordedMarkersPath,
+    [string]$ReferenceRetirementsPath,
+    [string]$ArchiveReceiptPath,
+    [switch]$Resume,
 
     # JSON array of { rootId, workspacePaths }; batch Inspect/Prune emit NDJSON.
     [string]$WorkspaceGroups,
@@ -34,7 +41,14 @@ if ([string]::IsNullOrWhiteSpace($PolicyPath)) {
 Import-Module (Join-Path $PSScriptRoot 'GeneratedWorkspaceRetention.psm1') -Force -DisableNameChecking
 
 try {
+    if($ArchiveReceiptPath -and $Action -ne 'RepairArchiveDocuments'){throw 'ArchiveReceiptPath is exclusive to RepairArchiveDocuments.'}
     $policy = Get-GeneratedWorkspacePolicy -Path $PolicyPath
+    if ($Action -eq 'Initialize') {
+        if (-not $RootId -or $WorkspacePath -or $WorkspacePaths.Count -gt 0 -or $WorkspaceGroups -or $AdoptionsPath -or $DestinationRootId -or $DestinationName -or $DocumentRoots.Count -gt 0 -or $RecordedMarkersPath -or $ReferenceRetirementsPath -or $Resume -or $Purpose -or $Outcome -or $References.Count -gt 0 -or $CompletedUtc -or $Apply -or $KeepState -ne 'true') { throw 'Initialize requires only RootId, PolicyPath and optional ReferenceRoots.' }
+        $configuredRoot = Get-GeneratedWorkspaceRoot -Policy $policy -RootId $RootId
+        Initialize-GeneratedWorkspaceRoot -RootPath $configuredRoot.Path -Policy $policy | ConvertTo-Json -Depth 8
+        return
+    }
     $referenceRootPaths = [System.Collections.Generic.List[string]]::new()
     foreach ($rootEntry in @($policy.roots)) {
         # A root under an unconfigured {WorkRoot} is inactive on this machine (Get-GeneratedWorkspacePolicy warns once).
@@ -50,6 +64,58 @@ try {
         }
     }
     $allReferenceRoots = [string[]]$referenceRootPaths.ToArray()
+    if($Action -eq 'RepairArchiveDocuments'){
+        if(-not $RootId -or -not $DestinationRootId -or -not $ArchiveReceiptPath -or $WorkspacePath -or $WorkspacePaths.Count -gt 0 -or $WorkspaceGroups -or $AdoptionsPath -or $DestinationName -or $RecordedMarkersPath -or $ReferenceRetirementsPath -or $Resume -or $Purpose -or $Outcome -or $References.Count -gt 0 -or $CompletedUtc -or $KeepState -ne 'true'){throw 'RepairArchiveDocuments requires RootId, DestinationRootId, ArchiveReceiptPath and optional DocumentRoots/Apply.'}
+        $receipt=Get-Item -LiteralPath $ArchiveReceiptPath -Force
+        if($receipt.PSIsContainer -or ($receipt.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $receipt.Length -gt 1MB){throw 'ArchiveReceiptPath must be a bounded regular JSON file.'}
+        if($DocumentRoots.Count -eq 0){
+            Import-Module (Join-Path $PSScriptRoot '..\dev\MachineRoots.psm1') -DisableNameChecking
+            $DocumentRoots=@((Join-Path (Get-RmMainCheckout) 'docs'))
+        }
+        $sourceRoot=Get-GeneratedWorkspaceRoot -Policy $policy -RootId $RootId
+        $coldRoot=Get-GeneratedWorkspaceRoot -Policy $policy -RootId $DestinationRootId
+        Repair-GeneratedWorkspaceArchiveDocuments -RootPath $sourceRoot.Path -DestinationRootPath $coldRoot.Path -ArchiveReceipt (Get-Content $receipt.FullName -Raw|ConvertFrom-Json) -DocumentRoots $DocumentRoots -Policy $policy -ReferenceRoots $allReferenceRoots -Apply:$Apply|ConvertTo-Json -Depth 12
+        return
+    }
+    if($ArchiveReceiptPath){throw 'ArchiveReceiptPath is exclusive to RepairArchiveDocuments.'}
+    if($Action -eq 'RetireReferences'){
+        if(-not $RootId -or -not $ReferenceRetirementsPath -or $WorkspacePath -or $WorkspacePaths.Count -gt 0 -or $WorkspaceGroups -or $AdoptionsPath -or $DestinationRootId -or $DestinationName -or $DocumentRoots.Count -gt 0 -or $RecordedMarkersPath -or $Resume -or $Purpose -or $Outcome -or $References.Count -gt 0 -or $CompletedUtc -or $KeepState -ne 'true'){throw 'RetireReferences requires RootId, ReferenceRetirementsPath and optional Apply/ReferenceRoots/PolicyPath.'}
+        $manifest=Get-Item -LiteralPath $ReferenceRetirementsPath -Force
+        if($manifest.PSIsContainer -or ($manifest.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $manifest.Length -gt 1MB){throw 'ReferenceRetirementsPath must be a regular JSON array no larger than 1 MiB.'}
+        $raw=Get-Content -LiteralPath $manifest.FullName -Raw
+        if(-not $raw.TrimStart().StartsWith('[')){throw 'ReferenceRetirementsPath requires a JSON array.'}
+        $requests=@($raw|ConvertFrom-Json)
+        if($requests.Count -eq 1 -and $requests[0] -is [array]){$requests=$requests[0]}
+        $configuredRoot=Get-GeneratedWorkspaceRoot -Policy $policy -RootId $RootId
+        Retire-GeneratedWorkspaceReferences -RootPath $configuredRoot.Path -Retirements $requests -Policy $policy -ReferenceRoots $allReferenceRoots -Apply:$Apply|ConvertTo-Json -Depth 16
+        return
+    }
+    if($ReferenceRetirementsPath){throw 'ReferenceRetirementsPath is exclusive to RetireReferences.'}
+    if ($Action -eq 'Archive') {
+        if (-not $RootId -or -not $WorkspacePath -or -not $DestinationRootId -or $WorkspaceGroups -or $AdoptionsPath -or $WorkspacePaths.Count -gt 0 -or $Purpose -or $Outcome -or $References.Count -gt 0 -or $CompletedUtc -or $KeepState -ne 'true') {
+            throw 'Archive requires RootId, WorkspacePath and DestinationRootId; omit batch/adoption selections.'
+        }
+        $sourceRoot = Get-GeneratedWorkspaceRoot -Policy $policy -RootId $RootId
+        $destinationRoot = Get-GeneratedWorkspaceRoot -Policy $policy -RootId $DestinationRootId
+        if ($DocumentRoots.Count -eq 0) {
+            Import-Module (Join-Path $PSScriptRoot '..\dev\MachineRoots.psm1') -DisableNameChecking
+            $mainDocs = Join-Path (Get-RmMainCheckout) 'docs'
+            if (Test-Path -LiteralPath $mainDocs -PathType Container) { $DocumentRoots = @($mainDocs) }
+        }
+        $recordedMarkers=@()
+        if($RecordedMarkersPath){
+            $manifest=Get-Item -LiteralPath $RecordedMarkersPath -Force
+            if($manifest.PSIsContainer -or ($manifest.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $manifest.Length -gt 1MB){throw 'RecordedMarkersPath must be a regular JSON array no larger than 1 MiB.'}
+            $raw=Get-Content -LiteralPath $manifest.FullName -Raw
+            if(-not $raw.TrimStart().StartsWith('[')){throw 'RecordedMarkersPath requires a JSON array.'}
+            $recordedMarkers=@($raw|ConvertFrom-Json)
+            if($recordedMarkers.Count -eq 1 -and $recordedMarkers[0] -is [array]){$recordedMarkers=$recordedMarkers[0]}
+        }
+        $result = Move-GeneratedWorkspaceToArchive -RootPath $sourceRoot.Path -WorkspacePath $WorkspacePath -DestinationRootPath $destinationRoot.Path -DestinationName $DestinationName -DocumentRoots $DocumentRoots -RecordedMarkers $recordedMarkers -Policy $policy -ReferenceRoots $allReferenceRoots -Resume:$Resume -Apply:$Apply
+        ConvertTo-Json -InputObject $result -Depth 16
+        return
+    }
+    if ($DestinationRootId -or $DestinationName -or $DocumentRoots.Count -gt 0 -or $RecordedMarkersPath -or $Resume) { throw 'Archive destination/document parameters are exclusive to Archive.' }
     if (-not [string]::IsNullOrWhiteSpace($AdoptionsPath)) {
         if ($Action -ne 'Adopt' -or [string]::IsNullOrWhiteSpace($RootId) -or
             -not [string]::IsNullOrWhiteSpace($WorkspaceGroups) -or -not [string]::IsNullOrWhiteSpace($WorkspacePath) -or
@@ -162,6 +228,12 @@ try {
     ConvertTo-Json -InputObject $result -Depth 16
 }
 catch {
+    if ($_.Exception.Data.Contains('archive')) {
+        ConvertTo-Json -InputObject ([pscustomobject]@{error=$_.Exception.Message;archive=$_.Exception.Data['archive']}) -Depth 16
+    }
+    if ($_.Exception.Data.Contains('referenceRetirement')) {
+        ConvertTo-Json -InputObject ([pscustomobject]@{error=$_.Exception.Message;referenceRetirement=$_.Exception.Data['referenceRetirement']}) -Depth 16
+    }
     [Console]::Error.WriteLine($_.Exception.Message)
     exit 1
 }

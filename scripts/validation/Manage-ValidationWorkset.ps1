@@ -3,7 +3,7 @@ param(
     [ValidateSet('Inspect', 'Prepare', 'Prune', 'Complete')]
     [string]$Mode = 'Inspect',
 
-    # Defaults to <WorkRoot>\Resource-Manager-Development (scripts/dev/MachineRoots.psm1).
+    # Defaults to the configured active RM workspaces (scripts/dev/MachineRoots.psm1).
     [Alias('ProjectRoot')]
     [string]$WorkspaceRoot,
 
@@ -40,7 +40,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '..\dev\MachineRoots.psm1') -DisableNameChecking
-if (-not $WorkspaceRoot) { $WorkspaceRoot = Join-Path (Get-MachineRoot -Name WorkRoot) 'Resource-Manager-Development' }
+if (-not $WorkspaceRoot) { $WorkspaceRoot = Get-RmStoragePath -Kind Workspaces }
 
 function Write-JsonResult {
     param([Parameter(Mandatory)][object]$Value)
@@ -4458,7 +4458,8 @@ $sharedArtifactsRoot = Join-Path $validationRoot 'shared-artifacts'
 $sharedManagedCacheRoot = Join-Path $sharedArtifactsRoot 'managed-cache'
 $retentionReceiptsRoot = Join-Path $sharedArtifactsRoot 'retention-receipts'
 $workspaceVolume = Get-DriveSnapshot -Path $workspaceRootFull
-$fVolume = Get-DriveSnapshot -Path 'F:\'
+$legacyWorkRoot = Get-MachineRoot -Name WorkRoot -Optional
+$legacyVolume = if ($legacyWorkRoot -and [IO.Directory]::Exists($legacyWorkRoot)) { Get-DriveSnapshot -Path $legacyWorkRoot } else { $null }
 $maxWorksetBytes = [long]($MaxWorksetGiB * 1GB)
 $reserveFreeBytes = [long]($ReserveFreeGiB * 1GB)
 $expectedGrowthBytes = [long]($ExpectedGrowthGiB * 1GB)
@@ -4488,8 +4489,8 @@ switch ($Mode) {
             CanPrepare = $canStart
             WorkspaceVolumeFreeBytes = $workspaceVolume.AvailableBytes
             WorkspaceVolumeTotalBytes = $workspaceVolume.TotalBytes
-            FVolumeFreeBytes = $fVolume.AvailableBytes
-            FVolumeTotalBytes = $fVolume.TotalBytes
+            LegacyVolumeFreeBytes = $(if ($legacyVolume) { $legacyVolume.AvailableBytes } else { $null })
+            LegacyVolumeTotalBytes = $(if ($legacyVolume) { $legacyVolume.TotalBytes } else { $null })
         })
     }
 
@@ -4576,8 +4577,8 @@ switch ($Mode) {
             ReserveFreeBytes = $reserveFreeBytes
             WorkspaceVolumeFreeBytes = $workspaceVolume.AvailableBytes
             WorkspaceVolumeTotalBytes = $workspaceVolume.TotalBytes
-            FVolumeFreeBytes = $fVolume.AvailableBytes
-            FVolumeTotalBytes = $fVolume.TotalBytes
+            LegacyVolumeFreeBytes = $(if ($legacyVolume) { $legacyVolume.AvailableBytes } else { $null })
+            LegacyVolumeTotalBytes = $(if ($legacyVolume) { $legacyVolume.TotalBytes } else { $null })
         })
     }
 
