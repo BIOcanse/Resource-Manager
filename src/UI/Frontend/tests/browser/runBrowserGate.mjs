@@ -205,6 +205,7 @@ const allJourneys = [
   ["resource-table-rows", resourceTableRowsJourney],
   ["column-resize-interaction", columnResizeInteractionJourney],
   ["fan-curve-interaction", fanCurveInteractionJourney],
+  ["gpu-vf-curve", async (...args) => (await import("./gpuVfCurveJourney.js")).default(...args)],
   ["switch-interaction", switchInteractionJourney],
   ["wheel-accumulation", async (...args) => (await import("./wheelAccumulationJourney.js")).default(...args)],
   ["reorder-interaction", reorderInteractionJourney],

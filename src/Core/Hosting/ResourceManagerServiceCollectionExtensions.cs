@@ -124,6 +124,16 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IControlNoticeAcknowledgement, JsonControlNoticeAcknowledgement>();
         services.AddSingleton<IControlPresetStore, JsonControlPresetStore>();
         services.AddSingleton<IControlPresets, ControlPresets>();
+        services.AddSingleton<GpuVfCurveMutationGate>();
+        services.AddSingleton<GpuVfCurveAppliedState>();
+        services.AddSingleton<IGpuVfCurveDescriptorProvider, GpuVfCurveDescriptorProvider>();
+        services.AddSingleton<IGpuVfCurveReferences, GpuVfCurveReferences>();
+        services.AddSingleton<IGpuVfCurvePresetStore, JsonGpuVfCurvePresetStore>();
+        services.AddSingleton<GpuVfCurveService>();
+        services.AddSingleton<IGpuVfCurvePresets>(provider => provider.GetRequiredService<GpuVfCurveService>());
+        services.AddSingleton<IGpuVfCurveEditor>(provider => provider.GetRequiredService<GpuVfCurveService>());
+        services.AddSingleton<GpuVfCurveMigration>();
+        services.AddSingleton<GpuVfCurveControlInputs>();
         // 登记表：见过的设备只增不减，配置挂在它上面，拔掉卡也不会变成孤儿。
         services.AddSingleton<IControlInstanceRegistry, JsonControlInstanceRegistry>();
         // 目录就绪后应用保存的选择一次；之后按设置间隔只维持成功应用的项。

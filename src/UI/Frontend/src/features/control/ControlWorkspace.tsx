@@ -507,7 +507,8 @@ function ControlObjectCard(props: {
 
   /** 这一行动不动得了。归固件管、档位够不着、这台机器上没有，都动不了。 */
   const locked = (capability: ControlCapability) =>
-    firmwareOwned() || mixed() || (isFan() && !mode()?.available) || outOfReach(capability) || !capability.supported;
+    firmwareOwned() || mixed() || (isFan() && !mode()?.available) || outOfReach(capability)
+    || (!capability.supported && capability.valueKind !== "gpu-vf-curve-reference");
 
   /**
    * 动不了属于哪一类。
@@ -572,7 +573,7 @@ function ControlObjectCard(props: {
    * 同理"我们还没接"的那些也留在上面，它们将来会变成可调的。
    */
   const readOnly = () => props.object.capabilities
-    .filter((capability) => !capability.supported
+    .filter((capability) => capability.valueKind !== "gpu-vf-curve-reference" && !capability.supported
       && capability.unavailableKind === "platform")
     .map((capability) => ({ capability, value: actualOf(capability.id) }))
     .filter((entry): entry is { capability: ControlCapability; value: ControlActualValue } =>
@@ -1037,6 +1038,8 @@ function ControlObjectCard(props: {
             || edited().some(setting => {
               const kind = props.object.capabilities.find(c => c.id === setting.capabilityId)?.valueKind;
               return kind === "number" ? typeof setting.number !== "number" || !Number.isFinite(setting.number)
+                : kind === "gpu-vf-curve-reference" ? !setting.gpuVfCurvePresetId
+                  || !props.object.capabilities.find(c => c.id === setting.capabilityId)?.supported
                 : kind === "curve" && !setting.curve?.length;
             })}
           onClick={props.onApply}>

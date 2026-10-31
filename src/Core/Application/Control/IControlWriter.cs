@@ -12,6 +12,8 @@ namespace ResourceManager.App.Application.Control;
 /// </summary>
 public interface IControlWriter
 {
+    /// <summary>Explicit instance forgetting discards recovery data only; it never accesses hardware.</summary>
+    void ForgetObject(string objectId) { }
     /// <summary>
     /// 这一项走哪条链路，见 <see cref="ControlChannels"/>。
     ///

@@ -1118,6 +1118,35 @@
                 },
                 "status": "active",
                 "update_class": "rebuild_backend"
+              },
+              {
+                "value_source": "registry",
+                "index": 3,
+                "consumers": ["GpuVfCurveSettings.Compile"],
+                "description": "GPU V/F backend editor and library choices: gesture steps, precision, plot geometry, bounded resources, explicit binding default, optional safety envelope and transaction readback tolerance. Null envelope follows hardware ranges. Hardware point lists and defaults are never invented.",
+                "id": "gpu_vf_curve_editor",
+                "value_type": "object",
+                "value": {
+                  "rules": {
+                    "fineStepKhz": 1000,
+                    "coarseStepKhz": 10000,
+                    "dragQuantizationKhz": 1000,
+                    "frequencyDecimals": 0,
+                    "voltageDecimals": 3,
+                    "axisPaddingRatio": 0.05,
+                    "hitRadiusPixels": 12,
+                    "maximumPresetCount": 128,
+                    "maximumNameLength": 64,
+                    "maximumDraftCount": 16,
+                    "undoCapacity": 64,
+                    "defaultBindingScope": "device",
+                    "safetyMinimumOffsetKhz": null,
+                    "safetyMaximumOffsetKhz": null,
+                    "readbackToleranceKhz": 1000
+                  }
+                },
+                "status": "active",
+                "update_class": "rebuild_backend"
               }
             ]
           }

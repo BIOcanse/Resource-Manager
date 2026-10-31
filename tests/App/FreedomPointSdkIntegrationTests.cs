@@ -71,9 +71,9 @@ public sealed class FreedomPointSdkIntegrationTests
                 .SelectMany(static member => member.GetCustomAttributes<FreedomPointBindingAttribute>()
                     .Select(attribute => (Member: member, Path: PointPath.FromRaw(attribute.Path)))))
             .ToArray();
-        // Kernel ETW and native policy each have one managed SDK projection in addition to their plan binding.
-        Assert.Equal(80, members.Length);
-        Assert.Equal(78, members.Select(static m => m.Path).Distinct().Count());
+        // Includes the slim overlay point and GPU V/F rules; kernel ETW and native policy each have an extra SDK projection.
+        Assert.Equal(81, members.Length);
+        Assert.Equal(79, members.Select(static m => m.Path).Distinct().Count());
         Assert.All(registry.Points, point =>
         {
             if (point.Status == DeclarationStatus.Active)
@@ -124,8 +124,7 @@ public sealed class FreedomPointSdkIntegrationTests
         var host = FreedomPointRegistry.LoadEmbedded();
         var cpu = new CompiledCpuScoringPlan(1.25, CompiledCpuCoreWeights.Empty);
         var compilation = host.BeginCompilation(Profile(), cpu);
-        // Includes build-selected optimization, persistence and native policy declarations.
-        Assert.Equal(78, compilation.Facts.Items.Length);
+        Assert.Equal(79, compilation.Facts.Items.Length);
         // The native kernel owner adds one active compiled limits declaration.
         _ = compilation.Facts.Require(host.Sdk.RequirePath(BackendFreedomPointPaths.KernelEtwLimits));
         var availability = host.Sdk.RequirePath(BackendFreedomPointPaths.HardwareBridgeAvailabilityCheckInterval);

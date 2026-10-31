@@ -14,17 +14,19 @@ namespace ResourceManager.ReadWrite.Vendors.Nvidia;
 /// 频率偏移反过来只有 NVAPI 的 P-State 表能写。所以两条路各管各的，
 /// 也各自把真实范围交给界面 —— 界面上的上下限就是硬件说的那个，不是估出来的。
 /// </summary>
-public sealed class NvidiaGpuControlResource : IDisposable
+public sealed partial class NvidiaGpuControlResource : IDisposable
 {
     private readonly Func<NvidiaControlMessage, IReadOnlyList<object?>, string>? describe;
     private readonly NvidiaControlLog? logger;
     private int disposed;
     public NvidiaGpuControlResource(NvidiaNvmlControlBridge? nvml = null, NvidiaNvapiControlBridge? nvapi = null,
         Func<NvidiaControlMessage, IReadOnlyList<object?>, string>? describe = null,
-        Action<string, object?[]>? warning = null)
+        Action<string, object?[]>? warning = null,
+        INvidiaGpuVfCurveAdapter? vfCurveAdapter = null)
     {
         powerBridge = nvml ?? new(); bridge = nvapi ?? new(); this.describe = describe;
         logger = warning is null ? null : new(warning);
+        this.vfCurveAdapter = vfCurveAdapter;
     }
     private string Describe(NvidiaControlMessage code, params object?[] arguments)
         => describe?.Invoke(code, arguments) ?? DefaultReason(code) + (arguments.Length == 0 ? "" : ": " + string.Join(", ", arguments));

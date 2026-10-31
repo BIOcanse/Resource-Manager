@@ -64,7 +64,7 @@ export const controlUnavailableKinds: readonly ControlUnavailableKind[] = [
 
 export interface ControlCapability {
   id: string;
-  valueKind: "toggle" | "number" | "curve";
+  valueKind: "toggle" | "number" | "curve" | "gpu-vf-curve-reference";
   /** 现在能不能用。不能用时一定带着原因。 */
   supported: boolean;
   unavailableReason: ControlApplyReason | null;
@@ -153,6 +153,8 @@ export interface ControlCurvePoint {
  */
 export interface ControlSetting {
   capabilityId: string;
+  gpuVfCurvePresetId?: string | null;
+  gpuVfCurveExecution?: { binding: import("./gpuVfCurveTypes.ts").GpuVfCurveBinding; points: readonly import("./gpuVfCurveTypes.ts").GpuVfCurvePoint[] } | null;
   number?: number | null;
   toggle?: boolean | null;
   curve?: readonly ControlCurvePoint[] | null;

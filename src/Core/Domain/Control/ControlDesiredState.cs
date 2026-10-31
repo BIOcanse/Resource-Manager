@@ -30,7 +30,9 @@ public sealed record ControlSetting(
     /// <see cref="Number"/> 的单位，取值见 <see cref="ControlUnits"/>。
     /// 非数值型为 null。旧文件里没有这个字段，读到 null 时由转发层按能力描述补。
     /// </summary>
-    string? Unit = null);
+    string? Unit = null,
+    string? GpuVfCurvePresetId = null,
+    GpuVfCurveExecution? GpuVfCurveExecution = null);
 
 /// <summary>一个对象上用户设定的全部项。</summary>
 public sealed record ControlObjectDesiredState(

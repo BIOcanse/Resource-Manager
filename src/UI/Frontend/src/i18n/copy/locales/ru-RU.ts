@@ -1,3 +1,4 @@
+import { gpuVfCurveCopy } from "../gpuVfCurve.ts";
 import { operationsFeedback } from "../operationsFeedback.ts";
 import { componentCatalog } from "./ru-RU-components.ts";
 import type { ResourceTableViewMode } from "../../../types.ts";
@@ -13,6 +14,7 @@ import { fieldLabel, fieldValueLabel } from "./ru-RU-fieldLabels.ts";
 import { plural } from "../../plural.ts";
 
 const ruRuAppCopy: AppCopy = {
+  gpuVfCurve: gpuVfCurveCopy["ru-RU"],
   softwareFacts: softwareFactsCopy["ru-RU"],
   physicalMemoryResidual: physicalMemoryResidualCopy["ru-RU"],
   componentCatalog,

@@ -66,6 +66,7 @@ public sealed partial class HostManagerPlanCompiler
         var memoryCpuTiers = ResourceManager.App.Infrastructure.Settings.MemoryCpuTierTable.Compile(freedom);
         var backendControlSettings = BackendControlSettings.Compile(freedom);
         var hardwareControlSettings = ResourceManager.App.Infrastructure.Control.HardwareControlSettings.Compile(freedom);
+        var gpuVfCurveSettings = ResourceManager.App.Infrastructure.Control.GpuVfCurveSettings.Compile(freedom);
         var monitoringSettings = ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.Compile(freedom);
         var optimizationSettings = ResourceManager.App.Infrastructure.Optimization.OptimizationSettings.Compile(freedom);
         var gpuPlacementSettings = ResourceManager.App.Infrastructure.GpuPlacement.GpuPlacementSettings.Compile(freedom);
@@ -558,6 +559,7 @@ public sealed partial class HostManagerPlanCompiler
             TrustedAccessRequestLifetimeMilliseconds = trustedAccessRequestLifetime,
             BackendControlSettings = backendControlSettings,
             HardwareControl = hardwareControlSettings,
+            GpuVfCurve = gpuVfCurveSettings,
             Monitoring = monitoringSettings,
             Optimization = optimizationSettings,
             GpuPlacement = gpuPlacementSettings,

@@ -13,6 +13,21 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class HostManagerFreedomPointPlanTests
 {
+    [Fact]
+    public void GpuVfEditorRulesCompileFromTheStrictDeclarationAndReachTheProductPlan()
+    {
+        var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+        {
+            var rules = FreedomPointTestFactory.Point(root,
+                "resource-manager/backend/hardware_bridge/build/complex/3")["value"]!["rules"]!;
+            rules["fineStepKhz"] = 2000;
+            rules["undoCapacity"] = 7;
+        });
+        Assert.Equal(2000, changed.GpuVfCurve!.Rules.FineStepKhz);
+        Assert.Equal(7, changed.GpuVfCurve.Rules.UndoCapacity);
+        Assert.True(changed.IsPublished);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(7500)]

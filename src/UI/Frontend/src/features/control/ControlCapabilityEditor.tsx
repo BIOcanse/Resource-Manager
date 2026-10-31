@@ -9,6 +9,7 @@ import {
   stopsFromCurve
 } from "./fanCurve.ts";
 import { FanCurveChart } from "./FanCurveChart";
+import { GpuVfCurveEditor } from "./GpuVfCurveEditor.tsx";
 import { ControlNumberSlider } from "./ControlNumberSlider";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { curveSettingFromRead } from "./controlInitialSetting.ts";
@@ -93,7 +94,7 @@ export function ControlCapabilityEditor(props: {
       classList={{
         "control-editor-off": disabled(),
         // 曲线要横向空间，滑块不要 —— 一条 ±30 档的滑块拉满一米宽没有任何用处。
-        "control-editor-shell-wide": props.capability.valueKind === "curve"
+        "control-editor-shell-wide": props.capability.valueKind === "curve" || props.capability.valueKind === "gpu-vf-curve-reference"
       }}
     >
       {/*
@@ -130,6 +131,10 @@ export function ControlCapabilityEditor(props: {
           disabled={disabled()}
           onChange={props.onChange}
         />
+      </Show>
+      <Show when={props.capability.valueKind === "gpu-vf-curve-reference"}>
+        <GpuVfCurveEditor objectId={props.objectId} capabilityId={props.capability.id}
+          setting={props.setting} disabled={props.held === true || props.setting === undefined} onChange={props.onChange} />
       </Show>
     </div>
   );

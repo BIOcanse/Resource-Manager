@@ -64,22 +64,60 @@ public sealed class NvidiaGpuControlWriter : IControlWriter, IControlDetectionCa
         => setting?.Number is { } number && double.IsFinite(number) && number >= 0
             ? ControlUnitAdapter.Convert(number, setting.Unit, ControlUnits.Megahertz) : null;
     public void ResetDetection() => Resource.ResetDetection();
+    public void ForgetObject(string objectId) => Resource.ForgetVfCurveOwnership(objectId);
     public void Dispose() => Resource.Dispose();
     internal void RecordWriteResult(string objectId, string capabilityId, int code) => Resource.RecordWriteResult(objectId, capabilityId, code);
     internal bool HasUnsupportedWrite(string objectId, string capabilityId) => Resource.HasUnsupportedWrite(objectId, capabilityId);
     internal int WriteClockRange(int index, uint type, bool minimum, uint wanted, uint maximum,
         Func<uint, uint, int> write, out uint low, out uint high)
         => Resource.WriteClockRange(index, type, minimum, wanted, maximum, write, out low, out high);
-    public string? ChannelOf(ControlObject target, string capabilityId) => Resource.ChannelOf(Target(target), capabilityId) switch
+    public string? ChannelOf(ControlObject target, string capabilityId) => capabilityId == GpuVfCurveCapabilities.Core
+        ? Target(target).IsDiscreteNvidia ? ControlChannels.Nvapi : null
+        : Resource.ChannelOf(Target(target), capabilityId) switch
     { NativeMetricSnapshotSources.NvidiaNvml => ControlChannels.Nvml, NativeMetricSnapshotSources.NvidiaNvapi => ControlChannels.Nvapi, _ => null };
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
     {
+        if (capability.Id == GpuVfCurveCapabilities.Core)
+        {
+            if (!Target(target).IsDiscreteNvidia) return ControlWriteAvailability.NotMine;
+            if (Resource.IsVfCurveSimulation) return ControlWriteAvailability.Yes();
+            // Get success cannot establish write permission or a verified restoration protocol.
+            return ControlWriteAvailability.No(NvidiaGpuVfCurveAbis.LiveWriteUnavailable,
+                kind: ControlUnavailableKinds.NotImplemented, canRead: true);
+        }
         var value = Resource.Probe(Target(target), Capability(capability));
         return new(value.CanWrite, value.Reason, Range(value.Range), value.UnavailableKind, value.CanRead);
     }
     public async Task<ControlApplyOutcome> WriteAsync(ControlObject target, ControlCapability capability, ControlSetting setting, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        if (capability.Id == GpuVfCurveCapabilities.Core)
+        {
+            if (setting.GpuVfCurveExecution is not { } execution || setting.GpuVfCurvePresetId is null
+                || setting.Number is not null || setting.Toggle is not null || setting.Curve is not null)
+                return new(target.Id, capability.Id, ControlApplyStatuses.Failed, "gpu-vf-curve-execution-missing");
+            var read = ReadVfCurve(target);
+            if (read.Snapshot is not { } snapshot)
+                return new(target.Id, capability.Id, ControlApplyStatuses.Failed, read.UnavailableReason ?? "nvidia-vf-snapshot-unavailable");
+            var signature = GpuVfCurveBinding.ComputePointSignature(snapshot.Points.Select(point => (point.PointId, (long)point.VoltageMicrovolts)));
+            var observedBinding = new GpuVfCurveBinding(ControlVendors.Nvidia, target.Id, target.ReportedName ?? string.Empty,
+                signature, GpuVfCurveBindingScopes.Device);
+            if (!execution.Binding.Matches(observedBinding))
+                return new(target.Id, capability.Id, ControlApplyStatuses.Failed, "gpu-vf-curve-binding-mismatch");
+            var points = new List<NvidiaGpuVfCurveOffset>(execution.Points.Count);
+            foreach (var point in execution.Points)
+            {
+                if (point.VoltageMicrovolts is < uint.MinValue or > uint.MaxValue
+                    || !double.IsFinite(point.FrequencyOffsetKhz) || point.FrequencyOffsetKhz != Math.Truncate(point.FrequencyOffsetKhz)
+                    || point.FrequencyOffsetKhz is < int.MinValue or > int.MaxValue)
+                    return new(target.Id, capability.Id, ControlApplyStatuses.Failed, "gpu-vf-curve-point-invalid");
+                points.Add(new(point.PointId, (uint)point.VoltageMicrovolts, (int)point.FrequencyOffsetKhz));
+            }
+            var transaction = Resource.WriteVfCurve(Target(target), snapshot, points, VfOptions());
+            return new(target.Id, capability.Id, transaction.Applied ? ControlApplyStatuses.Applied : ControlApplyStatuses.Failed,
+                transaction.FailureReason is { } reason ? new(reason) : null)
+            { Evidence = transaction.Applied ? new(ResourceManager.ReadWrite.FieldWriteEvidence.SettingReadbackTolerance) : null };
+        }
         var executionTarget = Target(target);
         if (target.AdapterKey is > 0 && capability.Id == PowerLimitCapabilityId)
             executionTarget = executionTarget with { Inventory = adapterReader.ReadInventory() };
@@ -94,6 +132,12 @@ public sealed class NvidiaGpuControlWriter : IControlWriter, IControlDetectionCa
     public async Task<ControlActualValue?> ReadAsync(ControlObject target, ControlCapability capability, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        if (capability.Id == GpuVfCurveCapabilities.Core)
+        {
+            // The complete table is consumed by the explicit descriptor GET. The generic
+            // actual-value schema has no V/F payload; do not perform an unconsumed live read here.
+            return null;
+        }
         var value = await Resource.ReadAsync(Target(target), Capability(capability), token);
         return value is null ? null : new(value.ObjectId, value.CapabilityId, Number: value.Number, Unit: value.Unit, UnreadableReason: value.UnreadableReason);
     }
@@ -101,6 +145,13 @@ public sealed class NvidiaGpuControlWriter : IControlWriter, IControlDetectionCa
         CancellationToken token, ControlSetting? previousSetting = null)
     {
         token.ThrowIfCancellationRequested();
+        if (capability.Id == GpuVfCurveCapabilities.Core)
+            return Task.FromResult(!Resource.HasVfCurveOwnership(Target(target))
+                || Resource.RestoreVfCurve(Target(target), VfOptions()).Applied);
+        // Compatibility only: persisted pending releases predate the single curve capability.
+        // The SDK verifies the source-defined neutral scalar delta by readback, without inventing a range.
+        if (capability.Id == GpuVfCurveScalarAdapter.LegacyCapabilityId && capability.Range is null)
+            return Resource.RestoreLegacyCoreOffsetAsync(Target(target), VfOptions(), token);
         var executionTarget = Target(target);
         if (target.AdapterKey is > 0 && capability.Id == PowerLimitCapabilityId)
             executionTarget = executionTarget with { Inventory = adapterReader.ReadInventory() };
@@ -109,6 +160,14 @@ public sealed class NvidiaGpuControlWriter : IControlWriter, IControlDetectionCa
     }
     private static NvidiaControlObject Target(ControlObject target) => new(target.Id, target.AdapterIndex, target.AdapterKey,
         target.Kind == ControlObjectKinds.Gpu && target.Platform.Vendor == ControlVendors.Nvidia && target.GpuAttachment == ControlGpuAttachments.Discrete);
+    internal NvidiaGpuVfCurveReadResult ReadVfCurve(ControlObject target)
+    {
+        var executionTarget = Target(target);
+        if (target.AdapterKey is > 0) executionTarget = executionTarget with { Inventory = adapterReader.ReadInventory() };
+        return Resource.ReadVfCurve(executionTarget);
+    }
+    private static NvidiaGpuVfCurveTransactionOptions VfOptions()
+        => new(checked((int)GpuVfCurveSettings.ProductDefaults.ReadbackToleranceKhz));
     private static NvidiaControlCapability Capability(ControlCapability capability) => new(capability.Id,
         capability.Range is { } value ? new(value.Minimum, value.Maximum, value.Step, value.Unit, value.DefaultValue) : null);
     private static ControlNumberRange? Range(NvidiaControlNumberRange? value)

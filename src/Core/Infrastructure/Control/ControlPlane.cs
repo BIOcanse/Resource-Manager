@@ -19,7 +19,11 @@ public sealed class ControlPlane(
     StartupCapabilitySet? capabilities = null,
     HardwareMetricCatalogState? catalog = null,
     FanControlCoreClient? fan = null,
-    HardwareCommandQueue? commands = null) : IControlPlane
+    HardwareCommandQueue? commands = null,
+    GpuVfCurveMutationGate? curveMutation = null,
+    GpuVfCurveControlInputs? curveInputs = null,
+    GpuVfCurveMigration? curveMigration = null,
+    GpuVfCurveAppliedState? appliedCurves = null) : IControlPlane
 {
     private readonly object gate = new();
     private readonly SemaphoreSlim operations = new(1, 1);
@@ -42,7 +46,9 @@ public sealed class ControlPlane(
         await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            using var mutation = await GpuVfCurveMutationScope.EnterAsync(curveMutation, cancellationToken).ConfigureAwait(false);
             if (initialized) return;
+            if (curveMigration is not null) await curveMigration.MigrateHeldAsync(cancellationToken).ConfigureAwait(false);
             initialized = true;
             await ApplyStoredAsync(await store.LoadAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
         }
@@ -73,6 +79,7 @@ public sealed class ControlPlane(
 
     public async Task<ControlStateView> ReadStateAsync(CancellationToken cancellationToken)
     {
+        if (CanMutate && curveMigration is not null) await curveMigration.MigrateAsync(cancellationToken).ConfigureAwait(false);
         await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -157,6 +164,28 @@ public sealed class ControlPlane(
         CancellationToken cancellationToken,
         string? objectId = null)
     {
+        using var mutation = await GpuVfCurveMutationScope.EnterAsync(curveMutation, cancellationToken).ConfigureAwait(false);
+        if (curveInputs is not null)
+        {
+            var prepared = new List<ControlObjectDesiredState>(next.Objects.Count);
+            try
+            {
+                foreach (var target in next.Objects)
+                {
+                    // An object-specific apply accepts only its new inputs. Other accepted
+                    // objects retain their immutable execution snapshot without rereading the library.
+                    prepared.Add(objectId is not null && target.ObjectId != objectId ? target : target with
+                    { Settings = await curveInputs.PrepareAsync(target.ObjectId, target.Settings, true, cancellationToken).ConfigureAwait(false) });
+                }
+            }
+            catch (GpuVfCurveRequestException error)
+            {
+                var report = Rejected(next, error.Reason.Code);
+                WriteLastApply(report);
+                return new(current, report);
+            }
+            next = next with { Objects = prepared };
+        }
         var invalid = InvalidFanModes(next, objectId);
         if (invalid.Length > 0) return new(current, RejectFanModes(invalid, objectId));
         if (commands is not null) await WaitForCatalogAsync(cancellationToken).ConfigureAwait(false);
@@ -282,6 +311,7 @@ public sealed class ControlPlane(
                 .Where(target => target.Settings.Count > 0).ToArray());
         }
         var applied = await writeLayer.WriteAsync(selected, cancellationToken).ConfigureAwait(false);
+        appliedCurves?.Record(selected, applied, releaseReport);
         var replaced = releaseReport.Outcomes.Concat(applied.Outcomes)
             .Select(outcome => (outcome.ObjectId, outcome.CapabilityId)).ToHashSet();
         var retained = ReadLastApply().Outcomes.Where(outcome => retryOnly
@@ -302,6 +332,7 @@ public sealed class ControlPlane(
         await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            using var mutation = await GpuVfCurveMutationScope.EnterAsync(curveMutation, cancellationToken).ConfigureAwait(false);
             if (!CanMutate) return ReadLastApply();
             if (commands is not null) await WaitForCatalogAsync(cancellationToken).ConfigureAwait(false);
             var previous = ReadLastApply();
@@ -315,6 +346,7 @@ public sealed class ControlPlane(
             async Task<ControlApplyReport> Apply(ControlDesiredState target, CancellationToken token)
             {
                 var report = await writeLayer.WriteAsync(target, token).ConfigureAwait(false);
+                appliedCurves?.Record(target, report, ControlApplyReport.Empty);
                 var updated = new ControlApplyReport(ReadLastApply().Outcomes.Where(old => !report.Outcomes.Any(next =>
                     next.ObjectId == old.ObjectId && next.CapabilityId == old.CapabilityId)).Concat(report.Outcomes).ToArray(), DateTimeOffset.UtcNow);
                 WriteLastApply(updated, saved);
@@ -345,6 +377,7 @@ public sealed class ControlPlane(
         await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            using var mutation = await GpuVfCurveMutationScope.EnterAsync(curveMutation, cancellationToken).ConfigureAwait(false);
             if (!CanMutate) throw new InvalidOperationException("startup-profile-read-only");
             var saved = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
             await store.SaveAsync(saved with
@@ -352,6 +385,8 @@ public sealed class ControlPlane(
                 Objects = saved.Objects.Where(target => target.ObjectId != instanceId).ToArray(),
                 PendingReleases = saved.PendingReleases.Where(target => target.ObjectId != instanceId).ToArray()
             }, cancellationToken).ConfigureAwait(false);
+            appliedCurves?.Forget(instanceId);
+            writeLayer.ForgetObject(instanceId);
             var previous = ReadLastApply();
             WriteLastApply(previous with { Outcomes = previous.Outcomes.Where(outcome => outcome.ObjectId != instanceId).ToArray() },
                 saved with { Objects = saved.Objects.Where(target => target.ObjectId != instanceId).ToArray() });
@@ -365,6 +400,7 @@ public sealed class ControlPlane(
         await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            using var mutation = await GpuVfCurveMutationScope.EnterAsync(curveMutation, cancellationToken).ConfigureAwait(false);
             var saved = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
             if (await RejectMutationAsync(saved, cancellationToken).ConfigureAwait(false) is { } rejected) return rejected;
             return await ApplyStoredAsync(saved, cancellationToken, objectId, retryOnly: true).ConfigureAwait(false);

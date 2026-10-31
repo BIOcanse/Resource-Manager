@@ -18,6 +18,8 @@ namespace ResourceManager.App.Application.Control;
 /// </summary>
 public interface IControlWriteLayer
 {
+    /// <summary>Discard per-instance recovery data after the user's explicit forget operation, without hardware access.</summary>
+    void ForgetObject(string objectId) { }
     /// <summary>Only declaration facts; never probes a writer or starts hardware.</summary>
     bool UsesHardwareBridge(string objectId, string capabilityId) => false;
     Task<ControlApplyReport> ReleaseAsync(

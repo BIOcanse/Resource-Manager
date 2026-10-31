@@ -1,4 +1,5 @@
-import { uiText } from "../text.ts";
+import { uiText, currentLanguage } from "../text.ts";
+import { gpuVfCurveReasonText } from "./gpuVfCurveReasonText.ts";
 import type { AppCopy } from "../i18n/copy/index.ts";
 import type { ControlApplyReason } from "../features/control/controlTypes.ts";
 
@@ -34,6 +35,8 @@ const groups: Readonly<Record<string, readonly string[]>> = {
 const aliases = new Map(Object.entries(groups).flatMap(([key, codes]) => codes.map((code) => [code, key] as const)));
 
 export function controlReasonText(reason: ControlApplyReason | null | undefined, copy: AppCopy["control"] = uiText.control): string {
+  const curveReason = gpuVfCurveReasonText(reason, currentLanguage());
+  if (curveReason) return curveReason;
   const text = copy.recovery;
   const code = aliases.get(reason?.code ?? "") ?? reason?.code;
   switch (code) {

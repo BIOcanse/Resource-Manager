@@ -36,6 +36,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapResourceMonitorEndpoints();
         app.MapDiskUsageEndpoints(startupCapabilities);
         app.MapControlEndpoints(startupCapabilities);
+        app.MapGpuVfCurveEndpoints(startupCapabilities);
         app.MapDebugAmdSmuEndpoint();
         app.MapDebugGpuControlEndpoint();
         app.MapAdapterEndpoints(startupCapabilities);

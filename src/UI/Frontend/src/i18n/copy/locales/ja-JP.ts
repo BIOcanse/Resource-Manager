@@ -1,3 +1,4 @@
+import { gpuVfCurveCopy } from "../gpuVfCurve.ts";
 import { cjkText } from "../../cjkSpacing.ts";
 import { operationsFeedback } from "../operationsFeedback.ts";
 import { componentCatalog } from "./ja-JP-components.ts";
@@ -13,6 +14,7 @@ import { memoryCpuTier } from "./ja-JP-memoryCpuTier.ts";
 import { fieldLabel, fieldValueLabel } from "./ja-JP-fieldLabels.ts";
 
 const jaJpAppCopy: AppCopy = {
+  gpuVfCurve: gpuVfCurveCopy["ja-JP"],
   softwareFacts: softwareFactsCopy["ja-JP"],
   physicalMemoryResidual: physicalMemoryResidualCopy["ja-JP"],
   componentCatalog,

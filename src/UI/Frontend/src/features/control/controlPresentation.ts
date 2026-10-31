@@ -8,6 +8,7 @@ type ControlPresentationCopy = AppCopy["control"]["presentation"];
 export function controlCapabilityLabel(
   capability: { id: string; channel?: string | null }, text: ControlPresentationCopy = uiText.control.presentation
 ): string {
+  if (capability.id === "gpu.core-vf-curve") return uiText.gpuVfCurve.title;
   if (capability.id === "cpu.power-limit" && capability.channel === "intel-msr") {
     return text.powerLimitPl1;
   }

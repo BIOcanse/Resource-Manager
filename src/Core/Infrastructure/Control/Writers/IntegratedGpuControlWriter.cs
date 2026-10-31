@@ -33,11 +33,11 @@ public sealed class IntegratedGpuControlWriter : IControlWriter, IDisposable
     public string? ChannelOf(ControlObject t,string id) => Target(t).Route switch
     {
         IntegratedGpuControlRoute.AmdIntegrated when id == CurveOptimizerCapabilityId => ControlChannels.AmdSmu,
-        IntegratedGpuControlRoute.IntelIntegrated when id == CoreClockOffsetCapabilityId => ControlChannels.Igcl,_=>null
+        IntegratedGpuControlRoute.IntelIntegrated when GpuVfCurveScalarAdapter.NativeId(id) == CoreClockOffsetCapabilityId => ControlChannels.Igcl,_=>null
     };
     public ControlWriteAvailability Probe(ControlObject t,ControlCapability cap)
     {
-        if (IntegratedGpuControlFormatter.Field(cap.Id) is not { } f) return ControlWriteAvailability.NotMine;
+        if (IntegratedGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(cap.Id)) is not { } f) return ControlWriteAvailability.NotMine;
         var v=resource.Probe(Target(t),new(f,Range(cap.Range)));
         return new(v.CanWrite,Reason(v.Reason),Range(v.Range),v.UnavailableKind switch
         { IntegratedGpuControlUnavailableKind.Component=>ControlUnavailableKinds.Component,
@@ -47,9 +47,10 @@ public sealed class IntegratedGpuControlWriter : IControlWriter, IDisposable
     public async Task<ControlApplyOutcome> WriteAsync(ControlObject t,ControlCapability cap,ControlSetting setting,CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        if (IntegratedGpuControlFormatter.Field(cap.Id) is not { } f || setting.CapabilityId != cap.Id)
+        if (IntegratedGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(cap.Id)) is not { } f || setting.CapabilityId != cap.Id
+            || !GpuVfCurveScalarAdapter.TrySetting(setting, out var scalar))
             return new(t.Id,cap.Id,ControlApplyStatuses.Failed,Describe(IntegratedGpuControlMessage.NotSupported,[]));
-        var v=await resource.WriteAsync(Target(t),new(f,Range(cap.Range)),new(f,setting.Number,setting.Unit),token);
+        var v=await resource.WriteAsync(Target(t),new(f,Range(cap.Range)),new(f,scalar.Number,scalar.Unit),token);
         return new(t.Id,cap.Id,v.Status==IntegratedGpuControlStatus.Applied ? ControlApplyStatuses.Applied:ControlApplyStatuses.Failed,Reason(v.Message))
         {
             Evidence = v.Status == IntegratedGpuControlStatus.Applied ? new(v.ReadbackVerified
@@ -58,12 +59,12 @@ public sealed class IntegratedGpuControlWriter : IControlWriter, IDisposable
     }
     public async Task<ControlActualValue?> ReadAsync(ControlObject t,ControlCapability cap,CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();if (IntegratedGpuControlFormatter.Field(cap.Id) is not { } f) return null;
+        token.ThrowIfCancellationRequested();if (IntegratedGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(cap.Id)) is not { } f) return null;
         var v=await resource.ReadAsync(Target(t),new(f,Range(cap.Range)),token);
         return v is null ? null:new(t.Id,cap.Id,Number:v.Number,Unit:v.Unit,UnreadableReason:Reason(v.UnreadableReason));
     }
     public Task<bool> RestoreAsync(ControlObject t,ControlCapability cap,IReadOnlySet<string> configured,CancellationToken token,ControlSetting? previousSetting=null)
-    { token.ThrowIfCancellationRequested(); return IntegratedGpuControlFormatter.Field(cap.Id) is { } f ? resource.RestoreAsync(Target(t),new(f,Range(cap.Range)),token):Task.FromResult(false); }
+    { token.ThrowIfCancellationRequested(); return IntegratedGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(cap.Id)) is { } f ? resource.RestoreAsync(Target(t),new(f,Range(cap.Range)),token):Task.FromResult(false); }
     public void Dispose()=>resource.Dispose();
     private ControlApplyReason? Reason(string? value)
     {

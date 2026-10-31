@@ -15,7 +15,7 @@ namespace ResourceManager.ReadWrite.Vendors.Nvidia;
 /// 用 <c>[StructLayout]</c> 声明反而会把"猜出来的字段名"固化成看起来可信的代码。
 /// 偏移量的依据写在各自常量上。
 /// </summary>
-public class NvidiaNvapiControlBridge
+public partial class NvidiaNvapiControlBridge
 {
     private const int NvapiOk = 0;
     private const int NvapiMaxPhysicalGpus = 64;
@@ -505,7 +505,10 @@ public class NvidiaNvapiControlBridge
             Get<BufferCallDelegate>(query, NvapiGpuClientPowerPoliciesGetStatusId),
             Get<BufferCallDelegate>(query, NvapiGpuClientPowerPoliciesSetStatusId),
             Get<BufferCallDelegate>(query, NvapiGpuSetPstates20Id),
-            Get<BufferCallDelegate>(query, NvapiGpuGetPstates20Id));
+            Get<BufferCallDelegate>(query, NvapiGpuGetPstates20Id),
+            Get<BufferCallDelegate>(query, NvidiaGpuVfCurveAbi.GetInfoId),
+            Get<BufferCallDelegate>(query, NvidiaGpuVfCurveAbi.GetStatusId),
+            Get<BufferCallDelegate>(query, NvidiaGpuVfCurveAbi.GetControlId));
         return true;
     }
 
@@ -566,10 +569,13 @@ public class NvidiaNvapiControlBridge
         BufferCallDelegate? ClientPowerPoliciesGetStatus,
         BufferCallDelegate? ClientPowerPoliciesSetStatus,
         BufferCallDelegate? SetPstates20,
-        BufferCallDelegate? GetPstates20)
+        BufferCallDelegate? GetPstates20,
+        BufferCallDelegate? GetVfInfo,
+        BufferCallDelegate? GetVfStatus,
+        BufferCallDelegate? GetVfControl)
     {
         public static Bindings Unavailable { get; } =
-            new(null, null, null, null, null, null, null, null, null, null);
+            new(null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

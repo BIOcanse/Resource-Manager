@@ -19,7 +19,7 @@ public sealed class AmdDesktopGpuControlWriter : IControlWriter, IDisposable
         resource = new(hardware, new(baselinePath));
         this.logger = logger;
     }
-    internal static int? Field(string id) => AmdDesktopGpuControlFormatter.Field(id) is { } field ? (int)field : null;
+    internal static int? Field(string id) => AmdDesktopGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(id)) is { } field ? (int)field : null;
     private static AmdDesktopGpuControlTarget Target(ControlObject target)
         => new(target.AdapterIndex,
             target.Platform.OperatingSystem == ControlOperatingSystems.Windows && target.Platform.Vendor == ControlVendors.Amd
@@ -28,10 +28,10 @@ public sealed class AmdDesktopGpuControlWriter : IControlWriter, IDisposable
                 ? AmdDesktopGpuControlRoute.WindowsAmdFixedDiscrete : AmdDesktopGpuControlRoute.Rejected,
             target.Kind == ControlObjectKinds.Fan ? AmdDesktopGpuControlObjectKind.Fan : AmdDesktopGpuControlObjectKind.Gpu, ExpectedPnp: target.ExpectedPhysicalPnp);
     public string? ChannelOf(ControlObject target, string id)
-        => AmdDesktopGpuControlFormatter.Field(id) is { } field && AmdDesktopGpuControlResource.IsAdmitted(Target(target), field) ? ControlChannels.Adlx : null;
+        => AmdDesktopGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(id)) is { } field && AmdDesktopGpuControlResource.IsAdmitted(Target(target), field) ? ControlChannels.Adlx : null;
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
     {
-        if (AmdDesktopGpuControlFormatter.Field(capability.Id) is not { } field) return ControlWriteAvailability.NotMine;
+        if (AmdDesktopGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(capability.Id)) is not { } field) return ControlWriteAvailability.NotMine;
         var value = resource.Probe(Target(target), field);
         if (!value.IsAdmitted) return ControlWriteAvailability.NotMine;
         if (value.Error is { } detail) logger?.LogDebug("ADLX control probe rejected {Object} / {Capability}: {Detail}", target.Id, capability.Id, detail);
@@ -46,9 +46,10 @@ public sealed class AmdDesktopGpuControlWriter : IControlWriter, IDisposable
     public async Task<ControlApplyOutcome> WriteAsync(ControlObject target, ControlCapability capability, ControlSetting setting, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (AmdDesktopGpuControlFormatter.Field(capability.Id) is not { } field)
+        if (AmdDesktopGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(capability.Id)) is not { } field
+            || !GpuVfCurveScalarAdapter.TrySetting(setting, out var scalar))
             return new(target.Id, capability.Id, ControlApplyStatuses.Unsupported, "adlx.RouteRejected");
-        var value = await resource.WriteAsync(Target(target), field, new(setting.Number, setting.Toggle), cancellationToken);
+        var value = await resource.WriteAsync(Target(target), field, new(scalar.Number, scalar.Toggle), cancellationToken);
         if (value.Error is { } detail) logger?.LogWarning("ADLX control write failed {Object} / {Capability}: {Detail}", target.Id, capability.Id, detail);
         return new(target.Id, capability.Id, value.Status switch
         {
@@ -64,7 +65,7 @@ public sealed class AmdDesktopGpuControlWriter : IControlWriter, IDisposable
     public async Task<ControlActualValue?> ReadAsync(ControlObject target, ControlCapability capability, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (AmdDesktopGpuControlFormatter.Field(capability.Id) is not { } field) return null;
+        if (AmdDesktopGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(capability.Id)) is not { } field) return null;
         var value = await resource.ReadAsync(Target(target), field, cancellationToken);
         return value is null ? null : new(target.Id, capability.Id, Number: value.Number, Toggle: value.Toggle, Unit: value.Unit);
     }
@@ -72,10 +73,10 @@ public sealed class AmdDesktopGpuControlWriter : IControlWriter, IDisposable
         CancellationToken cancellationToken, ControlSetting? previousSetting = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (AmdDesktopGpuControlFormatter.Field(capability.Id) is not { } field) return Task.FromResult(false);
+        if (AmdDesktopGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(capability.Id)) is not { } field) return Task.FromResult(false);
         var configured = new HashSet<AmdDesktopGpuControlField>();
         foreach (var id in stillConfigured)
-            if (AmdDesktopGpuControlFormatter.Field(id) is { } active) configured.Add(active);
+            if (AmdDesktopGpuControlFormatter.Field(GpuVfCurveScalarAdapter.NativeId(id)) is { } active) configured.Add(active);
         return resource.RestoreAsync(Target(target), field, configured, cancellationToken);
     }
     public void Dispose() => resource.Dispose();

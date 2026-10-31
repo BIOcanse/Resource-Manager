@@ -1,3 +1,4 @@
+import { gpuVfCurveCopy } from "../gpuVfCurve.ts";
 import { componentCatalog } from "./components.ts";
 import { managementFeedback } from "./managementFeedback.ts";
 import { softwareFactsCopy } from "../softwareFacts.ts";
@@ -32,6 +33,7 @@ import { zhTwMemoryCpuTierCopy } from "./memoryCpuTier.ts";
 export const zhAppCopy = {
   componentCatalog,
   managementFeedback,
+  gpuVfCurve: gpuVfCurveCopy["zh-TW"],
   softwareFacts: softwareFactsCopy["zh-TW"],
   physicalMemoryResidual: physicalMemoryResidualCopy["zh-TW"],
   ...zhShellCopy,

@@ -1,3 +1,4 @@
+import { gpuVfCurveCopy } from "../gpuVfCurve.ts";
 import { componentCatalog } from "./components.ts";
 import { managementFeedback } from "./managementFeedback.ts";
 import { softwareFactsCopy } from "../softwareFacts.ts";
@@ -33,6 +34,7 @@ import type { AppCopy } from "../zh/index.ts";
 export const enAppCopy: AppCopy = {
   componentCatalog,
   managementFeedback,
+  gpuVfCurve: gpuVfCurveCopy["en-US"],
   softwareFacts: softwareFactsCopy["en-US"],
   physicalMemoryResidual: physicalMemoryResidualCopy["en-US"],
   ...enShellCopy,

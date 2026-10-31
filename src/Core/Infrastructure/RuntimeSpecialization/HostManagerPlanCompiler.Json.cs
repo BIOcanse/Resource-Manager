@@ -29,6 +29,7 @@ public sealed partial class HostManagerPlanCompiler
     [JsonSerializable(typeof(Application.CrashReports.CrashReportOptions))]
     [JsonSerializable(typeof(Application.MemoryProtection.HostMemoryProtectionRecordOptions))]
     [JsonSerializable(typeof(HardwareHelperProcessTiming))]
+    [JsonSerializable(typeof(CompiledGpuVfCurveSettings))]
     [JsonSerializable(typeof(FanCurveFeedTiming))]
     [JsonSerializable(typeof(UniwillEcChannelOptions))]
     [JsonSerializable(typeof(TargetedRecordingOptions))]

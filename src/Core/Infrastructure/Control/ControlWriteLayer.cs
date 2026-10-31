@@ -37,6 +37,11 @@ public sealed class ControlWriteLayer(
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
 
+    public void ForgetObject(string objectId)
+    {
+        foreach (var writer in writers) writer.ForgetObject(objectId);
+    }
+
     public bool UsesHardwareBridge(string objectId, string capabilityId)
         => catalog.UsesHardwareBridge(objectId, capabilityId);
     public async Task<ControlApplyReport> WriteAsync(
@@ -138,10 +143,16 @@ public sealed class ControlWriteLayer(
                 try
                 {
                     if (objects.TryGetValue(removedObject.ObjectId, out var target)
-                        && target.Capabilities.FirstOrDefault(entry => entry.Id == setting.CapabilityId) is { } capability
-                        && FindBackend(target, capability) is { } backend)
+                        && target.Capabilities.FirstOrDefault(entry => entry.Id == setting.CapabilityId
+                            || setting.CapabilityId == GpuVfCurveScalarAdapter.LegacyCapabilityId
+                            && entry.Id == GpuVfCurveCapabilities.Core) is { } declared)
                     {
-                        restored = await backend.Writer.RestoreAsync(target,
+                        // A pre-upgrade pending scalar release retains its original vendor protocol;
+                        // it must not acquire fabricated curve ownership or be stranded by a renamed capability.
+                        var capability = setting.CapabilityId == GpuVfCurveScalarAdapter.LegacyCapabilityId
+                            ? GpuVfCurveScalarAdapter.NativeCapability(declared) : declared;
+                        if (FindBackend(target, capability) is { } backend)
+                            restored = await backend.Writer.RestoreAsync(target,
                             capability with { Range = backend.Availability.Range ?? capability.Range },
                             target.Kind == ControlObjectKinds.Fan &&
                                 (setting.CurveExecution == ControlFanCurveExecutions.Firmware) !=

@@ -31,7 +31,11 @@ export interface ControlItemView {
 }
 
 function sameValue(left: ControlSetting, right: ControlSetting): boolean {
-  if (left.number !== right.number || left.toggle !== right.toggle
+  if (left.gpuVfCurvePresetId != null || right.gpuVfCurvePresetId != null) {
+    return (left.gpuVfCurvePresetId ?? null) === (right.gpuVfCurvePresetId ?? null);
+  }
+  if ((left.gpuVfCurvePresetId ?? null) !== (right.gpuVfCurvePresetId ?? null)
+    || left.number !== right.number || left.toggle !== right.toggle
     || left.unit !== right.unit || left.curveExecution !== right.curveExecution) {
     return false;
   }

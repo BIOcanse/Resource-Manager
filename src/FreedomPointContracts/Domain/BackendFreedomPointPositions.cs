@@ -71,6 +71,7 @@ internal static class BackendFreedomPointPositions
     public const ulong HelperProcessTiming = 0x00010002002D0000UL;
     public const ulong FanCurveFeed = 0x00010002002D0001UL;
     public const ulong UniwillEcChannel = 0x00010002002D0002UL;
+    public const ulong GpuVfCurveEditor = 0x00010002002D0003UL;
     public const ulong ObservationGrowthLimit = 0x0001000200300000UL;
     public const ulong ReportSampleIntervalMs = 0x0001000200300001UL;
     public const ulong ReportRuleLimits = 0x0001000200310000UL;

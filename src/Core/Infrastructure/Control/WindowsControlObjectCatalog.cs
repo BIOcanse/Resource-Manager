@@ -83,7 +83,8 @@ public sealed class WindowsControlObjectCatalog(
     public bool UsesHardwareBridge(string objectId, string capabilityId)
         => catalogState.Catalog?.FieldBindings.Values.Any(binding => binding.ControlTarget?.RawObjectId == objectId
             && WindowsMetricControlBindings.TryFind(binding) is { } contract
-            && contract.RawCapability == capabilityId && contract.WriteDependencies.Contains("hardware-bridge")) == true;
+            && contract.RawCapability == GpuVfCurveScalarAdapter.NativeId(capabilityId)
+            && contract.WriteDependencies.Contains("hardware-bridge")) == true;
     public async Task<ControlObjectCatalog> ReadObjectsAsync(CancellationToken cancellationToken)
     {
         // The published catalog contains declaration facts only. Reuse those
@@ -397,9 +398,8 @@ public sealed class WindowsControlObjectCatalog(
         List<ControlCapability> items =
         [
             // ── A 组：显卡本体调谐 ─────────────────────────────
-            Card("gpu.core-clock-offset", ControlChannels.Nvapi,
-                new ControlNumberRange(-500, 500, 5, ControlUnits.Megahertz, 0),
-                ControlAccessLevels.Normal),
+            Card(GpuVfCurveCapabilities.Core, ControlChannels.Nvapi,
+                level: ControlAccessLevels.Normal, valueKind: ControlValueKinds.GpuVfCurveReference),
             Card("gpu.memory-clock-offset", ControlChannels.Nvapi,
                 new ControlNumberRange(-1000, 2000, 5, ControlUnits.Megahertz, 0),
                 ControlAccessLevels.Normal),
@@ -507,15 +507,14 @@ public sealed class WindowsControlObjectCatalog(
         }
 
         /*
-         * **Intel 独显不做。** 这是范围上的裁决，不是"还没接"：
-         * Arc 这条线上公开的可写接口不足以支撑这一页的任何一项。
-         * 报成"还没接"会让用户一直等一个不会来的东西。
+         * Arc has an official IGCL V/F API, but discrete Intel admission is outside
+         * this NVIDIA implementation contract. Preserve the existing product boundary.
          */
         if (string.Equals(vendor, ControlVendors.Intel, StringComparison.Ordinal))
         {
             return [Excluded(
-                "gpu.core-clock-offset",
-                "control-intel-discrete-excluded")];
+                GpuVfCurveCapabilities.Core,
+                "control-intel-discrete-excluded") with { ValueKind = ControlValueKinds.GpuVfCurveReference }];
         }
 
         /*
@@ -526,8 +525,8 @@ public sealed class WindowsControlObjectCatalog(
             && chassisKind == ControlChassisKinds.Portable)
         {
             return [Excluded(
-                "gpu.core-clock-offset",
-                "control-amd-portable-discrete-excluded")];
+                GpuVfCurveCapabilities.Core,
+                "control-amd-portable-discrete-excluded") with { ValueKind = ControlValueKinds.GpuVfCurveReference }];
         }
 
         // ADLX uses absolute max clock/voltage before Navi4 and offsets from Navi4.
@@ -545,7 +544,7 @@ public sealed class WindowsControlObjectCatalog(
                 Adlx("gpu.core-clock-maximum", ControlUnits.Megahertz),
                 Adlx("gpu.memory-clock-maximum", ControlUnits.Megahertz),
                 Adlx("gpu.core-voltage", ControlUnits.Millivolt, ControlAccessLevels.Root),
-                Adlx("gpu.core-clock-offset", ControlUnits.Megahertz),
+                Adlx(GpuVfCurveCapabilities.Core, ControlUnits.Megahertz) with { ValueKind = ControlValueKinds.GpuVfCurveReference },
                 Adlx("gpu.core-voltage-offset", ControlUnits.Millivolt, ControlAccessLevels.Root)
             ];
         }
@@ -605,8 +604,8 @@ public sealed class WindowsControlObjectCatalog(
                 // IGCL 的核显接口收的是 MHz 偏移（ctlOverclockGpuFrequencyOffsetSet），
                 // 不是绝对频率。控制库随 Intel 显卡驱动一起装，不是单独的组件。
                 Unsupported(
-                    "gpu.core-clock-offset",
-                    ControlValueKinds.Number,
+                    GpuVfCurveCapabilities.Core,
+                    ControlValueKinds.GpuVfCurveReference,
                     "intel-graphics-driver",
                     CanonicalRange("gpu_intel_requested_core_clock_offset_mhz"),
                     ControlAccessLevels.Normal)

@@ -51,6 +51,8 @@ public sealed record CompiledHostManagerPlan(
     public CompiledCpuScoringPlan? CpuScoring { get; init; }
     public CompiledBackendControlSettings BackendControlSettings { get; init; } = CompiledBackendControlSettings.Unpublished;
     public CompiledHardwareControlSettings? HardwareControl { get; init; }
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.GpuVfCurveEditor)]
+    public CompiledGpuVfCurveSettings? GpuVfCurve { get; init; }
     public CompiledMonitoringSettings? Monitoring { get; init; }
     public CompiledOptimizationSettings? Optimization { get; init; }
     public CompiledGpuPlacementSettings? GpuPlacement { get; init; }

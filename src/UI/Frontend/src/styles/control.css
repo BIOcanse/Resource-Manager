@@ -497,6 +497,18 @@
   stroke-width: 0.6;
 }
 
+.gpu-vf-editor { width: 100%; min-width: 0; }
+.gpu-vf-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-block: 8px; }
+.gpu-vf-toolbar label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.gpu-vf-toolbar input, .gpu-vf-toolbar select { max-width: 100%; }
+.gpu-vf-selection-box { fill: var(--accent); fill-opacity: .12; stroke: var(--accent); stroke-width: .3; pointer-events: none; }
+.gpu-vf-point-selected .fan-curve-point { fill: var(--accent); }
+.gpu-vf-points { overflow: auto; max-height: 20rem; margin-block: 8px; }
+.gpu-vf-points table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.gpu-vf-points th, .gpu-vf-points td { padding: 6px 8px; text-align: end; white-space: nowrap; }
+.gpu-vf-points th { position: sticky; top: 0; background: var(--surface); }
+.gpu-vf-row-selected { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
 /* Stable card-local commands; disabled controls keep the layout stationary. */
 .control-object-actions {
   display: flex;

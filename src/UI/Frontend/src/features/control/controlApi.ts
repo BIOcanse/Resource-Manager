@@ -12,6 +12,7 @@ import {
 import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
 import { uiText } from "../../text.ts";
 import { controlAccessLevels, controlUnavailableKinds } from "./controlTypes.ts";
+import { readGpuVfBinding, readGpuVfPoints } from "./gpuVfCurveApi.ts";
 import type {
   ControlAccessLevel,
   ControlApplyOutcome,
@@ -28,7 +29,11 @@ import type {
   ControlStateView
 } from "./controlTypes.ts";
 
-const valueKinds = ["toggle", "number", "curve"] as const;
+const valueKinds = ["toggle", "number", "curve", "gpu-vf-curve-reference"] as const;
+/** Accepted execution snapshots are backend facts, never a browser command. */
+export function controlSettingsInput(settings: readonly ControlSetting[]): ControlSetting[] {
+  return settings.map(({ gpuVfCurveExecution: _accepted, ...input }) => input);
+}
 // A page action can serialize several slow EC transactions for multiple fans.
 export const controlHardwareRequestTimeoutMs = 120_000;
 
@@ -323,6 +328,12 @@ function readSetting(value: unknown, path: string): ControlSetting {
   const record = requireRecord(value, path);
   return {
     capabilityId: requireNonEmptyString(record.capabilityId, `${path}.capabilityId`),
+    gpuVfCurvePresetId: record.gpuVfCurvePresetId == null ? null : requireNonEmptyString(record.gpuVfCurvePresetId, `${path}.gpuVfCurvePresetId`),
+    gpuVfCurveExecution: record.gpuVfCurveExecution == null ? null : (() => {
+      const execution = requireRecord(record.gpuVfCurveExecution, `${path}.gpuVfCurveExecution`);
+      return { binding: readGpuVfBinding(execution.binding, `${path}.gpuVfCurveExecution.binding`),
+        points: readGpuVfPoints(execution.points, `${path}.gpuVfCurveExecution.points`) };
+    })(),
     number: record.number === null || record.number === undefined
       ? null
       : requireFiniteNumber(record.number, `${path}.number`),
@@ -540,7 +551,7 @@ export function applyControlDesiredState(
     request: {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ objects })
+      body: JSON.stringify({ objects: objects.map(object => ({ ...object, settings: controlSettingsInput(object.settings) })) })
     }
   });
 }
@@ -621,7 +632,7 @@ export function saveControlPreset(
     request: {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(settings)
+      body: JSON.stringify(controlSettingsInput(settings))
     }
   });
 }
@@ -653,7 +664,7 @@ export function setControlObjectSettings(
     request: {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(settings)
+      body: JSON.stringify(controlSettingsInput(settings))
     }
   });
 }

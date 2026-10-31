@@ -251,6 +251,7 @@ public static class ControlValueKinds
     public const string Number = "number";
     /// <summary>温度到转速的曲线。</summary>
     public const string Curve = "curve";
+    public const string GpuVfCurveReference = "gpu-vf-curve-reference";
 }
 
 /// <summary>

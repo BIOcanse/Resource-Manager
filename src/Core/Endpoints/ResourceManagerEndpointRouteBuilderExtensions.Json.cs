@@ -6,6 +6,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     internal static void ConfigureJsonSerializerOptions(JsonSerializerOptions options)
         => options.TypeInfoResolver = BackendHttpJsonContext.Default;
     [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.Control.GpuVfCurveDescriptor))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.Control.GpuVfCurveLibraryView))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.Control.GpuVfCurvePreset))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.Control.GpuVfCurveDraft))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.Control.GpuVfCurveSaveRequest))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.Control.GpuVfCurveEditorCommand))]
+    [JsonSerializable(typeof(GpuVfCurveReferencesPayload))]
+    [JsonSerializable(typeof(GpuVfCurveDeletedPayload))]
+    [JsonSerializable(typeof(GpuVfCurveClosedPayload))]
+    [JsonSerializable(typeof(GpuVfCurveErrorPayload))]
     [JsonSerializable(typeof(OptimizationReportHistoryClearReply))]
     [JsonSerializable(typeof(global::ResourceManager.App.Infrastructure.Telemetry.Etw.EtwEventDropsSnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Application.Optimization.RuntimeCpuLeaseRequest))]

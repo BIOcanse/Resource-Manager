@@ -1,3 +1,4 @@
+import { gpuVfCurveCopy } from "../gpuVfCurve.ts";
 import { operationsFeedback } from "../operationsFeedback.ts";
 import { componentCatalog } from "./ko-KR-components.ts";
 import type { ResourceTableViewMode } from "../../../types.ts";
@@ -12,6 +13,7 @@ import { memoryCpuTier } from "./ko-KR-memoryCpuTier.ts";
 import { fieldLabel, fieldValueLabel } from "./ko-KR-fieldLabels.ts";
 
 const koKrAppCopy: AppCopy = {
+  gpuVfCurve: gpuVfCurveCopy["ko-KR"],
   softwareFacts: softwareFactsCopy["ko-KR"],
   physicalMemoryResidual: physicalMemoryResidualCopy["ko-KR"],
   componentCatalog,

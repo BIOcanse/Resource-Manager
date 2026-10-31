@@ -9,7 +9,8 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// **这里的任何操作都不会动硬件。** 点一份配置是把内容载入草稿（那一步在前端），
 /// 落到硬件由用户点「应用」，走期望状态机那条路。
 /// </summary>
-public sealed class ControlPresets(IControlPresetStore store) : IControlPresets
+public sealed class ControlPresets(IControlPresetStore store, GpuVfCurveMutationGate? curveMutation = null,
+    GpuVfCurveControlInputs? curveInputs = null, GpuVfCurveMigration? curveMigration = null) : IControlPresets
 {
     /// <summary>
     /// **每个实例**最多存多少份。
@@ -21,8 +22,11 @@ public sealed class ControlPresets(IControlPresetStore store) : IControlPresets
 
     private const int MaximumNameLength = 64;
 
-    public Task<ControlPresetCatalog> ReadAsync(CancellationToken cancellationToken)
-        => store.LoadAsync(cancellationToken);
+    public async Task<ControlPresetCatalog> ReadAsync(CancellationToken cancellationToken)
+    {
+        if (curveMigration is not null) await curveMigration.MigrateAsync(cancellationToken).ConfigureAwait(false);
+        return await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+    }
 
     public async Task<ControlPresetCatalog> SaveAsync(
         string objectId,
@@ -32,6 +36,12 @@ public sealed class ControlPresets(IControlPresetStore store) : IControlPresets
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(objectId);
         ArgumentNullException.ThrowIfNull(settings);
+        using var mutation = await GpuVfCurveMutationScope.EnterAsync(curveMutation, cancellationToken).ConfigureAwait(false);
+        if (curveInputs is not null)
+        {
+            try { settings = await curveInputs.PrepareAsync(objectId, settings, false, cancellationToken).ConfigureAwait(false); }
+            catch (GpuVfCurveRequestException error) { throw new ControlRequestException(error.Reason); }
+        }
         var trimmed = (name ?? string.Empty).Trim();
         if (trimmed.Length == 0 || trimmed.Length > MaximumNameLength)
         {
@@ -83,6 +93,7 @@ public sealed class ControlPresets(IControlPresetStore store) : IControlPresets
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(presetId);
+        using var mutation = await GpuVfCurveMutationScope.EnterAsync(curveMutation, cancellationToken).ConfigureAwait(false);
         var catalog = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
         var next = new ControlPresetCatalog(catalog.Presets
             .Where(entry => !string.Equals(entry.Id, presetId, StringComparison.Ordinal))

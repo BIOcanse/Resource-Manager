@@ -5,6 +5,7 @@ import type { ControlCapability, ControlCurvePoint, ControlSetting } from "./con
 export function initialSettingFor(capability: ControlCapability, actual?: number | null): ControlSetting {
   if (capability.valueKind === "toggle") return { capabilityId: capability.id, toggle: true };
   if (capability.valueKind === "curve") return { capabilityId: capability.id, curve: null };
+  if (capability.valueKind === "gpu-vf-curve-reference") return { capabilityId: capability.id, gpuVfCurvePresetId: null };
   return {
     capabilityId: capability.id,
     number: typeof actual === "number" && Number.isFinite(actual)
