@@ -1,5 +1,6 @@
 Set-StrictMode -Version Latest
 $script:ReleaseBuildRepository=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$script:ReleaseBuildPurpose='ResourceManager release regenerable build intermediates'
 Import-Module (Join-Path $script:ReleaseBuildRepository 'scripts/maintenance/GeneratedWorkspaceRetention.psm1') -Force -DisableNameChecking
 function Assert-ReleasePathWithoutReparse {
     param([Parameter(Mandatory)][string]$Path)
@@ -26,12 +27,8 @@ function Assert-ReleaseBuildReceiptPath {
         if($old.schema -cne 'rm/release-build-lifecycle/v1'){throw 'Existing release build result is not owned by this producer.'}
     }
  }
-function Assert-ReleaseOutputTargets {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$OutputRoot,
-        [Parameter(Mandatory)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$')][string]$Version
-    )
+function Get-ReleaseOutputPaths {
+    param([Parameter(Mandatory)][string]$OutputRoot, [Parameter(Mandatory)][string]$Version)
     $root=[IO.Path]::GetFullPath($OutputRoot).TrimEnd('\')
     if($root -ieq [IO.Path]::GetPathRoot($root).TrimEnd('\')){throw 'Release OutputRoot cannot be a volume root.'}
     Assert-ReleasePathWithoutReparse $root
@@ -42,27 +39,33 @@ function Assert-ReleaseOutputTargets {
     foreach($path in @($stage,$build,$zip,"$zip.sha256")) {
         if([IO.Path]::GetDirectoryName($path) -ine $root){throw 'Release output escapes its direct-child boundary.'}
         Assert-ReleasePathWithoutReparse $path
-        if([IO.File]::Exists($path) -or [IO.Directory]::Exists($path)){throw "Output already exists; nothing was removed: $path"}
     }
     $receipt=Join-Path $root '.resource-manager-release-build-last-result.json'
     Assert-ReleaseBuildReceiptPath $receipt
     [pscustomobject]@{OutputRoot=$root;Version=$Version;Stage=$stage;BuildRoot=$build;ZipPath=$zip;ReceiptPath=$receipt}
 }
-function New-ReleaseBuildWorkspace {
+function Assert-ReleaseOutputTargets {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$OutputRoot,
-        [Parameter(Mandatory)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$')][string]$Version,
-        [string]$ProjectPolicyPath
+        [Parameter(Mandatory)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$')][string]$Version
     )
-    $paths=Assert-ReleaseOutputTargets -OutputRoot $OutputRoot -Version $Version
+    $paths=Get-ReleaseOutputPaths -OutputRoot $OutputRoot -Version $Version
+    foreach($path in @($paths.Stage,$paths.BuildRoot,$paths.ZipPath,"$($paths.ZipPath).sha256")) {
+        if([IO.File]::Exists($path) -or [IO.Directory]::Exists($path)){throw "Output already exists; nothing was removed: $path"}
+    }
+    $paths
+}
+# The retention policy and reference roots for this producer's build directory under OutputRoot.
+function Get-ReleaseBuildPolicyContext {
+    param([Parameter(Mandatory)][object]$Paths, [string]$ProjectPolicyPath)
     if([string]::IsNullOrWhiteSpace($ProjectPolicyPath)) {$ProjectPolicyPath=Join-Path $script:ReleaseBuildRepository 'scripts/maintenance/generated-workspace-policy.json'}
     $policy=Get-GeneratedWorkspacePolicy -Path $ProjectPolicyPath
-    # The sole deletion target is this producer's new build directory. Formal
+    # The sole deletion target is this producer's build directory. Formal
     # stages/packages are neither registered nor selected for retention.
-    $root=[pscustomobject]@{id='release-build-temporaries';path=$paths.OutputRoot;excludedNames=@();maxRecentCompleted=0;maxBytes=8589934592}
+    $root=[pscustomobject]@{id='release-build-temporaries';path=$Paths.OutputRoot;excludedNames=@();maxRecentCompleted=0;maxBytes=8589934592}
     # A root under an unconfigured {WorkRoot} resolves to $null: it is not this OutputRoot and protects nothing here.
-    $otherRoots=@($policy.roots|Where-Object {$resolved=Resolve-GeneratedWorkspacePolicyPath -Path ([string]$_.path); $null -eq $resolved -or $resolved.TrimEnd('\') -ine $paths.OutputRoot})
+    $otherRoots=@($policy.roots|Where-Object {$resolved=Resolve-GeneratedWorkspacePolicyPath -Path ([string]$_.path); $null -eq $resolved -or $resolved.TrimEnd('\') -ine $Paths.OutputRoot})
     $policy.roots=@($root)+$otherRoots
     $policy.enabled=$true
     $referenceRoots=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -72,15 +75,46 @@ function New-ReleaseBuildWorkspace {
             if($null -ne $path -and [IO.Directory]::Exists($path)){[void]$referenceRoots.Add($path)}
         }
     }
-    [void][IO.Directory]::CreateDirectory($paths.OutputRoot)
-    Assert-ReleasePathWithoutReparse $paths.OutputRoot
-    [void]$referenceRoots.Add($paths.OutputRoot)
+    [void][IO.Directory]::CreateDirectory($Paths.OutputRoot)
+    Assert-ReleasePathWithoutReparse $Paths.OutputRoot
+    [void]$referenceRoots.Add($Paths.OutputRoot)
     # Lifecycle registration cannot select unrelated OutputRoot siblings. The
-    # enabled retention below always receives an exact WorkspacePaths selection.
+    # enabled retention always receives an exact WorkspacePaths selection.
     $registration=($policy|ConvertTo-Json -Depth 16)|ConvertFrom-Json
     $registration.enabled=$false
-    $created=New-GeneratedWorkspace -RootPath $paths.OutputRoot -WorkspacePath $paths.BuildRoot -Purpose 'ResourceManager release regenerable build intermediates' -References @() -Policy $registration -ReferenceRoots @($referenceRoots)
-    [pscustomobject]@{Paths=$paths;Policy=$policy;RegistrationPolicy=$registration;ReferenceRoots=@($referenceRoots);Workspace=$created.workspace}
+    [pscustomobject]@{Paths=$Paths;Policy=$policy;RegistrationPolicy=$registration;ReferenceRoots=@($referenceRoots)}
+}
+function New-ReleaseBuildWorkspace {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$OutputRoot,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$')][string]$Version,
+        [string]$ProjectPolicyPath
+    )
+    $paths=Assert-ReleaseOutputTargets -OutputRoot $OutputRoot -Version $Version
+    $context=Get-ReleaseBuildPolicyContext -Paths $paths -ProjectPolicyPath $ProjectPolicyPath
+    $created=New-GeneratedWorkspace -RootPath $paths.OutputRoot -WorkspacePath $paths.BuildRoot -Purpose $script:ReleaseBuildPurpose -References @() -Policy $context.RegistrationPolicy -ReferenceRoots $context.ReferenceRoots
+    $context|Add-Member -NotePropertyName Workspace -NotePropertyValue $created.workspace -PassThru
+}
+# Only for a caller that knows the previous producer of this version is gone: a JobQueue restart follows an attempt
+# the queue stopped or killed. New-ReleaseBuildWorkspace still refuses a running build directory, because by itself
+# it cannot tell a dead producer from a live one. The leftover build directory is closed as failed and retired
+# through the retention entry (occupancy and path checks included); a formal stage or package is never touched.
+function Close-AbandonedReleaseBuildWorkspace {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$OutputRoot,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$')][string]$Version,
+        [Parameter(Mandatory)][string]$Reason,
+        [string]$ProjectPolicyPath
+    )
+    $paths=Get-ReleaseOutputPaths -OutputRoot $OutputRoot -Version $Version
+    $marker=Join-Path $paths.BuildRoot '.generated-workspace.json'
+    if(-not [IO.File]::Exists($marker)){return $null}
+    $old=Get-Content -LiteralPath $marker -Raw|ConvertFrom-Json
+    if($old.state -cne 'running' -or $old.rootId -cne 'release-build-temporaries' -or $old.purpose -cne $script:ReleaseBuildPurpose){return $null}
+    $context=Get-ReleaseBuildPolicyContext -Paths $paths -ProjectPolicyPath $ProjectPolicyPath
+    Complete-ReleaseBuildWorkspace -Context $context -Outcome failed -FailureMessage $Reason
 }
 function Complete-ReleaseBuildWorkspace {
     [CmdletBinding()]
@@ -105,4 +139,4 @@ function Complete-ReleaseBuildWorkspace {
     [IO.File]::WriteAllText($paths.ReceiptPath,$payload,[Text.UTF8Encoding]::new($false))
     [pscustomobject]@{WorkspaceRetired=$retired;Receipt=$receipt;Retention=$retention}
 }
-Export-ModuleMember -Function Assert-ReleaseOutputTargets,New-ReleaseBuildWorkspace,Complete-ReleaseBuildWorkspace
+Export-ModuleMember -Function Assert-ReleaseOutputTargets,New-ReleaseBuildWorkspace,Complete-ReleaseBuildWorkspace,Close-AbandonedReleaseBuildWorkspace

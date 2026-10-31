@@ -66,6 +66,13 @@ try {$null=New-ReleaseBuildWorkspace -OutputRoot $output -Version 1.2.5 -Project
 if(-not $rejected -or (Get-FileHash -LiteralPath (Join-Path $context.Paths.BuildRoot '.generated-workspace.json')).Hash -cne $markerBefore){throw 'New changed an existing running build workspace'}
 $null=Complete-ReleaseBuildWorkspace -Context $context -Outcome failed -FailureMessage 'synthetic duplicate-output check'
 $passed.Add('New rejects an existing build and preserves its running lifecycle marker')
+$abandoned=New-ReleaseBuildWorkspace -OutputRoot $output -Version 1.2.9 -ProjectPolicyPath $policyPath
+$closed=Close-AbandonedReleaseBuildWorkspace -OutputRoot $output -Version 1.2.9 -Reason 'synthetic stopped attempt' -ProjectPolicyPath $policyPath
+if(-not $closed.WorkspaceRetired -or [IO.Directory]::Exists($abandoned.Paths.BuildRoot) -or (Fingerprint $formal) -cne $before){throw 'An abandoned running build was not retired, or formal output moved'}
+$again=New-ReleaseBuildWorkspace -OutputRoot $output -Version 1.2.9 -ProjectPolicyPath $policyPath
+$null=Complete-ReleaseBuildWorkspace -Context $again -Outcome failed -FailureMessage 'synthetic restarted attempt'
+if($null -ne (Close-AbandonedReleaseBuildWorkspace -OutputRoot $output -Version 1.3.0 -Reason 'nothing left' -ProjectPolicyPath $policyPath)){throw 'Closing a version without a build directory did something'}
+$passed.Add('A restarted producer retires its own abandoned running build and starts the same version again')
 $context=New-ReleaseBuildWorkspace -OutputRoot $output -Version 1.2.8 -ProjectPolicyPath $policyPath
 $occupied=Join-Path $context.Paths.BuildRoot 'held.bin'
 [IO.File]::WriteAllText($occupied,'synthetic file held by another owner')

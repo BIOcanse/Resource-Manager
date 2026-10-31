@@ -11,6 +11,12 @@ $scriptsRoot = Split-Path -Parent $PSScriptRoot
 $repositoryRoot = Split-Path -Parent $scriptsRoot
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $repositoryRoot 'artifacts\release' }
 Import-Module (Join-Path $PSScriptRoot 'ReleaseBuildWorkspace.psm1') -Force -DisableNameChecking
+# JOBQUEUE_RESTART_COUNT above 0 means the queue stopped or killed this job's previous attempt, so the build
+# directory that attempt left registered as running has no producer; it is retired before the targets are checked.
+if ([int]$env:JOBQUEUE_RESTART_COUNT -gt 0) {
+    $null = Close-AbandonedReleaseBuildWorkspace -OutputRoot $OutputRoot -Version $Version `
+        -Reason "JobQueue attempt $([int]$env:JOBQUEUE_RESTART_COUNT - 1) stopped before finishing"
+}
 $targets = Assert-ReleaseOutputTargets -OutputRoot $OutputRoot -Version $Version
 $OutputRoot = $targets.OutputRoot
 $stage = $targets.Stage
