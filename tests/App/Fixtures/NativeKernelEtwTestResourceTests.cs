@@ -31,6 +31,32 @@ public sealed class NativeKernelEtwTestResourceTests
     }
 
     [Fact]
+    public void NotificationReaderMissesOnlyPublishedNotificationsItNeverRead()
+    {
+        using var resource = new NativeKernelEtwTestResource(NativeKernelEtwTestResource.SmallConfiguration(1000, 1));
+        using var hold = resource.Acquire(new("notifications", KernelTraceEventParser.Keywords.Process,
+            static (_, _) => { }) { NativeOutputs = KernelEtwNativeOutputs.Notifications });
+        var cursor = new KernelEtwNativeNotifications.Cursor();
+        var missed = new List<bool>();
+        resource.RawProcess(1, 41, 2, "first.exe", 41);
+        resource.Publish(1);
+        Assert.True(KernelEtwNativeNotifications.Read(resource.Session, ref cursor, (_, gap) => missed.Add(gap)));
+        // Publications without notifications advance the shared bank version only.
+        resource.Publish(2);
+        resource.Publish(3);
+        resource.RawProcess(4, 42, 2, "second.exe", 42);
+        resource.Publish(4);
+        Assert.True(KernelEtwNativeNotifications.Read(resource.Session, ref cursor, (_, gap) => missed.Add(gap)));
+        // A superseded bank that carried a process start is a real miss.
+        resource.RawProcess(5, 43, 2, "third.exe", 43);
+        resource.Publish(5);
+        resource.Publish(6);
+        Assert.True(KernelEtwNativeNotifications.Read(resource.Session, ref cursor, (_, gap) => missed.Add(gap)));
+        Assert.False(KernelEtwNativeNotifications.Read(resource.Session, ref cursor, (_, gap) => missed.Add(gap)));
+        Assert.Equal([false, false, true], missed);
+    }
+
+    [Fact]
     public void RawRecordsProduceActualFileNotificationsAndRendererRevisions()
     {
         using var resource = new NativeKernelEtwTestResource(NativeKernelEtwTestResource.SmallConfiguration(1000, 1));
@@ -44,8 +70,8 @@ public sealed class NativeKernelEtwTestResourceTests
         resource.RawImage(3, 41, 4096, 256, @"C:\fixture.dll");
         resource.Publish(3);
         var records = new List<(uint Kind, string? Path)>();
-        ulong sequence = 0;
-        Assert.True(KernelEtwNativeNotifications.Read(resource.Session, ref sequence, (view, gap) =>
+        var cursor = new KernelEtwNativeNotifications.Cursor();
+        Assert.True(KernelEtwNativeNotifications.Read(resource.Session, ref cursor, (view, gap) =>
         {
             Assert.False(gap);
             foreach (var record in KernelEtwNativeNotifications.Records(view))

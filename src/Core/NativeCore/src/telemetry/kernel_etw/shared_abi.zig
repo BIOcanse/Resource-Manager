@@ -337,7 +337,7 @@ pub export fn rm_kernel_etw_shared_acquire_io(handle: ?*anyopaque, output: ?*IoV
     token.* = acquired.token;
     return code(.ok);
 }
-pub const NotificationView = extern struct { events_lost: u64, count: u32, reserved: u32 = 0, records: ?[*]const shared.Notification };
+pub const NotificationView = extern struct { events_lost: u64, count: u32, reserved: u32 = 0, records: ?[*]const shared.Notification, first: u64 };
 pub export fn rm_kernel_etw_shared_acquire_notifications(handle: ?*anyopaque, output: ?*NotificationView, sequence: ?*u64, lease: ?*u64) callconv(.c) i32 {
     const self = owner(handle) orelse return code(.invalid_argument);
     const out = output orelse return code(.invalid_argument);
@@ -345,7 +345,7 @@ pub export fn rm_kernel_etw_shared_acquire_notifications(handle: ?*anyopaque, ou
     const token = lease orelse return code(.invalid_argument);
     const acquired = self.acquireOutputs(16 | 64) catch |err| return fail(err);
     const v = acquired.view.?;
-    out.* = .{ .events_lost = v.events_lost, .count = v.notification_count, .records = v.notifications };
+    out.* = .{ .events_lost = v.events_lost, .count = v.notification_count, .records = v.notifications, .first = v.notification_first };
     seq.* = v.version;
     token.* = acquired.token;
     return code(.ok);
@@ -487,7 +487,7 @@ test "shared x64 ABI layouts match the managed boundary declarations" {
     try std.testing.expectEqual(@as(usize, 88), @sizeOf(shared.Network));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(shared.Lease));
     try std.testing.expectEqual(@as(usize, 104), @sizeOf(IoView));
-    try std.testing.expectEqual(@as(usize, 24), @sizeOf(NotificationView));
+    try std.testing.expectEqual(@as(usize, 32), @sizeOf(NotificationView));
     try std.testing.expectEqual(@as(usize, 32), @sizeOf(RendererView));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(shared.OwnerUsage));
     try std.testing.expectEqual(@as(usize, 40), @sizeOf(shared.FailureDetail));

@@ -164,6 +164,10 @@ pub const View = extern struct {
     notification_count: u32 = 0,
     reserved: u32 = 0,
     notifications: ?[*]const Notification = null,
+    // Stream position of the first notification in this bank. Every output's
+    // publication advances `version`, so only this tells a reader whether
+    // notifications were published that it never saw.
+    notification_first: u64 = 0,
     events_lost: u64 = 0,
     network_transition_version: u64 = 0,
     disk_transition_version: u64 = 0,
@@ -250,6 +254,8 @@ pub const Owner = struct {
     pending_paths: []u16,
     pending_event_count: usize = 0,
     pending_path_count: usize = 0,
+    // Notifications published so far; the next bank's notification_first.
+    notification_sequence: u64 = 0,
     banks: []Bank,
     cpu_banks: []CpuBank,
     cpu_revision: std.atomic.Value(u64) = .init(1),
@@ -644,6 +650,7 @@ pub const Owner = struct {
         errdefer a.free(self.pending_paths);
         self.pending_event_count = 0;
         self.pending_path_count = 0;
+        self.notification_sequence = 0;
         self.banks = try a.alloc(Bank, cfg.publication_banks);
         errdefer a.free(self.banks);
         for (self.banks) |*bank| {
@@ -1389,6 +1396,7 @@ pub const Owner = struct {
         bank.view.renderer_epoch = self.renderer_epoch;
         bank.view.notifications = notifications.ptr;
         bank.view.notification_count = @intCast(notifications.len);
+        bank.view.notification_first = self.notification_sequence;
         bank.view.events_lost = self.events_lost.load(.acquire);
         bank.view.network_transition_version = self.network_transition_version;
         bank.view.disk_transition_version = self.disk_transition_version;
@@ -1431,6 +1439,7 @@ pub const Owner = struct {
                 self.cpu_invalidated.store(false, .release);
             }
         }
+        self.notification_sequence = bank.view.notification_first + bank.view.notification_count;
         self.pending_event_count = 0;
         self.pending_path_count = 0;
         self.publication_mutex.unlock();
@@ -1959,6 +1968,32 @@ test "shared notification copies are bounded and retain canonical text in a leas
     try self.publish(3000);
     try std.testing.expectEqual(@as(u64, 1), first.view.?.renderer_revisions.?[slot]);
     try std.testing.expectEqual(@as(usize, 0), self.pending_event_count);
+}
+test "notification stream positions count published notifications, not bank versions" {
+    const backing = try std.testing.allocator.alloc(u8, 4 * 1024 * 1024);
+    defer std.testing.allocator.free(backing);
+    const self = try Owner.createExternal(backing, testConfig(), absent_identity);
+    defer self.destroy() catch unreachable;
+    try self.append(.{ .kind = 7, .qpc = 0, .tick_ms = 0, .pid = 7 }, null);
+    try self.append(.{ .kind = 7, .qpc = 0, .tick_ms = 0, .pid = 8 }, null);
+    try self.publish(1000);
+    const first = try self.acquire();
+    const first_view = first.view.?.*;
+    try self.release(first.token);
+    try std.testing.expectEqual(@as(u64, 0), first_view.notification_first);
+    try std.testing.expectEqual(@as(u32, 2), first_view.notification_count);
+    // Banks without notifications advance the shared version but not the stream.
+    try self.publish(2000);
+    try self.publish(3000);
+    try self.append(.{ .kind = 8, .qpc = 0, .tick_ms = 0, .pid = 7 }, null);
+    try self.publish(4000);
+    const last = try self.acquire();
+    const last_view = last.view.?.*;
+    try self.release(last.token);
+    try std.testing.expect(last_view.version > first_view.version + 1);
+    try std.testing.expectEqual(@as(u64, 2), last_view.notification_first);
+    try std.testing.expectEqual(@as(u32, 1), last_view.notification_count);
+    try std.testing.expectEqual(@as(u64, 3), self.notification_sequence);
 }
 test "empty shared IO publication uses occupied rows and releases temporary columns" {
     const backing = try std.testing.allocator.alloc(u8, 4 * 1024 * 1024);

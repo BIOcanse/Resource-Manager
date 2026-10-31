@@ -72,9 +72,9 @@ public sealed class PortableSoftwareDiscoveryNativeLossTests
 
     private static ulong PublishedSequence(NativeKernelEtwSession session)
     {
-        ulong sequence = 0;
-        Assert.True(KernelEtwNativeNotifications.Read(session, ref sequence, static (_, _) => { }));
-        return sequence;
+        var cursor = new KernelEtwNativeNotifications.Cursor();
+        Assert.True(KernelEtwNativeNotifications.Read(session, ref cursor, static (_, _) => { }));
+        return cursor.Publication;
     }
 
     private static async Task WaitForNativePublication(PortableSoftwareDiscoveryService service, ulong sequence)
@@ -84,8 +84,8 @@ public sealed class PortableSoftwareDiscoveryNativeLossTests
         {
             var binding = typeof(PortableSoftwareDiscoveryService)
                 .GetField("nativeBinding", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service);
-            if (binding is not null && (ulong)binding.GetType().GetField("Sequence", BindingFlags.Instance | BindingFlags.NonPublic)!
-                    .GetValue(binding)! >= sequence) return;
+            if (binding is not null && ((KernelEtwNativeNotifications.Cursor)binding.GetType()
+                    .GetField("Cursor", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(binding)!).Publication >= sequence) return;
             await Task.Delay(1, timeout.Token);
         }
     }

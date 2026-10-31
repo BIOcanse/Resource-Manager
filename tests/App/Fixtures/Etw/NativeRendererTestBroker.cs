@@ -24,9 +24,9 @@ internal sealed class NativeRendererTestBroker : IKernelEtwSessionBroker, IDispo
     {
         get
         {
-            ulong sequence = 0;
-            KernelEtwNativeNotifications.Read(resource.Session, ref sequence, static (_, _) => { });
-            return sequence;
+            var cursor = new KernelEtwNativeNotifications.Cursor();
+            KernelEtwNativeNotifications.Read(resource.Session, ref cursor, static (_, _) => { });
+            return cursor.Publication;
         }
     }
 

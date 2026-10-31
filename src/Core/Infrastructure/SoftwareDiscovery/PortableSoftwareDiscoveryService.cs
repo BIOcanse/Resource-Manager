@@ -207,7 +207,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                     {
                         try
                         {
-                            KernelEtwNativeNotifications.Read(session, ref binding.Sequence,
+                            KernelEtwNativeNotifications.Read(session, ref binding.Cursor,
                                 (view, skipped) => ObserveNativePublication(binding.Source, view, skipped));
                         }
                         catch (ObjectDisposedException) when (!binding.Source.IsActive) { }
@@ -483,7 +483,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         internal KernelEtwEventSource Source { get; } = source;
         internal EtwEventDropCounter Counter { get; } = source.ConsumerCounter("process-start");
         internal CancellationToken CancellationToken { get; } = cancellationToken;
-        internal ulong Sequence;
+        internal KernelEtwNativeNotifications.Cursor Cursor;
         internal ulong? EventsLost;
         public void Dispose() => observer.Dispose();
     }

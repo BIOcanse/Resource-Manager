@@ -7,7 +7,18 @@ internal static unsafe class KernelEtwNativeNotifications
 {
     private const string Library = "ResourceManager.NativeCore";
 
-    internal static bool Read(NativeKernelEtwSession session, ref ulong sequence, Action<View, bool> consume)
+    /// <summary>One reader's place in the native notification stream.</summary>
+    internal struct Cursor
+    {
+        // Version of the bank last read; every output's publication advances it.
+        public ulong Publication;
+        // Stream position after the last notification read.
+        public ulong Next;
+    }
+
+    // `missed` is true when notifications were published in banks superseded before this
+    // reader woke, or the stream restarted. Superseded banks without notifications miss nothing.
+    internal static bool Read(NativeKernelEtwSession session, ref Cursor cursor, Action<View, bool> consume)
     {
         using var owner = session.AcquireReadLease();
         var status = Acquire(owner.OwnerHandle, out var view, out var next, out var token);
@@ -15,11 +26,11 @@ internal static unsafe class KernelEtwNativeNotifications
         KernelEtwNativeReaders.Check(status, "acquire notification publication");
         try
         {
-            if (next == sequence) return false;
+            if (next == cursor.Publication) return false;
             if (view.Count != 0 && view.Records == 0)
                 throw new InvalidDataException("Native kernel ETW notification rows are absent.");
-            consume(view, sequence != 0 && next != sequence + 1);
-            sequence = next;
+            consume(view, cursor.Publication != 0 && view.First != cursor.Next);
+            cursor = new() { Publication = next, Next = view.First + view.Count };
             return true;
         }
         finally { KernelEtwNativeReaders.Check(Release(owner.OwnerHandle, token), "release notification publication"); }
@@ -34,6 +45,7 @@ internal static unsafe class KernelEtwNativeNotifications
         public ulong EventsLost;
         public uint Count, Reserved;
         public nint Records;
+        public ulong First;
     }
 
     [StructLayout(LayoutKind.Sequential)]

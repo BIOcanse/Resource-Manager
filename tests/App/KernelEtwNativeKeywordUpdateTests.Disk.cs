@@ -33,10 +33,10 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         Assert.Equal(initial.StartedAt, current.StartedAt);
         Assert.Equal(KernelTraceEventParser.Keywords.Process, current.EnabledKeywords);
         var child = RunOwnedProcessProbe();
-        ulong notificationSequence = 0;
+        var notificationCursor = new KernelEtwNativeNotifications.Cursor();
         await UntilAsync(() =>
         {
-            KernelEtwNativeNotifications.Read(retainedSession!, ref notificationSequence, (view, gap) =>
+            KernelEtwNativeNotifications.Read(retainedSession!, ref notificationCursor, (view, gap) =>
             {
                 Assert.False(gap, "The retained native notification consumer skipped a publication.");
                 foreach (var record in KernelEtwNativeNotifications.Records(view))

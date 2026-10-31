@@ -149,9 +149,9 @@ public sealed class PortableSoftwareDiscoveryLossTests
             Assert.Equal(KernelTraceEventParser.Keywords.Process, broker.Request.Keywords);
             await WaitForNativePublication(service, broker.PublishedSequence);
             Assert.Equal(1, inventories);
-            // The running business worker is blocked in its existing catalog acquire,
-            // so two real native publications force an observable skipped sequence.
-            broker.Publish();
+            // The running business worker is blocked in its existing catalog acquire, so a real
+            // process start superseded by the next publication is a notification it never reads.
+            broker.ProcessChanged(broker.Source, 77, processStart: true);
             broker.Publish();
             release.TrySetResult();
             await WaitForNativePublication(service, broker.PublishedSequence);
@@ -507,8 +507,8 @@ public sealed class PortableSoftwareDiscoveryLossTests
         {
             var binding = typeof(PortableSoftwareDiscoveryService)
                 .GetField("nativeBinding", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service);
-            if (binding is not null && (ulong)binding.GetType().GetField("Sequence", BindingFlags.Instance | BindingFlags.NonPublic)!
-                    .GetValue(binding)! >= sequence) return;
+            if (binding is not null && ((KernelEtwNativeNotifications.Cursor)binding.GetType()
+                    .GetField("Cursor", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(binding)!).Publication >= sequence) return;
             await Task.Delay(1, timeout.Token);
         }
     }
@@ -898,6 +898,8 @@ public sealed class PortableSoftwareDiscoveryLossTests
         internal bool FailRelease;
         public KernelEtwSessionSnapshot GetSnapshot() => native.GetSnapshot();
         internal void Publish() => native.Publish();
+        internal void ProcessChanged(KernelEtwEventSource source, int pid, bool processStart = false)
+            => native.ProcessChanged(source, pid, processStart);
         public IKernelEtwSubscription Acquire(KernelEtwSubscriptionRequest request)
         {
             var lease = native.Acquire(request);
