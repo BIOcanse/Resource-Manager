@@ -140,8 +140,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
     private SamplingPublicationSignal publicationSignal => processFieldOwner.Publications;
     SamplingPublicationSignal ISchedulingProcessFactPublicationSource.Publications => publicationSignal;
 
-    // Production DI selects this internal route explicitly; the public 11-argument
-    // CLR constructor remains the original ordinary-storage entry point.
+    // Production DI selects this internal route explicitly; the public primary
+    // CLR constructor (no ledger parameter) remains the original ordinary-storage entry point.
     internal WindowsResourceBreakdownSampler(
         IMetricSampler metricSampler,
         IRuntimeProcessAttributionCatalogProvider processAttributionCatalogProvider,

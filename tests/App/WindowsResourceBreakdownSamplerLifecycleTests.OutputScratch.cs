@@ -19,8 +19,10 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
 {
     [Fact]
-    public void OriginalPublicElevenArgumentClrConstructorRemainsAvailableWithoutALedgerParameter()
+    public void OriginalPublicClrConstructorRemainsAvailableWithoutALedgerParameter()
     {
+        // 26f5193a added the optional state authority (memory/CPU tier) to the end of the public
+        // constructor; it still takes no ledger, and only the trailing services are optional.
         var constructor = typeof(WindowsResourceBreakdownSampler).GetConstructor(
         [
             typeof(IMetricSampler), typeof(IRuntimeProcessAttributionCatalogProvider),
@@ -28,12 +30,12 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             typeof(INetworkAttributionReader), typeof(IRuntimePlanProvider),
             typeof(HostManagerSamplingSubscriptionOwner), typeof(PdhProcessGpuReader),
             typeof(ILogger<WindowsResourceBreakdownSampler>), typeof(GpuAllocationCollector),
-            typeof(InteractiveDesktopObservationStore)
+            typeof(InteractiveDesktopObservationStore), typeof(ResourceManager.Shared.BusinessBlocks.State.StateAuthority)
         ]);
         Assert.NotNull(constructor);
         Assert.Single(typeof(WindowsResourceBreakdownSampler).GetConstructors());
         var parameters = constructor!.GetParameters();
-        Assert.Equal(11, parameters.Length);
+        Assert.Equal(12, parameters.Length);
         Assert.All(parameters.Take(8), parameter => Assert.False(parameter.IsOptional));
         Assert.All(parameters.Skip(8), parameter =>
         {
@@ -84,12 +86,16 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Null(provider.GetService<ResourceManagerSelfLocalResourceManager>());
         Assert.Null(provider.GetService<IProcessResourcePolicyWriter>());
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+        // A role closes its native session when the last lease returns with no source and no item
+        // (61535145), so the worker's empty plan is observed through a lease that builds the role's
+        // session before the worker starts and holds it until that plan lands.
+        using var role = subscriptions.Owner.Acquire(3);
+        _ = role.Session;
         await sampler.StartAsync(CancellationToken.None);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (true)
         {
             if (sampler.CaptureSamplingWorkerTask() is { IsFaulted: true } failed) await failed;
-            using var role = subscriptions.Owner.Acquire(3);
             var cap = role.Session.Capacity;
             var header = new ResourceManager.Subscription.Native.NativeSamplingSubscriptionSnapshotHeader
             {
@@ -103,6 +109,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             if (header.LastPlanEpoch != 0) break;
             await Task.Delay(10, deadline.Token);
         }
+        role.Dispose(); // Returned before stop; disposing it again at scope end is a no-op.
         await sampler.StopAsync(deadline.Token);
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes); // Empty real rows fit ordinary storage.
         Assert.Equal(0, hardware.CaptureCount);

@@ -37,6 +37,37 @@ public sealed class SamplingSessionScratchTests
     }
 
     [Fact]
+    public void ScheduleReceiptsStayNewerWhenTheRoleRebuildsItsSessionAfterTheLastSourceLeft()
+    {
+        // The resource breakdown publication accepts only a newer receipt, ordered by incarnation,
+        // generation, state revision and plan epoch. The fresh session built after the role emptied
+        // restarts its native revision and plan epoch, yet its zero-source plan must still be newer
+        // than everything the closed session issued, or the hosted worker ends on that plan.
+        using var ledger = new ResourceManagerLedgerOwner();
+        using var host = new HostManagerSamplingSubscriptionTestFixture(ledgerOwner: ledger);
+        var now = DateTimeOffset.Parse("2026-10-19T00:00:00Z");
+        var tracker = new Tracker(host.Owner, 1, static _ => "source", static items => items,
+            static (items, _) => items.ToArray(), false);
+        tracker.TrackPersistent("source", ["item-a"], now, TimeSpan.FromSeconds(1),
+            NativeSamplingSubscriptionSourceFlags.PeriodicTriggers);
+        var sampled = tracker.CreatePlan(now.AddMinutes(1));
+        Assert.NotNull(sampled.Request);
+        var completed = tracker.MarkSampled(sampled.Request!, now.AddMinutes(1)).Schedule;
+        Assert.True(tracker.Remove("source", now.AddMinutes(2)));
+        Assert.Empty(SamplingRows(ledger)); // The role closed its session.
+        var drained = tracker.CreatePlan(now.AddMinutes(3)).Schedule; // Built on a fresh session.
+        Assert.Equal(0, drained.ActiveSourceCount);
+        foreach (var earlier in new[] { sampled.Schedule, completed })
+        {
+            Assert.Equal(earlier.WorkspaceIncarnation, drained.WorkspaceIncarnation);
+            Assert.Equal(earlier.ConfigurationGeneration, drained.ConfigurationGeneration);
+            Assert.True(drained.StateRevision > earlier.StateRevision,
+                $"revision {drained.StateRevision} after {earlier.StateRevision}");
+        }
+        tracker.CloseOutputScratch();
+    }
+
+    [Fact]
     public void SevenRolesHoldOnlyTheirLiveRowsAndSettleExactTriggersWithPerOperationBorrows()
     {
         using var ledger = new ResourceManagerLedgerOwner();

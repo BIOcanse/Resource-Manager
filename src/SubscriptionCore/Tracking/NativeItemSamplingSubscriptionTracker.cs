@@ -34,6 +34,9 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
     private bool latestMergedItemIdsDirty = true;
     private NativeSamplingSubscriptionSession? boundSession;
     private NativeSamplingSubscriptionSession? replaySession;
+    private NativeSamplingSubscriptionSession? receiptSession;
+    private ulong receiptRevisionBase;
+    private ulong lastReceiptRevision;
     private ISamplingSubscriptionSessionLease<TContext>? pendingSessionLease;
     private TRequest? pendingRequest;
     private ulong pendingPlanEpoch;
@@ -291,6 +294,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 var triggers = ProjectTriggers(header, triggerBuffer);
                 var schedule = CreatePlanSchedule(
                     in header,
+                    ReceiptRevision(session, header.StateRevision),
                     now,
                     commandTimestamp,
                     lease.WorkspaceIncarnation,
@@ -985,6 +989,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
         ReleaseUnusedItemMappings();
         var schedule = CreateCompletionSchedule(
             in output,
+            ReceiptRevision(session, output.StateRevision),
             completedPlanEpoch,
             now,
             timestamp,
@@ -997,6 +1002,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
 
     private NativeItemSamplingSubscriptionScheduleReceipt CreatePlanSchedule(
         in NativeSamplingSubscriptionPlanHeader header,
+        ulong stateRevision,
         DateTimeOffset commandAt,
         ulong commandTimestamp,
         ulong workspaceIncarnation,
@@ -1038,7 +1044,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
             NativeItemSamplingSubscriptionScheduleOrigin.Plan,
             workspaceIncarnation,
             header.ConfigurationGeneration,
-            header.StateRevision,
+            stateRevision,
             header.PlanEpoch,
             commandAt,
             TimeSpan.FromMilliseconds(hotPublish.DefaultIntervalMilliseconds),
@@ -1053,6 +1059,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
 
     private static NativeItemSamplingSubscriptionScheduleReceipt CreateCompletionSchedule(
         in NativeSamplingSubscriptionCompletionOutput output,
+        ulong stateRevision,
         ulong planEpoch,
         DateTimeOffset commandAt,
         ulong commandTimestamp,
@@ -1069,7 +1076,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
             NativeItemSamplingSubscriptionScheduleOrigin.Completion,
             workspaceIncarnation,
             output.ConfigurationGeneration,
-            output.StateRevision,
+            stateRevision,
             planEpoch,
             commandAt,
             TimeSpan.FromMilliseconds(hotPublish.DefaultIntervalMilliseconds),
@@ -1186,6 +1193,24 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
             throw new InvalidOperationException("Sampling operation epoch is exhausted.");
         }
         return ++operationEpoch;
+    }
+
+    // Schedule receipts are ordered by (workspace incarnation, configuration generation, state
+    // revision, plan epoch, ...), and the resource breakdown publication drops a receipt that is not
+    // newer. A role's native session is closed when its last lease returns with no source and no
+    // item, and the next lease builds a fresh one whose state revision starts again at 1 inside the
+    // same workspace incarnation. Receipts therefore count the native revision from a base that
+    // moves past every revision already issued whenever the bound session changes.
+    private ulong ReceiptRevision(NativeSamplingSubscriptionSession session, ulong nativeRevision)
+    {
+        if (!ReferenceEquals(receiptSession, session))
+        {
+            receiptRevisionBase = receiptSession is null ? 0 : checked(lastReceiptRevision + 1);
+            receiptSession = session;
+        }
+        var revision = checked(receiptRevisionBase + nativeRevision);
+        if (revision > lastReceiptRevision) lastReceiptRevision = revision;
+        return revision;
     }
 
     private ulong NextPlanEpoch()
