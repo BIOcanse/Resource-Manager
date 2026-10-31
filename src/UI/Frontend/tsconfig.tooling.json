@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "paths": {
+      "eslint": ["./node_modules/eslint"],
+      "typescript": ["./node_modules/typescript-api"]
+    }
+  },
+  "include": [
+    "tests/browser/**/*.ts",
+    "tests/realData/**/*.ts",
+    "tests/fixtures/kernelLeakReports.ts",
+    "tests/runContractSteps.ts",
+    "tests/pageMotionTiming.test.ts",
+    "tests/liveNativeUiDiagnostics.test.ts",
+    "tests/interactionLongTaskBudget.test.ts",
+    "scripts/**/*.ts",
+    "../../../scripts/analysis/node/*.ts",
+    "../../../tests/Validation/NonAdaptedOptimizationLab/GameBenchmarks/Analysis/*.ts"
+  ]
+}

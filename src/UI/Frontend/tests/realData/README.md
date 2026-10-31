@@ -19,10 +19,10 @@
 从 `src/UI/Frontend` 运行（录制前必须由维护者提供授权 base URL 与密钥环境变量）：
 
 ```powershell
-node --experimental-transform-types --conditions=browser tests/realData/recordBackendSlice.mjs --plan
-node --experimental-transform-types --conditions=browser tests/realData/recordBackendSlice.mjs --base-url $env:RM_CAPTURE_BASE_URL --seconds 90 --readiness-timeout-seconds 180 --output $sliceFile --key-env RM_CAPTURE_KEY
-node tests/realData/learnProfile.mjs --out tests/fixtures/realDataProfile.json $sliceDir
-node tests/realData/generateScenario.mjs --count 20 --seed-start 1 --mode realistic --out $batchDir
+node --experimental-transform-types --conditions=browser tests/realData/recordBackendSlice.ts --plan
+node --experimental-transform-types --conditions=browser tests/realData/recordBackendSlice.ts --base-url $env:RM_CAPTURE_BASE_URL --seconds 90 --readiness-timeout-seconds 180 --output $sliceFile --key-env RM_CAPTURE_KEY
+node tests/realData/learnProfile.ts --out tests/fixtures/realDataProfile.json $sliceDir
+node tests/realData/generateScenario.ts --count 20 --seed-start 1 --mode realistic --out $batchDir
 npm run test:real-data
 ```
 

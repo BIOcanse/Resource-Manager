@@ -1,0 +1,58 @@
+type FixtureCapability = { state: "supported" | "unknown"; providerId: string; graphicsApi: string; reason: string };
+import type { BackendAppPerformanceSettings, GpuPlacementSoftwarePolicy, GpuPlacementSoftwareSettingsSnapshot } from "../../src/types.ts";
+import type { Page } from "playwright-core";
+import assert from "node:assert/strict";
+
+export default async function gpuUnknownRuntimeJourney(page: Page, baseUrl: string) {
+  await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gpuPlacementEnabled: true }) });
+  await page.route("**/api/settings/app", async route => {
+    const response = await route.fetch();
+    const data: { settings: { performance?: Partial<BackendAppPerformanceSettings> } } = await response.json();
+    data.settings!.performance = { ...(data.settings!.performance ?? {}), preciseGpuPlacementEnabled: true };
+    return route.fulfill({ json: data });
+  });
+  const writes: GpuPlacementSoftwarePolicy[] = [];
+  await page.route("**/api/gpu-placement/software/frontend-harness.software**", async route => {
+    if (route.request().method() === "PUT") {
+      const policy: GpuPlacementSoftwarePolicy = route.request().postDataJSON();
+      writes.push(policy);
+      return route.fulfill({ status: 202, json: { policy, runtimeApplicationDisposition: "committedWithDeliveryFailures", startupInterceptionDisposition: "notAttempted", runtimePlanVersion: 1, runtimePublicationSequence: 1, failureCode: null, runtimeDeliveryFailureCount: 1 } });
+    }
+    const response = await route.fetch();
+    const data: Omit<GpuPlacementSoftwareSettingsSnapshot, "processCapabilities"> & { processCapabilities?: { processKey: string; startup: FixtureCapability; runtime: FixtureCapability }[] | null } = await response.json();
+    data.targetInventory = { state: "current", exactTargets: [{ targetGpu: "gpu1", adapterName: "Test Adapter", available: true }] };
+    data.processCapabilities = [{ processKey: "fixture",
+      startup: { state: "supported", providerId: "fixture", graphicsApi: "D3D11", reason: "fixture" },
+      runtime: { state: "unknown", providerId: "fixture", graphicsApi: "D3D11", reason: "Requires runtime validation" } }];
+    return route.fulfill({ json: data });
+  });
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "组件与软件", exact: true }).click();
+  await page.getByRole("tablist", { name: "组件和软件分类" }).getByRole("tab", { name: /一般应用/ }).click();
+  await page.locator(".software-item").filter({ hasText: "示例软件" }).getByRole("button", { name: "软件设置", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "示例软件" });
+  await dialog.getByRole("tab", { name: "策略", exact: true }).click();
+  await dialog.getByRole("combobox", { name: "启动时 GPU", exact: true }).click();
+  // 后端只给 targetGpu 与适配器原名，选项文字由前端组成。
+  await page.getByRole("option", { name: "GPU1 · Test Adapter", exact: true }).click();
+  const toggle = dialog.getByRole("checkbox", { name: "允许运行时切换显卡", exact: true });
+  assert.equal(await toggle.isEnabled(), true);
+  await toggle.check();
+  const method = dialog.getByRole("combobox", { name: "显卡切换方式", exact: true });
+  assert.equal(await method.isEnabled(), true);
+  await method.click();
+  await page.getByRole("option", { name: "重新加载窗口画面", exact: true }).click();
+  const completedSave = page.waitForResponse(response => response.request().method() === "PUT"
+    && response.url().endsWith("/policy"));
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  assert.equal((await completedSave).status(), 202);
+  await dialog.getByText("策略已保存，运行计划尚未完成发布或投递。", { exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "重新发布运行计划", exact: true }).click();
+  await dialog.getByText("软件级调度策略已保存，运行计划已提交并发布，等待调度执行。", { exact: true }).waitFor();
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].startupTargetGpu, "gpu1");
+  assert.equal(writes[0].runtimeHotSwitchEnabled, true);
+  assert.equal(writes[0].preferredRuntimeSwitchMethod, "window_rerender");
+  return { runtimeState: "unknown", savedTarget: "gpu1", savedSwitchMethod: "window_rerender" };
+}

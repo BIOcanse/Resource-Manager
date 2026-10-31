@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { assertSubscriptionChannelReleased, subscriptionChannelConcurrency, subscriptionPathMaximum } from "./browser/subscriptionChannelProbe.js";
+import { assertSubscriptionChannelReleased, subscriptionChannelConcurrency, subscriptionPathMaximum } from "./browser/subscriptionChannelProbe.ts";
 
 const start = (requestId: string, timestamp: number) => ({ requestId, timestamp, delta: 1 });
 const end = (requestId: string, timestamp: number) => ({ requestId, timestamp, delta: -1 });

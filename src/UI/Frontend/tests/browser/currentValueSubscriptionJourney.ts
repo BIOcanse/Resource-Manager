@@ -1,0 +1,229 @@
+import type { Page } from "playwright-core";
+interface RequestTelemetry {
+  started: number; completed: number; aborted: number; inFlight: number; maxInFlight: number;
+  logicalStarted?: number; logicalInFlight?: number; logicalRetired?: number; publications: number;
+  physicalStarted?: number; physicalInFlight?: number; physicalCompleted?: number; physicalAborted?: number; physicalMaxInFlight?: number;
+  queries: string[]; subscriptionSets?: string[][]; inFlightByQuery?: Record<string, number>;
+}
+type Telemetry = Record<string, RequestTelemetry>;
+
+import { customRefresh, seedFrontendPreferences } from "./frontendPreferencesFixture.ts";
+import { observeSubscriptionChannel, subscriptionPathMaximum } from "./subscriptionChannelProbe.ts";
+import { waitForCondition } from "./journeyWaits.ts";
+
+export default async function currentValueSubscriptionJourney(
+  page: Page,
+  baseUrl = "http://127.0.0.1:4177"
+) {
+  const localStreamPath = "/api/local-system/status/subscribe";
+  const localDirectPath = "/api/local-system/status";
+  const channelPath = "/api/subscriptions/stream";
+  const pageErrors: string[] = [];
+  // A shared-channel membership change resends unchanged leases. A new owner
+  // subscription has a new ID, even when its interval happens to be identical.
+  const localBindings: { id: string; path: string }[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname !== channelPath) return;
+    const subscriptions = (request.postDataJSON() as { subscriptions: { id: string; path: string }[] }).subscriptions;
+    localBindings.push(...subscriptions.filter(item => new URL(item.path, baseUrl).pathname === localStreamPath));
+  });
+  page.on("pageerror", (error) => pageErrors.push(String(error)));
+  const channelProbe = await observeSubscriptionChannel(page);
+
+  const scenarioResponse = await fetch(`${baseUrl}/__test/scenario`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ optimizationRuntime: true })
+  });
+  assert(scenarioResponse.ok,
+    `Unable to configure current-value fixture: ${scenarioResponse.status}`);
+  // 本机状态的刷新选择是前端偏好，决定订阅提交的 intervalMs；首次加载前设为 1 秒自定义，
+  // 首个发布在 1 秒对齐边界到达，不必等默认前台 30 秒。
+  await seedFrontendPreferences(page, value => { value.refresh.localSystem = customRefresh(1_000); });
+  await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
+  await waitForStarted(page, localStreamPath);
+  await page.waitForFunction(() => {
+    const value = document.querySelector<HTMLElement>("#captureTime")?.textContent?.trim()!;
+    return Boolean(value && value !== "--");
+  }, null, { timeout: 6_500 });
+
+  const initial: { local: RequestTelemetry; channel: RequestTelemetry; localDirect: RequestTelemetry; uptime: string | null; browserChannel?: { inFlight: number; maxInFlight: number }; localBinding?: { id: string; path: string } } = {
+    local: await readTelemetry(page, localStreamPath),
+    channel: await readTelemetry(page, channelPath),
+    localDirect: await readTelemetry(page, localDirectPath),
+    uptime: await page.locator("#captureTime").textContent()
+  };
+  // Server close delivery can lag a replacement request. Strict browser concurrency
+  // plus unique selectors per request measures the client's actual logical maximum.
+  initial.browserChannel = await channelProbe.assertSinglePhysicalChannel();
+  assertLocalBinding();
+  initial.localBinding = { ...localBindings[0] };
+  assertSingleActiveSubscription(initial.local, "local system", initial.browserChannel!.maxInFlight
+    * subscriptionPathMaximum(initial.channel.subscriptionSets!, localStreamPath));
+  assert(initial.local.queries.every(query => new URLSearchParams(query).get("intervalMs") === "1000"),
+    `Local-system subscription ignored the saved 1 s refresh choice: ${JSON.stringify(initial.local.queries)}`);
+  assertSinglePhysicalChannel(initial.channel, "physical callback channel");
+  assert(initial.localDirect.started === 0,
+    `Local-system value used periodic/direct GET: ${JSON.stringify(initial.localDirect)}`);
+
+  await resetTelemetry(page);
+  // Full real-server 1.2 s window checks stable leases and absence of direct GETs;
+  // a currently active lease or the first publication cannot establish this.
+  await page.waitForTimeout(1_200);
+  const settled = {
+    local: await readTelemetry(page, localStreamPath),
+    channel: await readTelemetry(page, channelPath),
+    localDirect: await readTelemetry(page, localDirectPath)
+  };
+  assertStableStream(settled.local, "settled local system");
+  assertStablePhysicalChannel(settled.channel, "settled physical callback channel");
+  assert(settled.localDirect.started === 0,
+    `Direct GET reappeared after subscription: ${JSON.stringify(settled)}`);
+
+  await resetTelemetry(page);
+  await page.getByRole("button", { name: "组件与软件" }).click();
+  await Promise.all([
+    waitForStarted(page, "/api/components"),
+    waitForStarted(page, "/api/software")
+  ]);
+  const pageEntryReads = {
+    components: await readTelemetry(page, "/api/components"),
+    software: await readTelemetry(page, "/api/software")
+  };
+  // Inventory must remain free of periodic GETs throughout this real 2.2 s window.
+  await page.waitForTimeout(2_200);
+  const afterIdle = {
+    components: await readTelemetry(page, "/api/components"),
+    software: await readTelemetry(page, "/api/software")
+  };
+  assert(afterIdle.components.started === pageEntryReads.components.started,
+    `Component inventory resumed periodic GET: ${JSON.stringify({ pageEntryReads, afterIdle })}`);
+  assert(afterIdle.software.started === pageEntryReads.software.started,
+    `Software inventory resumed periodic GET: ${JSON.stringify({ pageEntryReads, afterIdle })}`);
+
+  await page.getByRole("navigation", { name: "页面切换" })
+    .getByRole("button", { name: "详细信息", exact: true }).click();
+  await page.getByRole("tablist", { name: "详细信息分页" })
+    .getByRole("tab", { name: "智能调度报告", exact: true }).click();
+  const smartPanel = page.getByLabel("智能调度报告", { exact: true });
+  await smartPanel.locator(".smart-details-summary").waitFor({ state: "visible" });
+  const smartPath = "/api/optimization/smart/state/subscribe";
+  const smartStarted = await readTelemetry(page, smartPath);
+  // Keep the full 3.2 s server window: it checks continued publications together
+  // with no lease recreation/direct GET, rather than only the first new frame.
+  await page.waitForTimeout(3_200);
+  const smartContinued = await readTelemetry(page, smartPath);
+  const smartDirect = await readTelemetry(page, "/api/optimization/smart/state");
+  const smartChannel = await readTelemetry(page, channelPath);
+  const smartBrowser = await channelProbe.assertSinglePhysicalChannel();
+  const smartMaximum = smartBrowser.maxInFlight
+    * subscriptionPathMaximum(smartChannel.subscriptionSets!, smartPath);
+  assert(smartContinued.publications > smartStarted.publications,
+    `Smart report stopped receiving callbacks: ${JSON.stringify({ smartStarted, smartContinued })}`);
+  assert(smartContinued.logicalStarted === smartStarted.logicalStarted
+    && smartContinued.logicalInFlight === 1 && smartMaximum === 1 && smartDirect.started === 0,
+  `Smart report reintroduced requests beside its subscription: ${JSON.stringify({ smartStarted, smartContinued, smartDirect, smartMaximum })}`);
+  assertSinglePhysicalChannel(smartChannel, "smart report callback channel");
+  await page.getByRole("navigation", { name: "页面切换" })
+    .getByRole("button", { name: "监视控制台", exact: true }).click();
+  await page.waitForFunction(async (path) => {
+    const telemetry = await (await fetch("/__test/requests")).json() as Telemetry;
+    return telemetry[path]?.logicalInFlight === 0;
+  }, smartPath);
+  const smartRetired = await readTelemetry(page, smartPath);
+  // Node owns publication timers; observe all 3.2 s after retirement for silence.
+  await page.waitForTimeout(3_200);
+  const smartInactive = await readTelemetry(page, smartPath);
+  assert(smartInactive.publications === smartRetired.publications,
+    `Smart report kept receiving callbacks while inactive: ${JSON.stringify({ smartRetired, smartInactive })}`);
+  assert(pageErrors.length === 0,
+    `Current-value subscription journey page errors: ${JSON.stringify(pageErrors)}`);
+  assertLocalBinding();
+
+  return { initial, settled, pageEntryReads, afterIdle,
+    smartStarted, smartContinued, smartBrowser, smartDirect, smartRetired, smartInactive };
+
+  function assertLocalBinding() {
+    assert(localBindings.length > 0 && new Set(localBindings.map(item => item.id)).size === 1,
+      `Local-system owner replaced its startup subscription: ${JSON.stringify(localBindings)}`);
+    assert(localBindings.every(item => new URL(item.path, baseUrl).searchParams.get("intervalMs") === "1000"),
+      `Local-system owner started with a provisional interval: ${JSON.stringify(localBindings)}`);
+  }
+}
+
+function assertSingleActiveSubscription(telemetry: RequestTelemetry, label: string, maximumInFlight: number) {
+  assert(telemetry.started >= 1
+    && telemetry.inFlight === 1
+    && maximumInFlight === 1
+    && telemetry.completed === 0
+    && telemetry.started === telemetry.aborted + 1,
+  `${label} did not retain one active subscription (client maximum ${maximumInFlight}): ${JSON.stringify(telemetry)}`);
+}
+
+function assertSinglePhysicalChannel(telemetry: RequestTelemetry, label: string) {
+  assert(telemetry.physicalStarted! >= 1
+    && telemetry.physicalInFlight === 1
+    && telemetry.logicalInFlight === 0
+    && telemetry.physicalCompleted === 0
+    && telemetry.physicalStarted === telemetry.physicalAborted! + 1,
+  `${label} did not retain one physical connection: ${JSON.stringify(telemetry)}`);
+}
+
+function assertStableStream(telemetry: RequestTelemetry, label: string) {
+  assert(telemetry.started === 1
+    && telemetry.inFlight === 1
+    && telemetry.maxInFlight === 1
+    && telemetry.aborted === 0,
+  `${label} did not retain one current-value stream: ${JSON.stringify(telemetry)}`);
+}
+
+function assertStablePhysicalChannel(telemetry: RequestTelemetry, label: string) {
+  assert(telemetry.physicalStarted === 1
+    && telemetry.physicalInFlight === 1
+    && telemetry.physicalMaxInFlight === 1
+    && telemetry.logicalInFlight === 0
+    && telemetry.physicalAborted === 0,
+  `${label} did not retain one physical connection: ${JSON.stringify(telemetry)}`);
+}
+
+async function resetTelemetry(page: Page) {
+  await page.evaluate(async () => {
+    const response = await fetch("/__test/requests/reset", { method: "POST" });
+    if (!response.ok) {
+      throw new Error(`Unable to reset telemetry: ${response.status}`);
+    }
+  });
+}
+
+async function waitForStarted(page: Page, path: string) {
+  let telemetry: RequestTelemetry | undefined;
+  await waitForCondition(page, async () => {
+    telemetry = await readTelemetry(page, path);
+    return telemetry.started >= 1;
+  }, { timeoutMs: 6_500, description: `subscription started ${path}` });
+  return telemetry!;
+}
+
+async function readTelemetry(page: Page, path: string): Promise<RequestTelemetry> {
+  return page.evaluate(async (requestPath) => {
+    const response = await fetch("/__test/requests");
+    const telemetry = await response.json() as Telemetry;
+    return telemetry[requestPath] ?? {
+      started: 0,
+      completed: 0,
+      aborted: 0,
+      inFlight: 0,
+      maxInFlight: 0,
+      startTimes: [],
+      queries: [],
+      statuses: [],
+      publications: 0
+    };
+  }, path);
+}
+
+function assert(condition: unknown, message: string) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}

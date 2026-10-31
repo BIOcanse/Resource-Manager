@@ -1,0 +1,106 @@
+import type { Page, Locator } from "playwright-core";
+type Setting = { capabilityId: string; toggle: boolean };
+type Outcome = { objectId: string; capabilityId: string; status: string; reason: { code: string } | null };
+import assert from "node:assert/strict";
+import { helpHintText } from "./tooltipProbe.ts";
+
+/**
+ * X80：开关型能力的三选一（交还固件／开启／关闭）。
+ *
+ * 交还固件 = 期望状态里没有这一项；开启／关闭 = 保留这一项，toggle 为 true／false。
+ * 检查保存发出的整份设定、重载后 false 仍显示为「关闭」，以及交还固件失败时的反馈。
+ */
+export default async function controlToggleChoiceJourney(page: Page, baseUrl: string) {
+  const objectId = "gpu:toggle";
+  const capabilityId = "gpu.dynamic-boost-enabled";
+  let settings: Setting[] = [];
+  let outcomes: Outcome[] = [];
+  const writes: Setting[][] = [];
+  const retries: string[] = [];
+  let failWrite = true;
+  const state = () => ({
+    desired: { objects: settings.length ? [{ objectId, settings }] : [],
+      pendingReleases: outcomes.some(outcome => outcome.status === "failed") ? [{ objectId, settings: [{ capabilityId, toggle: true }] }] : [] },
+    lastApply: { outcomes, appliedAt: new Date().toISOString() }
+  });
+  await page.route("**/api/control/objects", route => route.fulfill({ json: {
+    readAt: new Date().toISOString(),
+    objects: [{
+      id: objectId, kind: "gpu", reportedName: "Toggle GPU", isControllable: true,
+      platform: { operatingSystem: "windows", vendor: "amd" },
+      capabilities: [{ id: capabilityId, valueKind: "toggle", supported: true, requiredAccessLevel: "normal" }]
+    }]
+  } }));
+  await page.route("**/api/control/state**", route => {
+    if (route.request().method() === "POST") {
+      retries.push(route.request().url());
+      outcomes = settings.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "applied", reason: null }));
+      return route.fulfill({ json: state() });
+    }
+    if (route.request().method() !== "PUT") return route.fulfill({ json: state() });
+    const next: Setting[] = route.request().postDataJSON();
+    writes.push(next);
+    const released = settings.filter(previous => !next.some(entry => entry.capabilityId === previous.capabilityId));
+    settings = next;
+    outcomes = [
+      ...next.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: failWrite ? "failed" : "applied", reason: failWrite ? { code: "control-write-failed" } : null })),
+      ...released.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "failed", reason: { code: "control-release-failed" } }))
+    ];
+    failWrite = false;
+    return route.fulfill({ json: state() });
+  });
+
+  const openControl = async () => {
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await page.getByRole("navigation", { name: "页面切换" }).getByRole("button", { name: "控制面", exact: true }).click();
+    return page.getByRole("radiogroup", { name: "Dynamic Boost 开关", exact: true });
+  };
+  const checked = async (group: Locator, name: string) =>
+    await group.getByRole("radio", { name, exact: true }).getAttribute("aria-checked") === "true";
+  const apply = async () => {
+    const before = writes.length;
+    await page.getByRole("button", { name: "应用", exact: true }).click();
+    await page.waitForFunction(() => { const button = document.querySelector<HTMLButtonElement>(".control-object-actions button:last-child")!; return button?.disabled === true || button?.innerText.trim() === "重试"; });
+    assert.equal(writes.length, before + 1, "Apply must send exactly one write");
+    return writes.at(-1);
+  };
+
+  let group = await openControl();
+  await page.getByRole("radio", { name: "软件管理", exact: true }).click();
+  assert.equal(await checked(group, "交还固件"), true, "No saved setting shows Return to firmware");
+  assert.equal(await page.getByRole("checkbox", { name: "Dynamic Boost 开关", exact: true }).count(), 0);
+
+  await group.getByRole("radio", { name: "关闭", exact: true }).click();
+  assert.deepEqual(await apply(), [{ capabilityId, toggle: false }], "Off is saved as toggle=false, not as an absent setting");
+
+  const retrySaved = page.getByRole("button", { name: "重试", exact: true });
+  await retrySaved.waitFor();
+  assert.equal(await retrySaved.isEnabled(), true, "A failed saved setting enables retry without a draft change");
+  const writesBeforeRetry = writes.length;
+  await retrySaved.click();
+  await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".control-object-actions button:last-child")!?.disabled === true);
+  assert.equal(retries.length, 1);
+  assert.equal(writes.length, writesBeforeRetry, "Retry never submits a draft");
+
+  group = await openControl();
+  await group.getByRole("radio", { name: "关闭", exact: true }).waitFor();
+  assert.equal(await checked(group, "关闭"), true, "Reloaded false setting shows Off");
+  assert.equal(await page.getByRole("radio", { name: "软件管理", exact: true }).getAttribute("aria-checked"), "true");
+
+  await group.getByRole("radio", { name: "开启", exact: true }).click();
+  assert.deepEqual(await apply(), [{ capabilityId, toggle: true }]);
+
+  await group.getByRole("radio", { name: "交还固件", exact: true }).click();
+  assert.deepEqual(await apply(), [], "Return to firmware removes the setting instead of writing false");
+  const tag = page.locator(".control-capability-tag").filter({ hasText: "应用失败" });
+  await tag.waitFor();
+  // 原因在标签旁的问号里（我们自己的说明弹层，不是原生 title）。
+  assert.equal(await tag.getAttribute("title"), null, "the failed tag has no native title");
+  assert.equal(await helpHintText(tag.locator("xpath=following-sibling::button[contains(@class, 'help-hint')][1]")), "未能释放此项控制。",
+    "A failed release shows the localized stable reason");
+  await page.getByRole("button", { name: "重试", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector<HTMLButtonElement>(".control-object-actions button:last-child")!?.disabled === true);
+  assert.equal(retries.length, 2, "Pending release can be retried explicitly without a value change");
+  assert.equal(writes.length, 3);
+  return { writes, retries: retries.length };
+}

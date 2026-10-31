@@ -19,7 +19,7 @@
         "details": "Seven wire device records cover seven device kinds. Numeric values below are copied from the corresponding subscription frame."
       },
       {
-        "source": "tests/browser/mockFrontendServer.mjs",
+        "source": "tests/browser/mockFrontendServer.ts",
         "status": "mock-capacity",
         "details": "The existing many resource-table variant defaults to 80 rows and accepts up to 1000 rows; this is a test fixture capacity, not a measured workload."
       },

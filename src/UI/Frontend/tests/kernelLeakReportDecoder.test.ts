@@ -5,7 +5,7 @@ import {
   kernelLeakItemStates, kernelLeakResourceKinds, kernelLeakRestartPolicies, kernelLeakRiskLevels, kernelLeakUnits, type KernelLeakReport
 } from "../src/data/kernelLeaks/kernelLeakReport.ts";
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
-import { kernelLeakRecordedFrames, kernelLeakReportFrames } from "./fixtures/kernelLeakReports.js";
+import { kernelLeakRecordedFrames, kernelLeakReportFrames } from "./fixtures/kernelLeakReports.ts";
 
 // 合同 v3：后端交接里记录的线上例子（final-message.md「Recorded wire examples」，生命周期字段按 docs/report_lifecycle_2026-10-28.md 补上）。
 const recordedObservation = {

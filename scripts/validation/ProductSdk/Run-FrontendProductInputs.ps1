@@ -270,6 +270,7 @@ try {
         '--configLoader', 'bundle') 'frontend-build')
     if (-not [IO.File]::Exists((Join-Path $candidate 'index.html'))) { throw 'The current-source Vite output has no index.html.' }
 
+    [void](Invoke-Node @($npmCli, 'run', 'typecheck') 'frontend-typecheck')
     [void](Invoke-Node @($npmCli, 'run', 'test:localization-coverage') 'frontend-localization-coverage')
     [void](Invoke-Node @('--conditions=browser', '--experimental-strip-types', 'tests/languageSwitching.test.ts') 'frontend-language-switching')
     [void](Invoke-Node @('--experimental-strip-types', 'tests/settingsLocalizationContract.test.ts') 'frontend-settings-localization')

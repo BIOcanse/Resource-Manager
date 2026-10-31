@@ -4,7 +4,7 @@ import type { ItemKind } from "../itemSelection/itemSelectionModel.ts";
 
 /*
  * 浮层项的名称。常驻进程的浮层画的是同一份文字（取不到值的原因也在那份表里，来自 performanceOverlay.itemReasons）：
- * scripts/generateOverlayMetricLabels.mjs 从这里用到的文案生成 src/UI/Desktop/src/text/generated/overlay_metric_labels.zig
+ * scripts/generateOverlayMetricLabels.ts 从这里用到的文案生成 src/UI/Desktop/src/text/generated/overlay_metric_labels.zig
  * （指标名、模板、进程字段名、原因），src/UI/Desktop/src/overlay/text.zig 的 itemLabel 按同样的顺序查。
  * - 帧项沿用旧浮层的名称：frames.fps、frames.present、frames.low1、frames.low01 → 指标名 target.fps、target.frameTime、
  *   target.onePercentLow、target.pointOnePercentLow；

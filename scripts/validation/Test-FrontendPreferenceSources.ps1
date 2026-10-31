@@ -33,7 +33,7 @@ if ($LASTEXITCODE -ne 0) { throw "Native compiler-context build failed: $LASTEXI
     -ProjectRelativePaths @('src/UI/Core/ResourceManager.NativeUi.csproj')
 Push-Location (Join-Path $repository 'src/UI/Frontend')
 try {
-    & $memoryLimit -FilePath node -ArgumentList @('scripts/capturePreferenceCompilerContext.mjs',
+    & $memoryLimit -FilePath node -ArgumentList @('--experimental-transform-types', '--experimental-strip-types', 'scripts/capturePreferenceCompilerContext.ts',
         (Join-Path $output 'typescript-context.json'), (Join-Path $output 'frontend.tsconfig.json'))
     if ($LASTEXITCODE -ne 0) { throw "TypeScript compiler-context capture failed: $LASTEXITCODE" }
 } finally { Pop-Location }

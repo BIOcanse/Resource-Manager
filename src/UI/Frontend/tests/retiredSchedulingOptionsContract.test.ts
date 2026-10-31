@@ -26,7 +26,7 @@ const cacheFieldOwners = new Set([
   "src/UI/Frontend/src/preferences/frontendPreferences.ts",
   "src/UI/Core/Preferences/FrontendPreferencesOwner.cs",
   "src/UI/Frontend/tests/frontendPreferences.test.ts",
-  "src/UI/Frontend/tests/browser/animationStyleJourney.js",
+  "src/UI/Frontend/tests/browser/animationStyleJourney.ts",
   "tests/App/FrontendPreferencesCacheTests.cs"
 ]);
 const scannedExtensions = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".json", ".css", ".cs", ".zig"]);

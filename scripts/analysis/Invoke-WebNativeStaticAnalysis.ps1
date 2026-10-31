@@ -69,7 +69,7 @@ function Restore-AnalysisTools {
         $restore = if (Test-Path -LiteralPath "$PSScriptRoot/node/package-lock.json") { 'ci' } else { 'install' }
         Invoke-Tool $node @('C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js',$restore,'--prefix',"$PSScriptRoot/node",'--ignore-scripts','--no-audit','--no-fund','--fetch-retries=0','--fetch-timeout=60000','--prefer-offline') "$output/npm-restore.log"
     }
-    Invoke-Tool $node @("$PSScriptRoot/node/run-eslint.mjs",$output,'--verify-only') "$output/node-versions.log"
+    Invoke-Tool $node @('--experimental-transform-types','--experimental-strip-types',"$PSScriptRoot/node/run-eslint.ts",$output,'--verify-only') "$output/node-versions.log"
     $script:nodeToolsReady = $true
 }
 Register-Task $output 'Pinned static analysis output for Claude review'
@@ -103,7 +103,7 @@ foreach ($tool in $Tools) {
                     if (-not (Test-Path -LiteralPath (Join-Path $repo $required))) { throw "Required frontend type input missing: $required" }
                 }
                 try { Restore-AnalysisTools } catch { $script:nodeRestoreFailure = $_.Exception.Message; throw }
-                Invoke-Tool $node @("$PSScriptRoot/node/run-eslint.mjs",$output) "$output/eslint.log"
+                Invoke-Tool $node @('--experimental-transform-types','--experimental-strip-types',"$PSScriptRoot/node/run-eslint.ts",$output) "$output/eslint.log"
             }
             'Knip' {
                 try { Restore-AnalysisTools } catch { $script:nodeRestoreFailure = $_.Exception.Message; throw }
@@ -129,7 +129,7 @@ foreach ($tool in $Tools) {
                         $rawSarif = Join-Path $deliveries "$language.raw.sarif"
                         Invoke-Tool $CodeQL @('database','analyze',$db,"codeql/${language}-queries:codeql-suites/${language}-security-and-quality.qls",'--format=sarifv2.1.0',"--output=$rawSarif",'--threads=2','--ram=3072') "$output/codeql-$language-analyze.log"
                         $scopedLog = "$output/codeql-$language-scope.log"
-                        Invoke-Tool $node @("$PSScriptRoot/node/filter-codeql.mjs",$rawSarif,'-',$language) $scopedLog -PreserveStdout
+                        Invoke-Tool $node @('--experimental-transform-types','--experimental-strip-types',"$PSScriptRoot/node/filter-codeql.ts",$rawSarif,'-',$language) $scopedLog -PreserveStdout
                         $scoped = Get-Content -LiteralPath $scopedLog -Raw | ConvertFrom-Json
                         if ($scoped.version -ne '2.1.0') { throw 'Scoped SARIF is invalid' }
                         $hash = (Get-FileHash -LiteralPath $scopedLog).Hash
@@ -157,7 +157,7 @@ foreach ($tool in $Tools) {
     }
 }
 try {
-    Invoke-Tool $node @("$PSScriptRoot/node/summarize.mjs",$output,'--stdout') "$output/summary.log" -PreserveStdout
+    Invoke-Tool $node @('--experimental-transform-types','--experimental-strip-types',"$PSScriptRoot/node/summarize.ts",$output,'--stdout') "$output/summary.log" -PreserveStdout
     $summary = Get-Content -LiteralPath "$output/summary.log" -Raw | ConvertFrom-Json
     $summary.findings | ConvertTo-Json -Depth 10 -AsArray | Set-Content -LiteralPath "$output/findings.json"
     $summary.summary | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath "$output/summary.json"

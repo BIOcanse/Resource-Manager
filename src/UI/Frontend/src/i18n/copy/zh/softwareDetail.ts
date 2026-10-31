@@ -31,7 +31,7 @@ export const zhSoftwareDetailCopy = {
     removeItem: "移除此项",
     group: "目标软件",
     pickerTitle: "选择浮层显示项",
-    /** 目标软件项的名称：name 是字段名或指标名。原生壳浮层用同一份模板（scripts/generateOverlayMetricLabels.mjs）。 */
+    /** 目标软件项的名称：name 是字段名或指标名。原生壳浮层用同一份模板（scripts/generateOverlayMetricLabels.ts）。 */
     itemSoftware: (name: string) => `目标进程 · ${name}`,
     itemSummary: (source: string, interval: string, precision: string) => `来源：${source} · 间隔：${interval} · 同步精度：${precision}`,
     itemsInvalid: {
