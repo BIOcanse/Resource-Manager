@@ -53,10 +53,14 @@ pub fn RegionFor(comptime Pages: type) type {
             return allocateWriteWatch(allocation_bytes, false);
         }
 
+        /// A write-watch request always reaches `Pages.allocateWriteWatch`; a page source
+        /// without it is a compile error, never a silent plain allocation. (Zig 0.17's
+        /// `@hasDecl` no longer sees non-pub declarations, so a reflection check here
+        /// quietly dropped MEM_WRITE_WATCH for SystemPages.)
         pub fn allocateWriteWatch(allocation_bytes: u64, comptime enabled: bool) Error!Self {
             const page_bytes = try requiredBytes(allocation_bytes);
             return .{
-                .base = if (page_bytes == 0) null else if (comptime enabled and @hasDecl(Pages, "allocateWriteWatch")) try Pages.allocateWriteWatch(page_bytes, enabled) else try Pages.allocate(page_bytes),
+                .base = if (page_bytes == 0) null else if (comptime enabled) try Pages.allocateWriteWatch(page_bytes, true) else try Pages.allocate(page_bytes),
                 .allocation_bytes = @intCast(allocation_bytes),
                 .page_bytes = page_bytes,
             };
@@ -130,6 +134,19 @@ test "OS pages are fully committed, initially zero and returned without a pool" 
     try std.testing.expectEqual(windows.mem_free, returned.State);
     try std.testing.expectEqual(@as(usize, 0), region.page_bytes);
     try region.release(); // Empty descriptor does not double-free.
+}
+
+test "write-watch regions are created with MEM_WRITE_WATCH and plain regions without it" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    const Kernel = struct {
+        extern "kernel32" fn ResetWriteWatch(base: *anyopaque, size: usize) callconv(.winapi) u32;
+    };
+    var watched = try Region.allocateWriteWatch(std.heap.pageSize(), true);
+    defer watched.release() catch @panic("OS region cleanup failed");
+    try std.testing.expectEqual(@as(u32, 0), Kernel.ResetWriteWatch(@ptrCast(watched.base.?), watched.page_bytes));
+    var plain = try Region.allocate(std.heap.pageSize());
+    defer plain.release() catch @panic("OS region cleanup failed");
+    try std.testing.expect(Kernel.ResetWriteWatch(@ptrCast(plain.base.?), plain.page_bytes) != 0);
 }
 
 test "resize preserves a prefix, zeroes growth, returns old pages and removes truncation" {
