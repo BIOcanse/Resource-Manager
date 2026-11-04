@@ -1673,8 +1673,7 @@
 .crash-dump-effective { color: var(--text); font-weight: 600; }
 .crash-report-code { color: var(--text); font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
 .crash-report-file-label { color: var(--muted); margin-inline-end: 6px; }
-.crash-report-path,
-.crash-report-link {
+.crash-report-path {
   display: inline;
   padding: 0;
   border: 0;
@@ -1689,10 +1688,22 @@
   word-break: break-all;
 }
 .crash-report-path { font-family: Consolas, "Cascadia Mono", monospace; }
-.crash-report-path:focus-visible,
-.crash-report-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.crash-report-link:disabled { color: var(--muted); cursor: default; }
-.crash-report-history { display: grid; gap: 8px; min-width: 0; }
+.crash-report-path:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Crash records: the same panel as other report records; the heading is for screen readers, Clear history sits on the right. */
+.crash-report-records {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+.crash-report-records-header { margin: 0; padding: 0; }
+.crash-report-records-actions { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+.crash-report-records-note { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .crash-report-empty { margin: 0; color: var(--muted); font-size: 13px; }
 .crash-report-list,
 .crash-report-dialog-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
@@ -1709,13 +1720,10 @@
 .crash-report-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12px; }
 .crash-report-facts > dt { color: var(--muted); }
 .crash-report-facts > dd { min-width: 0; margin: 0; color: var(--text); overflow-wrap: anywhere; }
-.crash-report-warning { display: block; margin-top: 2px; color: var(--warn); }
-.crash-report-actions,
-.crash-report-dialog-item-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.crash-report-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .crash-report-dialog-body { display: grid; gap: 12px; }
 .crash-report-dialog-body > p { margin: 0; color: var(--muted); font-size: 13px; }
 .crash-report-dialog-item > span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.crash-report-dialog-item > .crash-report-link { justify-self: start; }
 @media (max-width: 720px) {
   .crash-dump-request { grid-template-columns: minmax(0, 1fr); }
   .crash-dump-request-actions { justify-content: flex-start; }

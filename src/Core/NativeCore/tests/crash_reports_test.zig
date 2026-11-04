@@ -22,24 +22,24 @@ const Fixture = struct {
 
     fn scalar(context: ?*anyopaque, index: usize, field: u32, output: *i64) callconv(.c) i32 {
         const self = from(context);
-        if (self.scalar_failure or field > @backingInt(native.ScalarField.result_package_exceeds) or index > 1) return 1;
+        if (self.scalar_failure or field > @backingInt(native.ScalarField.dump_removed) or index > 1) return 1;
         const selected: native.ScalarField = @fromBackingInt(@intCast(field));
         output.* = switch (selected) {
             .report_count => self.count,
-            .attachment_limit => 9876543210,
             .dump_present, .fault_present, .package_present => if (self.bad_boolean) 2 else @intFromBool(self.present),
             .dump_size => 1234567890123,
             .package_size => 456,
-            .package_exceeds, .reported => 0,
-            .acknowledged, .result_package_exceeds => 1,
+            .acknowledged => 1,
             .result_package_size => 789,
+            // The second report's dump was rotated away; the encoder passes the source's fact through.
+            .dump_removed => @intFromBool(index == 1),
         };
         return 0;
     }
 
     fn text(context: ?*anyopaque, index: usize, field: u32, writer: *native.Writer) callconv(.c) i32 {
         const self = from(context);
-        if (self.text_failure or field > @backingInt(native.TextField.url) or index > 1) return 1;
+        if (self.text_failure or field > @backingInt(native.TextField.result_package_created_at) or index > 1) return 1;
         const selected: native.TextField = @fromBackingInt(@intCast(field));
         const value: ?[]const u16 = switch (selected) {
             .occurred_at, .package_created_at, .result_package_created_at => return native.writeDateTime(writer, &self.date),
@@ -47,14 +47,13 @@ const Fixture = struct {
             .id => if (index == 0) utf16("r0") else utf16("r1"),
             .program => utf16("ResourceManager"),
             .role => utf16("backend"),
-            .version, .fault_module, .fault_exception_code, .fault_description, .reason => null,
-            .dump_status => utf16("saved"),
+            .version, .fault_module, .fault_exception_code, .fault_description => null,
+            .dump_status => if (index == 1) utf16("missing") else utf16("saved"),
             .dump_path => utf16("d.dmp"),
             .fault_offset => utf16("0x1"),
             .fault_managed_stack => utf16("line\nline"),
             .package_path => utf16("p.zip"),
             .result_package_path => utf16("result.zip"),
-            .url => utf16("https://example.test/?a=1&b=<x>"),
         };
         return native.writeString(writer, if (value) |s| s.ptr else null, if (value) |s| s.len else 0);
     }
@@ -75,19 +74,19 @@ fn encodeAlloc(fixture: *Fixture, operation: native.Operation) ![]u8 {
     return output;
 }
 
-const report0 = "{\"id\":\"r0\",\"occurredAt\":\"2026-10-31T08:09:10.12345-05:30\",\"program\":\"ResourceManager\",\"role\":\"backend\",\"version\":null,\"dumpStatus\":\"saved\",\"dump\":null,\"fault\":null,\"package\":null,\"acknowledged\":true,\"reported\":false}";
-const report1 = "{\"id\":\"r1\",\"occurredAt\":\"2026-10-31T08:09:10.12345-05:30\",\"program\":\"ResourceManager\",\"role\":\"backend\",\"version\":null,\"dumpStatus\":\"saved\",\"dump\":null,\"fault\":null,\"package\":null,\"acknowledged\":true,\"reported\":false}";
-const full_report = "{\"id\":\"r0\",\"occurredAt\":\"2026-10-31T08:09:10.12345-05:30\",\"program\":\"ResourceManager\",\"role\":\"backend\",\"version\":null,\"dumpStatus\":\"saved\",\"dump\":{\"path\":\"d.dmp\",\"sizeBytes\":1234567890123},\"fault\":{\"module\":null,\"offset\":\"0x1\",\"exceptionCode\":null,\"managedStack\":\"line\\nline\",\"description\":null},\"package\":{\"path\":\"p.zip\",\"sizeBytes\":456,\"createdAt\":\"2026-10-31T08:09:10.12345-05:30\",\"exceedsIssueLimit\":false},\"acknowledged\":true,\"reported\":false}";
+const report0 = "{\"id\":\"r0\",\"occurredAt\":\"2026-10-31T08:09:10.12345-05:30\",\"program\":\"ResourceManager\",\"role\":\"backend\",\"version\":null,\"dumpStatus\":\"saved\",\"dump\":null,\"dumpRemoved\":false,\"fault\":null,\"package\":null,\"acknowledged\":true}";
+const report1 = "{\"id\":\"r1\",\"occurredAt\":\"2026-10-31T08:09:10.12345-05:30\",\"program\":\"ResourceManager\",\"role\":\"backend\",\"version\":null,\"dumpStatus\":\"missing\",\"dump\":null,\"dumpRemoved\":true,\"fault\":null,\"package\":null,\"acknowledged\":true}";
+const full_report = "{\"id\":\"r0\",\"occurredAt\":\"2026-10-31T08:09:10.12345-05:30\",\"program\":\"ResourceManager\",\"role\":\"backend\",\"version\":null,\"dumpStatus\":\"saved\",\"dump\":{\"path\":\"d.dmp\",\"sizeBytes\":1234567890123},\"dumpRemoved\":false,\"fault\":{\"module\":null,\"offset\":\"0x1\",\"exceptionCode\":null,\"managedStack\":\"line\\nline\",\"description\":null},\"package\":{\"path\":\"p.zip\",\"sizeBytes\":456,\"createdAt\":\"2026-10-31T08:09:10.12345-05:30\"},\"acknowledged\":true}";
 
 test "empty list and indexed report order preserve complete wire fields" {
     var fixture: Fixture = .{};
     const empty = try encodeAlloc(&fixture, .list);
     defer testing.allocator.free(empty);
-    try testing.expectEqualStrings("{\"reports\":[],\"dumpFolder\":\"D:\\\\dumps\",\"issueAttachmentLimitBytes\":9876543210}", empty);
+    try testing.expectEqualStrings("{\"reports\":[],\"dumpFolder\":\"D:\\\\dumps\"}", empty);
     fixture.count = 2;
     const two = try encodeAlloc(&fixture, .list);
     defer testing.allocator.free(two);
-    try testing.expectEqualStrings("{\"reports\":[" ++ report0 ++ "," ++ report1 ++ "],\"dumpFolder\":\"D:\\\\dumps\",\"issueAttachmentLimitBytes\":9876543210}", two);
+    try testing.expectEqualStrings("{\"reports\":[" ++ report0 ++ "," ++ report1 ++ "],\"dumpFolder\":\"D:\\\\dumps\"}", two);
 }
 
 test "unknown reports and successful deletion do not require source callbacks" {
@@ -108,17 +107,14 @@ test "unknown reports and successful deletion do not require source callbacks" {
     try testing.expectEqual(@as(u32, 0), deleted.content_type);
 }
 
-test "acknowledgement package and issue link preserve record order and nullable fields" {
+test "acknowledgement and package preserve record order and nullable fields" {
     var fixture: Fixture = .{ .present = true };
     const ack = try encodeAlloc(&fixture, .acknowledge);
     defer testing.allocator.free(ack);
     try testing.expectEqualStrings("{\"report\":" ++ full_report ++ "}", ack);
     const package = try encodeAlloc(&fixture, .package);
     defer testing.allocator.free(package);
-    try testing.expectEqualStrings("{\"report\":" ++ full_report ++ ",\"package\":{\"path\":\"result.zip\",\"sizeBytes\":789,\"createdAt\":\"2026-10-31T08:09:10.12345-05:30\",\"exceedsIssueLimit\":true},\"reason\":null}", package);
-    const issue = try encodeAlloc(&fixture, .issue_link);
-    defer testing.allocator.free(issue);
-    try testing.expectEqualStrings("{\"url\":\"https://example.test/?a=1&b=<x>\",\"report\":" ++ full_report ++ "}", issue);
+    try testing.expectEqualStrings("{\"report\":" ++ full_report ++ ",\"package\":{\"path\":\"result.zip\",\"sizeBytes\":789,\"createdAt\":\"2026-10-31T08:09:10.12345-05:30\"}}", package);
 }
 
 test "all short buffer boundaries count the full response without overwriting guards" {
@@ -295,8 +291,8 @@ test "stream metadata and callback failures never commit an incomplete final seg
     try testing.expectEqual(native.Code.callback, native.encodeStream(0, 1, &stream, &StreamFixture.callbacks, &StreamFixture.output_callbacks, &response));
     try testing.expectEqual(@as(usize, 0), stream.commit_calls);
     stream = .{ .storage = &bytes, .segment_size = 7 };
-    try testing.expectEqual(native.Code.success, native.encodeStream(4, 1, &stream, null, &StreamFixture.output_callbacks, &response));
+    try testing.expectEqual(native.Code.success, native.encodeStream(@backingInt(native.Operation.delete), 1, &stream, null, &StreamFixture.output_callbacks, &response));
     try testing.expectEqual(@as(usize, 0), stream.reserve_calls);
     try testing.expectEqual(@as(usize, 1), stream.commit_calls);
-    try testing.expectEqual(native.Code.invalid, native.encodeStream(4, 1, &stream, null, null, &response));
+    try testing.expectEqual(native.Code.invalid, native.encodeStream(@backingInt(native.Operation.delete), 1, &stream, null, null, &response));
 }

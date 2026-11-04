@@ -3,20 +3,17 @@
 //! only output storage is the caller's final buffer; null/zero counts its size.
 const allowed_bmp = @import("http_json_allowed_bmp.zig");
 
-pub const Operation = enum(u32) { list = 0, package = 1, issue_link = 2, acknowledge = 3, delete = 4 };
+pub const Operation = enum(u32) { list = 0, package = 1, acknowledge = 2, delete = 3 };
 pub const ScalarField = enum(u32) {
     report_count = 0,
-    attachment_limit = 1,
-    dump_present = 2,
-    dump_size = 3,
-    fault_present = 4,
-    package_present = 5,
-    package_size = 6,
-    package_exceeds = 7,
-    acknowledged = 8,
-    reported = 9,
-    result_package_size = 10,
-    result_package_exceeds = 11,
+    dump_present = 1,
+    dump_size = 2,
+    fault_present = 3,
+    package_present = 4,
+    package_size = 5,
+    acknowledged = 6,
+    result_package_size = 7,
+    dump_removed = 8,
 };
 pub const TextField = enum(u32) {
     dump_folder = 0,
@@ -36,8 +33,6 @@ pub const TextField = enum(u32) {
     package_created_at = 14,
     result_package_path = 15,
     result_package_created_at = 16,
-    reason = 17,
-    url = 18,
 };
 pub const Callbacks = extern struct {
     scalar: *const fn (?*anyopaque, usize, u32, *i64) callconv(.c) i32,
@@ -278,14 +273,12 @@ const package_schema = [_]Instruction{
     .{ .raw = "{\"path\":" },              .{ .text = .package_path },
     .{ .raw = ",\"sizeBytes\":" },         .{ .number = .package_size },
     .{ .raw = ",\"createdAt\":" },         .{ .text = .package_created_at },
-    .{ .raw = ",\"exceedsIssueLimit\":" }, .{ .flag = .package_exceeds },
     .{ .raw = "}" },
 };
 const result_package_schema = [_]Instruction{
     .{ .raw = "{\"path\":" },              .{ .text = .result_package_path },
     .{ .raw = ",\"sizeBytes\":" },         .{ .number = .result_package_size },
     .{ .raw = ",\"createdAt\":" },         .{ .text = .result_package_created_at },
-    .{ .raw = ",\"exceedsIssueLimit\":" }, .{ .flag = .result_package_exceeds },
     .{ .raw = "}" },
 };
 const dump_schema = [_]Instruction{
@@ -309,23 +302,17 @@ const report_schema = [_]Instruction{
     .{ .raw = ",\"version\":" },      .{ .text = .version },
     .{ .raw = ",\"dumpStatus\":" },   .{ .text = .dump_status },
     .{ .raw = ",\"dump\":" },         .{ .optional = .{ .field = .dump_present, .body = &dump_schema } },
+    .{ .raw = ",\"dumpRemoved\":" },  .{ .flag = .dump_removed },
     .{ .raw = ",\"fault\":" },        .{ .optional = .{ .field = .fault_present, .body = &fault_schema } },
     .{ .raw = ",\"package\":" },      .{ .optional = .{ .field = .package_present, .body = &package_schema } },
     .{ .raw = ",\"acknowledged\":" }, .{ .flag = .acknowledged },
-    .{ .raw = ",\"reported\":" },     .{ .flag = .reported },
     .{ .raw = "}" },
 };
 const list_schema = [_]Instruction{
-    .{ .raw = "{\"reports\":[" }, .reports,                                      .{ .raw = "],\"dumpFolder\":" },
-    .{ .text = .dump_folder },    .{ .raw = ",\"issueAttachmentLimitBytes\":" }, .{ .number = .attachment_limit },
-    .{ .raw = "}" },
+    .{ .raw = "{\"reports\":[" }, .reports, .{ .raw = "],\"dumpFolder\":" }, .{ .text = .dump_folder }, .{ .raw = "}" },
 };
 const package_result_schema = [_]Instruction{
-    .{ .raw = "{\"report\":" }, .report,              .{ .raw = ",\"package\":" }, .result_package,
-    .{ .raw = ",\"reason\":" }, .{ .text = .reason }, .{ .raw = "}" },
-};
-const issue_schema = [_]Instruction{
-    .{ .raw = "{\"url\":" }, .{ .text = .url }, .{ .raw = ",\"report\":" }, .report, .{ .raw = "}" },
+    .{ .raw = "{\"report\":" }, .report, .{ .raw = ",\"package\":" }, .result_package, .{ .raw = "}" },
 };
 const ack_schema = [_]Instruction{ .{ .raw = "{\"report\":" }, .report, .{ .raw = "}" } };
 const missing_schema = [_]Instruction{.{ .raw = unknown_report }};
@@ -348,7 +335,6 @@ pub const Traversal = struct {
         result.frames[0] = .{ .schema = if (status == 404) &missing_schema else if (status == 204) &.{} else switch (operation) {
             .list => &list_schema,
             .package => &package_result_schema,
-            .issue_link => &issue_schema,
             .acknowledge => &ack_schema,
             .delete => &.{},
         } };

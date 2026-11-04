@@ -22,7 +22,6 @@ pub fn invoke(operation: u32, target: ?[*]const u16, target_length: usize, conte
     const code = switch (selected) {
         .read => callbacks.read(context, &value),
         .package => callbacks.package(context, target, target_length, &value),
-        .issue_link => callbacks.issue_link(context, target, target_length, &value),
         .acknowledge => callbacks.acknowledge(context, target, target_length, &value),
         .delete => callbacks.delete(context, target, target_length, &deleted),
     };

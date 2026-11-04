@@ -124,21 +124,18 @@ export interface CrashDumpsCopy {
   dumpLabel: string;
   dumpNotEnabled: string;
   dumpMissing: string;
+  /** The record's dumpRemoved: Windows rotated the dump away under its retention count. */
+  dumpRemoved: string;
   sizeLabel: string;
-  reportedLabel: string;
-  reported: string;
-  notReported: string;
   packageLabel: string;
-  /** Formatted storage sizes, including units. */
-  packageExceeds: (packageSizeText: string, attachmentLimitText: string) => string;
+  /** No report package has been created yet. */
+  packageNone: string;
   openFolder: string;
   buildPackage: string;
-  reportOnGitHub: string;
   delete: string;
   deleteConfirmTitle: string;
   deleteConfirmMessage: (program: string, time: string) => string;
   revealFailed: string;
-  openFailed: string;
   actionFailed: string;
   requestTitle: string;
   requestWhat: string;
@@ -151,9 +148,10 @@ export interface CrashDumpsCopy {
   dialogTitle: string;
   dialogIntro: string;
   dialogCrashed: (program: string, time: string) => string;
-  dialogIssueLink: string;
-  dialogLocalPath: string;
-  dialogLater: string;
+  /** Where crash reports are kept (Manage > Crash reports). */
+  dialogSaved: string;
+  dialogView: string;
+  dialogClose: string;
   noticeTitle: string;
   noticeMessage: string;
   noticeOpen: string;

@@ -1,10 +1,11 @@
 import { getHostMessageTransport, type HostMessageTransport } from "./hostMessageTransport.ts";
 import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 
-/** The window process opens user-requested GitHub HTTPS URLs or reveals existing absolute file paths. Without a native host, URLs open in a browser window; file reveal returns unavailable. */
-export type ShellOpenRequest =
-  | { readonly kind: "url"; readonly url: string }
-  | { readonly kind: "file"; readonly path: string };
+/**
+ * Asks the window process to select a file in Explorer on user action. It accepts only absolute paths of
+ * existing local files and replies with shell.open.result. Without a native host the result is unavailable.
+ */
+export type ShellOpenRequest = { readonly kind: "file"; readonly path: string };
 
 export class ShellOpenError extends Error {
   readonly reason: string;
@@ -17,16 +18,9 @@ export class ShellOpenError extends Error {
 
 export function requestShellOpen(
   request: ShellOpenRequest,
-  transport: HostMessageTransport | null = getHostMessageTransport(),
-  openWindow: (url: string) => void = (url) => { window.open(url, "_blank", "noopener"); }
+  transport: HostMessageTransport | null = getHostMessageTransport()
 ): Promise<void> {
-  if (!transport?.canSubscribeMessages) {
-    if (request.kind === "url") {
-      openWindow(request.url);
-      return Promise.resolve();
-    }
-    return Promise.reject(new ShellOpenError("unavailable"));
-  }
+  if (!transport?.canSubscribeMessages) return Promise.reject(new ShellOpenError("unavailable"));
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
     let unsubscribe: (() => void) | null = null;
@@ -42,9 +36,7 @@ export function requestShellOpen(
     });
     if (!unsubscribe) { clearTimeout(timer); reject(new ShellOpenError("unavailable")); return; }
     try {
-      transport.postMessage(request.kind === "url"
-        ? { type: "shell.openUrl", requestId, url: request.url }
-        : { type: "shell.revealFile", requestId, path: request.path });
+      transport.postMessage({ type: "shell.revealFile", requestId, path: request.path });
     } catch (error) {
       clearTimeout(timer);
       unsubscribe();

@@ -3,7 +3,7 @@ import type { CurrentValueSource } from "../../frontendRuntime/push/PushValueSou
 import { bindPushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
 import {
-  acknowledgeCrashReport, deleteCrashReport, packageCrashReport, requestCrashReportIssueLink,
+  acknowledgeCrashReport, deleteCrashReport, packageCrashReport,
   type CrashReport, type CrashReportList
 } from "../../data/crashReports/crashReports.ts";
 import { requestShellOpen, type ShellOpenRequest } from "../../host/shellOpen.ts";
@@ -11,7 +11,13 @@ import { currentSettingsText } from "../../i18n/appTextStore.ts";
 import { userFacingDateTime, userFacingErrorMessage } from "../../presentation/userFacingText.ts";
 import type { ConfirmDialogRequest } from "../../ui/patterns/ConfirmDialog.tsx";
 
-/** The backend owns records and acknowledgement state. Local dismissal prevents repeated prompts after acknowledgement fails and lasts only for this UI instance. */
+/**
+ * Crash record store: subscribes to the backend list while the UI is visible; actions only call the backend,
+ * and the window process selects files on user action. History clear uses the shared useReportHistoryClear.
+ *
+ * The only local state is the records whose dialog was closed in this UI instance (dismissed), so a failed
+ * acknowledgement does not reopen the dialog; the next UI instance follows the backend's acknowledged flag.
+ */
 export interface CrashReportStore {
   readonly list: Accessor<CrashReportList | undefined>;
   /** Include unread records that have not been dismissed in this UI instance. */
@@ -19,10 +25,7 @@ export interface CrashReportStore {
   readonly busy: (id: string) => boolean;
   readonly reveal: (path: string) => Promise<void>;
   readonly buildPackage: (report: CrashReport) => Promise<void>;
-  /** Package the report, open its issue URL, reveal the package, then acknowledge it. */
-  readonly reportOnGitHub: (report: CrashReport) => Promise<void>;
-  /** Open the prefilled issue URL, then acknowledge the record. */
-  readonly openIssueLink: (report: CrashReport) => Promise<void>;
+  /** Crash dialog View and Close: mark every listed record read; records stay under Manage > Crash reports. */
   readonly acknowledge: (reports: readonly CrashReport[]) => Promise<void>;
   readonly remove: (report: CrashReport) => Promise<void>;
 }
@@ -63,11 +66,6 @@ export function createCrashReportStore(options: {
     catch { options.notifyError(copy().revealFailed); }
   }
 
-  async function openUrl(url: string) {
-    try { await open({ kind: "url", url }); return true; }
-    catch { options.notifyError(copy().openFailed); return false; }
-  }
-
   async function acknowledge(reports: readonly CrashReport[]) {
     if (reports.length === 0) return;
     setDismissed(current => new Set([...current, ...reports.map(report => report.id)]));
@@ -83,18 +81,6 @@ export function createCrashReportStore(options: {
     reveal,
     buildPackage: (report) => withBusy(report.id, async () => {
       await packageCrashReport(options.requestClient, report.id);
-    }),
-    reportOnGitHub: (report) => withBusy(report.id, async () => {
-      const receipt = await packageCrashReport(options.requestClient, report.id);
-      const link = await requestCrashReportIssueLink(options.requestClient, report.id);
-      if (!await openUrl(link.url)) return;
-      await reveal(receipt.package.path);
-      await acknowledge([link.report]);
-    }),
-    openIssueLink: (report) => withBusy(report.id, async () => {
-      const link = await requestCrashReportIssueLink(options.requestClient, report.id);
-      if (!await openUrl(link.url)) return;
-      await acknowledge([link.report]);
     }),
     acknowledge,
     remove: (report) => withBusy(report.id, async () => {

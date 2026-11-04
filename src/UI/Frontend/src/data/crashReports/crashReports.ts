@@ -5,8 +5,8 @@ import {
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { uiText } from "../../text.ts";
 
-// The backend owns crash records, read/report state, archives and issue URLs.
-// The UI displays these facts and asks the window process to open or reveal them on user action.
+// Crash records. The backend owns records, read state, dump removal and report packages;
+// the UI only displays them and asks the window process to select a file on user action.
 
 export interface CrashReportDump {
   readonly path: string;
@@ -25,7 +25,6 @@ export interface CrashReportPackage {
   readonly path: string;
   readonly sizeBytes: number;
   readonly createdAt: string;
-  readonly exceedsIssueLimit: boolean;
 }
 
 export type CrashReportRole = "service" | "window" | "resident";
@@ -40,29 +39,23 @@ export interface CrashReport {
   /** notEnabled has no dump; missing retains the path and size of a dump no longer on disk. */
   readonly dumpStatus: CrashReportDumpStatus;
   readonly dump: CrashReportDump | null;
+  /** Windows rotated the dump away under its retention count; the record and package remain. */
+  readonly dumpRemoved: boolean;
   readonly fault: CrashReportFault | null;
   readonly package: CrashReportPackage | null;
   readonly acknowledged: boolean;
-  readonly reported: boolean;
 }
 
-/** All records, newest first, with dump directory and issue attachment limit. */
+/** Subscription and GET value: all records, newest first, and the dump folder. */
 export interface CrashReportList {
   readonly reports: readonly CrashReport[];
   readonly dumpFolder: string;
-  readonly issueAttachmentLimitBytes: number;
 }
 
 export interface CrashReportPackageReceipt {
   readonly report: CrashReport;
+  /** The new package, with its size; dumps are never truncated. */
   readonly package: CrashReportPackage;
-  /** Oversized archives report exceedsIssueAttachmentLimit; dumps are never truncated. */
-  readonly reason: "exceedsIssueAttachmentLimit" | null;
-}
-
-export interface CrashReportIssueLink {
-  readonly url: string;
-  readonly report: CrashReport;
 }
 
 export const crashReportsSubscriptionPath = "/api/crash-reports/subscribe";
@@ -80,8 +73,7 @@ function decodePackage(value: unknown, path: string): CrashReportPackage {
   return Object.freeze({
     path: requireNonEmptyString(item.path, path + ".path"),
     sizeBytes: requireNonNegativeSafeInteger(item.sizeBytes, path + ".sizeBytes"),
-    createdAt: requireString(item.createdAt, path + ".createdAt"),
-    exceedsIssueLimit: requireBoolean(item.exceedsIssueLimit, path + ".exceedsIssueLimit")
+    createdAt: requireString(item.createdAt, path + ".createdAt")
   });
 }
 
@@ -107,10 +99,10 @@ export function decodeCrashReport(value: unknown, path = "$.report"): CrashRepor
     version: requireNullable(report.version, path + ".version", requireString),
     dumpStatus: requireOneOf(report.dumpStatus, path + ".dumpStatus", ["saved", "notEnabled", "missing"] as const),
     dump: requireNullable(report.dump, path + ".dump", decodeDump),
+    dumpRemoved: requireBoolean(report.dumpRemoved, path + ".dumpRemoved"),
     fault: requireNullable(report.fault, path + ".fault", decodeFault),
     package: requireNullable(report.package, path + ".package", decodePackage),
-    acknowledged: requireBoolean(report.acknowledged, path + ".acknowledged"),
-    reported: requireBoolean(report.reported, path + ".reported")
+    acknowledged: requireBoolean(report.acknowledged, path + ".acknowledged")
   });
 }
 
@@ -118,8 +110,7 @@ export const crashReportListDecoder = defineResponseDecoder<CrashReportList>("cr
   const list = requireRecord(value);
   return Object.freeze({
     reports: Object.freeze(requireArray(list.reports, "$.reports").map((item, index) => decodeCrashReport(item, `$.reports[${index}]`))),
-    dumpFolder: requireString(list.dumpFolder, "$.dumpFolder"),
-    issueAttachmentLimitBytes: requireNonNegativeSafeInteger(list.issueAttachmentLimitBytes, "$.issueAttachmentLimitBytes")
+    dumpFolder: requireString(list.dumpFolder, "$.dumpFolder")
   });
 });
 
@@ -127,17 +118,7 @@ export const crashReportPackageDecoder = defineResponseDecoder<CrashReportPackag
   const receipt = requireRecord(value);
   return Object.freeze({
     report: decodeCrashReport(receipt.report, "$.report"),
-    package: decodePackage(receipt.package, "$.package"),
-    reason: requireNullable(receipt.reason, "$.reason", (item, path) =>
-      requireOneOf(item, path, ["exceedsIssueAttachmentLimit"] as const))
-  });
-});
-
-export const crashReportIssueLinkDecoder = defineResponseDecoder<CrashReportIssueLink>("crash-reports.issue-link.v1", (value) => {
-  const link = requireRecord(value);
-  return Object.freeze({
-    url: requireNonEmptyString(link.url, "$.url"),
-    report: decodeCrashReport(link.report, "$.report")
+    package: decodePackage(receipt.package, "$.package")
   });
 });
 
@@ -154,13 +135,7 @@ export function packageCrashReport(client: Client, id: string): Promise<CrashRep
     fallbackError: uiText.stores.actionFailed, request: { method: "POST" } });
 }
 
-/** Return a prefilled issue URL and mark the record as reported. */
-export function requestCrashReportIssueLink(client: Client, id: string): Promise<CrashReportIssueLink> {
-  return client.request({ key: "crash-reports.issue-link", url: reportUrl(id, "issue-link"), decoder: crashReportIssueLinkDecoder,
-    fallbackError: uiText.stores.actionFailed, request: { method: "POST" } });
-}
-
-/** Mark read to suppress the crash prompt while retaining the record. */
+/** Mark read: the crash dialog stops listing it; the record is kept. */
 export function acknowledgeCrashReport(client: Client, id: string): Promise<CrashReport> {
   return client.request({ key: "crash-reports.acknowledge", url: reportUrl(id, "acknowledge"), decoder: crashReportAcknowledgeDecoder,
     fallbackError: uiText.stores.actionFailed, request: { method: "POST" } });

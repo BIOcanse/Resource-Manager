@@ -89,7 +89,8 @@ export const zhRuntimeAndReportsCopy = {
       targetedRecordings: (count: string) => cjkText`將刪除${count}份已完成的錄製報告，進行中的錄製保留。`,
       smartRecords: "將刪除全部智慧排程歷史記錄，待還原的記錄保留。",
       deviceActions: "將刪除全部裝置重新啟動歷史記錄，進行中的記錄保留。",
-      cpuMonopolyProtection: (count: string) => cjkText`將刪除${count}筆 CPU 獨佔保護歷史記錄，仍在生效的記錄保留。`
+      cpuMonopolyProtection: (count: string) => cjkText`將刪除${count}筆 CPU 獨佔保護歷史記錄，仍在生效的記錄保留。`,
+      crashReports: (count: string) => cjkText`將刪除${count}筆已讀的崩潰記錄，以及它們的轉儲檔案和報告包，未讀的記錄保留。`
     },
     details: {
       optimizationReports: ["刪除後無法復原；同一問題日後再次出現時會重新記錄。", "已信任的軟體和裝置仍維持信任。"],
@@ -100,7 +101,8 @@ export const zhRuntimeAndReportsCopy = {
       targetedRecordings: ["這些報告及其影格間隔與資源資料將被永久刪除，無法復原。"],
       smartRecords: ["刪除後無法復原；記錄序號不會重新開始。"],
       deviceActions: ["刪除後無法復原；記錄序號不會重新開始。"],
-      cpuMonopolyProtection: ["刪除後無法復原。", "已調回正常優先順序的處理程序不受影響。"]
+      cpuMonopolyProtection: ["刪除後無法復原。", "已調回正常優先順序的處理程序不受影響。"],
+      crashReports: ["刪除後無法復原。"]
     },
     clearedTitle: "已清除歷史",
     cleared: (count: string) => cjkText`已刪除${count}筆歷史項目。`,

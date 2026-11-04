@@ -116,16 +116,6 @@ pub fn renderHelp(allocator: Allocator, format: Format, descriptor: std.json.Val
     return output.toOwnedSlice();
 }
 
-/// Text projection of CrashReportIssueLink.Url (crash_reports/view.zig's
-/// issue_link shape). Main selects this only for the contract's issue-link ID.
-/// Keep the supplied URL bytes unchanged; opening it belongs to the caller.
-pub fn renderIssueLink(allocator: Allocator, payload: std.json.Value) ![]u8 {
-    if (payload != .object) return error.InvalidIssueLink;
-    const url = payload.object.get("url") orelse return error.InvalidIssueLink;
-    if (url != .string) return error.InvalidIssueLink;
-    return std.fmt.allocPrint(allocator, "{s}\n", .{url.string});
-}
-
 fn descriptorString(descriptor: std.json.Value, key: []const u8) ![]const u8 {
     if (descriptor != .object) return error.InvalidDescriptor;
     const value = descriptor.object.get(key) orelse return error.InvalidDescriptor;

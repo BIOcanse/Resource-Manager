@@ -4,7 +4,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const client_module = @import("rm_invocation_client");
 const contract = @import("rm_invocation_contract");
-const crash_contract = @import("rm_cli_contracts").crash_reports;
 pub const arguments = @import("rm_cli_arguments");
 pub const input = @import("rm_cli_input");
 pub const output = @import("rm_cli_output");
@@ -141,7 +140,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, client: client_module.Clien
     defer invoked.deinit();
     return switch (invoked) {
         .failure => |failure| emitFailure(allocator, io, options.format, failure),
-        .response => |owned| emitOperationResponse(allocator, io, options.format, options.operation.?, owned.value),
+        .response => |owned| emitResponse(allocator, io, options.format, owned.value),
     };
 }
 
@@ -193,19 +192,6 @@ fn emitResponse(allocator: std.mem.Allocator, io: std.Io, format: arguments.Form
     defer allocator.free(bytes);
     std.Io.File.stdout().writeStreamingAll(io, bytes) catch |err| return diagnostic(io, err, .transport);
     return output.responseExit(response);
-}
-
-fn emitOperationResponse(allocator: std.mem.Allocator, io: std.Io, format: arguments.Format, operation: []const u8, response: contract.Response) output.Exit {
-    // The one explicitly requested text projection uses the public typed
-    // CrashReportIssueLink contract. All operations still pass the same client;
-    // this is neither a dispatch whitelist nor a second capability directory.
-    if (format == .text and response.status == .ok and std.mem.eql(u8, operation, crash_contract.id(.issue_link))) {
-        const bytes = output.renderIssueLink(allocator, response.payload) catch |err| return diagnostic(io, err, .transport);
-        defer allocator.free(bytes);
-        std.Io.File.stdout().writeStreamingAll(io, bytes) catch |err| return diagnostic(io, err, .transport);
-        return .success;
-    }
-    return emitResponse(allocator, io, format, response);
 }
 
 fn emitFailure(allocator: std.mem.Allocator, io: std.Io, format: arguments.Format, failure: contract.Failure) output.Exit {

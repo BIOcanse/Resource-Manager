@@ -89,7 +89,8 @@ export const zhRuntimeAndReportsCopy = {
       targetedRecordings: (count: string) => cjkText`将删除${count}份已完成的录制报告，正在进行的录制保留。`,
       smartRecords: "将删除全部智能调度历史记录，待恢复的记录保留。",
       deviceActions: "将删除全部设备重启历史记录，进行中的记录保留。",
-      cpuMonopolyProtection: (count: string) => cjkText`将删除${count}条 CPU 独占保护历史记录，仍在生效的记录保留。`
+      cpuMonopolyProtection: (count: string) => cjkText`将删除${count}条 CPU 独占保护历史记录，仍在生效的记录保留。`,
+      crashReports: (count: string) => cjkText`将删除${count}条已读的崩溃记录，以及它们的转储文件和报告包，未读的记录保留。`
     },
     details: {
       optimizationReports: ["删除后无法恢复；同一问题以后再次出现时会重新记录。", "已信任的软件和设备仍保持信任。"],
@@ -100,7 +101,8 @@ export const zhRuntimeAndReportsCopy = {
       targetedRecordings: ["这些报告及其帧间隔和资源数据将被永久删除，无法恢复。"],
       smartRecords: ["删除后无法恢复；记录序号不会重新开始。"],
       deviceActions: ["删除后无法恢复；记录序号不会重新开始。"],
-      cpuMonopolyProtection: ["删除后无法恢复。", "已调回正常优先级的进程不受影响。"]
+      cpuMonopolyProtection: ["删除后无法恢复。", "已调回正常优先级的进程不受影响。"],
+      crashReports: ["删除后无法恢复。"]
     },
     clearedTitle: "已清空历史",
     cleared: (count: string) => cjkText`已删除${count}条历史条目。`,

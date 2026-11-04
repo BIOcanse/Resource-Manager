@@ -31,11 +31,7 @@ public sealed record CrashReportOptions(
     [property: JsonPropertyName("service_log_before_seconds")] int ServiceLogBeforeSeconds,
     [property: JsonPropertyName("service_log_after_seconds")] int ServiceLogAfterSeconds,
     [property: JsonPropertyName("service_log_max_entries")] int ServiceLogMaxEntries,
-    [property: JsonPropertyName("version_history_capacity")] int VersionHistoryCapacity,
-    [property: JsonPropertyName("issue_attachment_limit_bytes")] long IssueAttachmentLimitBytes,
-    [property: JsonPropertyName("issue_new_url")] string IssueNewUrl,
-    [property: JsonPropertyName("issue_url_max_chars")] int IssueUrlMaxChars,
-    [property: JsonPropertyName("issue_stack_max_lines")] int IssueStackMaxLines)
+    [property: JsonPropertyName("version_history_capacity")] int VersionHistoryCapacity)
 {
     public CrashReportOptions Validate()
     {
@@ -55,14 +51,8 @@ public sealed record CrashReportOptions(
         if (MiniDumpCustomFlags <= 0 || KeepCountMaximum < 1 || RecordCapacity < 1 || SubscriberCapacity < 1 || DumpScanMaxEntries < 1
             || EventMatchWindowSeconds < 1 || EventMergeWindowSeconds < 0 || EventQueryMaxEvents < 1
             || FirstScanEventLookbackSeconds < 0 || ManagedStackMaxChars < 1 || ServiceLogBeforeSeconds < 0
-            || ServiceLogAfterSeconds < 0 || ServiceLogMaxEntries < 0 || VersionHistoryCapacity < 1
-            || IssueAttachmentLimitBytes < 1 || IssueUrlMaxChars < 1 || IssueStackMaxLines < 0)
+            || ServiceLogAfterSeconds < 0 || ServiceLogMaxEntries < 0 || VersionHistoryCapacity < 1)
             throw new InvalidDataException("A crash report bound is out of range.");
-        if (!Uri.TryCreate(IssueNewUrl, UriKind.Absolute, out var issue) || issue.Scheme != Uri.UriSchemeHttps
-            || !string.IsNullOrEmpty(issue.Query) || !string.IsNullOrEmpty(issue.Fragment))
-            throw new InvalidDataException("The issue URL must be an absolute https URL without query or fragment.");
-        if ((IssueNewUrl + "?title=&body=").Length > IssueUrlMaxChars)
-            throw new InvalidDataException("The crash issue URL limit must hold the configured base URL and query keys.");
         return this;
     }
 

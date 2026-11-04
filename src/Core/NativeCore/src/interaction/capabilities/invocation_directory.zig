@@ -23,14 +23,13 @@ pub const gpu_report: contract.Descriptor = .{
 
 // C0 supplies the complete output schema from its shared ViewResult. This
 // constructor cannot invent a reduced result or advertise anyopaque as data.
-// The original capability invokes Read/Package/IssueLink/Acknowledge/Delete.
-pub const CrashOperation = enum { read, package, issue_link, acknowledge, delete };
+// The original capability invokes Read/Package/Acknowledge/Delete.
+pub const CrashOperation = enum { read, package, acknowledge, delete };
 pub fn crash(operation: CrashOperation, output_schema_json: []const u8, admission: contract.Admission) contract.Descriptor {
     return .{
         .operation = switch (operation) {
             .read => "crash-reports.read",
             .package => "crash-reports.package",
-            .issue_link => "crash-reports.issue-link",
             .acknowledge => "crash-reports.acknowledge",
             .delete => "crash-reports.delete",
         },

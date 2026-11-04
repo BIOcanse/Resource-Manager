@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Channels;
 using ResourceManager.App.Application.CrashReports;
 using ResourceManager.App.Application.Notifications;
@@ -26,7 +27,19 @@ public sealed class CrashReportOwner(
 {
     private const int StoreVersion = 1;
     private static readonly JsonSerializerOptions StoreJsonOptions = new(JsonSerializerDefaults.Web)
-        { WriteIndented = true, RespectRequiredConstructorParameters = true };
+    {
+        WriteIndented = true, RespectRequiredConstructorParameters = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { StoreFactsOnly } }
+    };
+
+    // The store keeps facts only: DumpRemoved is derived from DumpStatus and Dump for the wire.
+    private static void StoreFactsOnly(JsonTypeInfo info)
+    {
+        if (info.Type != typeof(CrashReport)) return;
+        foreach (var property in info.Properties)
+            if (property.AttributeProvider is System.Reflection.PropertyInfo { Name: nameof(CrashReport.DumpRemoved) })
+                property.ShouldSerialize = static (_, _) => false;
+    }
 
     internal sealed record VersionSeen(string Version, DateTimeOffset FirstSeen);
 
@@ -115,27 +128,11 @@ public sealed class CrashReportOwner(
             var crashEvents = SafeRead(() => events.ReadCrashEvents(report.OccurredAt - window, report.OccurredAt + window,
                 [report.Program], options.EventQueryMaxEvents), []);
             var size = CrashReportPackageWriter.Write(path, report, environment.BuildVersion, crashEvents, log);
-            var package = new CrashReportPackage(path, size, time.GetUtcNow(), size > options.IssueAttachmentLimitBytes);
+            var package = new CrashReportPackage(path, size, time.GetUtcNow());
             report = report with { Package = package };
             reports[index] = report;
             Commit();
-            return new(report, package, package.ExceedsIssueLimit ? CrashReportPackageReasons.ExceedsIssueAttachmentLimit : null);
-        }
-    }
-
-    public CrashReportIssueLink? IssueLink(string id)
-    {
-        lock (gate)
-        {
-            RestoreOnce();
-            var index = reports.FindIndex(report => report.Id == id);
-            if (index < 0) return null;
-            var options = Options;
-            var url = CrashIssueLink.Build(reports[index], options);
-            var report = reports[index] with { Reported = true };
-            reports[index] = report;
-            Commit();
-            return new(url, report);
+            return new(report, package);
         }
     }
 
@@ -275,7 +272,7 @@ public sealed class CrashReportOwner(
         // Several images' instances may crash in the same second, including within this scan's added list.
         var id = $"{at.UtcDateTime:yyyyMMdd'T'HHmmss'Z'}-{image}-{Guid.NewGuid():N}";
         var version = versions.LastOrDefault(seen => seen.FirstSeen <= at)?.Version;
-        return new(id, at, image, role, version, status, dump, fault, null, false, false);
+        return new(id, at, image, role, version, status, dump, fault, null, false);
     }
 
     private static IEnumerable<CrashEvent> Nearest(IReadOnlyList<CrashEvent> near, DateTimeOffset at, CrashReportOptions options)
@@ -350,9 +347,9 @@ public sealed class CrashReportOwner(
     private CrashReportList Snapshot()
     {
         // Before the first plan there is no folder or limit to name; the list is then necessarily empty too.
-        if (plans.Current.HostManager.CrashReports is not { } options) return new([], "", 0);
+        if (plans.Current.HostManager.CrashReports is not { } options) return new([], "");
         return new(reports.OrderByDescending(static report => report.OccurredAt).ToArray(),
-            environment.DumpFolder(options), options.IssueAttachmentLimitBytes);
+            environment.DumpFolder(options));
     }
 
     // Caller holds gate: persist, then publish the whole list.

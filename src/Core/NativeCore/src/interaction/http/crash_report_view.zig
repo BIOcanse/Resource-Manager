@@ -10,7 +10,7 @@ const Adapter = struct {
         return @ptrCast(@alignCast(context.?));
     }
     fn scalar(context: ?*anyopaque, index: usize, field: u32, value: *i64) callconv(.c) i32 {
-        if (field > @backingInt(view.Scalar.result_package_exceeds)) return view.Code.invalid;
+        if (field > @backingInt(view.Scalar.dump_removed)) return view.Code.invalid;
         return from(context).source.scalar(index, @fromBackingInt(@intCast(field)), value);
     }
     fn string(context: ?*anyopaque, pointer: ?[*]const u16, length: usize) callconv(.c) i32 {
@@ -25,7 +25,7 @@ const Adapter = struct {
             const parts: codec.DateParts = .{ .year = date.year, .month = date.month, .day = date.day, .hour = date.hour, .minute = date.minute, .second = date.second, .fraction = date.fraction, .offset_minutes = date.offset_minutes };
             return codec.writeDateTime(writer, &parts);
         }
-        if (field > @backingInt(view.Text.url)) return view.Code.invalid;
+        if (field > @backingInt(view.Text.result_package_path)) return view.Code.invalid;
         return source.text(index, @fromBackingInt(@intCast(field)), writer, string);
     }
 };

@@ -13,7 +13,7 @@ const zhCnSettingsCopy: SettingsCopy = {
       cpuMonopolyProtection: { title: "CPU 独占保护", description: "CPU 独占保护把一个持续占满 CPU 的高优先级进程调回正常优先级后通知，写明进程和结果。" },
       update: { title: "新版本", description: "发现可用的新版本后通知。" },
       accessRequest: { title: "访问请求", description: "有新的可信访问请求等待批准时通知，写明请求方的名称和程序。" },
-      crashReport: { title: "崩溃报告", description: "资源管理器从崩溃中恢复后通知；点开后可查看崩溃记录并上传转储。" }
+      crashReport: { title: "崩溃报告", description: "资源管理器从异常退出中恢复后通知；点开后可在管理 · 崩溃报告中查看崩溃报告。" }
     },
     notifyTitle: "弹出通知",
     notifyDescription: "关闭后这一类通知不经任何途径弹出；两条途径各自的选择保留。",
@@ -456,7 +456,7 @@ const enSettingsCopy: SettingsCopy = {
       cpuMonopolyProtection: { title: "CPU Monopoly Protection", description: "Notifies after CPU monopoly protection sets a process that kept the CPU busy at high priority back to normal priority, stating the process and the result." },
       update: { title: "New version", description: "Notifies when a new version is available." },
       accessRequest: { title: "Access requests", description: "Notifies when a new trusted-access request awaits approval, stating the requester's name and program." },
-      crashReport: { title: "Crash reports", description: "Notifies after Resource Manager recovers from a crash; open it to view the crash records and upload the dump." }
+      crashReport: { title: "Crash reports", description: "Notifies after Resource Manager recovers from an abnormal exit; open it to view the crash reports under Management · Crash Reports." }
     },
     notifyTitle: "Show notifications",
     notifyDescription: "When off, this kind of notification appears through no channel; the choices for both channels are kept.",

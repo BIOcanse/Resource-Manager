@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ResourceManager.App.Application.CrashReports;
 
 // Wire shapes of /api/crash-reports (docs/crash_dumps_2026-10-31.md; JSON camelCase).
@@ -13,7 +15,7 @@ public sealed record CrashReportFault(
     string? ManagedStack,
     string? Description);
 
-public sealed record CrashReportPackage(string Path, long SizeBytes, DateTimeOffset CreatedAt, bool ExceedsIssueLimit);
+public sealed record CrashReportPackage(string Path, long SizeBytes, DateTimeOffset CreatedAt);
 
 public sealed record CrashReport(
     string Id,
@@ -23,10 +25,15 @@ public sealed record CrashReport(
     string? Version,
     string DumpStatus,
     CrashReportDump? Dump,
-    CrashReportFault? Fault,
-    CrashReportPackage? Package,
-    bool Acknowledged,
-    bool Reported);
+    [property: JsonPropertyOrder(1)] CrashReportFault? Fault,
+    [property: JsonPropertyOrder(1)] CrashReportPackage? Package,
+    [property: JsonPropertyOrder(1)] bool Acknowledged)
+{
+    // A dump that was saved and has since been deleted (Windows keeps only the newest dumps per program):
+    // the owner turned the record Missing and kept its old Dump. Derived on read, never stored; on the wire it
+    // follows dump.
+    public bool DumpRemoved => DumpStatus == CrashReportDumpStatuses.Missing && Dump is not null;
+}
 
 public static class CrashReportDumpStatuses
 {
@@ -35,20 +42,12 @@ public static class CrashReportDumpStatuses
     public const string Missing = "missing";
 }
 
-// Newest first. DumpFolder and the attachment limit come from the compiled freedom point.
+// Newest first. DumpFolder comes from the compiled freedom point.
 public sealed record CrashReportList(
     IReadOnlyList<CrashReport> Reports,
-    string DumpFolder,
-    long IssueAttachmentLimitBytes);
+    string DumpFolder);
 
-public sealed record CrashReportPackageResult(CrashReport Report, CrashReportPackage Package, string? Reason);
-
-public static class CrashReportPackageReasons
-{
-    public const string ExceedsIssueAttachmentLimit = "exceedsIssueAttachmentLimit";
-}
-
-public sealed record CrashReportIssueLink(string Url, CrashReport Report);
+public sealed record CrashReportPackageResult(CrashReport Report, CrashReportPackage Package);
 
 public sealed record CrashReportAcknowledgement(CrashReport Report);
 
@@ -64,8 +63,6 @@ public interface ICrashReportOwner
     void DiscoverAtStartup();
 
     CrashReportPackageResult? Package(string id);
-
-    CrashReportIssueLink? IssueLink(string id);
 
     CrashReportAcknowledgement? Acknowledge(string id);
 

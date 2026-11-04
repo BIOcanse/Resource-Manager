@@ -2530,7 +2530,8 @@ const koKrAppCopy: AppCopy = {
       targetedRecordings: (count: string) => `삭제될 완료된 녹화 보고서: ${count}. 진행 중인 녹화는 유지됩니다.`,
       smartRecords: "스마트 스케줄링 기록의 모든 내역이 삭제됩니다. 복원 대기 중인 기록은 유지됩니다.",
       deviceActions: "장치 다시 시작 기록의 모든 내역이 삭제됩니다. 진행 중인 기록은 유지됩니다.",
-      cpuMonopolyProtection: (count: string) => `CPU 독점 보호 기록 ${count}개가 삭제됩니다. 아직 적용 중인 기록은 유지됩니다.`
+      cpuMonopolyProtection: (count: string) => `CPU 독점 보호 기록 ${count}개가 삭제됩니다. 아직 적용 중인 기록은 유지됩니다.`,
+      crashReports: (count: string) => `읽은 충돌 기록 ${count}개와 해당 덤프 파일, 보고서 패키지가 삭제됩니다. 읽지 않은 기록은 유지됩니다.`
     },
     details: {
       optimizationReports: ["삭제하면 되돌릴 수 없습니다. 같은 문제가 다시 발생하면 다시 기록됩니다.", "신뢰한 소프트웨어와 장치는 계속 신뢰됩니다."],
@@ -2541,7 +2542,8 @@ const koKrAppCopy: AppCopy = {
       targetedRecordings: ["이 보고서와 프레임 간격 및 리소스 데이터가 영구적으로 삭제되며 되돌릴 수 없습니다."],
       smartRecords: ["삭제하면 되돌릴 수 없습니다. 기록의 일련번호는 처음부터 다시 시작하지 않습니다."],
       deviceActions: ["삭제하면 되돌릴 수 없습니다. 기록의 일련번호는 처음부터 다시 시작하지 않습니다."],
-      cpuMonopolyProtection: ["삭제하면 되돌릴 수 없습니다.", "이미 보통 우선순위로 되돌린 프로세스에는 영향이 없습니다."]
+      cpuMonopolyProtection: ["삭제하면 되돌릴 수 없습니다.", "이미 보통 우선순위로 되돌린 프로세스에는 영향이 없습니다."],
+      crashReports: ["삭제하면 되돌릴 수 없습니다."]
     },
     clearedTitle: "기록을 지웠습니다",
     cleared: (count: string) => `삭제한 기록 항목: ${count}.`,

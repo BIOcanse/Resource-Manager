@@ -1,7 +1,7 @@
 //! Protocol-neutral synchronous crash capabilities. Values and target text are
 //! borrowed from the original owner for this call; there is no report mirror.
 pub const view = @import("../../crash_reports/view.zig");
-pub const Operation = enum(u32) { read = 0, package = 1, issue_link = 2, acknowledge = 3, delete = 4 };
+pub const Operation = enum(u32) { read = 0, package = 1, acknowledge = 2, delete = 3 };
 pub const Outcome = enum(u32) { success = 0, not_found = 1 };
 // Original selection ABI. value is only a call-local token, never field data.
 pub const Result = extern struct {
@@ -22,7 +22,6 @@ pub const Delete = *const fn (?*anyopaque, ?[*]const u16, usize, *u32) callconv(
 pub const Owner = extern struct {
     read: Read,
     package: WithId,
-    issue_link: WithId,
     acknowledge: WithId,
     delete: Delete,
 };
@@ -38,7 +37,6 @@ pub fn id(operation: Operation) []const u8 {
     return switch (operation) {
         .read => "crash-reports.read",
         .package => "crash-reports.package",
-        .issue_link => "crash-reports.issue-link",
         .acknowledge => "crash-reports.acknowledge",
         .delete => "crash-reports.delete",
     };

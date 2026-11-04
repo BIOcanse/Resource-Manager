@@ -2,16 +2,14 @@ import { createSignal, For, Show } from "solid-js";
 import type { AppCrashDumpMode, AppCrashDumpSettings, CrashDumpDiagnostics } from "../../../types";
 import type { SettingsTextBundle } from "../../../i18n/settingsTypes.ts";
 import { NumberField, SegmentedControl } from "./SettingsControls";
-import { useCrashReports } from "../../crashReports/CrashReportContext.tsx";
-import { CrashReportPathButton } from "../../crashReports/CrashReportDialog.tsx";
-import {
-  crashDumpModeView, crashDumpStatusView, crashFaultSummary, crashReportDumpText, crashReportLocalFile
-} from "../../crashReports/crashReportPresentation.ts";
-import { formatBytes } from "../../../presentation/byteUnits.ts";
-import { userFacingDateTime } from "../../../presentation/userFacingText.ts";
+import { crashDumpModeView, crashDumpStatusView } from "../../crashReports/crashReportPresentation.ts";
 import { HelpHint } from "../../../ui/primitives/HelpHint.tsx";
 
-/** Save mode, dump type, and retention through the shared draft. Display backend effective-state diagnostics and subscribed records; immediate disable bypasses the draft. */
+/**
+ * Crash dump settings: mode, dump type and retention edit the settings draft and save with it.
+ * Effective mode, its source and any mismatch come from backend diagnostics. When dumps are on by default,
+ * an immediate "Turn off crash dumps" bypasses the draft. Records are listed below by CrashReportRecords.
+ */
 export function CrashDumpSettings(props: {
   settings: AppCrashDumpSettings;
   diagnostics: CrashDumpDiagnostics | undefined;
@@ -34,7 +32,6 @@ export function CrashDumpSettings(props: {
     catch { setTurnOffFailed(true); }
     finally { setTurningOff(false); }
   }
-  const reports = useCrashReports();
 
   return (
     <section class="crash-dump-settings" aria-labelledby="crashDumpSettingsTitle">
@@ -94,70 +91,6 @@ export function CrashDumpSettings(props: {
             <span><code class="crash-report-code">{image.image}</code> {image.state}{image.detail ? ` · ${image.detail}` : ""}</span>}</For>
         </div>
       </div>
-      <Show when={reports}>{(store) => <CrashReportHistory store={store()} text={props.text} />}</Show>
     </section>
-  );
-}
-
-function CrashReportHistory(props: { store: NonNullable<ReturnType<typeof useCrashReports>>; text: SettingsTextBundle }) {
-  const copy = () => props.text.crashDumps;
-  const list = () => props.store.list();
-  const limit = () => formatBytes(list()?.issueAttachmentLimitBytes ?? 0, "storage");
-  return (
-    <div class="crash-report-history">
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <div class="settings-row-title">
-            <strong>{copy().historyTitle}</strong>
-            <HelpHint label={copy().historyTitle}>{copy().historyDescription}</HelpHint>
-          </div>
-        </div>
-      </div>
-      <Show when={(list()?.reports.length ?? 0) > 0} fallback={<p class="crash-report-empty">{copy().historyEmpty}</p>}>
-        <ul class="crash-report-list">
-          <For each={list()?.reports ?? []}>{(report) => {
-            const dump = () => crashReportDumpText(report, copy());
-            const file = () => crashReportLocalFile(report);
-            const busy = () => props.store.busy(report.id);
-            return (
-              <li class="crash-report-item" aria-busy={busy()}>
-                <strong>{copy().program(report.program, copy().roles[report.role])}</strong>
-                <dl class="crash-report-facts">
-                  <dt>{copy().timeLabel}</dt><dd>{userFacingDateTime(report.occurredAt)}</dd>
-                  <dt>{copy().versionLabel}</dt><dd>{report.version ?? copy().versionUnknown}</dd>
-                  <dt>{copy().faultLabel}</dt><dd>{crashFaultSummary(report.fault, copy())}</dd>
-                  <dt>{copy().dumpLabel}</dt>
-                  <dd>
-                    <Show when={dump().path}>{(path) => report.dumpStatus === "saved"
-                      ? <CrashReportPathButton path={path()} onReveal={props.store.reveal} />
-                      : <code class="crash-report-code">{path()}</code>}</Show>
-                    <Show when={dump().note}>{(note) => <span>{note()}</span>}</Show>
-                  </dd>
-                  <Show when={report.dump}>{(item) => <><dt>{copy().sizeLabel}</dt><dd>{formatBytes(item().sizeBytes, "storage")}</dd></>}</Show>
-                  <dt>{copy().reportedLabel}</dt><dd>{report.reported ? copy().reported : copy().notReported}</dd>
-                  <Show when={report.package}>{(item) => <>
-                    <dt>{copy().packageLabel}</dt>
-                    <dd>
-                      <CrashReportPathButton path={item().path} onReveal={props.store.reveal} />
-                      <span> · {formatBytes(item().sizeBytes, "storage")}</span>
-                      <Show when={item().exceedsIssueLimit}>
-                        <span class="crash-report-warning" role="note">{copy().packageExceeds(formatBytes(item().sizeBytes, "storage"), limit())}</span>
-                      </Show>
-                    </dd>
-                  </>}</Show>
-                </dl>
-                <div class="crash-report-actions">
-                  <button type="button" class="secondary" disabled={busy() || file() === null}
-                    onClick={() => { const path = file(); if (path) void props.store.reveal(path); }}>{copy().openFolder}</button>
-                  <button type="button" class="secondary" disabled={busy()} onClick={() => void props.store.buildPackage(report)}>{copy().buildPackage}</button>
-                  <button type="button" class="secondary" disabled={busy()} onClick={() => void props.store.reportOnGitHub(report)}>{copy().reportOnGitHub}</button>
-                  <button type="button" class="secondary" disabled={busy()} onClick={() => void props.store.remove(report)}>{copy().delete}</button>
-                </div>
-              </li>
-            );
-          }}</For>
-        </ul>
-      </Show>
-    </div>
   );
 }

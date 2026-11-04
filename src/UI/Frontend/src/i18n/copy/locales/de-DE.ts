@@ -2531,7 +2531,8 @@ const deDeAppCopy: AppCopy = {
       targetedRecordings: (count: string) => `Abgeschlossene Aufzeichnungsberichte, die gelöscht werden: ${count}. Eine laufende Aufzeichnung bleibt erhalten.`,
       smartRecords: "Alle Verlaufseinträge der intelligenten Planung werden gelöscht. Einträge, die noch wiederhergestellt werden, bleiben erhalten.",
       deviceActions: "Alle Verlaufseinträge zu Geräteneustarts werden gelöscht. Noch laufende Einträge bleiben erhalten.",
-      cpuMonopolyProtection: (count: string) => `Verlaufseinträge des CPU-Monopolschutzes, die gelöscht werden: ${count}. Noch wirksame Einträge bleiben erhalten.`
+      cpuMonopolyProtection: (count: string) => `Verlaufseinträge des CPU-Monopolschutzes, die gelöscht werden: ${count}. Noch wirksame Einträge bleiben erhalten.`,
+      crashReports: (count: string) => `Gelesene Absturzeinträge, die mit ihren Abbilddateien und Berichtspaketen gelöscht werden: ${count}. Ungelesene Einträge bleiben erhalten.`
     },
     details: {
       optimizationReports: ["Dieser Vorgang kann nicht rückgängig gemacht werden. Tritt dasselbe Problem erneut auf, wird es erneut erfasst.", "Vertrauenswürdige Software und Geräte bleiben vertrauenswürdig."],
@@ -2542,7 +2543,8 @@ const deDeAppCopy: AppCopy = {
       targetedRecordings: ["Diese Berichte werden mit ihren Bildintervallen und Ressourcendaten endgültig gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden."],
       smartRecords: ["Dieser Vorgang kann nicht rückgängig gemacht werden. Die Laufnummern der Einträge beginnen nicht von vorn."],
       deviceActions: ["Dieser Vorgang kann nicht rückgängig gemacht werden. Die Laufnummern der Einträge beginnen nicht von vorn."],
-      cpuMonopolyProtection: ["Dieser Vorgang kann nicht rückgängig gemacht werden.", "Prozesse, deren Priorität bereits auf Normal zurückgesetzt wurde, sind nicht betroffen."]
+      cpuMonopolyProtection: ["Dieser Vorgang kann nicht rückgängig gemacht werden.", "Prozesse, deren Priorität bereits auf Normal zurückgesetzt wurde, sind nicht betroffen."],
+      crashReports: ["Dieser Vorgang kann nicht rückgängig gemacht werden."]
     },
     clearedTitle: "Verlauf gelöscht",
     cleared: (count: string) => `Gelöschte Verlaufseinträge: ${count}.`,

@@ -2531,7 +2531,8 @@ const frFrAppCopy: AppCopy = {
       targetedRecordings: (count: string) => `Rapports d’enregistrement terminés qui seront supprimés : ${count}. Un enregistrement en cours est conservé.`,
       smartRecords: "Tous les enregistrements historiques de la planification intelligente seront supprimés. Les enregistrements en attente de restauration sont conservés.",
       deviceActions: "Tous les enregistrements historiques de redémarrage de périphériques seront supprimés. Les enregistrements en cours sont conservés.",
-      cpuMonopolyProtection: (count: string) => `Enregistrements historiques de la protection contre le monopole du processeur à supprimer : ${count}. Les enregistrements encore en vigueur sont conservés.`
+      cpuMonopolyProtection: (count: string) => `Enregistrements historiques de la protection contre le monopole du processeur à supprimer : ${count}. Les enregistrements encore en vigueur sont conservés.`,
+      crashReports: (count: string) => `Enregistrements de plantage lus à supprimer avec leurs fichiers de vidage et paquets de rapport : ${count}. Les enregistrements non lus sont conservés.`
     },
     details: {
       optimizationReports: ["Cette action est irréversible. Si le même problème se reproduit, il sera de nouveau enregistré.", "Les logiciels et appareils approuvés restent approuvés."],
@@ -2542,7 +2543,8 @@ const frFrAppCopy: AppCopy = {
       targetedRecordings: ["Ces rapports, ainsi que leurs intervalles d’images et leurs données de ressources, seront supprimés définitivement. Cette action est irréversible."],
       smartRecords: ["Cette action est irréversible. Les numéros de séquence des enregistrements ne recommencent pas."],
       deviceActions: ["Cette action est irréversible. Les numéros de séquence des enregistrements ne recommencent pas."],
-      cpuMonopolyProtection: ["Cette action est irréversible.", "Les processus déjà remis en priorité normale ne sont pas concernés."]
+      cpuMonopolyProtection: ["Cette action est irréversible.", "Les processus déjà remis en priorité normale ne sont pas concernés."],
+      crashReports: ["Cette action est irréversible."]
     },
     clearedTitle: "Historique effacé",
     cleared: (count: string) => `Entrées historiques supprimées : ${count}.`,

@@ -11,7 +11,7 @@ namespace ResourceManager.App.Endpoints.Transport;
 // lives only in NativeCrashReportView and retires in R-crash.
 internal static partial class NativeCrashReportResponse
 {
-    internal enum Operation : uint { List, Package, IssueLink, Acknowledge, Delete }
+    internal enum Operation : uint { List, Package, Acknowledge, Delete }
 
     internal static Task Send(HttpContext context, NativeCrashReportCapabilities.Result result)
         => SendCore(context, (Operation)result.Operation, result.Value,

@@ -11,15 +11,15 @@ internal static partial class NativeCrashReportView
 {
     internal enum ScalarField : uint
     {
-        ReportCount, AttachmentLimit, DumpPresent, DumpSize, FaultPresent, PackagePresent,
-        PackageSize, PackageExceeds, Acknowledged, Reported, ResultPackageSize, ResultPackageExceeds
+        ReportCount, DumpPresent, DumpSize, FaultPresent, PackagePresent, PackageSize, Acknowledged, ResultPackageSize,
+        DumpRemoved
     }
     internal enum TextField : uint
     {
         DumpFolder = 0, Id = 1, Program = 3, Role = 4, Version = 5, DumpStatus = 6,
         DumpPath = 7, FaultModule = 8, FaultOffset = 9, FaultExceptionCode = 10,
         FaultManagedStack = 11, FaultDescription = 12, PackagePath = 13,
-        ResultPackagePath = 15, Reason = 17, Url = 18
+        ResultPackagePath = 15
     }
     internal enum DateField : uint { OccurredAt, PackageCreatedAt, ResultPackageCreatedAt }
 
@@ -84,24 +84,20 @@ internal static partial class NativeCrashReportView
         {
             CrashReportList list => list.Reports[checked((int)index)],
             CrashReportPackageResult result => result.Report,
-            CrashReportIssueLink result => result.Report,
             CrashReportAcknowledgement result => result.Report,
             _ => throw new InvalidOperationException("No crash-report source is borrowed.")
         };
         internal long Scalar(nuint index, ScalarField field) => field switch
         {
             ScalarField.ReportCount => ((CrashReportList)snapshot!).Reports.Count,
-            ScalarField.AttachmentLimit => ((CrashReportList)snapshot!).IssueAttachmentLimitBytes,
             ScalarField.DumpPresent => Report(index).Dump is null ? 0 : 1,
             ScalarField.DumpSize => Report(index).Dump!.SizeBytes,
             ScalarField.FaultPresent => Report(index).Fault is null ? 0 : 1,
             ScalarField.PackagePresent => Report(index).Package is null ? 0 : 1,
             ScalarField.PackageSize => Report(index).Package!.SizeBytes,
-            ScalarField.PackageExceeds => Report(index).Package!.ExceedsIssueLimit ? 1 : 0,
             ScalarField.Acknowledged => Report(index).Acknowledged ? 1 : 0,
-            ScalarField.Reported => Report(index).Reported ? 1 : 0,
             ScalarField.ResultPackageSize => ((CrashReportPackageResult)snapshot!).Package.SizeBytes,
-            ScalarField.ResultPackageExceeds => ((CrashReportPackageResult)snapshot!).Package.ExceedsIssueLimit ? 1 : 0,
+            ScalarField.DumpRemoved => Report(index).DumpRemoved ? 1 : 0,
             _ => throw new ArgumentOutOfRangeException(nameof(field))
         };
         internal string? Text(nuint index, TextField field) => field switch
@@ -120,8 +116,6 @@ internal static partial class NativeCrashReportView
             TextField.FaultDescription => Report(index).Fault!.Description,
             TextField.PackagePath => Report(index).Package!.Path,
             TextField.ResultPackagePath => ((CrashReportPackageResult)snapshot!).Package.Path,
-            TextField.Reason => ((CrashReportPackageResult)snapshot!).Reason,
-            TextField.Url => ((CrashReportIssueLink)snapshot!).Url,
             _ => throw new ArgumentOutOfRangeException(nameof(field))
         };
         internal DateTimeOffset Date(nuint index, DateField field) => field switch

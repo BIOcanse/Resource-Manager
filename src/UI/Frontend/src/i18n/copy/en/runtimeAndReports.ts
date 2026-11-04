@@ -91,7 +91,8 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "reportHisto
       targetedRecordings: (count: string) => `Completed recording reports to delete: ${count}. A recording in progress is kept.`,
       smartRecords: "All smart scheduling history records will be deleted. Records waiting to be restored are kept.",
       deviceActions: "All device restart history records will be deleted. Records still in progress are kept.",
-      cpuMonopolyProtection: (count: string) => `CPU monopoly protection history records to delete: ${count}. Records still in effect are kept.`
+      cpuMonopolyProtection: (count: string) => `CPU monopoly protection history records to delete: ${count}. Records still in effect are kept.`,
+      crashReports: (count: string) => `Read crash records to delete, together with their dump files and report packages: ${count}. Unread records are kept.`
     },
     details: {
       optimizationReports: ["This cannot be undone. If the same issue occurs again, it will be recorded again.", "Trusted software and devices remain trusted."],
@@ -102,7 +103,8 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "reportHisto
       targetedRecordings: ["These reports and their frame intervals and resource data will be permanently deleted. This cannot be undone."],
       smartRecords: ["This cannot be undone. Record sequence numbers do not start over."],
       deviceActions: ["This cannot be undone. Record sequence numbers do not start over."],
-      cpuMonopolyProtection: ["This cannot be undone.", "Processes already set back to normal priority are not affected."]
+      cpuMonopolyProtection: ["This cannot be undone.", "Processes already set back to normal priority are not affected."],
+      crashReports: ["This cannot be undone."]
     },
     clearedTitle: "History cleared",
     cleared: (count: string) => `History entries deleted: ${count}.`,

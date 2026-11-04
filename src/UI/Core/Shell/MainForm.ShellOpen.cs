@@ -5,26 +5,15 @@ using System.Text.Json;
 namespace ResourceManager.NativeUi;
 
 /// <summary>
-/// Opens a GitHub address in the browser or selects a local file in File Explorer when the user clicks in the web
-/// frontend (docs/crash_dumps_2026-10-31.md: the backend never opens anything). Only https://github.com/ addresses and
-/// existing local files given by an absolute path are accepted; every request gets one shell.open.result reply.
+/// Selects a local file in File Explorer when the user clicks in the web frontend; the backend never
+/// opens anything. Only existing local files given by an absolute path are accepted; every request gets
+/// one shell.open.result reply.
 /// </summary>
 internal static class ShellOpenRequests
 {
     internal const string RejectedError = "rejected";
     internal const string NotFoundError = "not-found";
     internal const string FailedError = "failed";
-
-    /// <summary>An absolute https address on github.com without user information or a non-default port.</summary>
-    internal static bool TryGitHubAddress(string? address, out Uri uri)
-    {
-        uri = null!;
-        if (string.IsNullOrWhiteSpace(address) || !Uri.TryCreate(address, UriKind.Absolute, out var parsed)) return false;
-        if (parsed.Scheme != Uri.UriSchemeHttps || !parsed.IsDefaultPort || parsed.UserInfo.Length != 0
-            || !string.Equals(parsed.IdnHost, "github.com", StringComparison.OrdinalIgnoreCase)) return false;
-        uri = parsed;
-        return true;
-    }
 
     /// <summary>
     /// A fully qualified local drive path (no UNC or device path, no wildcard) in its full form. Whether the file
@@ -48,28 +37,21 @@ internal static class ShellOpenRequests
         Arguments = "/select,\"" + fullPath + "\"",
         UseShellExecute = false
     };
-
-    internal static ProcessStartInfo BrowserStart(Uri uri) => new(uri.AbsoluteUri) { UseShellExecute = true };
 }
 
 public sealed partial class MainForm
 {
-    private void HandleShellOpenRequest(JsonElement message, bool url)
+    private void HandleShellOpenRequest(JsonElement message)
     {
         var requestId = message.TryGetProperty("requestId", out var requestIdProperty)
             && requestIdProperty.ValueKind == JsonValueKind.String ? requestIdProperty.GetString() : null;
         if (string.IsNullOrWhiteSpace(requestId)) return;
-        var value = message.TryGetProperty(url ? "url" : "path", out var valueProperty)
+        var value = message.TryGetProperty("path", out var valueProperty)
             && valueProperty.ValueKind == JsonValueKind.String ? valueProperty.GetString() : null;
         string? error = null;
         try
         {
-            if (url)
-            {
-                if (!ShellOpenRequests.TryGitHubAddress(value, out var uri)) error = ShellOpenRequests.RejectedError;
-                else Process.Start(ShellOpenRequests.BrowserStart(uri))?.Dispose();
-            }
-            else if (!ShellOpenRequests.TryLocalFilePath(value, out var fullPath)) error = ShellOpenRequests.RejectedError;
+            if (!ShellOpenRequests.TryLocalFilePath(value, out var fullPath)) error = ShellOpenRequests.RejectedError;
             else if (!File.Exists(fullPath)) error = ShellOpenRequests.NotFoundError;
             else Process.Start(ShellOpenRequests.RevealStart(fullPath))?.Dispose();
         }

@@ -2531,7 +2531,8 @@ const jaJpAppCopy: AppCopy = {
       targetedRecordings: (count: string) => `削除される完了済みの記録レポート：${count}。記録中のものは残ります。`,
       smartRecords: "スマートスケジューリングの履歴の記録をすべて削除します。復元待ちの記録は残ります。",
       deviceActions: "デバイス再起動の履歴の記録をすべて削除します。進行中の記録は残ります。",
-      cpuMonopolyProtection: (count: string) => cjkText`CPU 占有保護の履歴の記録を${count}件削除します。有効な記録は残ります。`
+      cpuMonopolyProtection: (count: string) => cjkText`CPU 占有保護の履歴の記録を${count}件削除します。有効な記録は残ります。`,
+      crashReports: (count: string) => cjkText`既読のクラッシュ記録を${count}件、そのダンプ ファイルとレポート パッケージとともに削除します。未読の記録は残ります。`
     },
     details: {
       optimizationReports: ["削除すると元に戻せません。同じ問題が再び発生した場合は、もう一度記録されます。", "信頼済みのソフトウェアとデバイスは引き続き信頼されます。"],
@@ -2542,7 +2543,8 @@ const jaJpAppCopy: AppCopy = {
       targetedRecordings: ["これらのレポートとそのフレーム間隔およびリソースデータは完全に削除され、元に戻すことはできません。"],
       smartRecords: ["削除すると元に戻せません。記録の通し番号は最初からやり直しになりません。"],
       deviceActions: ["削除すると元に戻せません。記録の通し番号は最初からやり直しになりません。"],
-      cpuMonopolyProtection: ["削除すると元に戻せません。", "すでに通常の優先度に戻したプロセスには影響しません。"]
+      cpuMonopolyProtection: ["削除すると元に戻せません。", "すでに通常の優先度に戻したプロセスには影響しません。"],
+      crashReports: ["削除すると元に戻せません。"]
     },
     clearedTitle: "履歴を消去しました",
     cleared: (count: string) => `削除した履歴の項目：${count}。`,

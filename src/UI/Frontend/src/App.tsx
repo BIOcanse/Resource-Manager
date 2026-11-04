@@ -248,7 +248,7 @@ export default function App() {
           return;
         }
         case "crash-report": {
-          // The dialog lists unread crashes; this notification links to the full crash history.
+          // Unread crashes are also listed by the crash dialog; this notice only opens Manage > Crash reports.
           const text = currentSettingsText().crashDumps;
           showToast({
             tone: "warning",
@@ -541,7 +541,7 @@ export default function App() {
         onClose={() => setTaskCenterOpen(false)}
         onCancelError={(error) => showErrorToast(error, uiText.appShellExtras.cancelTaskFailed)}
       />
-      <CrashReportDialog store={crashReports} active={frontendWork.frontendVisible()} />
+      <CrashReportDialog store={crashReports} active={frontendWork.frontendVisible()} onView={() => openManageSubpage("crashReports")} />
       <ConfirmDialogHost request={confirmQueue()[0] ?? null} onResolve={resolveConfirmDialog} />
       <ToastHost items={toasts()} onDismiss={dismissToast} />
       <TooltipLayer />

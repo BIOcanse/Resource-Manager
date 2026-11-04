@@ -4,8 +4,8 @@ using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Endpoints;
 
-// 崩溃记录 (docs/crash_dumps_2026-10-31.md 接口). The backend never opens anything: it returns the URL and paths, and
-// the window process opens the browser or selects the file when the user clicks.
+// Crash report endpoints. The backend never opens anything: it returns paths, and the window process
+// selects the file when the user clicks.
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     internal static IEndpointRouteBuilder MapCrashReportEndpoints(this IEndpointRouteBuilder app)
@@ -15,8 +15,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             NativeCrashReportResponse.Send(context, NativeCrashReportCapabilities.Invoke(owner, NativeCrashReportCapabilities.Operation.Read)));
         app.MapPost("/api/crash-reports/{id}/package", (HttpContext context, string id, ICrashReportOwner owner) =>
             NativeCrashReportResponse.Send(context, NativeCrashReportCapabilities.Invoke(owner, NativeCrashReportCapabilities.Operation.Package, id)));
-        app.MapPost("/api/crash-reports/{id}/issue-link", (HttpContext context, string id, ICrashReportOwner owner) =>
-            NativeCrashReportResponse.Send(context, NativeCrashReportCapabilities.Invoke(owner, NativeCrashReportCapabilities.Operation.IssueLink, id)));
         app.MapPost("/api/crash-reports/{id}/acknowledge", (HttpContext context, string id, ICrashReportOwner owner) =>
             NativeCrashReportResponse.Send(context, NativeCrashReportCapabilities.Invoke(owner, NativeCrashReportCapabilities.Operation.Acknowledge, id)));
         app.MapDelete("/api/crash-reports/{id}", (HttpContext context, string id, ICrashReportOwner owner) =>

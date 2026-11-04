@@ -5,7 +5,7 @@ const expect = std.testing.expect;
 const equal = std.testing.expectEqual;
 
 const Owner = struct {
-    calls: [5]usize = @splat(0),
+    calls: [4]usize = @splat(0),
     missing: bool = false,
     fail: bool = false,
     target: ?[*]const u16 = null,
@@ -28,9 +28,6 @@ const Owner = struct {
     fn package(context: ?*anyopaque, target: ?[*]const u16, length: usize, value: *?*anyopaque) callconv(.c) i32 {
         return from(context).call(.package, target, length, value);
     }
-    fn issueLink(context: ?*anyopaque, target: ?[*]const u16, length: usize, value: *?*anyopaque) callconv(.c) i32 {
-        return from(context).call(.issue_link, target, length, value);
-    }
     fn acknowledge(context: ?*anyopaque, target: ?[*]const u16, length: usize, value: *?*anyopaque) callconv(.c) i32 {
         return from(context).call(.acknowledge, target, length, value);
     }
@@ -41,10 +38,10 @@ const Owner = struct {
         deleted.* = if (self.missing) 0 else 1;
         return code;
     }
-    const callbacks: c.Owner = .{ .read = read, .package = package, .issue_link = issueLink, .acknowledge = acknowledge, .delete = delete };
+    const callbacks: c.Owner = .{ .read = read, .package = package, .acknowledge = acknowledge, .delete = delete };
 };
 
-test "all five bindings preserve target references, one call and original null/false semantics" {
+test "all four bindings preserve target references, one call and original null/false semantics" {
     const target = [_]u16{ 'r', 0, 0xd800, 0x4e2d, 0xdcff };
     var operation: u32 = 0;
     while (operation <= @backingInt(c.Operation.delete)) : (operation += 1) {
@@ -61,7 +58,7 @@ test "all five bindings preserve target references, one call and original null/f
                 try expect(owner.target.? == &target);
                 try equal(target.len, owner.length);
             }
-            try equal(if (operation == 4 or missing != 0) null else @as(?*anyopaque, &owner), result.value);
+            try equal(if (operation == @backingInt(c.Operation.delete) or missing != 0) null else @as(?*anyopaque, &owner), result.value);
         }
     }
 }
@@ -84,7 +81,7 @@ test "invalid ABI calls refuse before side effects and empty targets stay owner 
     try equal(c.Code.invalid, capability.invoke(1, null, 1, &owner, &Owner.callbacks, &result));
     try equal(c.Code.invalid, capability.invoke(1, null, 0, &owner, null, &result));
     try equal(c.Code.invalid, capability.invoke(1, null, 0, &owner, &Owner.callbacks, null));
-    try equal([_]usize{ 0, 0, 0, 0, 0 }, owner.calls);
+    try equal([_]usize{ 0, 0, 0, 0 }, owner.calls);
     try equal(c.Code.success, capability.invoke(1, null, 0, &owner, &Owner.callbacks, &result));
     try equal(@as(usize, 1), owner.calls[1]);
     try equal(@as(usize, 0), owner.length);
@@ -93,7 +90,6 @@ test "invalid ABI calls refuse before side effects and empty targets stay owner 
 test "public IDs are protocol neutral and distinct" {
     try std.testing.expectEqualStrings("crash-reports.read", c.id(.read));
     try std.testing.expectEqualStrings("crash-reports.package", c.id(.package));
-    try std.testing.expectEqualStrings("crash-reports.issue-link", c.id(.issue_link));
     try std.testing.expectEqualStrings("crash-reports.acknowledge", c.id(.acknowledge));
     try std.testing.expectEqualStrings("crash-reports.delete", c.id(.delete));
 }

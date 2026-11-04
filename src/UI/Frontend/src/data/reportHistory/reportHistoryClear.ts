@@ -6,7 +6,7 @@ import { uiText } from "../../text.ts";
 
 /* Each endpoint clears history entries, or completed recordings, while preserving active entries. The response reports removedCount. */
 export const reportHistoryKinds = ["optimizationReports", "kernelLeaks", "targetedRecordings", "smartRecords", "memoryProtection",
-  "systemEvents", "freezeReviews", "deviceActions", "cpuMonopolyProtection"] as const;
+  "systemEvents", "freezeReviews", "deviceActions", "cpuMonopolyProtection", "crashReports"] as const;
 export type ReportHistoryKind = typeof reportHistoryKinds[number];
 
 export const reportHistoryClearPaths: Readonly<Record<ReportHistoryKind, string>> = {
@@ -18,7 +18,8 @@ export const reportHistoryClearPaths: Readonly<Record<ReportHistoryKind, string>
   systemEvents: "/api/system-events/history/clear",
   freezeReviews: "/api/freeze-recorder/reviews/history/clear",
   deviceActions: "/api/device-actions/records/history/clear",
-  cpuMonopolyProtection: "/api/cpu-monopoly-protection/records/history/clear"
+  cpuMonopolyProtection: "/api/cpu-monopoly-protection/records/history/clear",
+  crashReports: "/api/crash-reports/history/clear"
 };
 
 export const reportHistoryClearDecoder = defineResponseDecoder<number>("report-history.clear.v1", (value) =>

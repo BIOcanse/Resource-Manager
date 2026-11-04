@@ -2531,7 +2531,8 @@ const esEsAppCopy: AppCopy = {
       targetedRecordings: (count: string) => `Informes de grabación completados que se eliminarán: ${count}. Una grabación en curso se conserva.`,
       smartRecords: "Se eliminarán todos los registros del historial de la programación inteligente. Los registros pendientes de restaurar se conservan.",
       deviceActions: "Se eliminarán todos los registros del historial de reinicios de dispositivos. Los registros en curso se conservan.",
-      cpuMonopolyProtection: (count: string) => `Registros del historial de la protección contra el monopolio de la CPU que se eliminarán: ${count}. Los registros aún vigentes se conservan.`
+      cpuMonopolyProtection: (count: string) => `Registros del historial de la protección contra el monopolio de la CPU que se eliminarán: ${count}. Los registros aún vigentes se conservan.`,
+      crashReports: (count: string) => `Registros de bloqueo leídos que se eliminarán junto con sus archivos de volcado y paquetes de informe: ${count}. Los registros no leídos se conservan.`
     },
     details: {
       optimizationReports: ["Esta acción no se puede deshacer. Si el mismo problema vuelve a producirse, se registrará de nuevo.", "El software y los dispositivos de confianza siguen siendo de confianza."],
@@ -2542,7 +2543,8 @@ const esEsAppCopy: AppCopy = {
       targetedRecordings: ["Estos informes y sus intervalos de fotogramas y datos de recursos se eliminarán de forma permanente. Esta acción no se puede deshacer."],
       smartRecords: ["Esta acción no se puede deshacer. Los números de secuencia de los registros no vuelven a empezar."],
       deviceActions: ["Esta acción no se puede deshacer. Los números de secuencia de los registros no vuelven a empezar."],
-      cpuMonopolyProtection: ["Esta acción no se puede deshacer.", "Los procesos cuya prioridad ya se devolvió a normal no se ven afectados."]
+      cpuMonopolyProtection: ["Esta acción no se puede deshacer.", "Los procesos cuya prioridad ya se devolvió a normal no se ven afectados."],
+      crashReports: ["Esta acción no se puede deshacer."]
     },
     clearedTitle: "Historial borrado",
     cleared: (count: string) => `Entradas del historial eliminadas: ${count}.`,

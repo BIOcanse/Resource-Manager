@@ -9,7 +9,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 // adapter can use this same binding without an HttpContext or HTTP JSON.
 internal static partial class NativeCrashReportCapabilities
 {
-    internal enum Operation : uint { Read, Package, IssueLink, Acknowledge, Delete }
+    internal enum Operation : uint { Read, Package, Acknowledge, Delete }
     internal enum Outcome : uint { Success, NotFound }
     internal readonly record struct Result(Operation Operation, Outcome Outcome, object? Value);
 
@@ -32,8 +32,7 @@ internal static partial class NativeCrashReportCapabilities
         var handle = GCHandle.Alloc(borrowed);
         try
         {
-            var callbacks = new Callbacks { Read = &Read, Package = &Package, IssueLink = &IssueLink,
-                Acknowledge = &Acknowledge, Delete = &Delete };
+            var callbacks = new Callbacks { Read = &Read, Package = &Package, Acknowledge = &Acknowledge, Delete = &Delete };
             // The original UTF-16 string and payload are never converted or
             // copied. Callbacks use the same original string kept in the scope.
             fixed (char* target = id)
@@ -86,14 +85,6 @@ internal static partial class NativeCrashReportCapabilities
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static unsafe int IssueLink(nint context, ushort* target, nuint length, nint* value)
-    {
-        var call = Borrow(context);
-        try { *value = call.Capture(context, call.Owner.IssueLink(call.Id)); return 0; }
-        catch (Exception error) { call.Failure = ExceptionDispatchInfo.Capture(error); return 2; }
-    }
-
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe int Acknowledge(nint context, ushort* target, nuint length, nint* value)
     {
         var call = Borrow(context);
@@ -113,7 +104,7 @@ internal static partial class NativeCrashReportCapabilities
     private unsafe struct Callbacks
     {
         internal delegate* unmanaged[Cdecl]<nint, nint*, int> Read;
-        internal delegate* unmanaged[Cdecl]<nint, ushort*, nuint, nint*, int> Package, IssueLink, Acknowledge;
+        internal delegate* unmanaged[Cdecl]<nint, ushort*, nuint, nint*, int> Package, Acknowledge;
         internal delegate* unmanaged[Cdecl]<nint, ushort*, nuint, uint*, int> Delete;
     }
 

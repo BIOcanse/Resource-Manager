@@ -65,14 +65,15 @@ export function crashFaultSummary(fault: CrashReportFault | null, copy: CrashDum
   return parts.length > 0 ? parts.join(" · ") : copy.faultUnknown;
 }
 
-/** Prefer an existing report package, then an existing dump; return null when neither exists. */
+/** File that "Open containing folder" selects: the report package when present, else the retained dump; null when neither exists. */
 export function crashReportLocalFile(report: CrashReport): string | null {
   if (report.package) return report.package.path;
-  return report.dumpStatus === "saved" && report.dump ? report.dump.path : null;
+  return report.dumpStatus === "saved" && !report.dumpRemoved && report.dump ? report.dump.path : null;
 }
 
-/** Show the retained dump path or explain its absence. */
+/** Dump column text: the path when retained, a note when Windows rotated it away (dumpRemoved), otherwise why there is none. */
 export function crashReportDumpText(report: CrashReport, copy: CrashDumpsCopy): { readonly path: string | null; readonly note: string | null } {
+  if (report.dumpRemoved) return { path: null, note: copy.dumpRemoved };
   switch (report.dumpStatus) {
     case "saved": return { path: report.dump?.path ?? null, note: null };
     case "notEnabled": return { path: null, note: copy.dumpNotEnabled };

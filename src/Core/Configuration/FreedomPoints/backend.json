@@ -939,7 +939,7 @@
                 "consumers": [
                   "HostManagerPlanCompiler.CompileCrashReports"
                 ],
-                "description": "Crash dumps and crash reports (docs/crash_dumps_2026-10-31.md). The settings mode 'default' resolves to beta_default_mode when the build version contains beta_version_marker, otherwise to stable_default_mode. images are the executables whose WER LocalDumps keys RM owns, with the role the crash list names. Dumps go to <package>/UserData/<folder_name>; the record list and report packages go to <package>/UserData/<reports_folder_name>, which users cannot write; users_may_write_dumps grants interactive users create-file access there so the window process can write its own dump. mini_dump_custom_flags is the WER CustomDumpFlags of a mini dump (data segments, handles, indirect memory, unloaded modules, thread data). keep_count_maximum caps the per-program keep count of the settings; record_capacity caps all records; subscriber_capacity caps active crash-list readers. A scan lists at most dump_scan_max_entries files. Application log events of the same image within event_match_window_seconds of a dump belong to it; 1000 and 1026 events within event_merge_window_seconds are one crash; at most event_query_max_events are read per query; the very first scan looks back first_scan_event_lookback_seconds. Packages hold the service log from service_log_before_seconds before to service_log_after_seconds after the crash, at most service_log_max_entries entries; a package over issue_attachment_limit_bytes (GitHub's 25 MB non-image attachment limit) is reported, never truncated. The issue link opens issue_new_url, stays within issue_url_max_chars and quotes at most issue_stack_max_lines stack lines.",
+                "description": "Crash dumps and crash reports. The settings mode 'default' resolves to beta_default_mode when the build version contains beta_version_marker, otherwise to stable_default_mode. images are the executables whose WER LocalDumps keys RM owns, with the role the crash list names. Dumps go to <package>/UserData/<folder_name>; the record list and report packages go to <package>/UserData/<reports_folder_name>, which users cannot write; users_may_write_dumps grants interactive users create-file access there so the window process can write its own dump. mini_dump_custom_flags is the WER CustomDumpFlags of a mini dump (data segments, handles, indirect memory, unloaded modules, thread data). keep_count_maximum caps the per-program keep count of the settings; record_capacity caps all records; subscriber_capacity caps active crash-list readers. A scan lists at most dump_scan_max_entries files. Application log events of the same image within event_match_window_seconds of a dump belong to it; 1000 and 1026 events within event_merge_window_seconds are one crash; at most event_query_max_events are read per query; the very first scan looks back first_scan_event_lookback_seconds. Packages hold the service log from service_log_before_seconds before to service_log_after_seconds after the crash, at most service_log_max_entries entries; a package is never truncated.",
                 "id": "crash_reports",
                 "value_type": "object",
                 "value": {
@@ -967,11 +967,7 @@
                   "service_log_before_seconds": 600,
                   "service_log_after_seconds": 120,
                   "service_log_max_entries": 500,
-                  "version_history_capacity": 32,
-                  "issue_attachment_limit_bytes": 26214400,
-                  "issue_new_url": "https://github.com/BIOcanse/Resource-Manager/issues/new",
-                  "issue_url_max_chars": 8000,
-                  "issue_stack_max_lines": 15
+                  "version_history_capacity": 32
                 },
                 "status": "active",
                 "update_class": "rebuild_backend"

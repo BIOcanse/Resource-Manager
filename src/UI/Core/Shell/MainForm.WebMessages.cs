@@ -88,9 +88,8 @@ public sealed partial class MainForm
             case "shell.pickFolder":
                 HandleFolderPickerRequest(message);
                 break;
-            case "shell.openUrl":
             case "shell.revealFile":
-                HandleShellOpenRequest(message, typeProperty.GetString() == "shell.openUrl");
+                HandleShellOpenRequest(message);
                 break;
             case "shell.loginStartup.get":
             case "shell.loginStartup.set":

@@ -140,7 +140,6 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/performance-overlay/toggle",
             // Crash report actions take the permission of the settings writes (docs/crash_dumps_2026-10-31.md).
             "POST /api/crash-reports/{id}/package",
-            "POST /api/crash-reports/{id}/issue-link",
             "POST /api/crash-reports/{id}/acknowledge",
             "DELETE /api/crash-reports/{id}",
             "PATCH /api/memory-protection",

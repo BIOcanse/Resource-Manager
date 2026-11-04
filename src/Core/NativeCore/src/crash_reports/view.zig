@@ -1,20 +1,18 @@
 //! Read-only crash-domain fields. A Source borrows one original result for a
 //! synchronous call. Text is lent only inside its receiver; no pointer survives
 //! that callback. No HTTP, settings, report storage or allocation lives here.
-pub const Shape = enum(u32) { list = 0, package = 1, issue_link = 2, acknowledge = 3, delete = 4 };
+pub const Shape = enum(u32) { list = 0, package = 1, acknowledge = 2, delete = 3 };
 pub const Scalar = enum(u32) {
     report_count = 0,
-    attachment_limit = 1,
-    dump_present = 2,
-    dump_size = 3,
-    fault_present = 4,
-    package_present = 5,
-    package_size = 6,
-    package_exceeds = 7,
-    acknowledged = 8,
-    reported = 9,
-    result_package_size = 10,
-    result_package_exceeds = 11,
+    dump_present = 1,
+    dump_size = 2,
+    fault_present = 3,
+    package_present = 4,
+    package_size = 5,
+    acknowledged = 6,
+    result_package_size = 7,
+    /// Saved, then deleted by Windows' per-program rotation: status missing with the old dump kept.
+    dump_removed = 8,
 };
 pub const Text = enum(u32) {
     dump_folder = 0,
@@ -31,8 +29,6 @@ pub const Text = enum(u32) {
     fault_description = 12,
     package_path = 13,
     result_package_path = 15,
-    reason = 17,
-    url = 18,
 };
 pub const Date = enum(u32) { occurred_at = 0, package_created_at = 1, result_package_created_at = 2 };
 pub const DateParts = extern struct { year: i32, month: i32, day: i32, hour: i32, minute: i32, second: i32, fraction: i32, offset_minutes: i32 };
@@ -107,7 +103,6 @@ const Visitor = struct {
         try self.text(index, if (result) .result_package_path else .package_path);
         _ = try self.number(index, if (result) .result_package_size else .package_size);
         try self.date(index, if (result) .result_package_created_at else .package_created_at);
-        _ = try self.flag(index, if (result) .result_package_exceeds else .package_exceeds);
     }
     fn report(self: Visitor, index: usize) VisitError!void {
         try self.text(index, .id);
@@ -120,6 +115,7 @@ const Visitor = struct {
             try self.text(index, .dump_path);
             _ = try self.number(index, .dump_size);
         }
+        _ = try self.flag(index, .dump_removed);
         if (try self.flag(index, .fault_present)) {
             try self.text(index, .fault_module);
             try self.text(index, .fault_offset);
@@ -129,7 +125,6 @@ const Visitor = struct {
         }
         if (try self.flag(index, .package_present)) try self.package(index, false);
         _ = try self.flag(index, .acknowledged);
-        _ = try self.flag(index, .reported);
     }
     fn run(self: Visitor, shape: Shape) VisitError!void {
         switch (shape) {
@@ -137,18 +132,12 @@ const Visitor = struct {
                 const count = try self.number(0, .report_count);
                 if (count < 0) return error.Invalid;
                 try self.text(0, .dump_folder);
-                _ = try self.number(0, .attachment_limit);
                 var index: usize = 0;
                 while (index < @as(u64, @intCast(count))) : (index += 1) try self.report(index);
             },
             .package => {
                 try self.report(0);
                 try self.package(0, true);
-                try self.text(0, .reason);
-            },
-            .issue_link => {
-                try self.text(0, .url);
-                try self.report(0);
             },
             .acknowledge => try self.report(0),
             .delete => {},
