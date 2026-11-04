@@ -1,0 +1,253 @@
+
+/* Terminal uses dark monochrome surfaces, square edges and tabular readings while preserving shared geometry. */
+
+
+:root[data-ui-style="terminal"] {
+  /* Disable invisible header blur on opaque surfaces. */
+  --shell-backdrop: none;
+  color-scheme: dark;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --shadow-color: 0 0 0;
+
+  --elev-1: 0 0 0 0 transparent;
+
+  --elev-2: 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent), 0 6px 16px rgb(0 0 0 / 0.45);
+
+  --elev-3: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 18px 48px rgb(0 0 0 / 0.68);
+  --shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent), 0 10px 28px rgb(0 0 0 / 0.55);
+  --modal-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 24px 64px rgb(0 0 0 / 0.70);
+
+  --edge-highlight: inset 0 1px 0 color-mix(in srgb, var(--accent) 12%, transparent);
+  /* Reserve glow for selected and focused controls rather than repeated table rows. */
+  --terminal-glow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 8px color-mix(in srgb, var(--accent) 32%, transparent);
+  --terminal-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
+}
+
+/* Keep canvas-consumed palette tokens as literal colors. */
+:root[data-ui-style="terminal"][data-theme="phosphor"] {
+  --treemap-directory-hue: 140;
+  --treemap-file-hue: 165;
+  --bg: #050806;
+  --surface: #0a0f0c;
+  --surface-soft: #0d1410;
+  --surface-strong: #14201a;
+  --table-header-bg: #0c1510;
+  --hover-bg: #112419;
+  --text: #b4f0c4;
+  --muted: #72b88b;
+  --line: #1f5a37;
+  --line-soft: #173826;
+  --divider: #1a3d2a;
+  --divider-soft: #12291c;
+  --accent: #41e88a;
+  --accent-strong: #86fbb4;
+  --accent-soft: #0f2e1d;
+  --warn: #ffb54a;
+  --warn-soft: #2e2210;
+  --danger: #ff6159;
+  --danger-soft: #331312;
+  --shell-bg: #070b09;
+  --ok: #b6e86a;
+  --info: #6cc8ff;
+  --empty-bg: rgba(10, 15, 12, 0.56);
+  --resource-empty: #08100b;
+  --on-accent: #02130a;
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --hairline: rgba(65, 232, 138, 0.26);
+}
+
+:root[data-ui-style="terminal"][data-theme="amber"] {
+  --treemap-directory-hue: 34;
+  --treemap-file-hue: 50;
+  --bg: #080603;
+  --surface: #0f0b06;
+  --surface-soft: #140f08;
+  --surface-strong: #1f180d;
+  --table-header-bg: #120d07;
+  --hover-bg: #251b0b;
+  --text: #ffd9a3;
+  --muted: #c4985c;
+  --line: #5e4316;
+  --line-soft: #3a2a10;
+  --divider: #3f2e12;
+  --divider-soft: #2a1f0c;
+  --accent: #ffb030;
+  --accent-strong: #ffcd73;
+  --accent-soft: #2e200a;
+  /* Separate warning hues from the amber accent. */
+  --warn: #e4ef5c;
+  --warn-soft: #262a0c;
+  --danger: #ff5a6c;
+  --danger-soft: #351219;
+  --shell-bg: #0a0704;
+  --ok: #8fe08a;
+  --info: #82c8ff;
+  --empty-bg: rgba(15, 11, 6, 0.56);
+  --resource-empty: #0c0905;
+  --on-accent: #140c00;
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --hairline: rgba(255, 176, 48, 0.26);
+}
+
+:root[data-ui-style="terminal"][data-theme="ice"] {
+  --treemap-directory-hue: 192;
+  --treemap-file-hue: 212;
+  --bg: #04070b;
+  --surface: #09111a;
+  --surface-soft: #0c1622;
+  --surface-strong: #13212f;
+  --table-header-bg: #0b1520;
+  --hover-bg: #102637;
+  --text: #c6ecff;
+  --muted: #7aa9c5;
+  --line: #1d4a63;
+  --line-soft: #163346;
+  --divider: #183a4f;
+  --divider-soft: #102635;
+  --accent: #4fd2ff;
+  --accent-strong: #9ae6ff;
+  --accent-soft: #0c2a3a;
+  --warn: #ffb84d;
+  --warn-soft: #2e2310;
+  --danger: #ff6470;
+  --danger-soft: #351319;
+  --shell-bg: #060a0f;
+  --ok: #7ee6a0;
+  --info: #c0aaff;
+  --empty-bg: rgba(9, 17, 26, 0.56);
+  --resource-empty: #070e15;
+  --on-accent: #00121b;
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --hairline: rgba(79, 210, 255, 0.26);
+}
+
+
+
+
+:root[data-ui-style="terminal"] * {
+  border-radius: 0;
+  scrollbar-color: color-mix(in srgb, var(--accent) 36%, transparent) transparent;
+}
+
+:root[data-ui-style="terminal"] *::before,
+:root[data-ui-style="terminal"] *::after {
+  border-radius: 0;
+}
+
+:root[data-ui-style="terminal"] ::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* Retain heading fonts to preserve their intrinsic line height. */
+
+/* Use monospace readings only where the outer layout fixes width, preventing adjacent labels from shifting. */
+:root[data-ui-style="terminal"] .metric-main-content .metric-value,
+:root[data-ui-style="terminal"] .resource-table-cell.value-cell {
+  font-family: var(--terminal-mono);
+}
+
+:root[data-ui-style="terminal"] .resource-table-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Use bright accent readings while keeping unavailable values muted. */
+:root[data-ui-style="terminal"] .metric-main-content .metric-value:not(.missing) {
+  color: var(--accent-strong);
+}
+
+
+
+
+:root[data-ui-style="terminal"] button {
+  background-image: none;
+}
+
+:root[data-ui-style="terminal"] button.secondary {
+  border-color: var(--line);
+  background-color: var(--surface);
+  color: var(--text);
+}
+
+:root[data-ui-style="terminal"] button.secondary:not(:disabled):hover {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+
+
+
+/* Override shared page-tab tokens so tabs and indicators stay consistent. */
+:root[data-ui-style="terminal"] {
+  --page-tab-bg: transparent;
+  --page-tab-border: transparent;
+  --page-tab-fg: var(--muted);
+  --page-tab-border-hover: var(--line);
+  --page-tab-bg-hover: var(--accent-soft);
+  --page-tab-fg-hover: var(--accent-strong);
+  --page-tab-active-border: var(--accent);
+  --page-tab-active-bg: var(--accent);
+  --page-tab-active-fg: var(--on-accent);
+  --page-tab-active-shadow: var(--terminal-glow);
+  --page-tab-active-border-hover: var(--accent-hover);
+  --page-tab-active-bg-hover: var(--accent-hover);
+}
+
+
+
+
+:root[data-ui-style="terminal"] .count-badge {
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+
+
+:root[data-ui-style="terminal"] .toolbar-search input:focus,
+:root[data-ui-style="terminal"] .resource-table-search input:focus,
+:root[data-ui-style="terminal"] .metric-picker-search:focus-within,
+:root[data-ui-style="terminal"] .standard-select-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: var(--terminal-glow);
+}
+
+/* The select wrapper owns the glow; suppress the inner search focus ring. */
+:root[data-ui-style="terminal"] .standard-select-search:focus-within {
+  outline: none;
+  box-shadow: var(--terminal-glow);
+}
+
+:root[data-ui-style="terminal"] .standard-select-search input:focus-visible {
+  outline: none;
+}
+
+/* Override only off-state switch colors; runtime openness still blends both endpoints. */
+:root[data-ui-style="terminal"] .settings-switch .settings-switch-track {
+  --switch-off-border: var(--line);
+  --switch-off-bg: var(--surface-strong);
+}
+
+:root[data-ui-style="terminal"] .settings-switch .settings-switch-knob {
+  background: color-mix(in oklab, var(--on-accent) calc(var(--switch-openness) * 100%), var(--muted));
+  box-shadow: none;
+}
+
+
+:root[data-ui-style="terminal"] {
+  --segment-bg-hover: var(--accent-soft);
+  --segment-fg-hover: var(--accent-strong);
+}
+
+
+
+/* Use accent shades for owned and shared heat bars while retaining solid and dashed patterns. */
+:root[data-ui-style="terminal"] .resource-table-cell.value-cell {
+  --heat-own: color-mix(in oklab, var(--accent) 70%, var(--row-base));
+  --heat-shared: color-mix(in oklab, var(--accent) 40%, var(--row-base));
+}
+
+:root[data-ui-style="terminal"] .resource-table-cell.value-cell.unavailable {
+  background: transparent;
+}

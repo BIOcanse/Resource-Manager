@@ -1,0 +1,301 @@
+.device-specialized-details {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--divider-soft);
+}
+
+.device-monitor-mode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, auto);
+  gap: 8px 14px;
+  align-items: end;
+  padding-left: 10px;
+  border-left: 3px solid var(--accent);
+}
+
+.device-monitor-mode div,
+.device-input-profile div,
+.device-storage-transport,
+.device-storage-overview > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-monitor-mode span,
+.device-input-profile span,
+.device-storage-transport span,
+.device-storage-overview span,
+.device-monitor-mode small,
+.device-input-profile small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-monitor-mode strong {
+  font-size: 13px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.device-monitor-mode > div:nth-child(-n + 2) strong {
+  font-size: 18px;
+}
+
+.device-monitor-mode small {
+  grid-column: 1 / -1;
+}
+
+.device-hub-stats,
+.device-capability-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.device-hub-stats > div,
+.device-capability-status > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-left: 2px solid var(--line);
+  background: var(--surface);
+}
+
+.device-hub-stats strong {
+  font-size: 18px;
+}
+
+.device-hub-stats span,
+.device-capability-status span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.device-capability-status > div.active {
+  border-left-color: var(--accent);
+}
+
+.device-capability-status strong {
+  font-size: 11px;
+}
+
+.device-storage-transport {
+  padding: 8px 10px;
+  border-left: 3px solid color-mix(in oklab, var(--accent) 70%, #d7a433);
+  background: var(--surface);
+}
+
+.device-storage-overview,
+.device-input-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.device-storage-overview > div,
+.device-input-metrics > div {
+  padding: 8px 9px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+}
+
+.device-storage-overview strong {
+  font-size: 16px;
+}
+
+.device-input-metrics > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-input-metrics span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.device-input-metrics strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.device-storage-partitions,
+.device-smart-storage {
+  display: grid;
+  gap: 6px;
+}
+
+.device-storage-partition {
+  display: grid;
+  gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+}
+
+.device-storage-partition > header,
+.device-storage-volume > div,
+.device-smart-storage > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.device-storage-partition > header span,
+.device-storage-partition > small,
+.device-storage-volume span,
+.device-storage-volume small,
+.device-smart-storage span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.device-storage-volume {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--divider-soft);
+}
+
+.device-storage-volume > div strong,
+.device-smart-storage strong {
+  font-size: 11px;
+}
+
+.device-storage-usage {
+  height: 3px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.device-storage-usage > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.device-smart-storage > div {
+  padding: 7px 8px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+}
+
+.device-camera-best-mode {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+}
+
+.device-camera-best-mode span,
+.device-capability-source {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.device-camera-best-mode strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.device-camera-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.device-camera-modes span {
+  padding: 3px 5px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.device-storage-transport strong,
+.device-input-profile strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.device-input-profile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.device-specialized-facts {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 5px 9px;
+  font-size: 11px;
+}
+
+.device-specialized-facts span {
+  color: var(--muted);
+}
+
+.device-specialized-facts strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.device-internal-facts {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--divider-soft);
+}
+
+.device-internal-facts > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.device-capability-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.device-capability-list span {
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .device-monitor-mode,
+  .device-hub-stats,
+  .device-capability-status,
+  .device-storage-overview,
+  .device-input-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .device-monitor-mode small {
+    grid-column: auto;
+  }
+
+  .device-storage-partition > header,
+  .device-storage-volume > div,
+  .device-smart-storage > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

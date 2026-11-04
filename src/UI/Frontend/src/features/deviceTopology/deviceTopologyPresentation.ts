@@ -1,0 +1,233 @@
+import { displayConnectorTechnology, portDisplayName, portHardwareKind, portProtocol } from "./deviceVocabulary.ts";
+import type { DeviceTopologyPort } from "../../types";
+import { connectedDisplay } from "./deviceTopologyDisplay.ts";
+import { uiText } from "../../text.ts";
+
+export type DeviceTopologyConnectionState = "connected" | "disconnected" | "unknown";
+
+export interface DeviceTopologyNodePresentation {
+  title: string;
+  subtitle: string;
+  badge: string;
+  connectionState?: DeviceTopologyConnectionState;
+  connectionLabel?: string;
+  connectionTarget?: string;
+}
+
+export interface DeviceTopologySummaryField {
+  label: string;
+  value: string;
+}
+
+const externalConnectorKinds = new Set([
+  "usb-a",
+  "usb-c",
+  "thunderbolt",
+  "hdmi",
+  "displayport",
+  "mini-displayport",
+  "dvi",
+  "vga",
+  "rj45",
+  "audio",
+  "power",
+  "sd-card"
+]);
+
+export function describeDeviceTopologyNode(port: DeviceTopologyPort): DeviceTopologyNodePresentation {
+  if (!isExternalDeviceInterface(port)) {
+    return {
+      title: portDisplayName(port),
+      subtitle: joinSummary(portHardwareKind(port), meaningfulSpeed(port.speed)),
+      badge: isControllerNode(port) ? uiText.deviceInterface.controllerBadge : portProtocol(port)
+    };
+  }
+
+  const connectionState = resolveConnectionState(port);
+  const connectionLabel = connectionStateLabel(connectionState);
+  const connectionTarget = resolveConnectionTarget(port);
+  const transport = meaningfulSpeed(port.speed) ?? portProtocol(port);
+  return {
+    title: externalInterfaceLabel(port.connectorKind),
+    subtitle: joinSummary(connectionLabel, connectionTarget, transport),
+    badge: connectionLabel,
+    connectionState,
+    connectionLabel,
+    connectionTarget
+  };
+}
+
+export function deviceTopologySummaryFields(port: DeviceTopologyPort): DeviceTopologySummaryField[] {
+  if (isExternalDeviceInterface(port)) {
+    const presentation = describeDeviceTopologyNode(port);
+    const fields: DeviceTopologySummaryField[] = [
+      { label: uiText.deviceTopology.label.interfaceType, value: presentation.title },
+      { label: uiText.deviceTopology.label.connectionState, value: presentation.connectionLabel ?? uiText.deviceTopology.connectionState.unknown },
+      { label: uiText.deviceTopology.label.protocol, value: externalInterfaceProtocol(port) }
+    ];
+    if (port.display?.connectorInstance && port.display.connectorInstance > 0) {
+      fields.push({ label: uiText.deviceInterface.interfaceIndex, value: String(port.display.connectorInstance) });
+    } else if (!port.display) {
+      fields.push({ label: uiText.deviceTopology.label.currentInterfaceSpeed, value: displayValue(port.speed) });
+    }
+    return fields;
+  }
+
+  if (isControllerNode(port)) {
+    return [
+      { label: uiText.deviceSpecialized.controllerType, value: port.advancedInterconnect ? uiText.deviceInterface.systemInterconnectNode : displayValue(port.hardwareKind) },
+      { label: uiText.deviceTopology.label.deviceStatus, value: displayValue(port.status) },
+      { label: uiText.deviceTopology.label.driverService, value: displayValue(port.service) },
+      { label: uiText.deviceTopology.label.protocol, value: displayValue(portProtocol(port)) }
+    ];
+  }
+
+  return [
+    { label: uiText.deviceTopology.label.deviceType, value: displayValue(port.hardwareKind) },
+    { label: uiText.deviceTopology.label.deviceStatus, value: displayValue(port.status) },
+    { label: uiText.deviceTopology.label.bus, value: busLabel(port.busKind) },
+    { label: uiText.deviceTopology.label.protocol, value: displayValue(portProtocol(port)) }
+  ];
+}
+
+function isExternalDeviceInterface(port: DeviceTopologyPort) {
+  return port.usb?.portIsUserConnectable === true
+    || (port.isPhysicalConnector && externalConnectorKinds.has(port.connectorKind.toLocaleLowerCase()));
+}
+
+function isControllerNode(port: DeviceTopologyPort) {
+  return port.advancedInterconnect != null || port.usb?.deviceIsHub === true
+    || ["scsiadapter", "ucm"].includes(port.pnpClass?.trim().toLocaleLowerCase() ?? "");
+}
+
+function resolveConnectionState(port: DeviceTopologyPort): DeviceTopologyConnectionState {
+  if (port.usb) {
+    return port.usb.deviceConnected ? "connected" : "disconnected";
+  }
+
+  if (port.display) {
+    return connectedDisplay(port) ? "connected" : "disconnected";
+  }
+
+  if (port.network) {
+    const state = port.network.connectionState.trim();
+    if (state === "disconnected") {
+      return "disconnected";
+    }
+    if (state === "connected") {
+      return "connected";
+    }
+  }
+
+  // No USB, display, or network connection fact exists for this port.
+  return "unknown";
+}
+
+function resolveConnectionTarget(port: DeviceTopologyPort) {
+  if (port.usb?.deviceConnected) {
+    return firstText(port.usb.productName, port.displayName);
+  }
+
+  const display = connectedDisplay(port);
+  if (display) {
+    return firstText(display.monitorName, port.displayName);
+  }
+
+  return undefined;
+}
+
+function connectionStateLabel(state: DeviceTopologyConnectionState) {
+  switch (state) {
+    case "connected":
+      return uiText.deviceTopology.connectionState.connected;
+    case "disconnected":
+      return uiText.deviceTopology.connectionState.disconnected;
+    default:
+      return uiText.deviceTopology.connectionState.unknown;
+  }
+}
+
+function externalInterfaceProtocol(port: DeviceTopologyPort) {
+  return displayValue(
+    port.usb?.supportedProtocols
+      ?? (port.display ? displayConnectorTechnology(port.display) : undefined)
+      ?? portProtocol(port)
+  );
+}
+
+function externalInterfaceLabel(connectorKind: string) {
+  switch (connectorKind.toLocaleLowerCase()) {
+    case "usb-a":
+      return uiText.deviceInterface.connector.usbA;
+    case "usb-c":
+      return uiText.deviceInterface.connector.usbC;
+    case "thunderbolt":
+      return uiText.deviceInterface.connector.thunderbolt;
+    case "hdmi":
+      return uiText.deviceInterface.connector.hdmi;
+    case "displayport":
+      return uiText.deviceInterface.connector.displayPort;
+    case "mini-displayport":
+      return uiText.deviceInterface.connector.miniDisplayPort;
+    case "dvi":
+      return uiText.deviceInterface.connector.dvi;
+    case "vga":
+      return uiText.deviceInterface.connector.vga;
+    case "rj45":
+      return uiText.deviceInterface.connector.rj45;
+    case "audio":
+      return uiText.deviceInterface.connector.audio;
+    case "power":
+      return uiText.deviceInterface.connector.power;
+    case "sd-card":
+      return uiText.deviceInterface.connector.sdCard;
+    default:
+      return uiText.deviceInterface.connector.generic;
+  }
+}
+
+function busLabel(busKind: string) {
+  switch (busKind.toLocaleLowerCase()) {
+    case "usb":
+      return "USB";
+    case "usb4":
+      return "USB4";
+    case "thunderbolt":
+      return "Thunderbolt";
+    case "pci":
+      return "PCI";
+    case "display":
+      return uiText.deviceInterface.category.displayOutput;
+    case "network":
+      return uiText.deviceInterface.category.network;
+    case "audio":
+      return uiText.deviceInterface.category.audio;
+    case "storage":
+      return uiText.deviceInterface.category.storage;
+    case "bluetooth":
+      return uiText.deviceInterface.category.bluetooth;
+    case "system":
+      return uiText.deviceInterface.category.system;
+    default:
+      return displayValue(busKind);
+  }
+}
+
+function displayValue(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized || "--";
+}
+
+// Unavailable rates are null; do not infer absence from display strings.
+function meaningfulSpeed(value: string | null) {
+  const normalized = (value ?? "").trim();
+  return normalized ? normalized : undefined;
+}
+
+function firstText(...values: Array<string | null | undefined>) {
+  return values.map((value) => value?.trim()).find(Boolean);
+}
+
+function joinSummary(...values: Array<string | null | undefined>) {
+  return values.map((value) => value?.trim()).filter(Boolean).join(" · ");
+}

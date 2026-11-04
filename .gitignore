@@ -1,0 +1,52 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/publish/
+**/artifacts/
+**/.artifacts/
+**/wwwroot/
+**/TestResults/
+**/test-results/
+**/.zig-cache*/
+**/.zig-global-cache*/
+**/zig-out/
+**/__pycache__/
+**/target/
+**/.codex/
+**/.codex-*/
+**/.playwright-cli/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/.claude/
+/.local/
+/build/dependencies/freedom-point/restored-packages/
+**/.env
+**/.env.*
+*.user
+*.suo
+*.log
+*.tmp
+*.dmp
+*.etl
+*.har
+*.pfx
+*.p12
+*.pem
+*.key
+# README 里的截图是对外资源，必须随仓库发出；docs/ 下其余内容仍然不进仓库。
+# 目录本身不能整体排除，否则 git 不会再进去看 negation 规则。
+/docs/*
+!/docs/screenshots/
+# The public state-item tables (one per registry version) translate UIDs for outside readers; they ship with the repository.
+!/docs/state-items/
+/evidence/
+/output/
+# FreedomPoint values are selected afresh by the frontend build, never committed.
+/src/UI/Core/Preferences/Generated/FrontendPoints.Values.g.cs
+/src/UI/Frontend/src/preferences/generated/frontendPoints.values.ts
+
+# Versioned release products are delivered through GitHub Releases.
+/result/
+/src/UI/Frontend/src/preferences/generated/desktopPoints.values.ts

@@ -1,0 +1,381 @@
+import { cjkText } from "../../cjkSpacing.ts";
+import { zhControlPresentationCopy } from "./controlPresentation.ts";
+export const zhShellCopy = {
+  common: {
+    saving: "儲存中",
+    saveFailed: "儲存失敗",
+    helpHint: "說明"
+  },
+  feedback: {
+    confirm: "確認",
+    cancel: "取消",
+    close: "關閉",
+    success: "操作完成",
+    error: "操作失敗",
+    warning: "需要處理",
+    info: "提示"
+  },
+  page: {
+    monitor: "監視控制檯",
+    components: "元件與軟體",
+    manage: "管理",
+    details: "裝置資訊",
+    settings: "設定",
+    control: "韌體調整"
+  },
+  /** 管理的二级分页（docs/ui_information_architecture_2026-11-02.md 第 6 节）；其余子页沿用各功能已有的名字。 */
+  manage: {
+    tabsLabel: "管理分頁",
+    smartScheduling: "智慧排程",
+    freezeProtection: "假死防護",
+    diskManagement: "磁碟管理",
+    crashReports: "當機報告"
+  },
+  reportRules: {
+    "title": "報告判定",
+    "note": "修改一條規則後，該規則的計數和已啟用報告會清除，並按新值重新判斷；信任紀錄保留。",
+    "strayProcessTitle": "疑似游離程式",
+    "backgroundMemoryTitle": "背景記憶體使用量偏高",
+    "loading": "正在讀取判定規則…",
+    "loadFailed": "無法讀取判定規則。",
+    "retry": "重新讀取",
+    "defaultValue": "預設",
+    "reset": "還原預設值",
+    "executableNamesHelp": "每行一個執行檔名稱，不含副檔名（寫 node，不寫 node.exe）；空白清單將不產生報告。",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "CPU 溫度",
+      "cpu_throttle_usage": "CPU 使用率",
+      "cpu_throttle_frequency": "CPU 頻率比例",
+      "interrupt_longest_event": "最長中斷時間",
+      "interrupt_cpu_share": "中斷 CPU 使用率",
+      "background_memory_share": "背景記憶體占比",
+      "background_memory_bytes": "背景記憶體大小",
+      "stray_process_memory": "處理程序記憶體大小",
+      "stray_process_idle": "處理程序閒置時間",
+      "storage_not_responding": "待處理要求（無完成）",
+      "storage_slow": "平均回應時間"
+    },
+    "fields": {
+      "activationThreshold": "啟用門檻",
+      "clearThreshold": "解除門檻",
+      "requiredConsecutiveHits": "連續命中次數",
+      "requiredConsecutiveMisses": "連續未命中次數",
+      "zeroActivityThreshold": "視為無活動的上限",
+      "executableNames": "執行型工具清單"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "分鐘",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "次",
+      "quantity": "個"
+    },
+    "reasons": {
+      "unknown-rule": "規則不存在。",
+      "duplicate-rule": "規則重複。",
+      "not-editable": "此欄位無法編輯。",
+      "out-of-range": "數值超出允許範圍。",
+      "clear-on-wrong-side": "解除門檻必須位於啟用門檻的安全一側。",
+      "invalid-executable-names": "工具清單無效：最多 256 項，每項 1–260 個字元，不能含 /、\\、:，且不能重複。"
+    }
+  },
+  control: {
+    recovery: {
+      retry: "重試",
+      noticeReadFailed: "無法讀取控制須知狀態。請重新讀取。",
+      noticeAckFailed: "確認控制須知失敗。請重試。",
+      accessLoading: "正在讀取調節權限。",
+      accessReadFailed: "無法讀取調節權限。請重新讀取。",
+      objectMissing: "裝置目前不在場。",
+      capabilityMissing: "裝置沒有這項功能。",
+      writerMissing: "此項尚未接入寫入通道。",
+      backendUnavailable: "此項寫入通道目前無法使用。",
+      releaseFailed: "無法釋放此項控制。",
+      unitMismatch: "設定的單位與裝置不符。",
+      writeFailed: "寫入失敗。",
+      writeRejected: "裝置拒絕了此項設定。詳情請見診斷。",
+      readOnly: "目前啟動設定僅允許讀取。",
+      accessRequired: (level: string) => `此項需要 ${level} 調節權限。`,
+      outOfRange: (minimum: number, maximum: number, unit: string) => `此項必須介於 ${minimum} 與 ${maximum} ${unit} 之間。`
+    },
+    reassertionInterval: "重新套用間隔（秒）",
+    stateUnavailable: "尚未讀到控制設定，暫時無法套用。",
+    retryRead: "重新讀取",
+    curveUnavailable: "無法讀取目前的韌體曲線，請重新讀取。",
+    presentation: zhControlPresentationCopy,
+    title: "韌體調整",
+    intro: "風扇、顯示卡、處理器的調節都在這一頁。控不了的也列出來，並說明差什麼。",
+    loadFailed: "無法讀取硬體控制資訊。",
+    empty: "這臺機器上還沒認出可以調節的物件。",
+    ready: "可調節",
+    needsComponent: (name: string) => `需要 ${name}`,
+    forgetFailed: "禁止刪除",
+    instances: {
+      title: "識別到過的裝置",
+      present: "在場",
+      absent: "不在場",
+      refresh: "重新檢測",
+      forget: "刪除記錄",
+      firstSeen: (at: string) => `首次見到 ${at}`,
+      open: "例項管理"
+    },
+    actual: "當前 ",
+    presets: {
+      save: "存為配置",
+      namePlaceholder: "配置名",
+      remove: "刪除配置"
+    },
+    overclock: {
+      title: "Intel 核顯調節授權",
+      body: "Intel 的核顯控制庫要求先取得你的同意才允許改動頻率，"
+        + "負向偏移也不例外。這是它那一側的硬性要求，和其他顯示卡無關。",
+      accept: "同意",
+      revoke: "收回同意",
+      accepted: "已同意"
+    },
+    ownership: {
+      label: "控制歸屬",
+      firmware: "韌體自動管理",
+      app: "軟體管理",
+      firmwareNote: "歸韌體管，下面的設定不生效。"
+    },
+    toggleChoice: {
+      firmware: "交還韌體",
+      firmwareHint: "不保留這一項設定。儲存時恢復接管前的狀態，把控制交還韌體；這不等於把它關閉。"
+    },
+    /*
+     * 第一次进控制页说的两屏。
+     *
+     * 先说保修，再说风险。**不叫"超频免责声明"** —— 这一页大部分事情不是超频：
+     * 降压、降频、往下收功耗墙都在厂商设定的范围之内。把它们和超频写成一句话，
+     * 用户就无法判断自己正在做的到底是哪一种。
+     */
+    notice: {
+      warrantyTitle: "關於保修",
+      warrantyBody: [
+        "廠商條款通常把任何超出規格的執行都算作改動，不分方向 —— 按字面說，降壓也在內。",
+        "實際差別在留不留痕跡：降壓、降頻、往下收功耗牆斷電即失效，處理器裡不留記錄；"
+          + "正向超頻和加電壓會置位處理器裡的標記，送修可查。",
+        "筆記本上不少限制是整機廠商在 BIOS 裡設的，不是晶片廠商的預設值，"
+          + "所以這一頁能調到多少也由整機廠商決定。"
+      ],
+      riskTitle: "開始之前",
+      next: "下一步",
+      accept: "我已知悉"
+    },
+    accessLevel: {
+      title: "調節許可權",
+      intro: "決定控制頁裡哪些項可以調。切到更高一檔不會改動任何已有設定，"
+        + "只是把更多項放出來。",
+      name: { normal: "普通", root: "root" },
+      summary: {
+        normal: "功耗、電流、風扇及常規頻率調節。設定不當可能造成執行不穩定。",
+        root: "放開沒有兜底的項：直接寫電壓、改基準時鐘。平時用不到。"
+      },
+      hint: {
+        normal: "調錯了機器會不穩定，重啟能恢復，硬體不受損。要先在本頁頂部的「硬體控制」裡切到普通檔。",
+        root: "這一項沒有硬體保護兜底，寫錯可能開不了機。要先在本頁頂部的「硬體控制」裡切到 root 檔。"
+      },
+      consequences: {
+        normal: [
+          "電壓調得過低會突然關機，頻率偏移過頭會破圖或算錯 —— 都是重啟就好，不傷硬體。",
+          "溫度牆調高是把過熱保護往外挪，長期這麼跑會加速老化。"
+        ],
+        root: [
+          "直接寫電壓和改基準時鐘沒有任何軟體保護，寫錯一個數可能開不了機。",
+          "這一檔的項平時用不到；要調的話先確認你知道那個數字的含義。"
+        ]
+      },
+      /*
+       * 免责声明。**两档各一句，用户给的原话，不改写。**
+       * 普通档那句在第一次进控制页时就要说 —— 默认这一档也是在动硬件配置。
+       */
+      disclaimer: {
+        normal: "某些設定可能會導致電腦不穩定，對於本就有設計問題的電腦可能會有一定損傷風險，"
+          + "調整硬體配置造成的一切後果本軟體概不負責。",
+        root: "root 模式下某些設定調整極度危險，極大可能造成系統不穩定或者永久性硬體損傷，"
+          + "調整硬體配置造成的一切後果本軟體概不負責。"
+      },
+      confirmTitle: (name: string) => cjkText`切到${name}檔？`,
+      confirmAction: "切過去",
+      cancel: "取消",
+      saveFailed: "切換失敗，還在原來那一檔。"
+    },
+    channel: {
+      "intel-msr": "Intel MSR",
+      nvapi: "NVAPI",
+      "nvapi-drs": "驅動 Profile",
+      nvml: "NVML",
+      "oem-ec": "整機韌體",
+      "amd-smu": "AMD SMU",
+      "fan-core": "風扇核心",
+      igcl: "Intel 顯示卡庫",
+      adlx: "AMD ADLX"
+    } as Record<string, string>,
+    channelHint: "項目旁的標籤表示實際寫入通道。同一裝置的不同項目可能使用不同通道。",
+    detect: "重新檢測硬體",
+    detecting: "檢測中",
+    readings: "只讀數值",
+    takeoverCoversOthers: (others: string) =>
+      `這臺機器上軟體管理是整機一個開關：選了軟體管理，${others} 也會一起脫離韌體自動控制，停在當時的轉速上，除非也給它設一條曲線。`,
+    fanModeHint: {
+      "firmware-management": "韌體依自己的策略調速，本程式只讀取轉速。",
+      "firmware-write": "曲線寫入韌體，由韌體依表調速。關閉本程式、重新開機後依然有效，直到改回韌體管理。",
+      "software-management": "本程式依溫度調整轉速；停止軟體管理後，控制交還韌體。"
+    },
+    createCurve: "新建曲線",
+    readingFirmwareCurve: "正在讀取韌體當前曲線…",
+    fixedStepsCurveNote: "這臺機器的韌體表只讓改每一檔的轉速，溫度斷點是韌體定死的，改不了。",
+    curvePreview: "曲線預覽",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C，${percent}%`,
+    curvePointValue: (percent: number) => `${percent}%`,
+    saveFailed: "儲存失敗",
+    apply: "應用",
+    discard: "撤銷改動",
+    term: {
+      windows: "Windows", nvidia: "NVIDIA", amd: "AMD", intel: "Intel",
+      oem: "整機廠商", unknown: "廠商未知",
+      "firmware-management": "韌體管理",
+      "firmware-write": "韌體寫入",
+      "software-management": "軟體管理",
+      "takeover-all-fans": "軟體管理會同時接管此通道上的所有風扇。",
+      "uniwill-wmi-ec": "韌體通道 (Uniwill EC)",
+      "acer-gaming-wmi": "韌體通道 (Acer WMI)",
+      "asus-atk-wmi": "韌體通道 (ASUS ATK)",
+      "hp-wmi-bios": "韌體通道 (HP BIOS)",
+      "lenovo-legion-wmi": "韌體通道 (Lenovo Legion)",
+      "desktop-superio": "主機板風扇通道 (Super I/O)",
+      "hwmon": "核心風扇通道 (hwmon)",
+      portable: "膝上型電腦",
+      fixed: "桌面主機",
+      cpu: "CPU 風扇",
+      gpu: "顯示卡風扇",
+      intake: "內吹風扇",
+      case: "機箱風扇"
+    } as Record<string, string>,
+    attachment: {
+      integrated: "核顯",
+      discrete: "獨顯",
+      unknown: "接法未知"
+    },
+    status: {
+      unset: "未設定",
+      edited: "已改動，未應用",
+      applying: "正在應用",
+      applied: "已應用",
+      unsupported: "此裝置不支援調整",
+      failed: "應用失敗"
+    },
+    kind: {
+      gpu: "顯示卡",
+      cpu: "處理器",
+      fan: "風扇"
+    }
+  },
+  diskUsage: {
+    health: {
+      title: "硬碟健康",
+      intro: "以下皆為硬碟自身回報的原始值，未換算為健康度百分比。",
+      noDrives: "未發現實體硬碟。",
+      notReported: "此硬碟未回報健康資料。",
+      unavailable: "無法使用",
+      percentageUsedSaturated: "超過 254%",
+      noCriticalWarning: "無",
+      spareWithThreshold: (spare: string, threshold: string) => cjkText`${spare}（閾值${threshold}）`
+    },
+    title: "磁碟佔用",
+    intro: "掃描後按真實大小把檔案擺成方格圖，一眼看出空間去哪了。",
+    scopeLabel: "掃描範圍",
+    scopeAllVolumes: "全部磁碟",
+    scopeVolume: "指定磁碟",
+    scopeFolder: "指定資料夾",
+    modeLabel: "掃描方式",
+    modeFast: "快速掃描",
+    modeFastHint: "只適用於 NTFS，需要管理員許可權。",
+    modeFull: "全掃描",
+    modeFullHint: "逐級遍歷目錄。慢，但任何磁碟都能掃。",
+    chooseFolder: "選擇資料夾",
+    folderNotChosen: "還沒選資料夾",
+    chooseFolderFailed: "選擇資料夾失敗",
+    scan: "開始掃描",
+    rescan: "重新掃描",
+    cancel: "取消掃描",
+    scanning: "正在掃描",
+    scanFailed: "掃描未能完成。請前往任務中心查看詳細資訊。",
+    resultReadFailed: "讀取掃描結果失敗。",
+    retainedResultStale: "目前顯示的是先前的結果，可能已過時。",
+    volumesReadFailed: "讀取磁碟清單失敗。",
+    retainedVolumesStale: "目前顯示的是先前的磁碟清單，可能已過時。",
+    retryRead: "重試讀取",
+    volumeColumnLabel: "磁碟",
+    rootSelectorLabel: "掃描根目錄",
+    queryPage: (page: number) => `第 ${page} 頁`,
+    nextPage: "下一頁",
+    previousPage: "上一頁",
+    partialQuery: "此頁只顯示部分檔案和資料夾，其餘項目位於其他頁。開啟資料夾可查看其中的項目。",
+    noVolumes: "沒有找到可以掃描的磁碟。",
+    notReady: "未就緒",
+    freeOfTotal: (free: string, total: string) => `可用 ${free} / 共 ${total}`,
+    volumeKind: {
+      physical: "物理磁碟",
+      virtual: "虛擬磁碟",
+      external: "行動硬碟",
+      network: "網路位置",
+      optical: "光碟機",
+      unknown: "來源未知"
+    },
+    fastUnsupported: "這個磁碟沒有可讀的檔案系統索引，快速掃描掃不到它；用全掃描。",
+    skipped: "本次沒掃到的目標",
+    skipReason: {
+      noFileSystemIndex: "檔案系統沒有可讀的索引",
+      needsElevation: "讀索引需要管理員許可權",
+      volumeNotReady: "磁碟未就緒",
+      targetUnavailable: "路徑不存在或打不開"
+    },
+    scanKind: {
+      masterFileTable: "讀檔案系統索引",
+      directoryWalk: "逐級遍歷目錄"
+    },
+    navigateUp: "上一層",
+    resetView: "復位檢視",
+    collapseSetup: "收起設定",
+    expandSetup: "重新設定",
+    scanTotals: (size: string, files: number, folders: number) =>
+      `${size} · 本根目錄 · 本次掃描共 ${files} 個檔案、${folders} 個資料夾`,
+    fileCount: (count: number) => `${count} 個檔案`,
+    omitted: (count: number) =>
+      `還有 ${count} 個方格這會兒太小或者不在視野裡，放大就會出現。`,
+    copied: "已複製",
+    menuOpenLocation: "開啟所在位置",
+    menuProperties: "屬性",
+    menuCopyPath: "複製完整路徑",
+    menuDrillDown: "只看這一層",
+    treemapLabel: "磁碟佔用方格圖",
+    menuSize: "大小",
+    menuPath: "路徑",
+    menuKindFile: "檔案",
+    menuKindDirectory: "資料夾",
+    emptyTitle: "還沒有掃描結果",
+    emptyDetail: "選好範圍和方式，點「開始掃描」。"
+  },
+  shell: {
+    productName: "資源管理器",
+    documentTitle: (page: string, product: string) => `${page} · ${product}`,
+    pageNav: "頁面切換",
+    currentPage: "當前頁面",
+    runtimeCapability: "執行能力",
+    taskCenter: "任務中心",
+    taskCenterActive: (count: number) => `任務中心，${count} 項正在進行`,
+    taskCenterSyncing: "任務中心 · 後端任務正在同步",
+    taskCenterDisconnected: "任務中心 · 本機服務正在重新同步",
+    taskCenterUnavailable: "任務中心 · 後端任務狀態不可用",
+    minimize: "最小化",
+    maximize: "最大化",
+    closeWindow: "關閉",
+    uptime: "開機時間",
+    uptimeTitle: "本機自上次開機以來的執行時間"
+  }
+};

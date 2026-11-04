@@ -1,0 +1,197 @@
+using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Infrastructure.Control.Writers;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using FanControlCore;
+
+namespace ResourceManager.App.Infrastructure.Control;
+
+/// <summary>
+/// 给软件风扇曲线喂温度。
+///
+/// **风扇控制核心自己没有传感器**，它只会读写风扇 —— 这是故意的：
+/// 一套完整的温度采集本程序早就有了，不该在那个核心里再长一套。
+/// 所以温度由这里订阅、按期推过去。
+///
+/// 三件事值得单独说：
+///
+/// <list type="bullet">
+/// <item><b>间隔 0.1 秒，而且必须这么小。</b> 温度能在一秒内冲上去十几度；
+///   0.1 秒推送让核心及时看到最新读数，再按曲线目标和加速度调速。
+///   核心不对温度做滤波；放大推送间隔只会增加读数等待，拖慢对温度上冲的响应。</item>
+/// <item><b>订阅随块的生命周期。</b> 父决策节点根据会话还有没有曲线工作决定本块启停，
+///   运行期间只订阅已记录计划需要的温度类别，类别为空或停止时释放。</item>
+/// <item><b>推送停了要能被发现。</b> 推的是"现在多少"，核心那边带时效：
+///   连续几秒收不到就把风扇交还固件。所以这里**不补推历史、不排队**，
+///   赶不上的那一拍直接丢掉 —— 迟到的温度比没有温度更糟。</item>
+/// </list>
+/// </summary>
+public sealed class FanCurveTemperatureFeed(
+    IMetricSnapshotObservationSource metrics,
+    FanControlCoreClient core,
+    HardwareMetricCatalogState catalog,
+    ILogger<FanCurveTemperatureFeed>? logger = null) : BackgroundService
+{
+    /// <summary>
+    /// 订阅与推送的间隔。**这个必须小**，理由见类上那段。
+    /// </summary>
+    internal static readonly TimeSpan Interval =
+        TimeSpan.FromMilliseconds(HardwareControlSettings.ProductDefaults.FanCurveFeed.IntervalMilliseconds);
+
+    private const string SubscriptionId = "control.fan-curve.temperature";
+    private static readonly string[] CpuTemperatureMetricIds = ["cpu.temperature"];
+    internal static readonly TimeSpan MaximumSampleAge =
+        TimeSpan.FromMilliseconds(HardwareControlSettings.ProductDefaults.FanCurveFeed.MaximumSampleAgeMilliseconds);
+    private readonly object subscriptionGate = new();
+    private IDisposable? lease;
+    private MetricSampleRequest? request;
+    private bool finished;
+
+    private void TemperatureKindsChanged(IReadOnlyList<string> _) => UpdateSubscription();
+
+    private void UpdateSubscription()
+    {
+        try { UpdateSubscriptionCore(); }
+        catch (Exception error)
+        {
+            lock (subscriptionGate)
+            {
+                request = null;
+                lease?.Dispose();
+                lease = null;
+            }
+            logger?.LogWarning(error, "Fan temperature subscription callback failed; curves will release on stale input.");
+        }
+    }
+
+    private void UpdateSubscriptionCore()
+    {
+        lock (subscriptionGate)
+        {
+            if (finished) return;
+            // event: SDK kinds and catalog determine the exact held fields.
+            var next = TemperatureRequest(catalog.Current, core.SoftwareCurveTemperatureKinds);
+            if (request is not null && request.Ids.Count == next.Ids.Count
+                && request.Ids.All(next.Includes)) return;
+            lease?.Dispose();
+            lease = null;
+            request = null;
+            if (next.IsEmpty) return;
+            lease = metrics.AcquireSubscription(SubscriptionId, next, Interval);
+            request = next;
+        }
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        lock (subscriptionGate) finished = false;
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        try
+        {
+            catalog.Changed += UpdateSubscription;
+            core.SoftwareCurveTemperatureKindsChanged += TemperatureKindsChanged;
+            UpdateSubscription();
+            var temperatures = PushAsync(run.Token);
+            var curve = core.RunSoftwareCurveAsync(run.Token);
+            try { await await Task.WhenAny(temperatures, curve).ConfigureAwait(false); }
+            finally
+            {
+                run.Cancel();
+                // The entry's completion includes firmware hand-back. Join it
+                // before releasing subscriptions or allowing the parent to stop.
+                await Task.WhenAll(temperatures, curve).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // 关机，正常路径。
+        }
+        finally
+        {
+            ReleaseSubscription();
+        }
+    }
+
+    private void ReleaseSubscription()
+    {
+        catalog.Changed -= UpdateSubscription;
+        core.SoftwareCurveTemperatureKindsChanged -= TemperatureKindsChanged;
+        lock (subscriptionGate)
+        {
+            finished = true;
+            try { lease?.Dispose(); }
+            catch (Exception error) { logger?.LogWarning(error, "Fan temperature subscription release failed."); }
+            lease = null;
+            request = null;
+        }
+    }
+
+    private async Task PushAsync(CancellationToken stop)
+    {
+        using var timer = new PeriodicTimer(Interval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stop).ConfigureAwait(false))
+            {
+                try
+                {
+                    Task<bool>? push = null;
+                    lock (subscriptionGate)
+                    {
+                        // live: one snapshot supplies the entire current-kind batch.
+                        if (request is { } currentRequest && metrics.ReadLatest(currentRequest) is { } snapshot)
+                            push = core.PushTemperaturesAsync(Collect(snapshot, currentRequest, DateTimeOffset.UtcNow), stop);
+                    }
+                    if (push is not null) await push.ConfigureAwait(false);
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    logger?.LogDebug(error, "这一拍温度没推过去。");
+                }
+            }
+        }
+        finally { ReleaseSubscription(); }
+    }
+
+    /// <summary>
+    /// 把快照里的温度整理成核心认的那几个名字。
+    ///
+    /// 名字的约定很简单：<c>cpu</c>、<c>gpu0</c>、<c>gpu1</c>……
+    /// 核心那边按前缀决定哪把风扇看哪一路（显卡风扇只看 gpu 开头的）。
+    ///
+    /// **读不到就不放进去**，不要填 0 —— 那会让曲线以为现在很凉。
+    /// </summary>
+    internal static MetricSampleRequest TemperatureRequest(HardwareMetricSnapshot? snapshot, IReadOnlyList<string> kinds)
+    {
+        var cpu = kinds.Contains(FanTemperatureKinds.Cpu) || kinds.Contains(FanTemperatureKinds.Any);
+        var gpu = kinds.Contains(FanTemperatureKinds.Gpu) || kinds.Contains(FanTemperatureKinds.Any);
+        return MetricSampleRequest.ForIds((cpu ? CpuTemperatureMetricIds : []).Concat(gpu
+            ? snapshot?.Items.Keys.Where(IsGpuTemperature) ?? [] : []));
+    }
+
+    private static bool IsGpuTemperature(string id)
+        => id.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase)
+            && id.EndsWith(".temperature", StringComparison.OrdinalIgnoreCase);
+
+    internal static List<FanTemperatureSample> Collect(HardwareMetricSnapshot snapshot, MetricSampleRequest request, DateTimeOffset now)
+    {
+        var samples = new List<FanTemperatureSample>(request.Ids.Count);
+        foreach (var id in request.Ids)
+        {
+            if (!snapshot.TryGetCurrentDataset(id, out var observation)
+                || observation.ObservedAtUtcTicks <= 0 || observation.ObservedAtUtcTicks > now.UtcTicks
+                || now.UtcTicks - observation.ObservedAtUtcTicks > MaximumSampleAge.Ticks
+                || !snapshot.Items.TryGetValue(id, out var item)
+                || item.NumericValue is not { } celsius || !double.IsFinite(celsius)) continue;
+            if (id.Equals("cpu.temperature", StringComparison.OrdinalIgnoreCase))
+                samples.Add(new("cpu", celsius, observation.ObservedAtUtcTicks));
+            else
+            {
+                var parts = id.Split('.');
+                if (parts.Length == 3 && int.TryParse(parts[1], out var index) && index >= 0)
+                    samples.Add(new($"gpu{index}", celsius, observation.ObservedAtUtcTicks));
+            }
+        }
+        return samples;
+    }
+}

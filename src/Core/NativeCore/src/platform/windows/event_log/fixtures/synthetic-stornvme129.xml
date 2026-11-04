@@ -1,0 +1,2 @@
+<!-- SYNTHETIC parser fixture. Not exported from any event log. See README.md. -->
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System><Provider Name="stornvme"/><EventID>129</EventID><TimeCreated SystemTime="2000-01-01T00:00:00.000Z"/><EventRecordID>1</EventRecordID><Channel>System</Channel><Computer>SYNTHETIC</Computer></System><EventData><Data>\Device\RaidPort9</Data></EventData></Event>

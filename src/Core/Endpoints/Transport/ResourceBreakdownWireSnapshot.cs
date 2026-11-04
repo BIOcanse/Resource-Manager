@@ -1,0 +1,353 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Domain.ResourceBreakdown;
+
+namespace ResourceManager.App.Endpoints.Transport;
+
+[JsonConverter(typeof(ResourceBreakdownWireSnapshotJsonConverter))]
+public sealed class ResourceBreakdownWireSnapshot
+{
+    public const int CurrentVersion = 8;
+
+    private ResourceBreakdownWireSnapshot(
+        DateTimeOffset? capturedAt,
+        IReadOnlyList<ResourceBreakdownBar> bars,
+        IReadOnlyList<ResourceSoftwareSegment> softwareCatalog,
+        IReadOnlyDictionary<string, int> softwareIndexes,
+        IReadOnlySet<string> processDetailSoftwareIds,
+        IReadOnlySet<string> residualDetailMetricIds,
+        ProcessMetricFieldSnapshot? processFields)
+    {
+        CapturedAt = capturedAt;
+        Bars = bars;
+        SoftwareCatalog = softwareCatalog;
+        SoftwareIndexes = softwareIndexes;
+        ProcessDetailSoftwareIds = processDetailSoftwareIds;
+        ResidualDetailMetricIds = residualDetailMetricIds;
+        ProcessFields = processFields;
+    }
+
+    internal DateTimeOffset? CapturedAt { get; }
+
+    internal IReadOnlyList<ResourceBreakdownBar> Bars { get; }
+
+    internal IReadOnlyList<ResourceSoftwareSegment> SoftwareCatalog { get; }
+
+    internal IReadOnlyDictionary<string, int> SoftwareIndexes { get; }
+
+    internal IReadOnlySet<string> ProcessDetailSoftwareIds { get; }
+    internal IReadOnlySet<string> ResidualDetailMetricIds { get; }
+    internal ProcessMetricFieldSnapshot? ProcessFields { get; }
+
+    internal static ResourceBreakdownWireSnapshot Create(
+        ResourceBreakdownSnapshot source,
+        IReadOnlyList<string> visibleMetricIds,
+        IReadOnlySet<string>? processDetailSoftwareIds = null,
+        SchedulingProcessFactSnapshot? foundations = null,
+        IReadOnlyDictionary<string, string>? scaleModes = null,
+        IReadOnlyList<string>? processMeasureIds = null,
+        IReadOnlySet<string>? residualDetailMetricIds = null)
+    {
+        var visibleIds = visibleMetricIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentDatasets = source.Datasets
+            .Where(static dataset =>
+                dataset.Status == ResourceBreakdownSamplingStatuses.Ready
+                && dataset.CapturedAt is not null)
+            .ToDictionary(
+                static dataset => dataset.DatasetId,
+                StringComparer.OrdinalIgnoreCase);
+        var bars = ProjectResourceBars(source, visibleMetricIds, foundations, scaleModes, processMeasureIds)
+            .Select(bar => bar.TotalValue is null || bar.CapacityValue is null || bar.TotalSystemPercent is null
+                ? ResourceBreakdownCurrentBars.WithoutReading(bar, bar.UnavailableReason!) : bar)
+            .ToArray();
+        var catalog = new List<ResourceSoftwareSegment>();
+        var indexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var segment in bars.SelectMany(static bar => bar.Software))
+        {
+            if (indexes.TryAdd(segment.SoftwareId, catalog.Count))
+            {
+                catalog.Add(segment);
+            }
+        }
+
+        var capturedAt = visibleIds
+            .Select(SamplingDatasetIds.ForProcessMetric)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(currentDatasets.ContainsKey)
+            .Select(datasetId => currentDatasets[datasetId].CapturedAt)
+            .DefaultIfEmpty(null)
+            .Max();
+        var fieldNames = visibleIds.Where(static id => ProcessMetricFieldRegistry.Find(id) is not null)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var processFields = fieldNames.Count > 0
+            ? source.ProcessFields?.Select(fieldNames) ?? ProcessMetricFieldSnapshot.Empty(fieldNames)
+            : null;
+        if (processFields is not null)
+            processFields = processFields.ClearUnavailable(currentDatasets.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase));
+        return new ResourceBreakdownWireSnapshot(
+            capturedAt,
+            bars,
+            catalog,
+            indexes,
+            processDetailSoftwareIds
+                ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            residualDetailMetricIds ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            processFields);
+    }
+
+    internal static bool IncludesProcessDetails(ResourceBreakdownBar bar, ResourceSoftwareSegment segment,
+        IReadOnlySet<string> softwareIds, IReadOnlySet<string>? residualMetricIds)
+    {
+        var totalMetricId = bar.TotalMetricId ?? bar.MetricId;
+        return segment.SoftwareId.Equals("resource-residual:" + totalMetricId, StringComparison.OrdinalIgnoreCase)
+            ? residualMetricIds?.Contains(totalMetricId) == true
+            : softwareIds.Contains(segment.SoftwareId);
+    }
+
+    internal static IEnumerable<ResourceBreakdownBar> ProjectResourceBars(
+        ResourceBreakdownSnapshot source, IReadOnlyList<string> ids, SchedulingProcessFactSnapshot? foundations,
+        IReadOnlyDictionary<string, string>? scaleModes = null,
+        IReadOnlyList<string>? processMeasureIds = null)
+    {
+        // Raw field ids and resource measures share names, but only measure demand produces bars.
+        // Direct callers that omit request context retain the captured-fact projection contract.
+        var measures = (processMeasureIds ?? source.ProcessMemoryFacts.Select(static fact => fact.MetricId).ToArray())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var barIds = ids.Where(id => ProcessMemoryFactFields.TotalMetricId(id) is null || measures.Contains(id)).ToArray();
+        var facts = ResourceFactsSnapshot.Create(source, barIds, foundations);
+        var owners = facts.Software.ToDictionary(static owner => owner.SoftwareId, StringComparer.Ordinal);
+        return facts.Metrics.Select(metric =>
+        {
+            var bar = new ResourceBreakdownBar(metric.MetricId, metric.Unit,
+            ResourceBreakdownScaleModes.Normalize(metric.TotalMetricId, scaleModes?.GetValueOrDefault(metric.MetricId)
+                ?? (metric.TotalMetricId is { } totalId ? scaleModes?.GetValueOrDefault(totalId) : null)
+                ?? source.Bars.FirstOrDefault(bar => bar.MetricId == metric.MetricId)?.ScaleMode),
+            metric.TotalValue, metric.CapacityValue, metric.TotalSystemPercent, metric.Software.Select(owner =>
+            {
+                var identity = owners[owner.SoftwareId];
+                return new ResourceSoftwareSegment(owner.SoftwareId, identity.Name, identity.Kind, identity.AttributionKind,
+                    owner.Value, owner.SystemPercent, owner.ProcessCount, owner.Processes.Select(row =>
+                    {
+                        var process = facts.Processes[row.ProcessIndex];
+                        return new ResourceProcessSegment(process.ProcessId, process.Name, process.ExecutablePath,
+                            row.Value, row.SystemPercent, row.SoftwarePercent, process.UserName, process.Architecture,
+                            process.AttributionKind, row.BaseScore)
+                        { ProcessStartKey = process.ProcessStartKey is { } key ? long.Parse(key, CultureInfo.InvariantCulture) : null,
+                            SharedValue = row.SharedValue };
+                    }).ToArray(), owner.BaseScore) { SharedValue = owner.SharedValue };
+            }).ToArray())
+        {
+            ProcessFieldName = metric.ProcessFieldName, TotalMetricId = metric.TotalMetricId,
+            ProcessSumValue = metric.ProcessSumValue, ResidualValue = metric.ResidualValue,
+            AdditiveAcrossProcesses = metric.AdditiveAcrossProcesses, CapturedAt = metric.CapturedAt,
+            WindowMilliseconds = metric.WindowMilliseconds, GpuEngine = metric.GpuEngine, EngineClass = metric.EngineClass,
+            SharedValue = metric.SharedValue, Quantity = metric.Quantity, UnavailableReason = metric.UnavailableReason,
+            ResidualSource = metric.ResidualSource
+            };
+            return bar;
+        });
+    }
+}
+
+public sealed class ResourceBreakdownWireSnapshotJsonConverter
+    : JsonConverter<ResourceBreakdownWireSnapshot>
+{
+    public override ResourceBreakdownWireSnapshot Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
+        => throw new NotSupportedException(
+            "Resource breakdown wire snapshots are write-only.");
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        ResourceBreakdownWireSnapshot value,
+        JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("version", ResourceBreakdownWireSnapshot.CurrentVersion);
+        WriteNullableTimestamp(writer, "capturedAt", value.CapturedAt);
+        WriteSoftwareCatalog(writer, value.SoftwareCatalog);
+        WriteBars(writer, value, options);
+        if (value.ProcessFields is not null)
+        {
+            writer.WritePropertyName("processFields");
+            JsonSerializer.Serialize(writer, value.ProcessFields, options);
+        }
+        writer.WriteEndObject();
+    }
+
+    private static void WriteSoftwareCatalog(
+        Utf8JsonWriter writer,
+        IReadOnlyList<ResourceSoftwareSegment> catalog)
+    {
+        writer.WritePropertyName("softwareCatalog");
+        writer.WriteStartArray();
+        foreach (var software in catalog)
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue(software.SoftwareId);
+            writer.WriteStringValue(software.Name);
+            writer.WriteStringValue(software.Kind);
+            writer.WriteStringValue(software.DisplayKind);
+            writer.WriteEndArray();
+        }
+        writer.WriteEndArray();
+    }
+
+    private static void WriteBars(
+        Utf8JsonWriter writer,
+        ResourceBreakdownWireSnapshot value, JsonSerializerOptions options)
+    {
+        writer.WritePropertyName("bars");
+        writer.WriteStartArray();
+        foreach (var bar in value.Bars)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("metricId", bar.MetricId);
+            writer.WriteString("unit", bar.Unit);
+            writer.WriteString("scaleMode", bar.ScaleMode);
+            if (bar.ResidualSource is { } residualSource) writer.WriteString("residualSource", residualSource);
+            if (bar.Quantity is not null) writer.WriteString("quantity", bar.Quantity);
+            if (bar.UnavailableReason is not null) writer.WriteString("unavailableReason", bar.UnavailableReason);
+            var totalMetricId = bar.TotalMetricId ?? ProcessMemoryFactFields.TotalMetricId(bar.MetricId);
+            if (totalMetricId is not null) writer.WriteString("totalMetricId", totalMetricId);
+            var processFieldName = bar.ProcessFieldName
+                ?? (ProcessMemoryFactFields.TotalMetricId(bar.MetricId) is not null ? bar.MetricId : null);
+            if (processFieldName is not null) writer.WriteString("processFieldName", processFieldName);
+            WriteNullableNumber(writer, "totalValue", bar.TotalValue);
+            WriteNullableNumber(writer, "capacityValue", bar.CapacityValue);
+            WriteNullableNumber(writer, "totalSystemPercent", bar.TotalSystemPercent);
+            WriteNullableNumber(writer, "sharedValue", bar.SharedValue);
+            WriteNullableNumber(writer, "processSumValue", bar.ProcessSumValue);
+            WriteNullableNumber(writer, "residualValue", bar.ResidualValue);
+            writer.WriteBoolean("additiveAcrossProcesses", bar.AdditiveAcrossProcesses);
+            WriteNullableTimestamp(writer, "capturedAt", bar.CapturedAt);
+            if (bar.WindowMilliseconds is { } window) writer.WriteNumber("windowMilliseconds", window);
+            if (bar.GpuEngine is not null)
+            {
+                writer.WritePropertyName("gpuEngine");
+                JsonSerializer.Serialize(writer, bar.GpuEngine, options);
+                writer.WriteString("engineClass", bar.EngineClass);
+            }
+            WriteSoftwareRows(writer, value, bar);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+    }
+
+    private static void WriteSoftwareRows(
+        Utf8JsonWriter writer,
+        ResourceBreakdownWireSnapshot value,
+        ResourceBreakdownBar bar)
+    {
+        writer.WritePropertyName("software");
+        writer.WriteStartArray();
+        foreach (var segment in bar.Software)
+        {
+            writer.WriteStartArray();
+            writer.WriteNumberValue(value.SoftwareIndexes[segment.SoftwareId]);
+            writer.WriteNumberValue(segment.Value);
+            writer.WriteNumberValue(segment.SystemPercent);
+            writer.WriteNumberValue(segment.ProcessCount);
+            writer.WriteNumberValue(segment.BaseScore);
+            WriteProcessRows(
+                writer,
+                segment.Processes,
+                ResourceBreakdownWireSnapshot.IncludesProcessDetails(bar, segment,
+                    value.ProcessDetailSoftwareIds, value.ResidualDetailMetricIds));
+            if (segment.SharedValue is { } shared) writer.WriteNumberValue(shared);
+            writer.WriteEndArray();
+        }
+        writer.WriteEndArray();
+    }
+
+    internal static void WriteProcessRows(
+        Utf8JsonWriter writer,
+        IReadOnlyList<ResourceProcessSegment> processes,
+        bool includeProcesses)
+    {
+        writer.WriteStartArray();
+        if (includeProcesses)
+        {
+            foreach (var process in processes)
+            {
+                writer.WriteStartArray();
+                writer.WriteNumberValue(process.ProcessId);
+                writer.WriteStringValue(process.Name);
+                WriteNullableString(writer, process.ExecutablePath);
+                writer.WriteNumberValue(process.Value);
+                writer.WriteNumberValue(process.SystemPercent);
+                writer.WriteNumberValue(process.SoftwarePercent);
+                WriteNullableString(writer, process.UserName);
+                WriteNullableString(writer, process.Architecture);
+                writer.WriteStringValue(process.AttributionKind);
+                writer.WriteNumberValue(process.BaseScore);
+                if (process.ProcessStartKey is > 0)
+                {
+                    writer.WriteStringValue(process.ProcessStartKey.Value.ToString(
+                        CultureInfo.InvariantCulture));
+                }
+                else
+                {
+                    writer.WriteNullValue();
+                }
+                if (process.SharedValue is { } shared) writer.WriteNumberValue(shared);
+                writer.WriteEndArray();
+            }
+        }
+        writer.WriteEndArray();
+    }
+
+    private static void WriteNullableString(Utf8JsonWriter writer, string? value)
+    {
+        if (value is null)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            writer.WriteStringValue(value);
+        }
+    }
+
+    private static void WriteNullableTimestamp(
+        Utf8JsonWriter writer,
+        string propertyName,
+        DateTimeOffset? value)
+    {
+        if (value is null)
+        {
+            writer.WriteNull(propertyName);
+        }
+        else
+        {
+            writer.WriteString(propertyName, value.Value);
+        }
+    }
+
+    private static void WriteNullableNumber(
+        Utf8JsonWriter writer,
+        string propertyName,
+        double? value)
+    {
+        if (value is null)
+        {
+            writer.WriteNull(propertyName);
+        }
+        else
+        {
+            writer.WriteNumber(propertyName, value.Value);
+        }
+    }
+}
+
+internal sealed record ResourceMonitorWireSnapshot(
+    int Version,
+    DateTimeOffset? CapturedAt,
+    ResourceBreakdownWireSnapshot Breakdown)
+{
+    internal const int CurrentVersion = 10;
+}

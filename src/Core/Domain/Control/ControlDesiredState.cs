@@ -1,0 +1,111 @@
+namespace ResourceManager.App.Domain.Control;
+
+/// <summary>风扇曲线上的一个点：到这个温度时给这么大转速。</summary>
+public sealed record ControlCurvePoint(double TemperatureCelsius, double Percent);
+
+/// <summary>
+/// 用户对某一项能力的设定。
+///
+/// 三种取值按 <see cref="ControlCapability.ValueKind"/> 三选一，只会有一个非空。
+///
+/// 数值型的那一种**自带单位**：这条记录要能单独看懂，因为它会被存下来、
+/// 被保存成配置、被在机器之间搬。单位挂在能力描述上的话，换台机器
+/// 同一条记录的含义就变了。
+/// </summary>
+public sealed record ControlSetting(
+    string CapabilityId,
+    double? Number = null,
+    bool? Toggle = null,
+    IReadOnlyList<ControlCurvePoint>? Curve = null,
+    /// <summary>
+    /// 这条曲线交给谁执行，取值见 <see cref="ControlFanCurveExecutions"/>。
+    /// 非曲线型为 null。
+    ///
+    /// **这是用户的选择，所以要跟着设定一起存。** 同一条曲线交给固件和交给软件，
+    /// 行为完全不同（前者关了程序还在跑，后者不在）—— 只存曲线不存这个选择，
+    /// 下次重新施加时就只能替他猜一个。
+    /// </summary>
+    string? CurveExecution = null,
+    /// <summary>
+    /// <see cref="Number"/> 的单位，取值见 <see cref="ControlUnits"/>。
+    /// 非数值型为 null。旧文件里没有这个字段，读到 null 时由转发层按能力描述补。
+    /// </summary>
+    string? Unit = null,
+    string? GpuVfCurvePresetId = null,
+    GpuVfCurveExecution? GpuVfCurveExecution = null);
+
+/// <summary>一个对象上用户设定的全部项。</summary>
+public sealed record ControlObjectDesiredState(
+    string ObjectId,
+    IReadOnlyList<ControlSetting> Settings);
+
+/// <summary>
+/// 期望状态：用户想让这台机器保持成什么样。
+///
+/// 保存的用户选择归后端存储所有。全局控制开启时，启动应用一次；
+/// 此后只维持成功应用的项，失败项由用户显式重新应用。
+/// 全局控制关闭保留此配置，但不应用或维持。
+/// </summary>
+public sealed record ControlDesiredState(
+    IReadOnlyList<ControlObjectDesiredState> Objects)
+{
+    public static ControlDesiredState Empty { get; } = new([]);
+
+    /// <summary>Owned settings awaiting confirmed release; persisted by the control plane with desired state.</summary>
+    public IReadOnlyList<ControlObjectDesiredState> PendingReleases { get; init; } = [];
+
+    public ControlObjectDesiredState? ForObject(string objectId)
+        => Objects.FirstOrDefault(entry => string.Equals(
+            entry.ObjectId,
+            objectId,
+            StringComparison.Ordinal));
+}
+
+/// <summary>A machine outcome and its raw parameters. Presentation belongs to consumers.</summary>
+public sealed record ControlApplyReason(string Code, ControlReasonArguments? Arguments = null)
+{
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(code))]
+    public static implicit operator ControlApplyReason?(string? code) => code is null ? null : new(code);
+}
+public sealed record ControlReasonArguments(
+    string? RequiredAccessLevel = null, double? Minimum = null, double? Maximum = null, string? Unit = null,
+    double? Requested = null, double? Observed = null);
+
+/// <summary>施加一项设定之后的结果。</summary>
+public static class ControlApplyStatuses
+{
+    /// <summary>原执行通道判定成功；具体是否回读验证由 Evidence 说明。</summary>
+    public const string Applied = "applied";
+    /// <summary>这台机器上这一项根本控不了（缺驱动/缺组件/硬件不支持）。</summary>
+    public const string Unsupported = "unsupported";
+    /// <summary>试了但没成功。</summary>
+    public const string Failed = "failed";
+}
+
+/// <summary>
+/// 一项设定的施加结果。**实际状态就是从这里来的** ——
+/// 前端不自己推断有没有生效，以这份回执为准。
+/// </summary>
+public sealed record ControlApplyOutcome(
+    string ObjectId,
+    string CapabilityId,
+    string Status,
+    ControlApplyReason? Reason = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ResourceManager.ReadWrite.FieldWriteReceipt? Evidence { get; init; }
+    public int? NativeStatus { get; init; }
+}
+
+/// <summary>一次施加的整体结果。</summary>
+public sealed record ControlApplyReport(
+    IReadOnlyList<ControlApplyOutcome> Outcomes,
+    DateTimeOffset AppliedAt)
+{
+    public static ControlApplyReport Empty { get; } = new([], DateTimeOffset.MinValue);
+}
+
+/// <summary>期望状态 + 最近一次施加的回执。界面要的就是这两样。</summary>
+public sealed record ControlStateView(
+    ControlDesiredState Desired,
+    ControlApplyReport LastApply);

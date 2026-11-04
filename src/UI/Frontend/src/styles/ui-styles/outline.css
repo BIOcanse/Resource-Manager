@@ -1,0 +1,294 @@
+/* Outline uses flat surfaces and structural borders while preserving shared geometry. */
+
+
+:root[data-ui-style="outline"] {
+  /* Disable invisible header blur to avoid compositing overhead. */
+  --shell-backdrop: none;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  /* Use transparent zero shadows; none would invalidate combined shadow lists. */
+  --elev-1: 0 0 0 0 transparent;
+  --elev-2: 0 0 0 0 transparent;
+  --elev-3: 0 0 0 0 transparent;
+  --edge-highlight: 0 0 0 0 transparent;
+  --shadow: 0 0 0 0 transparent;
+  --modal-shadow: 0 0 0 0 transparent;
+  --focus-ring: 2px solid var(--accent);
+}
+
+
+:root[data-ui-style="outline"][data-theme="paper"],
+:root[data-ui-style="outline"][data-theme="system"] {
+  color-scheme: light;
+  --bg: #f3f0e8;
+  --surface: #f8f6f0;
+  --surface-soft: #f3f0e8;
+  --surface-strong: #e8e4d9;
+  --table-header-bg: #efebe2;
+  --hover-bg: #ebe7dc;
+  --text: #1c1e23;
+  --muted: #57554e;
+  --line: #a9a192;
+  --line-soft: #d3cdbf;
+  --divider: #bfb8a9;
+  --divider-soft: #dcd6ca;
+  --hairline: #8f8778;
+  --accent: #1f4f8f;
+  --accent-strong: #163b6c;
+  --accent-soft: #e1e8f1;
+  --warn: #8f5500;
+  --warn-soft: #f5e8cf;
+  --danger: #a3241f;
+  --danger-soft: #f6e0dc;
+  --shell-bg: #f8f6f0;
+  --ok: #2f6b2a;
+  --info: #0f6b78;
+  --empty-bg: #f8f6f08f;
+  --resource-empty: #f8f6f0;
+  --on-accent: #ffffff;
+  --backdrop: #1c1e2452;
+  --shadow-color: 0.110 0.118 0.137;
+}
+
+
+:root[data-ui-style="outline"][data-theme="graphite"] {
+  color-scheme: dark;
+  --bg: #1d1e20;
+  --surface: #212224;
+  --surface-soft: #252628;
+  --surface-strong: #2e3033;
+  --table-header-bg: #27282b;
+  --hover-bg: #2c2e31;
+  --text: #e9e7e3;
+  --muted: #aaa69f;
+  --line: #55585d;
+  --line-soft: #3a3c40;
+  --divider: #46484d;
+  --divider-soft: #333539;
+  --hairline: #62656b;
+  --accent: #ec8a3c;
+  --accent-strong: #f5a768;
+  --accent-soft: #3b2b1e;
+  --warn: #e0c04a;
+  --warn-soft: #39321b;
+  --danger: #f06560;
+  --danger-soft: #3e201d;
+  --shell-bg: #1f2022;
+  --ok: #82c77d;
+  --info: #78b4f0;
+  --empty-bg: #2122248f;
+  --resource-empty: #202123;
+  --on-accent: #1b1106;
+  --backdrop: #0a0a0ba6;
+  --shadow-color: 0.000 0.000 0.000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-style="outline"][data-theme="system"] {
+    color-scheme: dark;
+    --bg: #1d1e20;
+    --surface: #212224;
+    --surface-soft: #252628;
+    --surface-strong: #2e3033;
+    --table-header-bg: #27282b;
+    --hover-bg: #2c2e31;
+    --text: #e9e7e3;
+    --muted: #aaa69f;
+    --line: #55585d;
+    --line-soft: #3a3c40;
+    --divider: #46484d;
+    --divider-soft: #333539;
+    --hairline: #62656b;
+    --accent: #ec8a3c;
+    --accent-strong: #f5a768;
+    --accent-soft: #3b2b1e;
+    --warn: #e0c04a;
+    --warn-soft: #39321b;
+    --danger: #f06560;
+    --danger-soft: #3e201d;
+    --shell-bg: #1f2022;
+    --ok: #82c77d;
+    --info: #78b4f0;
+    --empty-bg: #2122248f;
+    --resource-empty: #202123;
+    --on-accent: #1b1106;
+    --backdrop: #0a0a0ba6;
+    --shadow-color: 0.000 0.000 0.000;
+  }
+}
+
+
+:root[data-ui-style="outline"][data-theme="blueprint"] {
+  color-scheme: dark;
+  --bg: #0e2340;
+  --surface: #112846;
+  --surface-soft: #132d4e;
+  --surface-strong: #1a3a5f;
+  --table-header-bg: #142f51;
+  --hover-bg: #183759;
+  --text: #e4f1ff;
+  --muted: #9ebad7;
+  --line: #4b77a3;
+  --line-soft: #2a4d74;
+  --divider: #3b648d;
+  --divider-soft: #22436a;
+  --hairline: #6b9ac8;
+  --accent: #7dd3ff;
+  --accent-strong: #a8e3ff;
+  --accent-soft: #1b4469;
+  --warn: #ffd166;
+  --warn-soft: #3a3626;
+  --danger: #ff7f7f;
+  --danger-soft: #4a2435;
+  --shell-bg: #0f2645;
+  --ok: #8fe3a0;
+  --info: #c8b8ff;
+  --empty-bg: #1128468f;
+  --resource-empty: #102644;
+  --on-accent: #08182c;
+  --backdrop: #040c18a6;
+  --shadow-color: 0.016 0.047 0.094;
+}
+
+
+
+
+:root[data-ui-style="outline"] button {
+  background-image: none;
+}
+
+/* Secondary buttons retain outlines while selected component edges remain unchanged. */
+:root[data-ui-style="outline"] button.secondary:not(:disabled) {
+  background-color: transparent;
+}
+
+:root[data-ui-style="outline"] :where(button:not(:disabled)).secondary:hover {
+  background-color: var(--hover-bg);
+  border-color: var(--accent);
+}
+
+
+/* Override shared page-tab tokens so tabs and indicators stay consistent. */
+:root[data-ui-style="outline"] {
+  --page-tab-bg: transparent;
+  --page-tab-border: var(--line);
+  --page-tab-border-hover: var(--accent);
+  --page-tab-bg-hover: var(--accent-soft);
+  --page-tab-active-border: var(--accent);
+  --page-tab-active-bg: var(--accent);
+  --page-tab-active-border-hover: var(--accent-hover);
+  --page-tab-active-bg-hover: var(--accent-hover);
+}
+
+
+:root[data-ui-style="outline"] .settings-switch .settings-switch-track {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-ui-style="outline"] .settings-switch .settings-switch-knob {
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+
+:root[data-ui-style="outline"] .toolbar-search input:focus,
+:root[data-ui-style="outline"] .resource-table-search input:focus,
+:root[data-ui-style="outline"] .settings-number-pair input:focus,
+:root[data-ui-style="outline"] .settings-number-field input:focus,
+:root[data-ui-style="outline"] .settings-hotkey-key-row select:focus,
+:root[data-ui-style="outline"] .settings-select .standard-select-trigger:focus-visible,
+:root[data-ui-style="outline"] .standard-select-trigger[aria-expanded="true"],
+:root[data-ui-style="outline"] .metric-picker-search:focus-within,
+:root[data-ui-style="outline"] .cpu-score-input:focus,
+:root[data-ui-style="outline"] .gpu-score-input:focus {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* The select wrapper owns the focus ring. */
+:root[data-ui-style="outline"] .standard-select-search input:focus-visible {
+  outline: none;
+}
+
+
+
+/* Subdue disabled menu items without adding button fills. */
+:root[data-ui-style="outline"] .standard-context-menu-item:disabled {
+  background-color: transparent;
+}
+
+
+:root[data-ui-style="outline"] .modal-header {
+  background: var(--table-header-bg);
+  border-color: var(--line);
+}
+
+
+
+
+:root[data-ui-style="outline"] .resource-table-header-clip,
+:root[data-ui-style="outline"] .settings-content-header {
+  border-color: var(--line);
+}
+
+
+
+/* Use Bahnschrift only in fixed-width reading boxes; retain shared line height and fallback glyphs. */
+:root[data-ui-style="outline"] .metric-main-content .metric-value {
+  font-family: "Bahnschrift", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+
+/* Tabular figures align numeric columns without changing their fixed widths. */
+:root[data-ui-style="outline"] .resource-table-viewport {
+  font-variant-numeric: tabular-nums;
+}
+
+
+
+/* Draw the blueprint grid on the non-scrolling root to avoid scroll repainting. */
+:root[data-ui-style="outline"][data-theme="blueprint"] #root {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--line-soft) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line-soft) 55%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+
+:root[data-ui-style="outline"] .count-badge,
+:root[data-ui-style="outline"] .observation-state,
+:root[data-ui-style="outline"] .control-capability-tag,
+:root[data-ui-style="outline"] .device-port-protocol,
+:root[data-ui-style="outline"] .device-port-icon,
+:root[data-ui-style="outline"] .device-system-meta span,
+:root[data-ui-style="outline"] .device-topology-notes span,
+:root[data-ui-style="outline"] .slot-actions,
+:root[data-ui-style="outline"] .slot-change,
+:root[data-ui-style="outline"] .slot-delete,
+:root[data-ui-style="outline"] .metric-picker-search,
+:root[data-ui-style="outline"] .cpu-ring-cache-region span,
+:root[data-ui-style="outline"] .cpu-ring-logical-chip,
+:root[data-ui-style="outline"] .cpu-cache-label,
+:root[data-ui-style="outline"] .cpu-process-score-list span,
+:root[data-ui-style="outline"] .gpu-position-main em,
+:root[data-ui-style="outline"] .gpu-position-meta span {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-ui-style="outline"] .device-port-icon.large,
+:root[data-ui-style="outline"] .device-machine-body,
+:root[data-ui-style="outline"] .device-machine-deck,
+:root[data-ui-style="outline"] .cpu-ring-cache-region,
+:root[data-ui-style="outline"] .component-acquisition-versions {
+  border-radius: var(--radius-lg);
+}
+
+
+:root[data-ui-style="outline"] .cpu-core-meter,
+:root[data-ui-style="outline"] .gpu-pressure-track,
+:root[data-ui-style="outline"] .gpu-specialized-track,
+:root[data-ui-style="outline"] .device-machine-hinge,
+:root[data-ui-style="outline"] .device-machine-feet,
+:root[data-ui-style="outline"] .control-capability-level,
+:root[data-ui-style="outline"] .control-capability-live {
+  border-radius: 1px;
+}

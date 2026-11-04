@@ -1,0 +1,1350 @@
+
+.resource-region-boundary {
+  display: block;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.resource-breakdown-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.resource-table-panel {
+  --resource-table-viewport-height: min(max(520px, calc(100vh - 180px)), 88vh);
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.resource-table-panel > * {
+  min-width: 0;
+}
+
+.resource-table-retained-surface {
+  min-width: 0;
+}
+
+/* Match empty and loading frames to table geometry and center their content. */
+.resource-table-panel > .content-state {
+  min-height: calc(var(--resource-table-viewport-height) + 36px);
+  grid-template-columns: auto minmax(0, max-content) auto;
+  justify-content: center;
+  align-content: center;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+  padding: 24px 16px;
+}
+
+@media (max-width: 720px) {
+  .resource-table-panel > .content-state {
+    grid-template-columns: auto minmax(0, max-content);
+  }
+}
+
+.resource-table-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+
+.resource-table-mode-switch {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 1px;
+  height: 30px;
+}
+
+.resource-table-search {
+  width: clamp(180px, 20vw, 280px);
+  min-width: 0;
+  height: 30px;
+}
+
+.resource-table-search input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+}
+
+.resource-table-search input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.resource-table-mode-button {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.resource-table-column-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.resource-table-column-option {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 0 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.resource-table-column-option input {
+  margin: 0;
+}
+
+/* Reset button styling inside column chips without changing chip appearance. */
+.resource-table-column-option .resource-table-column-select,
+.resource-table-column-option .resource-table-column-select:hover,
+.resource-table-column-option .resource-table-column-select:active {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  transform: none;
+}
+
+
+.resource-table-column-option.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+
+.resource-table-column-source {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 13px;
+}
+
+.resource-table-column-source-choices {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.resource-table-column-source-choices .segment {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.resource-table-provider-state {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-table-frame {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+  overflow: hidden;
+}
+
+.resource-table-frame:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.resource-table-header-clip {
+  height: 34px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--divider);
+  background: var(--table-header-bg);
+  padding-right: var(--table-scrollbar-width, 0px);
+}
+
+.resource-table-header {
+  height: 34px;
+  display: grid;
+  background: var(--table-header-bg);
+  will-change: transform;
+}
+
+.resource-table-head-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 34px;
+  height: 34px;
+  display: block;
+  border: 0;
+  border-right: 1px solid var(--divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.resource-table-sort-button {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  /* Match header padding to cells so numeric labels align with their readings. */
+  padding: 0 8px;
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.resource-table-sort-button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+/* Place basis help before the sort button while preserving right-aligned numeric labels. */
+.resource-table-head-cell:has(> .help-hint) {
+  display: flex;
+  align-items: center;
+}
+
+.resource-table-head-cell:has(> .help-hint) > .resource-table-sort-button {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.resource-table-head-cell > .help-hint {
+  flex: none;
+  order: -1;
+  margin: 0 -4px 0 6px;
+}
+
+.resource-table-head-cell.editing .resource-table-sort-button {
+  padding-right: 52px;
+  /* Headers become drag handles in edit mode; sorting is disabled. */
+  cursor: grab;
+}
+
+.resource-table-column-order-actions {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 3;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.resource-table-column-order-button {
+  width: 20px;
+  height: 22px;
+  min-width: 20px;
+  min-height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 0;
+}
+
+.resource-table-column-order-button:hover:not(:disabled),
+.resource-table-column-order-button:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.resource-table-column-order-button:disabled {
+  opacity: 0.35;
+}
+
+/* Align text columns left and numeric columns right by column id, regardless of order. */
+.resource-table-head-cell:is(
+  [data-column-id="name"],
+  [data-column-id="status"],
+  [data-column-id="pid"],
+  [data-column-id="user"],
+  [data-column-id="architecture"]
+) .resource-table-sort-button {
+  justify-content: flex-start;
+}
+
+/* Use neutral hover fill to distinguish it from the accent sort column. */
+.resource-table-head-cell:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.resource-table-head-cell.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.resource-table-head-cell.active:hover {
+  background: color-mix(in oklab, var(--accent) 10%, var(--accent-soft));
+}
+
+.resource-table-head-cell:last-child {
+  border-right: 0;
+}
+
+/* Preview descending sort on hover; omit sort feedback in edit mode. */
+.resource-table-sort-indicator {
+  flex: 0 0 auto;
+  opacity: 0;
+}
+
+.resource-table-sort-indicator.ascending {
+  transform: rotate(180deg);
+}
+
+.resource-table-head-cell.active .resource-table-sort-indicator {
+  opacity: 1;
+}
+
+.resource-table-head-cell:not(.active):not(.editing):hover .resource-table-sort-indicator {
+  opacity: 0.45;
+}
+
+.resource-table-head-cell.editing:not(.active) .resource-table-sort-indicator {
+  display: none;
+}
+
+.resource-table-head-cell:not(:is(
+  [data-column-id="name"],
+  [data-column-id="status"],
+  [data-column-id="pid"],
+  [data-column-id="user"],
+  [data-column-id="architecture"]
+)) .resource-table-sort-indicator {
+  order: -1;
+}
+
+.resource-table-sort-button > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Fit GPU names below labels within the existing header height. */
+.resource-table-sort-button:has(> .gpu-name-note) {
+  flex-wrap: wrap;
+  align-content: center;
+  row-gap: 0;
+}
+
+/* Keep long labels beside the sort arrow and truncate when needed. */
+.resource-table-sort-button:has(> .gpu-name-note) > span:first-child {
+  max-width: calc(100% - 16px);
+}
+
+.resource-table-sort-button > .gpu-name-note {
+  order: 1;
+  flex: 0 0 100%;
+  margin-top: 0;
+  line-height: 13px;
+  text-align: right;
+  font-weight: 500;
+}
+
+
+:is(.resource-table-column-select, .resource-bar-select, .resource-breakdown-header strong) > .gpu-name-note {
+  text-align: left;
+  font-weight: 500;
+}
+
+.resource-table-column-select:has(> .gpu-name-note) {
+  text-align: left;
+}
+
+:is(.resource-table-column-option, .resource-bar-option).selected .gpu-name-note {
+  color: inherit;
+}
+
+/* Enable resize handles only in edit mode so ordinary header edges remain sortable. */
+.resource-table-column-resizer {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  z-index: 2;
+  width: 12px;
+  height: 100%;
+  pointer-events: none;
+  touch-action: none;
+}
+
+.resource-table-head-cell.editing .resource-table-column-resizer {
+  pointer-events: auto;
+  cursor: col-resize;
+}
+
+.resource-table-column-resizer::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: calc(50% - 1px);
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.resource-table-head-cell.editing .resource-table-column-resizer::after {
+  background: var(--line);
+}
+
+.resource-table-head-cell.editing .resource-table-column-resizer:is(:hover, :active)::after {
+  background: var(--accent);
+}
+
+.resource-table-column-resizer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Shrink short tables to their rows; cap and scroll longer ones, reserving at least four rows. */
+.resource-table-viewport {
+  position: relative;
+  height: var(--resource-table-viewport-height);
+  min-height: 152px;
+  max-height: var(--resource-table-viewport-height);
+  overflow: auto;
+  scrollbar-gutter: stable;
+  contain: layout paint style;
+  background: var(--surface);
+}
+
+.resource-table-spacer {
+  position: relative;
+  min-width: 0;
+}
+
+/* Recycled rows change base colors immediately; only state tint transitions. Current and highlighted rows use accent. */
+@property --row-tint-amount {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+.resource-table-row {
+  --row-base: var(--surface);
+  --row-tint: var(--text);
+  --row-tint-amount: 0%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 38px;
+  display: grid;
+  contain: layout paint style;
+  border-bottom: 1px solid var(--divider-soft);
+  background-color: color-mix(in oklab, var(--row-tint) var(--row-tint-amount), var(--row-base));
+}
+
+.resource-table-row.process-row {
+  --row-base: var(--surface-soft);
+}
+
+.resource-table-row.summary-row {
+  --row-base: var(--surface-strong);
+  box-shadow: inset 0 -1px 0 var(--divider);
+}
+
+.resource-table-row:hover {
+  --row-tint-amount: 6%;
+}
+
+.resource-table-row:focus-within,
+.resource-table-row.context-target {
+  --row-tint: var(--accent);
+  --row-tint-amount: 12%;
+}
+
+.resource-table-row:is(:focus-within, .context-target):hover {
+  --row-tint-amount: 16%;
+}
+
+.resource-table-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.resource-table-row.highlighted {
+  --row-tint: var(--accent);
+  --row-tint-amount: 14%;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.resource-table-row.highlighted:hover {
+  --row-tint-amount: 20%;
+}
+
+/* System and driver reserve is the machine total minus process totals; distinguish it with neutral hatching. */
+.resource-table-row.residual-row {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 6px,
+    color-mix(in oklab, var(--text) 5%, transparent) 6px 7px
+  );
+}
+
+.resource-table-row.residual-row :is(.resource-row-name, .status-cell) {
+  color: var(--muted);
+}
+
+.resource-table-row.empty-row {
+  border-bottom: 0;
+}
+
+.resource-table-row.summary-row .resource-table-cell {
+  font-weight: 700;
+}
+
+.resource-table-cell {
+  min-width: 0;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--divider-soft);
+  padding: 0 8px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.resource-table-cell:last-child {
+  border-right: 0;
+}
+
+/* Wrap text inside flex cells so narrow columns can ellipsize it. */
+.resource-table-cell-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-table-cell.name-cell {
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+.resource-table-cell.name-cell.indented {
+  padding-left: 28px;
+  color: var(--muted);
+}
+
+.resource-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-row-expander,
+.resource-row-spacer {
+  width: 22px;
+  min-width: 22px;
+  height: 26px;
+  min-height: 26px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.resource-row-expander {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  font-size: 13px;
+}
+
+.resource-row-expander:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+/* Use icons for expand arrows to avoid font-dependent triangle geometry. */
+.resource-row-expander svg {
+  display: block;
+}
+
+.resource-row-expander[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.resource-row-actions {
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.resource-row-actions:hover,
+.resource-row-actions:focus-visible {
+  border-color: var(--line);
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+/* Subdue row actions until hover, focus or their context menu is active. */
+.resource-table-row:not(:hover, :focus-within, .context-target) .resource-row-actions {
+  opacity: 0.5;
+}
+
+.resource-table-cell.status-cell {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-table-cell.text-cell {
+  color: var(--text);
+  justify-content: flex-start;
+  font-size: 12px;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-table-cell.value-cell {
+  justify-content: flex-end;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  /* Heat bars scale to the column maximum: solid owned usage overlays dashed shared usage. */
+  --heat-own: color-mix(in oklab, var(--accent) 55%, var(--row-base));
+  --heat-shared: rgb(211 171 48);
+  background-image:
+    linear-gradient(90deg, var(--heat-own) 0 var(--private-heat, var(--heat)), transparent 0),
+    repeating-linear-gradient(90deg, var(--heat-shared) 0 4px, transparent 4px 6px);
+  background-size: 100% 3px, var(--heat) 3px;
+  background-position: 0 calc(100% - 4px), 0 calc(100% - 4px);
+  background-repeat: no-repeat;
+  background-origin: content-box;
+}
+
+.resource-table-cell.value-cell.unavailable {
+  color: var(--muted);
+  background: transparent;
+}
+
+/* Restore row states and highlights with system outlines and GrayText in forced colors. */
+@media (forced-colors: active) {
+  .resource-table-row:is(:focus-within, .context-target) {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .resource-table-row:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .resource-table-row.highlighted {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+
+  .resource-table-row.summary-row {
+    border-bottom: 2px solid CanvasText;
+  }
+
+  .resource-table-row.residual-row :is(.resource-row-name, .status-cell) {
+    color: GrayText;
+  }
+
+  .resource-table-head-cell.active {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .resource-row-actions {
+    border-color: Canvas;
+  }
+
+  .resource-row-actions:is(:hover, :focus-visible) {
+    border-color: ButtonText;
+  }
+}
+
+.resource-performance-panel {
+  width: 100%;
+  height: min(max(520px, calc(100vh - 180px)), 88vh);
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface-soft);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.resource-performance-panel canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.resource-performance-summary {
+  border-top: 1px solid var(--divider);
+  background: var(--surface);
+  padding: 10px 12px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.resource-performance-summary-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.resource-performance-summary-header time,
+.resource-performance-summary p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-performance-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px 14px;
+  margin: 0;
+}
+
+.resource-performance-summary-grid > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.resource-performance-summary-grid dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-performance-summary-grid dd {
+  margin: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.resource-performance-series-swatch {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 2px;
+}
+
+.resource-bar-editor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.resource-bar-option {
+  min-width: 0;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+
+.resource-bar-option:has(> .help-hint) {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.resource-bar-option input {
+  margin: 0;
+}
+
+/* Reset chip label buttons and fill their column so adjacent whitespace also selects the item. */
+.resource-bar-option .resource-bar-select,
+.resource-bar-option .resource-bar-select:hover,
+.resource-bar-option .resource-bar-select:active {
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  overflow-wrap: anywhere;
+  transform: none;
+}
+
+
+.resource-bar-option.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+
+.resource-bar-source {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 13px;
+}
+
+.resource-bar-source-choices {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.resource-bar-source-choices .segment {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.resource-bar-option .standard-select {
+  min-width: 118px;
+}
+
+.resource-bar-option .standard-select-trigger {
+  height: 30px;
+  min-height: 30px;
+  font-size: 12px;
+}
+
+.resource-breakdown {
+  display: grid;
+  gap: 14px;
+}
+
+/* Match loading slots to populated resource bars to prevent layout shifts. */
+.resource-breakdown-item,
+.resource-breakdown-slot {
+  min-width: 0;
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.resource-breakdown-header,
+.resource-process-header {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.resource-breakdown-header strong,
+.resource-process-header strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.resource-breakdown-header span,
+.resource-process-header span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.resource-bar-track,
+.resource-process-track {
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  height: 26px;
+  display: block;
+  overflow: visible;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.resource-bar-track {
+  cursor: pointer;
+}
+
+.resource-bar-track.unavailable,
+.resource-bar-track.pending,
+.resource-process-track.pending {
+  cursor: default;
+  background: var(--surface-soft);
+}
+
+.resource-bar-unavailable {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Use an accent edge for precise selection and the shared ring for keyboard focus. */
+.resource-bar-track:focus-visible,
+.resource-process-track:focus-visible,
+.resource-bar-track.precision-active {
+  border-color: var(--accent);
+}
+
+.resource-bar-track:focus-visible,
+.resource-process-track:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Prefer device-pixel segment geometry, falling back to percentage positions. */
+.resource-segment-layer {
+  box-sizing: border-box;
+  position: absolute;
+  top: var(--segment-render-top, 1px);
+  bottom: auto;
+  left: var(--segment-render-left, var(--segment-left, 0%));
+  width: var(--segment-render-width, var(--segment-width, 0%));
+  min-width: 0;
+  height: var(--segment-render-height, calc(100% - 2px));
+  min-height: 0;
+  pointer-events: none;
+  transform: translateX(var(--segment-render-x, 0px));
+  transform-origin: left center;
+}
+
+.resource-segment-interaction-layer,
+.resource-segment-interaction-proxy {
+  pointer-events: none;
+}
+
+/* Use paired dark and light hover edges for contrast on every segment. */
+.resource-segment-interaction-proxy.pointer-active {
+  z-index: 6;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.42), inset 0 0 0 2px rgb(255 255 255 / 0.78);
+}
+
+.resource-breakdown-header .resource-breakdown-order-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: -4px;
+}
+
+.resource-breakdown-order-actions .icon-button {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+}
+
+.resource-segment-visual-plane {
+  box-sizing: border-box;
+  position: absolute;
+  top: var(--segment-render-top, 1px);
+  left: 0;
+  width: 100%;
+  height: var(--segment-render-height, calc(100% - 2px));
+  overflow: hidden;
+  /* Inset corner radii follow the track radius minus its border. */
+  border-radius: max(0px, calc(var(--radius-sm) - 1px));
+  background: transparent;
+  pointer-events: none;
+}
+
+.resource-segment-canvas {
+  display: block;
+  position: absolute;
+  top: calc(0px - var(--segment-paint-overscan, 0px));
+  left: 0;
+  width: 100%;
+  height: calc(100% + var(--segment-paint-overscan, 0px) + var(--segment-paint-overscan, 0px));
+  pointer-events: none;
+}
+
+.resource-segment,
+.resource-process-segment,
+.resource-segment-empty {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  color: var(--segment-text, var(--text));
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: auto;
+  transform: none;
+  transform-origin: left center;
+  vertical-align: top;
+}
+
+/* Draw selection rings on the transparent interaction layer above the painted bar. */
+.resource-segment.precision-selected,
+.resource-segment-empty.precision-selected {
+  z-index: 5;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.55), inset 0 0 0 3px rgb(255 255 255 / 0.94), inset 0 0 0 4px rgb(0 0 0 / 0.28);
+}
+
+.resource-segment > span:not(.resource-tooltip),
+.resource-process-segment > span:not(.resource-tooltip),
+.resource-segment-empty > span:not(.resource-tooltip) {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  position: relative;
+  z-index: 2;
+  transform: none;
+  transform-origin: center;
+}
+
+
+.resource-process-track.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resource-process-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-process-segment.process-selected {
+  z-index: 5;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.55), inset 0 0 0 3px rgb(255 255 255 / 0.94), inset 0 0 0 4px rgb(0 0 0 / 0.28);
+}
+
+.resource-selection-detail,
+.resource-process-selection-detail {
+  margin: 0;
+  border-left: 2px solid var(--accent);
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+
+.resource-residual-details {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  user-select: text;
+}
+
+.resource-residual-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.resource-residual-details-header strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.resource-residual-details-header span,
+.resource-residual-details-note,
+.resource-residual-details-code {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-residual-details-state {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  border-left: 2px solid var(--line);
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.resource-residual-details-state strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.resource-residual-details-state p,
+.resource-residual-details-note {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.resource-residual-details-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-residual-details-table th,
+.resource-residual-details-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--divider-soft);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.resource-residual-details-table th:first-child {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.resource-residual-details-table thead th,
+.resource-residual-details-table thead th:first-child {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.resource-residual-details-group th {
+  color: var(--muted);
+}
+
+.resource-residual-details-table tr.grouped th:first-child {
+  padding-left: 18px;
+}
+
+.resource-residual-details-table tfoot th,
+.resource-residual-details-table tfoot td {
+  border-bottom: 0;
+  border-top: 1px solid var(--divider);
+  font-weight: 600;
+}
+
+.resource-residual-details-totals {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  margin: 0;
+  padding: 0 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-residual-details-totals dt {
+  color: var(--muted);
+}
+
+.resource-residual-details-totals dd {
+  margin: 0;
+  text-align: right;
+}
+
+
+/* Portal resource tooltips above page content and hide them until viewport positioning is ready. */
+.resource-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1200;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  min-width: 160px;
+  max-width: min(340px, calc(100vw - 16px));
+  pointer-events: none;
+  /* Share select-popover surface, border and shadow tokens for contrast in every theme. */
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 7px 10px 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: var(--elev-3), var(--edge-highlight);
+}
+
+.resource-tooltip-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 700;
+}
+
+/* Match swatches to segment colors and reserve hatching. */
+.resource-tooltip-swatch {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--swatch-color);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+body[data-bar-color="distinct"] .resource-tooltip-swatch {
+  background: var(--swatch-distinct-color, var(--swatch-color));
+}
+
+.resource-tooltip-swatch.hatched,
+body[data-bar-color="distinct"] .resource-tooltip-swatch.hatched {
+  background: repeating-linear-gradient(-45deg, var(--resource-reserved-stripe) 0 2px, transparent 2px 4px), var(--resource-reserved);
+}
+
+.resource-tooltip-kind {
+  opacity: 0.78;
+}
+
+.resource-tooltip-line {
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-tooltip-line,
+.resource-tooltip-kind,
+.resource-tooltip-basis > span {
+  display: block;
+}
+
+.resource-tooltip-basis {
+  margin-top: 4px;
+  border-top: 1px solid currentColor;
+  border-top-color: color-mix(in srgb, currentColor 22%, transparent);
+  padding-top: 5px;
+  opacity: 0.78;
+  font-size: 11px;
+}
+
+.resource-tooltip:not([data-placement]) {
+  visibility: hidden;
+}
+
+/* Use system outlines for focus, hover and selection in forced colors. */
+@media (forced-colors: active) {
+  .resource-bar-track:focus-visible,
+  .resource-process-track:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .resource-segment-interaction-proxy.pointer-active {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+
+  .resource-segment.precision-selected,
+  .resource-segment-empty.precision-selected,
+  .resource-process-segment.process-selected {
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
+
+  .resource-tooltip {
+    outline: 1px solid CanvasText;
+  }
+
+  /* Preserve swatch colors so they match canvas segments. */
+  .resource-tooltip-swatch {
+    forced-color-adjust: none;
+  }
+}
+
+body.resource-precision-cursor-hidden .resource-breakdown-panel,
+body.resource-precision-cursor-hidden .resource-breakdown-panel * {
+  cursor: none !important;
+}
+
+.resource-process-panel {
+  position: relative;
+  display: grid;
+  gap: 7px;
+}
+
+.resource-breakdown-header,
+.resource-bar-track,
+.resource-process-header,
+.resource-process-track {
+  position: relative;
+  z-index: 3;
+}

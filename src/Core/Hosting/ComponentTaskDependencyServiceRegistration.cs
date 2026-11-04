@@ -1,0 +1,31 @@
+using ResourceManager.App.Application.Components;
+using ResourceManager.App.Application.Dependencies;
+using ResourceManager.App.Infrastructure.Dependencies;
+using ResourceManager.App.Infrastructure.Monitoring;
+using ResourceManager.App.Infrastructure.Adaptation;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+namespace ResourceManager.App.Hosting;
+
+public static partial class ResourceManagerServiceCollectionExtensions
+{
+    private static IServiceCollection AddResourceManagerComponentsAndTasks(this IServiceCollection services)
+    {
+        // 安装器之外的运行时文件（比如 PawnIO 的 RyzenSMU 模块）由它取。
+        services.AddSingleton<IDependencyPayloadAcquisition, DependencyPayloadAcquisition>();
+        services.AddSingleton<IComponentManager, ComponentManager>();
+        services.AddSingleton<IProviderRuntimeProbe, ProviderRuntimeProbe>();
+        return services;
+    }
+
+    private static IServiceCollection AddResourceManagerDependencies(this IServiceCollection services)
+    {
+        services.AddHttpClient<IDependencyInstallerSourceResolver, DependencyInstallerSourceResolver>();
+        // Held probe results shared by the per-request dependency managers and the provider probe.
+        services.TryAddSingleton<ResourceManagerLedgerOwner>();
+        services.AddSingleton(provider => new OptionalDependencyProbeResults(
+            provider.GetRequiredService<ResourceManagerLedgerOwner>()));
+        services.AddHttpClient<IOptionalDependencyManager, OptionalDependencyManager>();
+        return services;
+    }
+}

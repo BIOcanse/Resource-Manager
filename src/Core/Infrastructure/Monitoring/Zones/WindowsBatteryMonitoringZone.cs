@@ -1,0 +1,18 @@
+using ResourceManager.App.Application.Monitoring;
+using ResourceManager.App.Domain.Metrics;
+
+namespace ResourceManager.App.Infrastructure.Monitoring;
+
+public sealed class WindowsBatteryMonitoringZone : MonitoringSourceZone
+{
+    private readonly WindowsBatteryReader reader;
+    public WindowsBatteryMonitoringZone() : this(new WindowsBatteryReader()) { }
+    internal WindowsBatteryMonitoringZone(WindowsBatteryReader reader) : base(MonitoringSourceZoneIds.WindowsBattery)
+        => this.reader = reader;
+    internal BatteryTopologyRead ReadIdentities() => reader.ReadIdentities();
+    internal BatteryTopologyRead ReadDeclarations() => reader.ReadIdentities(includeDeclarations: true);
+    internal IReadOnlyList<BatteryMetricRead> Read(IReadOnlyList<BatteryCatalogIdentity> devices,
+        IReadOnlyDictionary<int, IReadOnlySet<MetricFieldCode>> requested)
+        => devices.Where(device => requested.ContainsKey(device.DisplayIndex))
+            .Select(device => reader.Read(device, requested[device.DisplayIndex])).ToArray();
+}

@@ -1,0 +1,200 @@
+import type {
+  DashboardCardSettings,
+  DashboardMetricBinding,
+  MetricDefinition,
+  MetricValue
+} from "../../types.ts";
+import type {
+  MetricFieldAddress,
+  MetricFieldCatalogDevice,
+  MetricFieldDevice,
+  MetricFieldDeviceInfo
+} from "../../data/metricFields/metricFieldSource.ts";
+import type { ByteQuantityKind } from "../../presentation/byteUnits.ts";
+import { formatFieldValue } from "../../presentation/fieldValueFormat.ts";
+import { readingSourceDisplays } from "../../presentation/readingSources.ts";
+import { cardExcludedFields } from "./canonicalFields.ts";
+import { uiText } from "../../text.ts";
+
+/* Bind fields by field name and device identity. Preserve missing-device bindings and unavailable values; never substitute zero. */
+
+export const deviceFieldScopeKind = "device-field";
+
+export interface FieldCardSlot {
+  readonly metricId: string;
+  readonly fieldName: string;
+  readonly deviceIdentity: string;
+}
+
+/** Order known device kinds first, then unknown kinds by name. */
+const deviceKindOrder = [
+  "host",
+  "cpu",
+  "cpu_package",
+  "cpu_die",
+  "cpu_core",
+  "cpu_logical_processor",
+  "cpu_platform",
+  "numa_node",
+  "memory",
+  "virtual_memory",
+  "gpu_adapter",
+  "gpu_engine",
+  "gpu_fan_tuning_group",
+  "npu",
+  "npu_engine",
+  "storage",
+  "network_interface",
+  "fan",
+  "battery"
+];
+
+/** Singleton device kinds omit ordinal labels. */
+const singletonKinds = new Set(["host", "cpu", "memory", "virtual_memory"]);
+
+/** Choose storage or memory byte formatting by device kind. */
+const storageKinds = new Set(["storage", "network_interface"]);
+
+export function fieldCardId(fieldName: string, deviceIdentity: string): string {
+  return `${fieldName}@${deviceIdentity}`;
+}
+
+/** A field slot requires a device-field binding and matching identity suffix. */
+export function fieldCardSlot(
+  metricId: string | null | undefined,
+  binding: DashboardMetricBinding | null | undefined
+): FieldCardSlot | null {
+  if (!metricId || binding?.scopeKind !== deviceFieldScopeKind || !binding.scopeKey) {
+    return null;
+  }
+  const suffix = `@${binding.scopeKey}`;
+  return metricId.length > suffix.length && metricId.endsWith(suffix)
+    ? { metricId, fieldName: metricId.slice(0, -suffix.length), deviceIdentity: binding.scopeKey }
+    : null;
+}
+
+export function fieldCardSlots(cards: readonly DashboardCardSettings[]): FieldCardSlot[] {
+  const slots: FieldCardSlot[] = [];
+  for (const card of cards) {
+    for (const cardSlot of card.slots) {
+      const slot = fieldCardSlot(cardSlot.metricId, cardSlot.binding);
+      if (slot) slots.push(slot);
+    }
+  }
+  return slots;
+}
+
+export function fieldCardDefinitions(catalog: readonly MetricFieldCatalogDevice[]): MetricDefinition[] {
+  const cardFields = (device: MetricFieldCatalogDevice) =>
+    device.fields.filter((field) => !Object.hasOwn(cardExcludedFields, field.name));
+  const readingSource = readingSourceDisplays(catalog.flatMap((device) => cardFields(device).map((field) => field.reading)));
+  return [...catalog].sort(compareDevices).flatMap((device) => {
+    const group = deviceLabel(device, catalog);
+    return cardFields(device)
+      .map((field) => ({
+        id: fieldCardId(field.name, device.deviceIdentity),
+        label: fieldLabel(field.name),
+        group,
+        unit: field.unit,
+        preferredSlot: "small",
+        detail: fieldHint(field.name),
+        selectable: true,
+        scopeKind: deviceFieldScopeKind,
+        scopeKey: device.deviceIdentity,
+        readingSource: readingSource(field.reading),
+        reading: field.reading
+      }));
+  });
+}
+
+/** Leave readings pending until catalog and device data arrive. */
+export function fieldCardValues(
+  slots: readonly FieldCardSlot[],
+  catalog: readonly MetricFieldCatalogDevice[] | null,
+  devices: readonly MetricFieldDevice[] | null
+): Record<string, MetricValue> {
+  const text = uiText.dashboard;
+  const items: Record<string, MetricValue> = {};
+  for (const slot of slots) {
+    const known = catalog?.find((device) => device.deviceIdentity === slot.deviceIdentity);
+    const label = fieldLabel(slot.fieldName);
+    if (catalog && !known) {
+      items[slot.metricId] = { id: slot.metricId, label, displayValue: text.deviceAbsent, detail: text.deviceAbsentHint };
+      continue;
+    }
+    if (!devices) {
+      continue;
+    }
+    const device = devices.find((candidate) => candidate.deviceIdentity === slot.deviceIdentity);
+    if (!catalog && !device) {
+      // An absent value cannot establish device absence before the catalog arrives.
+      continue;
+    }
+    const field = device?.fields.find((candidate) => candidate.name === slot.fieldName);
+    const display = field ? formatFieldValue(field, byteQuantityKind(known ?? device)) : null;
+    items[slot.metricId] = {
+      id: slot.metricId,
+      label,
+      group: known && catalog ? deviceLabel(known, catalog) : undefined,
+      displayValue: display ?? text.valueUnavailable,
+      numericValue: field?.integerValue !== null && field?.integerValue !== undefined
+        ? Number(field.integerValue)
+        : field?.numericValue ?? null
+    };
+  }
+  return items;
+}
+
+/** Prefer the device name; otherwise use kind and ordinal. Append the matching adapter name for GPU engines. */
+export function deviceLabel(
+  device: Pick<MetricFieldDeviceInfo, "kind" | "displayName" | "ordinal" | "address">,
+  catalog: readonly Pick<MetricFieldDeviceInfo, "displayName" | "address">[]
+): string {
+  const kind = deviceKindLabel(device.kind);
+  if (device.displayName) {
+    return uiText.dashboard.namedDevice(kind, device.displayName);
+  }
+  const numbered = singletonKinds.has(device.kind) ? kind : uiText.dashboard.numberedDevice(kind, device.ordinal);
+  const adapterName = device.address?.kind === "gpu_engine" ? gpuAdapterName(catalog, device.address) : null;
+  return adapterName ? uiText.dashboard.namedDevice(numbered, adapterName) : numbered;
+}
+
+function gpuAdapterName(
+  catalog: readonly Pick<MetricFieldDeviceInfo, "displayName" | "address">[],
+  engine: Extract<MetricFieldAddress, { kind: "gpu_engine" }>
+): string | null {
+  const adapter = catalog.find((device) => {
+    const address = device.address;
+    return (address?.kind === "gpu_adapter" || address?.kind === "gpu_adapter_group")
+      && address.adapterLuid === engine.adapterLuid;
+  });
+  return adapter?.displayName ?? null;
+}
+
+export function deviceKindLabel(kind: string): string {
+  return uiText.dashboard.deviceKind[kind] ?? kind;
+}
+
+export function fieldLabel(fieldName: string): string {
+  return uiText.fieldLabel[fieldName]?.label ?? fieldName;
+}
+
+export function fieldHint(fieldName: string): string | null {
+  return uiText.fieldLabel[fieldName]?.hint ?? null;
+}
+
+function byteQuantityKind(device: Pick<MetricFieldDeviceInfo, "kind"> | undefined): ByteQuantityKind {
+  return device && storageKinds.has(device.kind) ? "storage" : "memory";
+}
+
+function compareDevices(left: MetricFieldCatalogDevice, right: MetricFieldCatalogDevice): number {
+  return kindRank(left.kind) - kindRank(right.kind)
+    || left.kind.localeCompare(right.kind)
+    || left.ordinal - right.ordinal
+    || left.deviceIdentity.localeCompare(right.deviceIdentity);
+}
+
+function kindRank(kind: string): number {
+  const index = deviceKindOrder.indexOf(kind);
+  return index < 0 ? deviceKindOrder.length : index;
+}

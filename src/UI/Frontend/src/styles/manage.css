@@ -1,0 +1,37 @@
+/* Stack runtime status, settings and records with consistent spacing. */
+.manage-subpage,
+.manage-settings {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+
+#optimizationPage > .manage-settings {
+  margin: 14px 0;
+}
+
+/* Embedded settings use the settings panel geometry without filling the viewport. */
+.settings-panel {
+  --settings-number-width: 140px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+  overflow: hidden;
+}
+
+.settings-panel .settings-content-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+
+.control-page > .settings-panel {
+  margin-bottom: 14px;
+}

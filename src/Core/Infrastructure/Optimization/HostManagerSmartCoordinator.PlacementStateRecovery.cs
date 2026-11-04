@@ -1,0 +1,43 @@
+using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Infrastructure.GpuPlacement;
+
+namespace ResourceManager.App.Infrastructure.Optimization;
+
+public sealed partial class HostManagerSmartCoordinator
+{
+    private async Task<HostManagerRollbackStateDocument> RestorePlacementStateCoreAsync(
+        HostManagerCycleEffectPermit permit,
+        CancellationToken cancellationToken,
+        bool gpuControlAvailable = true)
+    {
+        permit.Require(HostManagerCycleEffectKind.LegacyPlacementRestore);
+        var source = await LoadRollbackStateAsync(cancellationToken);
+        if (!GpuActionFacts.HasPlacementEffects(source.AppliedPlacements)) return source;
+        var eligiblePlacements = source.AppliedPlacements
+            .Where(item => gpuControlAvailable || !string.Equals(item.ResourceKind,
+                OptimizationResourceKinds.Gpu, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (!GpuActionFacts.HasPlacementEffects(eligiblePlacements)) return source;
+        var remainingPlacements = RestoreAppliedPlacementsThroughNative(
+            permit,
+            eligiblePlacements,
+            cancellationToken,
+            out var restoreResults);
+        if (!gpuControlAvailable)
+            remainingPlacements = [.. remainingPlacements,
+                .. source.AppliedPlacements.Where(item => string.Equals(item.ResourceKind,
+                    OptimizationResourceKinds.Gpu, StringComparison.OrdinalIgnoreCase))];
+        var attemptedAt = DateTimeOffset.UtcNow;
+        var remainingEffects = GpuActionFacts.PlacementEffects(remainingPlacements).Sum(static item => item.Records.Count);
+        var restoredCount = GpuActionFacts.PlacementEffects(source.AppliedPlacements).Sum(static item => item.Records.Count) - remainingEffects;
+        var retainedActions = remainingPlacements.Sum(static item => item.Records.Count) - remainingEffects;
+        logger.LogDebug("Host Manager restored {RestoredCount} placement effects; {RemainingEffects} effects remain pending; {RetainedActions} window action facts remain recorded.",
+            restoredCount, remainingEffects, retainedActions);
+        var checkpoint = source with
+        {
+            LastRestoreAt = attemptedAt,
+            RestoreResults = restoreResults,
+            AppliedPlacements = remainingPlacements
+        };
+        return await SaveRollbackStateAsync(checkpoint, CancellationToken.None);
+    }
+}

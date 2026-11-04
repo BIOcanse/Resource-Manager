@@ -1,0 +1,36 @@
+{
+  "name": "llhttp",
+  "version": "9.4.3",
+  "release": "release/v9.4.3",
+  "commit": "0e815792b167a9bd8ace259b95b7da953776c288",
+  "source": "https://github.com/nodejs/llhttp",
+  "license": "MIT",
+  "strictMode": true,
+  "files": [
+    {
+      "path": "include/llhttp.h",
+      "length": 31469,
+      "sha256": "5bc82fa51b19aa8bee7d921038393fbfc74e8cc9bae0844c2d82c102fb8cfd68"
+    },
+    {
+      "path": "src/api.c",
+      "length": 13384,
+      "sha256": "0f8590206fe2f264db2825401b5fb856b979ee1363dc88b06f36dc9577afb941"
+    },
+    {
+      "path": "src/http.c",
+      "length": 5209,
+      "sha256": "a1f2b23168f8e9b5bfa464c89027d3ca259fc649ae3d7e72bfff997d1aeb5d72"
+    },
+    {
+      "path": "src/llhttp.c",
+      "length": 321801,
+      "sha256": "391e7c99912abf3b1c9dd8a9c85fdeaac2663e9fa55b6f3871154d16fef8b892"
+    },
+    {
+      "path": "LICENSE",
+      "length": 1069,
+      "sha256": "628168d68bb5a8a17e0bbefb3bd74e326e1edc20583d76f52f457c82c921867d"
+    }
+  ]
+}

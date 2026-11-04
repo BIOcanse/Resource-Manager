@@ -1,0 +1,356 @@
+/* Soft uses rounded controls and layered shadows while preserving shared geometry. Elevation tokens support ultra mode. */
+
+
+:root[data-ui-style="soft"] {
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+
+  --treemap-directory-hue: 222;
+  --treemap-file-hue: 248;
+}
+
+
+:root[data-ui-style="soft"][data-theme="light"],
+:root[data-ui-style="soft"][data-theme="system"] {
+  color-scheme: light;
+  --bg: color(display-p3 0.936 0.949 0.967);
+  --surface: color(display-p3 0.989 0.992 0.999);
+  --surface-soft: color(display-p3 0.962 0.968 0.983);
+  --surface-strong: color(display-p3 0.913 0.929 0.954);
+  --table-header-bg: color(display-p3 0.958 0.964 0.979);
+  --hover-bg: color(display-p3 0.933 0.948 0.981);
+  --text: color(display-p3 0.100 0.125 0.183);
+  --muted: color(display-p3 0.338 0.371 0.440);
+  --line: color(display-p3 0.821 0.846 0.886);
+  --line-soft: color(display-p3 0.890 0.905 0.934);
+  --divider: color(display-p3 0.870 0.886 0.915);
+  --divider-soft: color(display-p3 0.917 0.929 0.951);
+  --accent: color(display-p3 0.246 0.414 0.819);
+  --accent-strong: color(display-p3 0.164 0.302 0.655);
+  --accent-soft: color(display-p3 0.900 0.924 0.979);
+  --warn: color(display-p3 0.562 0.364 0.116);
+  --warn-soft: color(display-p3 0.978 0.946 0.882);
+  --danger: color(display-p3 0.690 0.234 0.250);
+  --danger-soft: color(display-p3 0.973 0.920 0.926);
+  --shell-bg: color(display-p3 0.989 0.992 0.999 / 0.94);
+  --ok: color(display-p3 0.190 0.500 0.270);
+  --info: color(display-p3 0.060 0.470 0.540);
+  --empty-bg: color(display-p3 0.989 0.992 0.999 / 0.6);
+  --resource-empty: color(display-p3 0.989 0.992 0.999);
+  --on-accent: color(display-p3 1 1 1);
+  --backdrop: color(display-p3 0.090 0.120 0.190 / 0.30);
+  --shadow: 0 12px 32px color(display-p3 0.180 0.240 0.360 / 0.12);
+  --modal-shadow: 0 24px 72px color(display-p3 0.180 0.240 0.360 / 0.22);
+  --shadow-color: 0.180 0.240 0.360;
+  --elev-1: 0 1px 2px color(display-p3 var(--shadow-color) / 0.05), 0 3px 12px color(display-p3 var(--shadow-color) / 0.07);
+  --elev-2: 0 2px 6px color(display-p3 var(--shadow-color) / 0.07), 0 12px 28px color(display-p3 var(--shadow-color) / 0.11);
+  --elev-3: 0 10px 30px color(display-p3 var(--shadow-color) / 0.14), 0 30px 72px color(display-p3 var(--shadow-color) / 0.20);
+  --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.5);
+  --hairline: color(display-p3 var(--shadow-color) / 0.07);
+}
+
+
+:root[data-ui-style="soft"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg: color(display-p3 0.070 0.082 0.107);
+  --surface: color(display-p3 0.102 0.117 0.150);
+  --surface-soft: color(display-p3 0.118 0.137 0.173);
+  --surface-strong: color(display-p3 0.154 0.176 0.219);
+  --table-header-bg: color(display-p3 0.114 0.133 0.169);
+  --hover-bg: color(display-p3 0.140 0.168 0.219);
+  --text: color(display-p3 0.898 0.913 0.942);
+  --muted: color(display-p3 0.611 0.642 0.704);
+  --line: color(display-p3 0.215 0.242 0.293);
+  --line-soft: color(display-p3 0.170 0.191 0.235);
+  --divider: color(display-p3 0.186 0.207 0.254);
+  --divider-soft: color(display-p3 0.150 0.172 0.212);
+  --accent: color(display-p3 0.476 0.630 0.943);
+  --accent-strong: color(display-p3 0.612 0.733 0.979);
+  --accent-soft: color(display-p3 0.133 0.175 0.271);
+  --warn: color(display-p3 0.856 0.676 0.362);
+  --warn-soft: color(display-p3 0.194 0.162 0.110);
+  --danger: color(display-p3 0.882 0.510 0.513);
+  --danger-soft: color(display-p3 0.213 0.130 0.149);
+  --shell-bg: color(display-p3 0.102 0.117 0.150 / 0.94);
+  --ok: color(display-p3 0.450 0.780 0.520);
+  --info: color(display-p3 0.380 0.760 0.800);
+  --empty-bg: color(display-p3 0.102 0.117 0.150 / 0.56);
+  --resource-empty: color(display-p3 0.090 0.105 0.134);
+  --on-accent: color(display-p3 0.050 0.074 0.129);
+  --backdrop: color(display-p3 0.010 0.020 0.045 / 0.58);
+  --shadow: 0 12px 32px color(display-p3 0.010 0.020 0.045 / 0.40);
+  --modal-shadow: 0 24px 72px color(display-p3 0.010 0.020 0.045 / 0.60);
+  --shadow-color: 0.010 0.020 0.045;
+  --elev-1: 0 1px 2px color(display-p3 var(--shadow-color) / 0.35), 0 4px 14px color(display-p3 var(--shadow-color) / 0.28);
+  --elev-2: 0 3px 10px color(display-p3 var(--shadow-color) / 0.40), 0 14px 34px color(display-p3 var(--shadow-color) / 0.40);
+  --elev-3: 0 12px 34px color(display-p3 var(--shadow-color) / 0.50), 0 34px 80px color(display-p3 var(--shadow-color) / 0.60);
+  --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.06);
+  --hairline: color(display-p3 1 1 1 / 0.055);
+}
+
+
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-style="soft"][data-theme="system"] {
+    color-scheme: dark;
+    --bg: color(display-p3 0.070 0.082 0.107);
+    --surface: color(display-p3 0.102 0.117 0.150);
+    --surface-soft: color(display-p3 0.118 0.137 0.173);
+    --surface-strong: color(display-p3 0.154 0.176 0.219);
+    --table-header-bg: color(display-p3 0.114 0.133 0.169);
+    --hover-bg: color(display-p3 0.140 0.168 0.219);
+    --text: color(display-p3 0.898 0.913 0.942);
+    --muted: color(display-p3 0.611 0.642 0.704);
+    --line: color(display-p3 0.215 0.242 0.293);
+    --line-soft: color(display-p3 0.170 0.191 0.235);
+    --divider: color(display-p3 0.186 0.207 0.254);
+    --divider-soft: color(display-p3 0.150 0.172 0.212);
+    --accent: color(display-p3 0.476 0.630 0.943);
+    --accent-strong: color(display-p3 0.612 0.733 0.979);
+    --accent-soft: color(display-p3 0.133 0.175 0.271);
+    --warn: color(display-p3 0.856 0.676 0.362);
+    --warn-soft: color(display-p3 0.194 0.162 0.110);
+    --danger: color(display-p3 0.882 0.510 0.513);
+    --danger-soft: color(display-p3 0.213 0.130 0.149);
+    --shell-bg: color(display-p3 0.102 0.117 0.150 / 0.94);
+    --ok: color(display-p3 0.450 0.780 0.520);
+    --info: color(display-p3 0.380 0.760 0.800);
+    --empty-bg: color(display-p3 0.102 0.117 0.150 / 0.56);
+    --resource-empty: color(display-p3 0.090 0.105 0.134);
+    --on-accent: color(display-p3 0.050 0.074 0.129);
+    --backdrop: color(display-p3 0.010 0.020 0.045 / 0.58);
+    --shadow: 0 12px 32px color(display-p3 0.010 0.020 0.045 / 0.40);
+    --modal-shadow: 0 24px 72px color(display-p3 0.010 0.020 0.045 / 0.60);
+    --shadow-color: 0.010 0.020 0.045;
+    --elev-1: 0 1px 2px color(display-p3 var(--shadow-color) / 0.35), 0 4px 14px color(display-p3 var(--shadow-color) / 0.28);
+    --elev-2: 0 3px 10px color(display-p3 var(--shadow-color) / 0.40), 0 14px 34px color(display-p3 var(--shadow-color) / 0.40);
+    --elev-3: 0 12px 34px color(display-p3 var(--shadow-color) / 0.50), 0 34px 80px color(display-p3 var(--shadow-color) / 0.60);
+    --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.06);
+    --hairline: color(display-p3 1 1 1 / 0.055);
+  }
+}
+
+/* Override interactive states alongside base appearance; leave disabled controls to shared styling. */
+
+
+:root[data-ui-style="soft"] button:not([class]),
+:root[data-ui-style="soft"] button.secondary,
+:root[data-ui-style="soft"] .panel-refresh-button,
+:root[data-ui-style="soft"] .management-action-button,
+:root[data-ui-style="soft"] .management-settings-button,
+:root[data-ui-style="soft"] .settings-hotkey-add,
+:root[data-ui-style="soft"] .settings-icon-button,
+:root[data-ui-style="soft"] .settings-credit-link,
+:root[data-ui-style="soft"] .icon-button,
+:root[data-ui-style="soft"] .resource-row-actions {
+  border-radius: 999px;
+}
+
+:root[data-ui-style="soft"] button:not([class]):not(:disabled) {
+  background-image: none;
+}
+
+:root[data-ui-style="soft"] button.secondary:not(:disabled),
+:root[data-ui-style="soft"] .management-settings-button:not(:disabled) {
+  border-color: var(--line-soft);
+  background-color: var(--surface);
+}
+
+:root[data-ui-style="soft"] button.secondary:not(:disabled):hover,
+:root[data-ui-style="soft"] .management-settings-button:not(:disabled):hover {
+  border-color: color-mix(in oklab, var(--accent) 34%, var(--line));
+  background-color: var(--hover-bg);
+  color: var(--text);
+}
+
+
+:root[data-ui-style="soft"] .window-shellbar,
+:root[data-ui-style="soft"] .page-subnav {
+  border-bottom-color: var(--divider-soft);
+}
+
+/* Override shared page-tab tokens so tabs and indicators stay consistent. */
+:root[data-ui-style="soft"] {
+  --page-tab-radius: 999px;
+  --page-tab-bg: transparent;
+  --page-tab-border: transparent;
+  --page-tab-fg: var(--text);
+  --page-tab-border-hover: transparent;
+  --page-tab-bg-hover: var(--accent-soft);
+  --page-tab-fg-hover: var(--accent-strong);
+  --page-tab-active-border: transparent;
+  --page-tab-active-bg: var(--accent);
+  --page-tab-active-fg: var(--on-accent);
+  --page-tab-active-shadow: var(--elev-1), var(--edge-highlight);
+  --page-tab-active-border-hover: transparent;
+  --page-tab-active-bg-hover: var(--accent-hover);
+}
+
+
+:root[data-ui-style="soft"] .toolbar-search input,
+:root[data-ui-style="soft"] .resource-table-search input,
+:root[data-ui-style="soft"] .device-port-search,
+:root[data-ui-style="soft"] .metric-picker-search,
+:root[data-ui-style="soft"] .standard-select-search {
+  border-radius: 999px;
+}
+
+:root[data-ui-style="soft"] .toolbar-search input,
+:root[data-ui-style="soft"] .resource-table-search input,
+:root[data-ui-style="soft"] .device-port-search,
+:root[data-ui-style="soft"] .metric-picker-search,
+:root[data-ui-style="soft"] .settings-text-field,
+:root[data-ui-style="soft"] .settings-number-pair input,
+:root[data-ui-style="soft"] .settings-number-field input,
+:root[data-ui-style="soft"] .settings-hotkey-key-row select,
+:root[data-ui-style="soft"] .control-editor-value-input,
+:root[data-ui-style="soft"] .manual-software-field input,
+:root[data-ui-style="soft"] .manual-software-field textarea {
+  border-color: var(--line-soft);
+  background: var(--surface-soft);
+}
+
+:root[data-ui-style="soft"] .toolbar-search input:focus,
+:root[data-ui-style="soft"] .resource-table-search input:focus,
+:root[data-ui-style="soft"] .device-port-search:focus,
+:root[data-ui-style="soft"] .metric-picker-search:focus-within,
+:root[data-ui-style="soft"] .settings-text-field:focus,
+:root[data-ui-style="soft"] .settings-number-pair input:focus,
+:root[data-ui-style="soft"] .settings-number-field input:focus,
+:root[data-ui-style="soft"] .settings-hotkey-key-row select:focus,
+:root[data-ui-style="soft"] .control-editor-value-input:focus,
+:root[data-ui-style="soft"] .manual-software-field input:focus,
+:root[data-ui-style="soft"] .manual-software-field textarea:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+/* The select wrapper owns the focus ring. */
+:root[data-ui-style="soft"] .standard-select-search:focus-within {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+:root[data-ui-style="soft"] .standard-select-search input:focus-visible {
+  outline: none;
+}
+
+/* Remove global button shadows from list options. */
+:root[data-ui-style="soft"] .standard-select-options button {
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+
+:root[data-ui-style="soft"] .standard-select-trigger:not(:disabled) {
+  border-color: var(--line-soft);
+  background: var(--surface-soft);
+}
+
+:root[data-ui-style="soft"] .standard-select-trigger:not(:disabled):hover {
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
+  background: var(--hover-bg);
+}
+
+:root[data-ui-style="soft"] .standard-select-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+/* Expose track-colored gaps around selected segments instead of simulating padding with inset shadows. */
+:root[data-ui-style="soft"] {
+  --segment-track-bg: var(--surface-strong);
+  --segment-track-border: transparent;
+  --segment-track-radius: 999px;
+  --segment-radius: 999px;
+  --segment-bg: transparent;
+  --segment-fg: var(--muted);
+  --segment-bg-hover: color-mix(in oklab, var(--surface) 70%, var(--surface-strong));
+  --segment-fg-hover: var(--text);
+  --segment-active-bg: var(--accent);
+  --segment-active-fg: var(--on-accent);
+  --segment-active-shadow: var(--elev-1);
+  /* Keep disabled selected segments identifiable without the global disabled fill. */
+  --segment-disabled-bg: transparent;
+  --segment-active-disabled-bg: color-mix(in oklab, var(--accent) 22%, var(--surface-strong));
+  --segment-active-disabled-fg: var(--text);
+}
+
+/* Draw keyboard focus inside clipped segments using their text color. */
+:root[data-ui-style="soft"] .segment:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+:root[data-ui-style="soft"] .segment.active:focus-visible {
+  outline-color: var(--on-accent);
+}
+
+/* Lighten refresh rows so the segment track remains distinguishable. */
+:root[data-ui-style="soft"] .settings-interval-item {
+  background: var(--surface-soft);
+}
+
+:root[data-ui-style="soft"] .optimization-mode.pending {
+  box-shadow: inset 0 0 0 2px var(--warn);
+}
+
+/* Keep disabled multi-select segments free of the global disabled fill. */
+:root[data-ui-style="soft"] .segment:disabled:disabled {
+  background: var(--segment-disabled-bg);
+}
+
+:root[data-ui-style="soft"] .segment.active:disabled:disabled {
+  background: var(--segment-active-disabled-bg);
+  color: var(--segment-active-disabled-fg);
+}
+
+
+:root[data-ui-style="soft"] .settings-switch .settings-switch-track {
+  --switch-off-border: transparent;
+  --switch-off-bg: color-mix(in oklab, var(--muted) 34%, var(--surface));
+  --switch-on-border: transparent;
+}
+
+:root[data-ui-style="soft"] .settings-switch input:disabled + .settings-switch-track {
+  --switch-on-border: transparent;
+}
+
+:root[data-ui-style="soft"] .settings-switch .settings-switch-knob {
+  background: color(display-p3 1 1 1);
+  box-shadow: var(--elev-2);
+}
+
+
+:root[data-ui-style="soft"] .control-object,
+:root[data-ui-style="soft"] .software-detail-section,
+:root[data-ui-style="soft"] .software-detail-notice {
+  border-color: var(--hairline);
+}
+
+:root[data-ui-style="soft"] .component-item,
+:root[data-ui-style="soft"] .software-item {
+  background: var(--surface);
+}
+
+:root[data-ui-style="soft"] .observation-state {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-ui-style="soft"] .control-readings {
+  background: var(--surface-soft);
+}
+
+/* Subdue disabled context-menu items without adding global disabled fills. */
+:root[data-ui-style="soft"] .standard-context-menu-item:disabled {
+  background: transparent;
+}
+
+
+:root[data-ui-style="soft"] .software-issue-tag {
+  border-color: transparent;
+  border-radius: 999px;
+}

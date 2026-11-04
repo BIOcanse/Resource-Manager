@@ -1,0 +1,772 @@
+[
+  {
+    "name": "BlackSharp.Core",
+    "version": "1.0.7",
+    "authors": "BlackSharp.Core",
+    "license": "MPL-2.0",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "coverlet.collector",
+    "version": "10.1.0",
+    "license": "MIT",
+    "authors": "tonerdo",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Disk.ReadWrite",
+    "version": "0.1.0",
+    "license": "Not declared in package metadata",
+    "authors": "BIOcanse",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "DiskInfoToolkit",
+    "version": "1.1.2",
+    "authors": "DiskInfoToolkit",
+    "license": "MPL-2.0",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "FanControlCore.Library",
+    "version": "0.1.0-dev.6",
+    "authors": "BIOcanse",
+    "license": "Apache-2.0",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "FreedomPoint.Core",
+    "version": "0.1.0-dev.48",
+    "license": "Apache-2.0",
+    "authors": "BIOcanse",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "HidSharp",
+    "version": "2.6.4",
+    "authors": "James F. Bellinger",
+    "license": "LICENSE.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "LibreHardwareMonitorLib",
+    "version": "0.9.6",
+    "authors": "LibreHardwareMonitorLib",
+    "license": "MPL-2.0",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "runtime pack"
+  },
+  {
+    "name": "Microsoft.AspNetCore.TestHost",
+    "version": "10.0.14",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Bcl.AsyncInterfaces",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "Microsoft.CodeCoverage",
+    "version": "18.11.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Data.Sqlite.Core",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Data.Sqlite",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Diagnostics.NETCore.Client",
+    "version": "0.2.661903",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Diagnostics.Tracing.TraceEvent",
+    "version": "4.0.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Configuration.Abstractions",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Configuration.Binder",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Configuration.CommandLine",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Configuration.EnvironmentVariables",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Configuration.FileExtensions",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Configuration.Json",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Configuration.UserSecrets",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Configuration",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.DependencyInjection.Abstractions",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.DependencyInjection",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Diagnostics.Abstractions",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Diagnostics",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.FileProviders.Abstractions",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.FileProviders.Physical",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.FileSystemGlobbing",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Hosting.Abstractions",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Hosting.WindowsServices",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Hosting",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Logging.Abstractions",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Logging.Configuration",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Logging.Console",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Logging.Debug",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Logging.EventLog",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Logging.EventSource",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Logging",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Options.ConfigurationExtensions",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Options",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Extensions.Primitives",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.NET.ILLink.Tasks",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "publish tool"
+  },
+  {
+    "name": "Microsoft.NET.Test.Sdk",
+    "version": "18.11.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "publish tool"
+  },
+  {
+    "name": "Microsoft.NETCore.App.Runtime.win-x64",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "runtime pack"
+  },
+  {
+    "name": "Microsoft.TestPlatform.ObjectModel",
+    "version": "18.11.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.TestPlatform.TestHost",
+    "version": "18.11.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.Web.WebView2",
+    "version": "1.0.4314.35",
+    "license": "LICENSE.txt",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Web.WebView2",
+    "version": "1.0.3719.77",
+    "authors": "Microsoft",
+    "license": "file: LICENSE.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Windows.SDK.BuildTools.MSIX",
+    "version": "1.7.251221100",
+    "authors": "Microsoft",
+    "license": "file: sdk_license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Windows.SDK.BuildTools",
+    "version": "10.0.28000.2957",
+    "authors": "Microsoft",
+    "license": "https://aka.ms/WinSDKLicenseURL",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Windows.SDK.NET.Ref",
+    "version": "10.0.26100.57",
+    "authors": "Microsoft",
+    "license": "https://aka.ms/WinSDKLicenseURL",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsAppSDK.Base",
+    "version": "2.6.4",
+    "authors": "Microsoft",
+    "license": "file: license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsAppSDK.Foundation",
+    "version": "2.6.4",
+    "authors": "Microsoft",
+    "license": "file: license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsAppSDK.InteractiveExperiences",
+    "version": "2.6.4",
+    "authors": "Microsoft",
+    "license": "file: license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsAppSDK.WinUI",
+    "version": "2.6.4",
+    "authors": "Microsoft",
+    "license": "file: license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "runtime pack"
+  },
+  {
+    "name": "Mono.Posix.NETStandard",
+    "version": "1.0.0",
+    "authors": "Microsoft",
+    "license": "See package license URL",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "NETStandard.Library.Ref",
+    "version": "2.1.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter reference pack"
+  },
+  {
+    "name": "RAMSPDToolkit-NDD",
+    "version": "1.4.2",
+    "authors": "RAMSPDToolkit-NDD",
+    "license": "MPL-2.0",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "ResourceManager.Ledger",
+    "version": "0.1.0-dev.9",
+    "license": "Not declared in package metadata",
+    "authors": "BIOcanse",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.android-arm.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.android-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.android-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.android-x86.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-arm.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-bionic-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-bionic-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-musl-arm.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-musl-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-musl-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.maccatalyst-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.maccatalyst-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.osx-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.osx-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "SQLite",
+    "version": "3.53.4",
+    "authors": "Eric Sink",
+    "license": "LICENSE.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "SQLitePCLRaw.bundle_e_sqlite3",
+    "version": "3.0.5",
+    "license": "Apache-2.0",
+    "authors": "Eric Sink",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "SQLitePCLRaw.config.e_sqlite3",
+    "version": "3.0.5",
+    "license": "Apache-2.0",
+    "authors": "Eric Sink",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "SQLitePCLRaw.core",
+    "version": "3.0.5",
+    "license": "Apache-2.0",
+    "authors": "Eric Sink",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "SQLitePCLRaw.provider.e_sqlite3",
+    "version": "3.0.5",
+    "license": "Apache-2.0",
+    "authors": "Eric Sink",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "System.Buffers",
+    "version": "4.6.1",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "System.CodeDom",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "System.Diagnostics.EventLog",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "test dependency"
+  },
+  {
+    "name": "System.IO.FileSystem.AccessControl",
+    "version": "5.0.0",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "System.IO.Pipelines",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "System.Management",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "System.Memory",
+    "version": "4.6.3",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "System.Reflection.TypeExtensions",
+    "version": "4.7.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "System.Runtime.CompilerServices.Unsafe",
+    "version": "6.1.2",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "System.ServiceProcess.ServiceController",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "System.Text.Encodings.Web",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "System.Text.Json",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "System.Threading.Tasks.Extensions",
+    "version": "4.6.3",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "xunit.abstractions",
+    "version": "2.0.3",
+    "license": "See package license",
+    "authors": "James Newkirk,Brad Wilson",
+    "kind": "test dependency"
+  },
+  {
+    "name": "xunit.analyzers",
+    "version": "1.18.0",
+    "license": "Apache-2.0",
+    "authors": "jnewkirk,bradwilson,marcind",
+    "kind": "test dependency"
+  },
+  {
+    "name": "xunit.assert",
+    "version": "2.9.3",
+    "license": "Apache-2.0",
+    "authors": "jnewkirk,bradwilson",
+    "kind": "test dependency"
+  },
+  {
+    "name": "xunit.core",
+    "version": "2.9.3",
+    "license": "Apache-2.0",
+    "authors": "jnewkirk,bradwilson",
+    "kind": "test dependency"
+  },
+  {
+    "name": "xunit.extensibility.core",
+    "version": "2.9.3",
+    "license": "Apache-2.0",
+    "authors": "jnewkirk,bradwilson",
+    "kind": "test dependency"
+  },
+  {
+    "name": "xunit.extensibility.execution",
+    "version": "2.9.3",
+    "license": "Apache-2.0",
+    "authors": "jnewkirk,bradwilson",
+    "kind": "test dependency"
+  },
+  {
+    "name": "xunit.runner.visualstudio",
+    "version": "4.0.1",
+    "license": "Apache-2.0",
+    "authors": "jnewkirk,bradwilson",
+    "kind": "test dependency"
+  },
+  {
+    "name": "xunit",
+    "version": "2.9.3",
+    "license": "Apache-2.0",
+    "authors": "jnewkirk,bradwilson",
+    "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.NET.ILLink.Tasks",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "publish tool"
+  },
+  {
+    "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
+    "version": "10.0.14",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "publish tool"
+  }
+]

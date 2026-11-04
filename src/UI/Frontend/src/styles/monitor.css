@@ -1,0 +1,799 @@
+
+.monitor-work-region {
+  min-width: 0;
+}
+
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Use card width for reading sizes and metric column counts. */
+.metric-card {
+  container-type: inline-size;
+  min-width: 0;
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+  padding: 12px 14px;
+}
+
+.metric-card.editing {
+  cursor: grab;
+}
+
+.metric-card.editing:active {
+  cursor: grabbing;
+}
+
+.metric-card.drag-source,
+.edit-slot.drag-source,
+.resource-breakdown-item.drag-source,
+.resource-table-head-cell.drag-source {
+  opacity: 0.45;
+}
+
+.metric-card.drag-over,
+.edit-slot.drag-over,
+.resource-breakdown-item.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+.resource-table-head-cell.drag-over {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--accent-soft);
+}
+
+.resource-breakdown-item.editing {
+  cursor: grab;
+}
+
+.resource-breakdown-item.editing:active {
+  cursor: grabbing;
+}
+
+body.reordering,
+body.reordering * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+/* Slots use absolute unit coordinates set by SlotFrame; animate reflow copies and share the unit step across modes. */
+.metric-slots {
+  --slot-step: 42px;
+  --slot-gap: 4px;
+  position: relative;
+  min-width: 0;
+  height: calc(var(--card-units) * var(--slot-step) - var(--slot-gap));
+}
+
+/* Clip resizing content while leaving room for the drag-target outline. */
+.card-slot {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(var(--slot-top, 0) * var(--slot-step));
+  height: max(0px, calc(var(--slot-units, 0) * var(--slot-step) - var(--slot-gap)));
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
+
+.card-slot > .metric-small-row,
+.card-slot > .metric-main-content,
+.card-slot > .edit-slot {
+  height: 100%;
+}
+
+
+.card-slot + .card-slot > .metric-small-row,
+.card-slot + .card-slot > .metric-main-content {
+  border-top: 1px solid var(--divider);
+  padding-top: 4px;
+}
+
+
+.metric-main-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Keep labels and readings at intrinsic height; give remaining space to trends. */
+.metric-main-content > .metric-label,
+.metric-main-content > .metric-value {
+  flex: 0 0 auto;
+}
+
+.metric-size-large .metric-value {
+  font-size: clamp(30px, 14cqi, 44px);
+}
+
+.metric-size-full .metric-value {
+  font-size: clamp(36px, 18cqi, 60px);
+}
+
+.metric-size-full .metric-label {
+  font-size: 14px;
+}
+
+
+.metric-label {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+/* Clamp labels to two lines, using language-aware hyphenation before arbitrary wrapping. */
+.metric-main-content .metric-label-text,
+.metric-small-row .metric-label-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.metric-value {
+  min-width: 0;
+  overflow: hidden;
+  font-size: clamp(24px, 11cqi, 34px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.metric-unit {
+  color: var(--muted);
+  font-size: 0.6em;
+  font-weight: 600;
+}
+
+
+.metric-value.missing {
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* Use warning color for delivery errors without changing reading geometry. */
+.metric-value.missing.failed {
+  color: var(--danger);
+}
+
+
+.metric-small-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metric-small-row .metric-label {
+  flex: 1 1 auto;
+}
+
+.metric-small-row .metric-value {
+  flex: 0 0 auto;
+  max-width: 70%;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.metric-small-row .metric-unit {
+  font-size: 0.75em;
+}
+
+.metric-small-row .metric-value.missing {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Limit unavailable-value text to half the small row and wrap it without squeezing the label. */
+.metric-small-row .metric-value.missing {
+  max-width: 50%;
+  line-height: 1.25;
+  text-align: end;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+/* Match loading bars to reading geometry; use GrayText fills in forced colors. */
+.metric-pending-bar {
+  display: inline-block;
+  width: 3.2em;
+  height: 0.62em;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--muted) 22%, transparent);
+  vertical-align: baseline;
+}
+
+.metric-small-row .metric-pending-bar {
+  width: 2.6em;
+}
+
+@media (forced-colors: active) {
+  .metric-pending-bar {
+    forced-color-adjust: none;
+    background: GrayText;
+  }
+}
+
+
+.metric-small-row.with-device .metric-label-text,
+.metric-size-medium.with-device .metric-label-text {
+  -webkit-line-clamp: 1;
+}
+
+.metric-small-row .metric-device {
+  margin-top: 0;
+  line-height: 1.15;
+}
+
+/* Trends fill the space below readings; use system text color without area fills in forced colors. */
+.metric-trend {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-trend-chart {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: visible;
+}
+
+.metric-trend-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.metric-trend-area {
+  fill: color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.metric-trend-range {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
+.metric-trend-range > div {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.metric-trend-range dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  .metric-trend-line {
+    forced-color-adjust: none;
+    stroke: CanvasText;
+  }
+
+  .metric-trend-area {
+    forced-color-adjust: none;
+    fill: none;
+  }
+}
+
+
+.metric-device {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.85;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Share source badges across cards, selectors and device fields using theme tokens. */
+.reading-source-mark {
+  display: inline-block;
+  flex: 0 0 auto;
+  margin-inline-end: 4px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+/* Mix warning text toward the body color for readable small labels. */
+.reading-source-mark.pending {
+  background: var(--warn-soft);
+  color: color-mix(in oklab, var(--warn) 60%, var(--text));
+}
+
+/* Use system borders and GrayText to distinguish badges and missing values in forced colors. */
+@media (forced-colors: active) {
+  .reading-source-mark {
+    border: 1px solid CanvasText;
+  }
+
+  .metric-value.missing {
+    forced-color-adjust: none;
+    color: GrayText;
+  }
+}
+
+.metric-option-aside .reading-source-mark {
+  margin-inline-end: 0;
+}
+
+.user-details-row dt .reading-source-mark {
+  margin-inline: 6px 0;
+}
+
+.edit-slot {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 4px 8px;
+}
+
+.edit-slot > .metric-small-row,
+.edit-slot > .metric-main-content {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+
+.edit-slot .metric-small-row .metric-label-text {
+  -webkit-line-clamp: 1;
+}
+
+.edit-slot .metric-small-row .metric-label {
+  line-height: 1.2;
+}
+
+.edit-slot.has-metric {
+  cursor: grab;
+}
+
+/* Highlight only the drag target: the occupied slot or the empty card area. */
+.edit-slot.has-metric:hover {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
+  background: color-mix(in oklab, var(--surface-soft) 82%, var(--accent-soft));
+}
+
+.metric-card.editing:hover:not(:has(.edit-slot.has-metric:hover, .slot-add:hover)) {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--hairline));
+}
+
+.edit-slot.has-metric:active {
+  cursor: grabbing;
+}
+
+/* Reveal slot actions on hover or focus without covering separators. */
+.slot-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  gap: 4px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  box-shadow: -6px 0 6px var(--surface-soft);
+  opacity: 0;
+}
+
+.size-small .slot-actions {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.edit-slot:hover .slot-actions,
+.edit-slot:focus-within .slot-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .slot-actions {
+    opacity: 1;
+  }
+}
+
+.slot-change,
+.slot-resize,
+.slot-delete {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  padding: 0;
+}
+
+.slot-delete {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+/* Give delete buttons their own danger hover color. */
+.slot-delete:not(:disabled):hover {
+  border-color: color-mix(in oklab, var(--danger) 82%, black);
+  background: color-mix(in oklab, var(--danger) 82%, black);
+}
+
+/* The add button fills the remaining card units. */
+.slot-add {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  background-image: none;
+  color: var(--accent-strong);
+  box-shadow: none;
+}
+
+.slot-add:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+
+.metric-picker {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+
+.metric-picker.with-source {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.metric-picker-source {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--divider);
+}
+
+.metric-picker-source-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+
+.metric-picker-source-heading strong {
+  font-size: 13px;
+}
+
+.metric-picker-source-heading small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metric-source-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 4px;
+  max-height: 132px;
+  overflow: auto;
+}
+
+.metric-source-choice {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  font-weight: 500;
+}
+
+.metric-source-choice:hover {
+  background: var(--surface-strong);
+}
+
+.metric-source-choice.active {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+}
+
+.metric-source-choice-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-source-choice-mark {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Keep single-class specificity so narrow-layout rules can override it. */
+.metric-picker-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.metric-picker-search {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 8px 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.metric-picker-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+
+.metric-picker-search input {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The search wrapper owns the focus ring. */
+.metric-picker-search input:focus,
+.metric-picker-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Suppress the native clear button when the custom one is present. */
+.metric-picker-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* Use two classes to override the later icon-button rule. */
+.metric-modal .metric-picker-clear {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.metric-modal .metric-picker-clear:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.metric-picker-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Overlay the empty state beside the list, leaving only groups and options inside it. */
+.metric-options,
+.metric-picker-empty {
+  grid-row: 2;
+  grid-column: 1;
+}
+
+.metric-options {
+  overflow: auto;
+  padding: 0 4px 8px 0;
+}
+
+/* Skip offscreen groups and estimate their height until first rendered. */
+.metric-option-group-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+}
+
+.metric-option-group-block + .metric-option-group-block {
+  margin-top: 10px;
+}
+
+.metric-option-group-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface);
+  padding: 6px 0 4px;
+}
+
+.metric-option-group-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Group toggles retain heading styling. */
+.metric-option-group-toggle {
+  min-height: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  padding: 0;
+  text-align: left;
+}
+
+.metric-option-group-toggle svg {
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--muted);
+}
+
+.metric-option-group-toggle:not(:disabled):hover {
+  border-color: transparent;
+  background: none;
+  color: var(--accent);
+}
+
+.metric-option-group-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Use collapsed header height for offscreen size estimates. */
+.metric-option-group-block.folded {
+  contain-intrinsic-size: auto 32px;
+}
+
+.metric-option-group-block.folded .metric-option-group-heading {
+  margin-bottom: 0;
+}
+
+.metric-option-group-detail {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.metric-option-group-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metric-option-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+}
+
+.metric-picker-empty {
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+/* Use global disabled styling; component dependency hints belong to group headers. */
+.metric-option {
+  text-align: left;
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+  padding: 6px 10px;
+}
+
+.metric-option:not(:disabled):hover,
+.metric-option.active,
+.metric-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.metric-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-option-aside {
+  min-width: 0;
+  max-width: 9em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-option-aside .metric-unavailable {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.metric-option-dependency {
+  flex: 0 0 auto;
+  color: var(--warn);
+}

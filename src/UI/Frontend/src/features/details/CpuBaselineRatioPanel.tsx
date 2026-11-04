@@ -1,0 +1,206 @@
+import { formatTrimmedDigits } from "../../presentation/interfaceNumbers.ts";
+import { createSignal, Show } from "solid-js";
+import {
+  isValidCpuBaselineRatio,
+  resetCpuBaselineRatio,
+  saveCpuBaselineRatio,
+  type CpuBaselineRatioSettings,
+  type CpuBaselineRatioUpdateResult
+} from "../../data/cpu/cpuBaselineRatioApi.ts";
+import { acceptSourceCommand } from "../../frontendRuntime/source/acceptSourceCommand.ts";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import { useSource } from "../../frontendRuntime/source/useSource.ts";
+import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot.ts";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
+import { userFacingErrorMessage } from "../../presentation/userFacingText";
+import { uiText } from "../../text.ts";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
+
+/** Show the CPU's default baseline and source, allowing a user override or reset. */
+export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean }) {
+  const runtime = useFrontendRuntime();
+  const frontendWork = useFrontendWork();
+  const source = useSource(runtime.sources.cpuBaselineRatio, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsCpuModel),
+    refreshIntervalMs: null
+  }));
+  const settings = () => sourceCanRender(source.snapshot()) ? source.snapshot().data : null;
+  const readState = () => {
+    const snapshot = source.snapshot();
+    return snapshot.status === "ready" || snapshot.status === "refreshing" || snapshot.status === "stale" ? "ready"
+      : snapshot.status === "idle" || snapshot.status === "loading" ? "loading" : "failed";
+  };
+  const [editing, setEditing] = createSignal(false);
+  const [draft, setDraft] = createSignal("");
+  const [saving, setSaving] = createSignal(false);
+  const [commandError, setCommandError] = createSignal<string | null>(null);
+  const [notice, setNotice] = createSignal<string | null>(null);
+  // Discard unsaved baseline edits on page leave.
+  onPageLeave(() => setEditing(false));
+
+  function startEditing(current: CpuBaselineRatioSettings) {
+    setDraft(String(Number(current.ratio.toFixed(4))));
+    setCommandError(null);
+    setNotice(null);
+    setEditing(true);
+  }
+
+  function applyResult(result: CpuBaselineRatioUpdateResult) {
+    setNotice(result.runtimeApplicationDisposition === "savedNotApplied"
+      ? uiText.cpuBaseline.savedNotApplied
+      : result.runtimeApplicationDisposition === "appliedWithDeliveryFailures"
+        ? uiText.cpuBaseline.deliveryFailures
+        : null);
+    setEditing(false);
+  }
+
+  async function save() {
+    if (!props.runtimeEffectsEnabled || saving()) return;
+    const text = draft().trim();
+    const ratio = Number(text);
+    if (text === "" || !isValidCpuBaselineRatio(ratio)) {
+      setCommandError(uiText.cpuBaseline.invalidRatio);
+      return;
+    }
+    setSaving(true);
+    setCommandError(null);
+    try {
+      applyResult(await acceptSourceCommand(runtime.sources.cpuBaselineRatio,
+        () => saveCpuBaselineRatio(runtime.requestClient, ratio),
+        (result) => result.settings ?? undefined));
+    } catch (error) {
+      setCommandError(userFacingErrorMessage(error, uiText.cpuBaseline.saveFailed));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function reset() {
+    if (!props.runtimeEffectsEnabled || saving()) return;
+    setSaving(true);
+    setCommandError(null);
+    try {
+      applyResult(await acceptSourceCommand(runtime.sources.cpuBaselineRatio,
+        () => resetCpuBaselineRatio(runtime.requestClient),
+        (result) => result.settings ?? undefined));
+    } catch (error) {
+      setCommandError(userFacingErrorMessage(error, uiText.cpuBaseline.resetFailed));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section class="cpu-topology-panel cpu-baseline-panel" aria-label={uiText.cpuBaseline.title}>
+      <div class="panel-header cpu-topology-header">
+        <div class="optimization-heading">
+          <h2>{uiText.cpuBaseline.title}</h2>
+        </div>
+        <Show when={settings()}>
+          {(current) => (
+            <div class="cpu-topology-actions">
+              <Show when={editing()} fallback={
+                <Show when={props.runtimeEffectsEnabled}>
+                  <button class="secondary" type="button" onClick={() => startEditing(current())}>
+                    {uiText.cpuBaseline.edit}
+                  </button>
+                </Show>
+              }>
+                <button class="secondary" type="button" disabled={saving()} onClick={() => setEditing(false)}>
+                  {uiText.cpuBaseline.cancel}
+                </button>
+                <Show when={current().overrideRatio !== null}>
+                  <button class="secondary" type="button" disabled={saving()} onClick={() => void reset()}>
+                    {uiText.cpuBaseline.reset}
+                  </button>
+                </Show>
+                <button type="button" disabled={saving()} onClick={() => void save()}>
+                  {uiText.cpuBaseline.save}
+                </button>
+              </Show>
+            </div>
+          )}
+        </Show>
+      </div>
+      <p class="cpu-baseline-description">{uiText.cpuBaseline.description}</p>
+      <Show when={commandError()}>
+        {(message) => <p role="alert">{message()}</p>}
+      </Show>
+      <Show when={notice()}>
+        {(message) => <p role="status">{message()}</p>}
+      </Show>
+      <Show when={readState() !== "loading"} fallback={<div class="optimization-empty">-</div>}>
+        <Show when={readState() === "ready" && settings()} fallback={
+          <div class="cpu-baseline-unavailable">
+            <p role="alert">
+              {readState() === "failed" ? uiText.cpuBaseline.readFailed : uiText.cpuBaseline.unavailable}
+            </p>
+            <button class="secondary" type="button" onClick={() => void source.refresh()}>{uiText.cpuBaseline.retry}</button>
+          </div>
+        }>
+          {(current) => (
+            <>
+              <div class="cpu-topology-meta">
+                <strong data-full-content={current().cpuName}>{current().cpuName}</strong>
+              </div>
+              <div class="smart-details-summary">
+                <BaselineTile
+                  label={uiText.cpuBaseline.currentRatio}
+                  value={`${formatRatio(current().ratio)} · ${current().overrideRatio === null
+                    ? uiText.cpuBaseline.defaultActive
+                    : uiText.cpuBaseline.overrideActive}`}
+                />
+                <BaselineTile label={uiText.cpuBaseline.multiplier} value={`×${formatMultiplier(current().multiplier)}`} />
+                <BaselineTile label={uiText.cpuBaseline.defaultRatio} value={formatRatio(current().defaultRatio)} />
+                <BaselineTile
+                  label={uiText.cpuBaseline.defaultSource}
+                  value={uiText.cpuBaseline.sources[current().defaultSource]}
+                />
+                <BaselineTile
+                  label={uiText.cpuBaseline.matchedModel}
+                  value={current().matchedModel ?? uiText.cpuBaseline.noMatchedModel}
+                />
+                <BaselineTile label={uiText.cpuBaseline.datasetVersion} value={current().datasetVersion} />
+              </div>
+              <Show when={editing()}>
+                <label class="cpu-score-field cpu-baseline-field">
+                  <span>{uiText.cpuBaseline.ratioInput}</span>
+                  <input
+                    class="cpu-score-input"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="any"
+                    disabled={saving()}
+                    value={draft()}
+                    onInput={(event) => setDraft(event.currentTarget.value)}
+                    onKeyDown={(event) => { if (event.key === "Enter") void save(); }}
+                  />
+                  <small>{uiText.cpuBaseline.ratioHint}</small>
+                </label>
+              </Show>
+            </>
+          )}
+        </Show>
+      </Show>
+    </section>
+  );
+}
+
+function BaselineTile(props: { label: string; value: string }) {
+  return (
+    <div class="smart-details-tile">
+      <span>{props.label}</span>
+      <strong data-full-content={props.value}>{props.value}</strong>
+    </div>
+  );
+}
+
+function formatRatio(value: number) {
+  return formatTrimmedDigits(value, 4);
+}
+
+function formatMultiplier(value: number) {
+  return formatTrimmedDigits(value, 3);
+}

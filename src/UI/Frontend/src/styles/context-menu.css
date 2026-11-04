@@ -1,0 +1,74 @@
+
+.standard-context-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 238px;
+  padding: 4px 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-2), var(--edge-highlight);
+  color: var(--text);
+  user-select: none;
+}
+
+.standard-context-menu-item {
+  width: 100%;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.standard-context-menu-item:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.standard-context-menu-item:active {
+  transform: none;
+}
+
+.standard-context-menu-item.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Match the global disabled selector specificity while changing only text color. */
+.standard-context-menu-item:disabled:disabled {
+  cursor: default;
+  background-color: transparent;
+  color: var(--control-disabled-text);
+}
+
+/* Wrap disabled reasons below their menu labels. */
+.standard-context-menu-item:has(> .standard-context-menu-reason) {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  padding-block: 4px;
+}
+
+.standard-context-menu-reason {
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.standard-context-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--divider-soft);
+}

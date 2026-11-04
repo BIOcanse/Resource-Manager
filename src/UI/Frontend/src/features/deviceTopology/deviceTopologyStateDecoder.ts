@@ -1,0 +1,168 @@
+import {
+  defineResponseDecoder,
+  requireArray,
+  requireBackendMessage,
+  requireNonEmptyString,
+  requireNonNegativeSafeInteger,
+  requireNullable,
+  requireOneOf,
+  requireRecord,
+  requireString,
+  ResponseDecodeError
+} from "../../frontendRuntime/request/ResponseDecoder.ts";
+import type {
+  DeviceTopologySnapshot,
+  DeviceTopologySnapshotSource,
+  DeviceTopologySnapshotState,
+  DeviceTopologySnapshotStatus,
+  DeviceTopologySourceDiagnostic,
+  DeviceTopologySourceDiagnosticStatus,
+  DeviceTopologyInformationSnapshot
+} from "../../types.ts";
+import { decodePort, decodeSystemIdentity } from "./deviceTopologyNestedDecoder.ts";
+import { decodeExternalMachines } from "./externalMachineDecoder.ts";
+import { decodeMachineIdentity } from "./machineIdentityDecoder.ts";
+import { decodeGpuInformation } from "./gpuInformationDecoder.ts";
+import { findDeviceTopologyRelationCycle } from "./deviceTopologyRelations.ts";
+
+const currentSchemaVersion = "4.0.0";
+const statuses = ["warming", "ready", "refreshing", "failed"] as const;
+const sources = ["memory", "persisted", "live"] as const;
+const diagnosticStatuses = ["required-incomplete", "optional-degraded"] as const;
+
+export const deviceTopologyStateDecoder =
+  defineResponseDecoder<DeviceTopologySnapshotState>(
+    "device-topology.state.v3",
+    (value) => {
+      const record = requireRecord(value);
+      const schemaVersion = requireString(record.schemaVersion, "$.schemaVersion");
+      if (schemaVersion !== currentSchemaVersion) {
+        throw new ResponseDecodeError(
+          "$.schemaVersion",
+          `schema version '${currentSchemaVersion}'`);
+      }
+      const state = requireOneOf(
+        record.state,
+        "$.state",
+        statuses) as DeviceTopologySnapshotStatus;
+      const snapshot = requireNullable(
+        record.snapshot,
+        "$.snapshot",
+        decodeSnapshot);
+      if (state === "ready" && snapshot === null) {
+        throw new ResponseDecodeError("$.snapshot", "snapshot when state is 'ready'");
+      }
+
+      return {
+        schemaVersion,
+        state,
+        snapshot,
+        contentGeneration: requireNonNegativeSafeInteger(
+          record.contentGeneration,
+          "$.contentGeneration"),
+        stateRevision: requireNonNegativeSafeInteger(
+          record.stateRevision,
+          "$.stateRevision"),
+        source: requireOneOf(
+          record.source,
+          "$.source",
+          sources) as DeviceTopologySnapshotSource,
+        lastSuccessAt: nullableTimestamp(record.lastSuccessAt, "$.lastSuccessAt"),
+        lastAttemptAt: nullableTimestamp(record.lastAttemptAt, "$.lastAttemptAt"),
+        failureCode: requireNullable(record.failureCode, "$.failureCode", requireNonEmptyString),
+        attemptDiagnostics: requireArray(
+          record.attemptDiagnostics,
+          "$.attemptDiagnostics")
+          .map((item, index) => decodeSourceDiagnostic(
+            item,
+            `$.attemptDiagnostics[${index}]`)),
+        informationFields: decodeInformation(record.informationFields, "$.informationFields")
+      };
+    });
+
+/** Selected-field subscription frame, shaped like state informationFields. */
+export const deviceTopologyInformationDecoder =
+  defineResponseDecoder<DeviceTopologyInformationSnapshot>(
+    "device-topology.fields",
+    (value) => decodeInformation(value, "$"));
+
+function decodeInformation(value: unknown, path: string): DeviceTopologyInformationSnapshot {
+  const record = requireRecord(value, path);
+  return {
+    observedAt: nullableTimestamp(record.observedAt, `${path}.observedAt`),
+    devices: requireArray(record.devices, `${path}.devices`).map((item, index) => {
+      const devicePath = `${path}.devices[${index}]`;
+      const device = requireRecord(item, devicePath);
+      return {
+        deviceIdentity: requireNonEmptyString(device.deviceIdentity, `${devicePath}.deviceIdentity`),
+        objectType: requireNonEmptyString(device.objectType, `${devicePath}.objectType`),
+        fields: requireArray(device.fields, `${devicePath}.fields`).map((item, fieldIndex) => {
+          const fieldPath = `${devicePath}.fields[${fieldIndex}]`;
+          const field = requireRecord(item, fieldPath);
+          const definition = requireRecord(field.definition, `${fieldPath}.definition`);
+          if (!Object.hasOwn(field, "value")) throw new ResponseDecodeError(`${fieldPath}.value`, "current value or null");
+          return { definition: { name: requireNonEmptyString(definition.name, `${fieldPath}.definition.name`) }, value: field.value };
+        })
+      };
+    })
+  };
+}
+
+function decodeSourceDiagnostic(
+  value: unknown,
+  path: string
+): DeviceTopologySourceDiagnostic {
+  const record = requireRecord(value, path);
+  return {
+    sourceId: requireNonEmptyString(record.sourceId, `${path}.sourceId`),
+    status: requireOneOf(
+      record.status,
+      `${path}.status`,
+      diagnosticStatuses) as DeviceTopologySourceDiagnosticStatus,
+    code: requireNonEmptyString(record.code, `${path}.code`),
+    messageCode: requireBackendMessage(record.messageCode, `${path}.messageCode`)
+  };
+}
+
+function decodeSnapshot(value: unknown, path: string): DeviceTopologySnapshot {
+  const record = requireRecord(value, path);
+  const ports = requireArray(record.ports, `${path}.ports`)
+    .map((item, index) => decodePort(item, `${path}.ports[${index}]`));
+  const portIds = new Set<string>();
+  for (let index = 0; index < ports.length; index += 1) {
+    const id = ports[index].id;
+    if (portIds.has(id)) {
+      throw new ResponseDecodeError(`${path}.ports[${index}].id`, "unique port id");
+    }
+    portIds.add(id);
+  }
+  // Reject cycles and self-links in device and USB hub graphs before tree expansion.
+  const cycle = findDeviceTopologyRelationCycle(ports);
+  if (cycle) {
+    throw new ResponseDecodeError(
+      `${path}.ports[${cycle.portIndex}].${cycle.field}`,
+      "port relation that does not form a parent cycle");
+  }
+  return {
+    capturedAt: requireTimestamp(record.capturedAt, `${path}.capturedAt`),
+    gpuInformation: decodeGpuInformation(record.gpuInformation, `${path}.gpuInformation`),
+    machineIdentity: decodeMachineIdentity(record.machineIdentity, `${path}.machineIdentity`),
+    externalMachines: decodeExternalMachines(record.externalMachines, `${path}.externalMachines`),
+    system: decodeSystemIdentity(record.system, `${path}.system`),
+    ports,
+    notes: requireArray(record.notes, `${path}.notes`)
+      .map((item, index) => requireBackendMessage(item, `${path}.notes[${index}]`))
+  };
+}
+
+function nullableTimestamp(value: unknown, path: string): string | null {
+  return requireNullable(value, path, requireTimestamp);
+}
+
+function requireTimestamp(value: unknown, path: string): string {
+  const timestamp = requireString(value, path);
+  if (!timestamp || !Number.isFinite(Date.parse(timestamp))) {
+    throw new ResponseDecodeError(path, "valid timestamp string");
+  }
+  return timestamp;
+}

@@ -1,0 +1,376 @@
+
+.disk-usage-page {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.disk-usage-setup .settings-row {
+  min-height: 52px;
+  padding: 6px 4px;
+}
+
+.disk-usage-setup .settings-row-copy span {
+  overflow-wrap: anywhere;
+}
+
+
+@media (min-width: 681px) {
+  .disk-usage-setup .settings-row {
+    grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+    justify-items: start;
+    gap: 24px;
+  }
+}
+
+.disk-usage-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--warn) 42%, var(--line));
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 13px;
+}
+
+.disk-usage-volume-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.disk-usage-volume {
+  position: relative;
+  width: 100%;
+  min-height: 74px;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 10px 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  background-image: none;
+  color: var(--text);
+  text-align: left;
+  overflow: hidden;
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+.disk-usage-volume:not(:disabled):not(.selected):hover {
+  border-color: color-mix(in oklab, var(--accent) 40%, var(--line));
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.disk-usage-volume.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.disk-usage-volume.unavailable {
+  opacity: 1;
+  color: var(--muted);
+}
+
+/* Match the loading placeholder to volume card geometry. */
+.disk-usage-volume.pending {
+  background: var(--surface-soft);
+  box-shadow: none;
+  color: var(--muted);
+}
+
+.disk-usage-volume-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.disk-usage-volume-meta,
+.disk-usage-volume-size {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+
+.disk-usage-volume-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--line-soft);
+}
+
+.disk-usage-volume-bar::before {
+  content: "";
+  display: block;
+  height: 100%;
+  width: calc(var(--disk-usage-used, 0) * 100%);
+  background: var(--accent);
+}
+
+.disk-usage-empty {
+  display: grid;
+  gap: 6px;
+  place-items: center;
+  min-height: 220px;
+}
+
+.disk-usage-empty strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+/* Treemap cells use paint contrast and inset strokes instead of borders. */
+.disk-usage-treemap {
+  position: relative;
+  min-height: 420px;
+  height: clamp(420px, 58vh, 900px);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface-strong);
+}
+
+.disk-usage-treemap-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  outline: none;
+}
+
+.disk-usage-treemap-canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+
+.disk-usage-hover-tip {
+  position: fixed;
+  z-index: 40;
+  max-width: 460px;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.disk-usage-hover-tip strong {
+  font-size: 13px;
+}
+
+.disk-usage-hover-path {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.disk-usage-omitted {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+
+.disk-usage-context-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 280px;
+  max-width: 420px;
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--modal-shadow);
+  overflow: hidden;
+}
+
+.disk-usage-context-facts {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--divider-soft);
+  /* Facts are selectable text, not actionable buttons. */
+  user-select: text;
+  cursor: text;
+}
+
+.disk-usage-context-name {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.disk-usage-context-facts dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.disk-usage-context-facts dt {
+  color: var(--muted);
+}
+
+.disk-usage-context-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.disk-usage-context-path {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.disk-usage-context-actions {
+  display: grid;
+  padding: 6px;
+  gap: 2px;
+}
+
+.disk-usage-context-actions button {
+  min-height: 30px;
+  justify-content: flex-start;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  background-image: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  padding: 0 10px;
+  box-shadow: none;
+}
+
+.disk-usage-context-actions button:not(:disabled):hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.disk-usage-warning ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+/* Collapse scan settings once results are available. */
+
+.disk-usage-setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+
+.disk-usage-view-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Reserve the treemap dimensions while results are unavailable. */
+.disk-usage-result > .content-state {
+  min-height: 420px;
+  height: clamp(420px, 58vh, 900px);
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: var(--empty-bg);
+  padding: 20px 16px;
+}
+
+.disk-usage-result > .content-state .content-state-copy {
+  max-width: 560px;
+}
+
+/* Place disk health after scanning controls; placeholders match the populated rows. */
+.disk-health-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.disk-health-row {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.disk-health-row.pending {
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.disk-health-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-health-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.disk-health-item {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.disk-health-item dt {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-health-item dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.disk-health-not-reported,
+.disk-health-empty,
+.disk-health-failed {
+  margin: 0;
+  color: var(--muted);
+}
+
+.disk-health-empty,
+.disk-health-failed {
+  margin-top: 10px;
+}
+
+@media (max-width: 680px) {
+  .disk-health-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

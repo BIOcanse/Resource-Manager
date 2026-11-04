@@ -1,0 +1,27 @@
+{
+  "schema": "disk.dotnet.declaration.v1",
+  "templates": [
+    "checkpoint-a.bin",
+    "checkpoint-b.bin"
+  ],
+  "fixed_uids_hex": [
+    "726d2f646973706c61792f636865636b706f696e742f7633"
+  ],
+  "capacity": {
+    "catalog": {
+      "maximum_directory_entries": 3,
+      "maximum_uid_bytes": 24,
+      "maximum_segments_per_uid": 1
+    },
+    "maximum_readers": 1,
+    "maximum_payload_bytes": 303,
+    "maximum_path_bytes": 98301,
+    "maximum_parameter_bytes": 1,
+    "maximum_runtime_templates": 0,
+    "maximum_subscriptions": 0,
+    "maximum_callback_calls": 0
+  },
+  "configuration": {
+    "source": "sdk-default"
+  }
+}

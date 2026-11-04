@@ -1,0 +1,174 @@
+
+.window-shellbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: var(--shellbar-height);
+  display: grid;
+  /* Give tabs priority while reserving drag space for the uptime value. */
+  grid-template-columns: auto minmax(64px, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 176px 0 12px;
+  background: var(--shell-bg);
+  border-bottom: 1px solid var(--divider);
+  backdrop-filter: var(--shell-backdrop);
+  user-select: none;
+}
+
+.shell-pages {
+  min-width: 0;
+  align-self: stretch;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 0 0 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+
+.shell-page {
+  min-height: 30px;
+  padding: 0 9px;
+}
+
+.window-drag-region {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  cursor: grab;
+  /* Clip long translated product names before they wrap into navigation. */
+  overflow: hidden;
+  container: shell-title / inline-size;
+}
+
+.window-drag-region:active {
+  cursor: grabbing;
+}
+
+.window-drag-region .shell-title-text {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.window-drag-region strong {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-uptime {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.shell-uptime-label {
+  font-size: 12px;
+}
+
+/* Hide the product name, then the uptime prefix as drag space narrows; tabs already identify the page. */
+@container shell-title (max-width: 340px) {
+  .window-drag-region strong {
+    display: none;
+  }
+}
+
+@container shell-title (max-width: 170px) {
+  .shell-uptime-label {
+    display: none;
+  }
+}
+
+.window-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.shell-utility-actions {
+  position: absolute;
+  top: 0;
+  right: 126px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.shell-task-button {
+  position: relative;
+  width: 42px;
+  min-height: var(--shellbar-height);
+  height: var(--shellbar-height);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.shell-task-button:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.shell-task-count {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  min-width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  padding: 0 3px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.window-button {
+  width: 42px;
+  min-height: var(--shellbar-height);
+  height: var(--shellbar-height);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.window-button:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+#windowCloseButton:hover {
+  background: var(--danger);
+  color: var(--on-accent);
+}

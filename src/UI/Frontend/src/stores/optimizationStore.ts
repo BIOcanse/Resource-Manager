@@ -1,0 +1,380 @@
+import { usePushSource } from "../frontendRuntime/push/usePushSource.ts";
+import { createComputed, createMemo, createSignal, on } from "solid-js";
+import type { Accessor } from "solid-js";
+import {
+  dismissOptimizationReport,
+  getHostManagerSmartCoordinatorStatus,
+  removeOptimizationTrust,
+  setHostManagerSmartCoordinatorMode
+} from "../api";
+import { refreshOptimizationReports } from
+  "../data/optimization/optimizationReportsApi.ts";
+import { clearReportHistory } from "../data/reportHistory/reportHistoryClear.ts";
+import {
+  confirmReportHistoryClear,
+  reportHistoryClearActionId,
+  reportHistoryClearedMessage
+} from "../features/reportHistory/confirmReportHistoryClear.ts";
+import type { RequestClient } from
+  "../frontendRuntime/request/RequestClient.ts";
+import { useSource, type SourceView } from "../frontendRuntime/source/useSource.ts";
+import type { SourceHandle } from
+  "../frontendRuntime/source/SourceDescriptor.ts";
+import type { PushValueSource } from
+  "../frontendRuntime/push/PushValueSourceFamily.ts";
+import {
+  sourceCanRender,
+  type SourceSnapshot
+} from "../frontendRuntime/source/SourceSnapshot.ts";
+import type { ConfirmDialogRequest, ToastInput } from "../components/AppFeedback";
+import { uiText } from "../text.ts";
+import { userFacingErrorMessage } from "../presentation/userFacingText";
+import {
+  failedObservation,
+  backendRetainedObservation,
+  loadingObservation,
+  profileDisabledObservation,
+  readyObservation,
+  refreshingObservation,
+  type ObservationState
+} from "../observation/observationState";
+import type {
+  AppOptimizationMode,
+  OptimizationReportItem,
+  OptimizationReportOverview,
+  HostManagerSmartCoordinatorStatus,
+  TrustedOptimizationTarget
+} from "../types";
+
+const optimizationModeApplyDelayMs = 3000;
+
+export interface OptimizationStoreOptions {
+  showToast: (input: ToastInput) => void;
+  enabled: Accessor<boolean>;
+  reportSource: SourceHandle<OptimizationReportOverview>;
+  /** Subscribe to backend scheduling status while the status area is visible. */
+  statusSource: PushValueSource<HostManagerSmartCoordinatorStatus>;
+  statusActive: Accessor<boolean>;
+  statusIntervalMs: Accessor<number | null>;
+  /** Whether the report list is visible. */
+  reportsActive: Accessor<boolean>;
+  requestClient: Pick<RequestClient, "request">;
+  /** Shared confirmation dialog used before clearing history. */
+  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
+}
+
+export interface OptimizationStore {
+  overview: Accessor<OptimizationReportOverview | null>;
+  reportsObservation: Accessor<ObservationState>;
+  hostManagerStatus: Accessor<HostManagerSmartCoordinatorStatus | null>;
+  hostManagerObservation: Accessor<ObservationState>;
+  optimizationMode: Accessor<AppOptimizationMode>;
+  loading: Accessor<boolean>;
+  actionId: Accessor<string | null>;
+  pendingOptimizationMode: Accessor<AppOptimizationMode | null>;
+  optimizationModeApplyRemainingSeconds: Accessor<number>;
+  changeHostManagerSmartCoordinatorMode: (mode: AppOptimizationMode) => Promise<void>;
+  refreshReports: (userInitiated: boolean) => Promise<void>;
+  refreshHostManagerStatus: () => Promise<void>;
+  dismissReport: (report: OptimizationReportItem) => Promise<void>;
+  removeTrustedTarget: (target: TrustedOptimizationTarget) => Promise<void>;
+  clearReportHistory: () => Promise<void>;
+  dispose: () => void;
+}
+
+export function createOptimizationStore(options: OptimizationStoreOptions): OptimizationStore {
+  const reportSource: SourceView<OptimizationReportOverview> = useSource(options.reportSource, () => ({
+    active: options.enabled() && options.reportsActive(),
+    refreshIntervalMs: reportSource.snapshot().data?.status.sampleIntervalSeconds !== undefined
+      ? reportSource.snapshot().data!.status.sampleIntervalSeconds * 1000 : null
+  }));
+  const reportSnapshot = reportSource.snapshot;
+  const overview = createMemo<OptimizationReportOverview | null>(() => {
+    const snapshot = reportSnapshot();
+    return options.enabled() && sourceCanRender(snapshot)
+      ? snapshot.data
+      : null;
+  });
+  const reportsObservation = createMemo<ObservationState>(() =>
+    reportSourceObservation(options.enabled(), reportSnapshot()));
+  const [hostManagerStatus, setHostManagerStatus] = createSignal<HostManagerSmartCoordinatorStatus | null>(null);
+  const [hostManagerObservation, setHostManagerObservation] =
+    createSignal<ObservationState>(options.enabled()
+      ? loadingObservation()
+      : profileDisabledObservation(
+        uiText.stores.optimizationSchedulingDisabled));
+  const optimizationMode = createMemo<AppOptimizationMode>(() =>
+    hostManagerStatus()?.mode ?? "normal");
+  const [loading, setLoading] = createSignal(false);
+  const [actionId, setActionId] = createSignal<string | null>(null);
+  const [pendingOptimizationMode, setPendingOptimizationMode] = createSignal<AppOptimizationMode | null>(null);
+  const [optimizationModeApplyRemainingSeconds, setOptimizationModeApplyRemainingSeconds] = createSignal(0);
+  let optimizationModeApplyTimer: number | undefined;
+  let optimizationModeCountdownTimer: number | undefined;
+
+  const statusSource = usePushSource(options.statusSource, () => ({
+    active: options.enabled() && options.statusActive(), intervalMs: options.statusIntervalMs()
+  }));
+  createComputed(on(statusSource.snapshot, snapshot => {
+    if (!options.enabled()) return;
+    if (snapshot.data) {
+      acceptHostManagerStatus(snapshot.data);
+    } else {
+      setHostManagerStatus(null);
+      setHostManagerObservation(snapshot.status === "loading"
+        ? loadingObservation() : { status: "error", source: "none" });
+    }
+  }));
+
+  async function changeHostManagerSmartCoordinatorMode(mode: AppOptimizationMode) {
+    if (!options.enabled()) {
+      clearPendingOptimizationMode();
+      return;
+    }
+
+    const currentMode = optimizationMode();
+    if (mode === currentMode) {
+      clearPendingOptimizationMode();
+      return;
+    }
+
+    if (pendingOptimizationMode() !== mode) {
+      scheduleOptimizationModeApply(mode);
+    }
+  }
+
+  async function applyHostManagerSmartCoordinatorMode(mode: AppOptimizationMode) {
+    if (!options.enabled() || actionId()) {
+      return;
+    }
+
+    setActionId("smart-mode");
+    try {
+      acceptHostManagerStatus(await setHostManagerSmartCoordinatorMode(mode));
+      await refreshReports(false);
+    } catch (error) {
+      showErrorToast(error, uiText.stores.smartModeSwitchFailed);
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  function scheduleOptimizationModeApply(mode: AppOptimizationMode) {
+    clearPendingOptimizationMode();
+    setPendingOptimizationMode(mode);
+    setOptimizationModeApplyRemainingSeconds(3);
+
+    const targetAt = Date.now() + optimizationModeApplyDelayMs;
+    optimizationModeCountdownTimer = window.setInterval(() => {
+      const remainingSeconds = Math.max(0, Math.ceil((targetAt - Date.now()) / 1000));
+      setOptimizationModeApplyRemainingSeconds(remainingSeconds);
+    }, 250);
+
+    optimizationModeApplyTimer = window.setTimeout(() => {
+      void applyPendingOptimizationMode(mode);
+    }, optimizationModeApplyDelayMs);
+  }
+
+  async function applyPendingOptimizationMode(mode: AppOptimizationMode) {
+    if (pendingOptimizationMode() !== mode) {
+      return;
+    }
+
+    if (actionId()) {
+      scheduleOptimizationModeApply(mode);
+      return;
+    }
+
+    clearPendingOptimizationMode();
+    await applyHostManagerSmartCoordinatorMode(mode);
+  }
+
+  function clearPendingOptimizationMode() {
+    if (optimizationModeApplyTimer !== undefined) {
+      window.clearTimeout(optimizationModeApplyTimer);
+      optimizationModeApplyTimer = undefined;
+    }
+
+    if (optimizationModeCountdownTimer !== undefined) {
+      window.clearInterval(optimizationModeCountdownTimer);
+      optimizationModeCountdownTimer = undefined;
+    }
+
+    setPendingOptimizationMode(null);
+    setOptimizationModeApplyRemainingSeconds(0);
+  }
+
+  async function refreshReports(userInitiated: boolean) {
+    if (!options.enabled()) {
+      return;
+    }
+
+    if (!userInitiated) {
+      await reportSource.refresh({ afterCurrent: true });
+      return;
+    }
+    if (loading()) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await refreshOptimizationReports(options.requestClient);
+      await reportSource.refresh({ afterCurrent: true });
+    } catch (error) {
+      if (userInitiated) {
+        showErrorToast(error, uiText.stores.optimizationReportRefreshFailed);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshHostManagerStatus() {
+    if (!options.enabled()) {
+      clearPendingOptimizationMode();
+      setHostManagerStatus(null);
+      setHostManagerObservation(profileDisabledObservation(
+        uiText.stores.optimizationSchedulingDisabled));
+      return;
+    }
+
+    setHostManagerObservation(refreshingObservation);
+    try {
+      acceptHostManagerStatus(await getHostManagerSmartCoordinatorStatus());
+    } catch (error) {
+      setHostManagerObservation((previous) => failedObservation(
+        previous,
+        userFacingErrorMessage(error, uiText.stores.optimizationScheduleRefreshFailed)));
+    }
+  }
+
+  // Reads, push frames and mode-change replies update the same backend state.
+  function acceptHostManagerStatus(status: HostManagerSmartCoordinatorStatus) {
+    setHostManagerStatus(status);
+    setHostManagerObservation(readyObservation());
+    if (pendingOptimizationMode() === status.mode) {
+      clearPendingOptimizationMode();
+    }
+  }
+
+  async function dismissReport(report: OptimizationReportItem) {
+    await runReportAction(report.id, async () => {
+      await dismissOptimizationReport(report.id);
+      await refreshReports(false);
+    });
+  }
+
+  async function removeTrustedTarget(target: TrustedOptimizationTarget) {
+    await runReportAction(target.id, async () => {
+      await removeOptimizationTrust(target.id);
+      await refreshReports(false);
+    });
+  }
+
+  // Confirm before deleting history; preserve active reports and trust.
+  // Show the backend deletion count, then reload reports.
+  async function clearHistoryReports() {
+    const historyCount = overview()?.reports.filter((report) => report.state === "history").length ?? 0;
+    if (!options.enabled() || actionId() || historyCount === 0) {
+      return;
+    }
+    if (!await confirmReportHistoryClear(options.confirmDialog, "optimizationReports", historyCount)) {
+      return;
+    }
+    await runReportAction(reportHistoryClearActionId, async () => {
+      const removedCount = await clearReportHistory(options.requestClient, "optimizationReports");
+      options.showToast({
+        tone: "success",
+        title: uiText.reportHistory.clearedTitle,
+        message: reportHistoryClearedMessage(removedCount)
+      });
+      await refreshReports(false);
+    });
+  }
+
+  async function runReportAction(targetId: string, action: () => Promise<void>) {
+    if (!options.enabled() || actionId()) {
+      return;
+    }
+
+    setActionId(targetId);
+    try {
+      await action();
+    } catch (error) {
+      showErrorToast(error, uiText.stores.actionFailed);
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  function showErrorToast(error: unknown, fallback: string) {
+    options.showToast({
+      tone: "error",
+      title: uiText.feedback.error,
+      message: userFacingErrorMessage(error, fallback)
+    });
+  }
+
+  function dispose() {
+    clearPendingOptimizationMode();
+  }
+
+  return {
+    overview,
+    reportsObservation,
+    hostManagerStatus,
+    hostManagerObservation,
+    optimizationMode,
+    loading,
+    actionId,
+    pendingOptimizationMode,
+    optimizationModeApplyRemainingSeconds,
+    changeHostManagerSmartCoordinatorMode,
+    refreshReports,
+    refreshHostManagerStatus,
+    dismissReport,
+    removeTrustedTarget,
+    clearReportHistory: clearHistoryReports,
+    dispose
+  };
+}
+
+function reportSourceObservation(
+  enabled: boolean,
+  snapshot: SourceSnapshot<OptimizationReportOverview>
+): ObservationState {
+  if (!enabled) {
+    return profileDisabledObservation(uiText.stores.optimizationReportDisabled);
+  }
+  if ((snapshot.status === "ready" || snapshot.status === "refreshing")
+    && snapshot.data) {
+    const status = snapshot.data.status;
+    const capturedAt = snapshot.capturedAt ?? snapshot.data.capturedAt;
+    if (status.evaluationState !== "completed") {
+      return backendRetainedObservation(capturedAt, status.evaluationState === "failed"
+        ? uiText.optimization.evaluationFailed()
+        : uiText.optimization.evaluationPending);
+    }
+    if (status.unavailableRules.length > 0) {
+      return backendRetainedObservation(capturedAt,
+        // Name unavailable rules using their settings labels so users can identify them.
+        uiText.optimization.rulesUnavailable(status.unavailableRules.map((rule) =>
+          uiText.reportRules.ruleLabels[rule as keyof typeof uiText.reportRules.ruleLabels] ?? rule)));
+    }
+    return readyObservation(capturedAt);
+  }
+  if (snapshot.status === "stale" && snapshot.data) {
+    return failedObservation(
+      readyObservation(snapshot.capturedAt ?? snapshot.data.capturedAt),
+      userFacingErrorMessage(snapshot.error, uiText.stores.optimizationReportRefreshFailed));
+  }
+  if (snapshot.status === "error"
+    || snapshot.status === "unavailable"
+    || snapshot.status === "disposed") {
+    return failedObservation(
+      loadingObservation(),
+      userFacingErrorMessage(snapshot.error, uiText.stores.optimizationReportRefreshFailed));
+  }
+  return loadingObservation();
+}

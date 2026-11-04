@@ -1,0 +1,42 @@
+{
+  "boundary": "C42/B-generate",
+  "status": "implemented-bootstrap-connected-product-cutover-pending",
+  "authority": {
+    "stateItems": "src/Shared/StateItems/state-items.json",
+    "frontendNotifications": "src/UI/Frontend/preferences.points.json"
+  },
+  "implementation": [
+    "build/native/declarations/state_items.zig",
+    "build/native/declarations/frontend_defaults.zig",
+    "build/native/declarations/main.zig",
+    "build/native/declarations/build_support.zig"
+  ],
+  "connectedConsumers": [
+    "build/native/build.zig: generates from both authorities, compiles all four process tables in both name modes against src/Shared/Control/src/root.zig",
+    "tests/Native/Generation/declarations_tests.zig: consumes all generated tables and notification defaults"
+  ],
+  "productConsumersPendingIntegratorPatch": [
+    "src/Core/NativeCore/build.zig: backend_declarations and backend_export_declarations",
+    "src/UI/Desktop/build.zig: stateItems and configure",
+    "src/UI/Desktop/src/preferences.zig: generated/frontend_defaults.zig import"
+  ],
+  "inputsAndDefaults": "Declarations remain the only owner. Tool input byte limit is explicit in CLI, overridable in bootstrap build.",
+  "result": "UTF-8 without BOM, LF, same Git blob ID, same UIDs/order/bool-host mapping. Atomic output; identical bytes preserve modification time.",
+  "failure": "Parse/schema/ownership/reference/cycle errors precede output replacement; diagnostics identify entry and field. Full Roslyn type syntax is still a pending equivalence requirement.",
+  "lifetimes": "Synchronous invocation owns allocator, parsed registry, output and diagnostic. Failed-read diagnostic field text is retained outside the parsed arena until Diagnostic.deinit (using the read allocator) or the next read with that allocator. CLI and test callers release it in scope. No background workers, held runtime leases or retained file handles.",
+  "remainingNoManagedWork": [
+    "Native FreedomPoint Core/Generators/SourceTracking contract is not delivered by the pinned managed packages; use one shared successor rather than a private RM registry/projection implementation.",
+    "DesktopBuild/FrontendPreferencesBuild/FreedomPointCheck/ReadWriteNativeDefaultsBuild and RuntimeReadCheck still require their existing managed SDK/compiler bindings.",
+    "Ledger Configuration and Build tools are managed; native runtime archive alone does not provide their configuration/shape/projection/verification contracts.",
+    "Full C# type-name grammar equivalence or accepted declaration-schema retirement must precede replacing StateItemRegistry's validation contract.",
+    "Text/layout generators still derive from shared C# authorities; their source ownership must move with window/localization/package slices before those C# inputs can be deleted.",
+    "HTTP JSON bitmap is pinned .NET Unicode/encoder protocol data; replacing its generation requires the compatible source data/algorithm and full BMP oracle evidence, not importing a stale generated output."
+  ],
+  "deletionOwner": "B-generate after corresponding consumer cutover and acceptance; X-tools closes remaining automation. No old file is deleted by this unaccepted preparation commit.",
+  "stillUsedBridges": [
+    "build/scripts/build/Generate-StateItems.ps1",
+    "build/scripts/build/StateItemRegistry.psm1",
+    "build/scripts/build/Generate-DesktopStateItems.ps1",
+    "build/scripts/build/Generate-DesktopFrontendDefaults.ps1"
+  ]
+}

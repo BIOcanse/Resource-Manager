@@ -1,0 +1,62 @@
+import { cjkText } from "../../cjkSpacing.ts";
+export const zhTaskCenterCopy = {
+  taskCenter: {
+    tabActive: "进行中",
+    tabHistory: "历史",
+    tabAll: "全部",
+    tabDiagnostics: "诊断",
+    title: "任务中心",
+    backendSyncing: "后端任务正在同步。",
+    backendResyncing: "本机服务正在重新同步，后端任务暂时不能操作。",
+    backendUnavailable: "无法读取后端任务状态；界面任务仍可正常管理。",
+    filterLabel: "任务筛选",
+    noTasksInFilter: "此筛选下没有任务",
+    sourceOperation: "后端操作",
+    sourceFrontend: "界面任务",
+    progressLabel: (title: string) => cjkText`${title}进度`,
+    needsResync: "任务状态需要与本机服务重新确认。",
+    taskFailed: "任务未完成",
+    taskCompleted: "任务已完成",
+    detailsSummary: "详情",
+    kind: "类型",
+    target: "目标",
+    createdAt: "创建时间",
+    updatedAt: "更新时间",
+    canceling: "正在取消",
+    cancelWithTitle: (title: string, identity: string) => `取消 ${title}（${identity}）`,
+    operation: {
+      componentDownload: "下载组件",
+      componentInstall: "安装组件",
+      dependencyDownload: "下载依赖",
+      dependencyLaunchInstaller: "安装依赖",
+      softwareUninstall: "卸载软件",
+      diskUsageScan: "扫描磁盘占用",
+      generic: "操作",
+      migrationExecute: "迁移软件数据",
+      migrationRestore: "恢复软件数据",
+      discoveryStart: "发现迁移数据",
+      resourceBreakdownLayoutSettle: "资源布局过渡"
+    },
+    status: {
+      queued: "等待中",
+      startPending: "正在启动",
+      running: "进行中",
+      retryWait: "等待重试",
+      recoveryPending: "正在恢复",
+      succeeded: "已完成",
+      failed: "未完成",
+      canceled: "已取消",
+      superseded: "已替换",
+      stateUncertain: "状态待确认",
+      unknown: "状态未知"
+    },
+    blocked: {
+      cannotCancel: "当前任务不能取消。",
+      taskFinished: "任务已经结束。",
+      sessionNotSynced: "本机服务会话尚未同步。",
+      cancelRequested: "取消请求已经提交。",
+      operationCannotCancel: "当前操作不能取消。",
+      operationFinished: "操作已经结束。"
+    }
+  }
+};

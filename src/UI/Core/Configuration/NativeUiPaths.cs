@@ -1,0 +1,64 @@
+using System.Security.Principal;
+
+namespace ResourceManager.NativeUi;
+
+internal static class NativeUiPaths
+{
+    private static readonly Lazy<string> PackageRootPath = new(ResolvePackageRoot);
+
+    public static string PackageRoot => PackageRootPath.Value;
+
+    public static string WebViewUserDataFolder =>
+        Path.Combine(WebViewUserRoot, "Profile");
+
+    public static string WebViewUserRoot => Path.Combine(PackageRoot, "Config", "WebView2", CurrentUserSid);
+
+    public static string FrontendPreferencesPath =>
+        Path.Combine(WebViewUserRoot, "frontend-preferences.cache.json");
+
+    private static string CurrentUserSid
+    {
+        get { using var identity = WindowsIdentity.GetCurrent(); return identity.User?.Value
+            ?? throw new InvalidOperationException("The interactive user has no Windows SID."); }
+    }
+
+    public static string AppSettingsPath =>
+        Path.Combine(PackageRoot, "Config", "app-settings.json");
+
+    public static string WebViewStartupFailurePath =>
+        Path.Combine(PackageRoot, "Config", "Diagnostics", "NativeUiStartup", CurrentUserSid, "webview-failure.json");
+
+    public static string DiagnosticsFolder =>
+        Path.Combine(PackageRoot, "Config", "Diagnostics");
+
+    private static string ResolvePackageRoot()
+    {
+        var overridePath = Environment.GetEnvironmentVariable("RESOURCE_MANAGER_PACKAGE_ROOT");
+        if (!string.IsNullOrWhiteSpace(overridePath))
+        {
+            return Path.GetFullPath(overridePath);
+        }
+
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            if (Directory.Exists(Path.Combine(current.FullName, "Config"))
+                && (Directory.Exists(Path.Combine(current.FullName, "Bin"))
+                    || Directory.Exists(Path.Combine(current.FullName, "Dependencies"))))
+            {
+                return current.FullName;
+            }
+
+            var developmentRoot = Path.Combine(current.FullName, "Resource Manager");
+            if (Directory.Exists(Path.Combine(developmentRoot, "Config"))
+                && File.Exists(Path.Combine(current.FullName, "src", "Core", "ResourceManager.App.csproj")))
+            {
+                return developmentRoot;
+            }
+
+            current = current.Parent;
+        }
+
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    }
+}

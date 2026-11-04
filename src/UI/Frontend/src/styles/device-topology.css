@@ -1,0 +1,810 @@
+
+
+.device-scope-tabs {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  gap: 1px;
+}
+
+.device-scope-tab {
+  min-width: 96px;
+  min-height: 30px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+.device-topology-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+.device-topology-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+
+.device-topology-identity {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cap the machine summary width to leave more space for the device list. */
+.device-topology-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.3fr) minmax(300px, 1fr) minmax(260px, 320px);
+  grid-template-areas:
+    "ports detail top"
+    "notes notes notes";
+  gap: 12px;
+  min-width: 0;
+}
+
+.device-port-list,
+.device-port-detail,
+.device-top-view {
+  min-width: 0;
+  height: clamp(500px, calc(100dvh - 190px), 720px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.device-port-list {
+  grid-area: ports;
+  display: grid;
+  /* Keep headings, search and items within the list column. */
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  /* Size rows by content so wrapped subtitles remain inside their cards. */
+  grid-auto-rows: max-content;
+  gap: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+
+/* Keep the list header sticky and wrap counts when space is limited. */
+.device-port-list-title {
+  position: sticky;
+  /* Offset the sticky header by the list padding to align it with the top edge. */
+  top: -10px;
+  z-index: 1;
+  margin: -10px -10px 0;
+  padding: 10px 10px 2px;
+  background: inherit;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 8px;
+  font-size: 12px;
+}
+
+/* Let long translated segment labels wrap within the column. */
+.device-port-list-title .device-scope-tabs {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.device-port-list-title .device-scope-tab {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 10px;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.device-port-list-title > span {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.device-port-search {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.device-port-search:focus {
+  border-color: var(--accent);
+  outline: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
+.device-port-item {
+  --device-tree-depth: 0;
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px 8px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.device-port-item.nested {
+  width: calc(100% - (var(--device-tree-depth) * 14px));
+  margin-left: calc(var(--device-tree-depth) * 14px);
+  position: relative;
+}
+
+.device-port-item.nested::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  width: 8px;
+  border-top: 1px solid color-mix(in oklab, var(--accent) 38%, var(--divider));
+}
+
+.device-port-item.device-node {
+  border-style: dashed;
+  background: color-mix(in oklab, var(--surface-soft) 72%, var(--surface));
+}
+
+.device-port-item.device-node .device-port-icon {
+  border-color: color-mix(in oklab, var(--warn) 44%, var(--line));
+  background: color-mix(in oklab, var(--warn) 8%, var(--surface));
+  color: color-mix(in oklab, var(--warn) 78%, var(--text));
+}
+
+.device-port-item:hover,
+.device-port-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.device-port-item.disconnected:not(.active) .device-port-icon {
+  opacity: 0.62;
+}
+
+.device-port-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+/* Wrap category tags below long titles and allow word wrapping within tags. */
+.device-port-heading {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 8px;
+}
+
+.device-port-main strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-port-main small,
+.device-port-protocol {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Show full subtitles in hover hints and detail fields. */
+.device-port-main small {
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-port-protocol {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.device-port-protocol.connected {
+  border-color: color-mix(in oklab, var(--accent) 52%, var(--line));
+  color: color-mix(in oklab, var(--accent) 76%, var(--text));
+}
+
+.device-port-protocol.disconnected {
+  color: var(--muted);
+}
+
+.device-port-icon {
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid color-mix(in oklab, var(--accent) 48%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--accent) 9%, var(--surface));
+  color: color-mix(in oklab, var(--accent) 80%, var(--text));
+}
+
+.device-port-icon.large {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+}
+
+.device-port-icon > svg {
+  display: block;
+}
+
+.device-top-view {
+  grid-area: top;
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  min-height: 420px;
+  padding: 16px;
+  overflow: auto;
+}
+
+/* Draw the backend-provided form factor using theme tokens. */
+.device-machine-figure {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.device-machine-body {
+  /* Scale brand text to fit the machine illustration width. */
+  container-type: inline-size;
+  position: relative;
+  width: 92%;
+  max-width: 420px;
+  aspect-ratio: 1.6;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  border: 2px solid color-mix(in oklab, var(--accent) 58%, var(--line));
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, color-mix(in oklab, var(--accent) 10%, transparent), transparent 54%),
+    var(--surface);
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+
+.device-brand-logo {
+  max-width: 84%;
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(16px, 13cqi, 52px);
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-machine-manufacturer,
+.device-machine-model {
+  max-width: 86%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-machine-manufacturer {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.device-machine-model {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+
+.device-machine-hinge {
+  width: 78%;
+  max-width: 360px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.device-machine-deck {
+  width: 100%;
+  max-width: 456px;
+  height: 14px;
+  border: 1px solid var(--line);
+  border-radius: 3px 3px 12px 12px;
+  background: var(--surface);
+}
+
+.device-machine-figure[data-form-factor="mobile_workstation"] .device-machine-hinge {
+  background: color-mix(in oklab, var(--accent) 62%, var(--line));
+}
+
+.device-machine-figure[data-form-factor="mobile_workstation"] .device-machine-deck {
+  height: 24px;
+  border-color: color-mix(in oklab, var(--accent) 46%, var(--line));
+  background:
+    repeating-linear-gradient(90deg, var(--line) 0 2px, transparent 2px 7px) center / 46% 6px no-repeat,
+    var(--surface);
+}
+
+
+.device-machine-figure[data-form-factor="workstation"] .device-machine-body {
+  width: 84%;
+  max-width: 380px;
+  aspect-ratio: 1.45;
+  border-radius: 22px;
+}
+
+.device-machine-figure[data-form-factor="workstation"] .device-machine-body::after {
+  content: "";
+  position: absolute;
+  bottom: 10%;
+  left: 50%;
+  width: 34%;
+  height: 4px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: repeating-linear-gradient(90deg, var(--line) 0 8px, transparent 8px 13px);
+}
+
+
+.device-machine-figure[data-form-factor="desktop"] .device-machine-body {
+  width: 50%;
+  max-width: 200px;
+  aspect-ratio: 0.64;
+  border-radius: 10px;
+}
+
+.device-machine-figure[data-form-factor="desktop"] .device-machine-body::before {
+  content: "";
+  position: absolute;
+  top: 8%;
+  left: 18%;
+  right: 18%;
+  height: 12px;
+  border-block: 1px solid var(--line);
+}
+
+.device-machine-figure[data-form-factor="desktop"] .device-machine-body::after {
+  content: "";
+  position: absolute;
+  bottom: 9%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%);
+  border: 2px solid color-mix(in oklab, var(--accent) 58%, var(--line));
+  border-radius: 50%;
+}
+
+.device-machine-feet {
+  width: 62%;
+  max-width: 260px;
+  height: 5px;
+  border-radius: 0 0 6px 6px;
+  background: var(--line);
+}
+
+.device-machine-figure[data-form-factor="desktop"] .device-machine-feet {
+  width: 40%;
+  max-width: 160px;
+}
+
+/* Use a neutral dashed outline for unknown form factors. */
+.device-machine-figure[data-form-factor="unknown"] .device-machine-body {
+  width: 74%;
+  max-width: 340px;
+  aspect-ratio: 1.3;
+  border-style: dashed;
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+
+.device-machine-identity {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.device-machine-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.device-machine-form span,
+.device-machine-evidence-title {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-machine-form strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.device-machine-form strong[data-form-factor="unknown"] {
+  color: var(--muted);
+}
+
+.device-machine-evidence-title {
+  font-weight: 700;
+}
+
+.device-machine-evidence {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device-machine-evidence li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 8px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  font-size: 12px;
+}
+
+.device-machine-evidence li span {
+  color: var(--muted);
+}
+
+.device-machine-evidence li span:only-child {
+  color: var(--text);
+}
+
+.device-machine-evidence li strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.device-machine-evidence-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-system-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Wrap long field labels without truncation. */
+.device-system-meta span {
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.device-system-meta small {
+  margin-right: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-port-detail {
+  grid-area: detail;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.device-port-detail-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.device-port-detail-title div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.device-port-detail-title strong,
+.device-port-detail-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-port-detail-title span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-relation-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.device-relation-path span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.device-relation-path span:not(:last-child)::after {
+  content: "→";
+  margin-left: 4px;
+  color: color-mix(in oklab, var(--accent) 68%, var(--muted));
+}
+
+.device-relation-path span:last-child {
+  color: var(--text);
+  font-weight: 700;
+}
+
+
+.device-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.device-detail-summary-item {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.device-detail-summary-item span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-detail-summary-item strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.device-details-button {
+  justify-self: start;
+}
+
+.device-detail-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.device-detail-divider::before,
+.device-detail-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--divider);
+}
+
+.device-detail-divider span {
+  flex: none;
+}
+
+.device-detail-grid {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 7px 10px;
+  align-items: start;
+  font-size: 12px;
+}
+
+.device-detail-grid span {
+  color: var(--muted);
+}
+
+.device-detail-grid strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-id-block {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--divider-soft);
+}
+
+.device-id-block strong {
+  font-size: 12px;
+}
+
+.device-id-block code {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-topology-notes {
+  grid-area: notes;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.device-topology-notes span,
+.device-topology-empty,
+.device-topology-loading {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-topology-notes span {
+  padding: 3px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.device-topology-empty,
+.device-topology-loading {
+  margin: 0;
+}
+
+/* Move the machine summary to a full-width row when three columns no longer fit. */
+@media (max-width: 1040px) {
+  .device-topology-layout {
+    grid-template-columns: minmax(280px, 1.3fr) minmax(0, 1fr);
+    grid-template-areas:
+      "ports detail"
+      "top top"
+      "notes notes";
+  }
+
+  .device-port-detail {
+    height: auto;
+    max-height: 680px;
+  }
+
+  .device-top-view {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .device-system-meta {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  body[data-page="details"] .app-shell {
+    overflow-x: hidden;
+  }
+
+  /* Stretch only visible children; stretching absolutely positioned screen-reader text causes overflow. */
+  body[data-page="details"] .app-shell > :not(.app-page-title, .sr-only),
+  body[data-page="details"] .page-host > :not(.app-page-title, .sr-only) {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .device-topology-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "ports"
+      "detail"
+      "top"
+      "notes";
+  }
+
+  .device-port-list {
+    height: min(480px, 65dvh);
+  }
+
+  .device-top-view {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .device-port-detail {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .device-detail-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .device-detail-grid strong {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}

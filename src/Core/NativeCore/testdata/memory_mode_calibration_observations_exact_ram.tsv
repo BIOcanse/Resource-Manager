@@ -1,0 +1,9 @@
+case_id	observation_id	domain	free_ratio_units	weight	outcome
+1	1	ram	0	1	strongest_required
+1	2	ram	1000	1	optimize_required
+1	3	ram	3000	1	normal_sufficient
+1	4	ram	6000	1	unrestricted_safe
+2	1	ram	0	1	strongest_required
+2	2	ram	1000	1	optimize_required
+2	3	ram	3000	1	normal_sufficient
+2	4	ram	6000	1	unrestricted_safe

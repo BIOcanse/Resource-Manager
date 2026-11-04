@@ -1,0 +1,77 @@
+import { portDisplayName } from "../deviceVocabulary.ts";
+import { portableDeviceTypeLabel } from "../deviceVocabulary.ts";
+import {
+  capabilityLabels,
+  connectionFacts,
+  displayValue,
+  deviceTitle,
+  hasUsbInterface,
+  interfaceProtocols,
+  joinSummary,
+  summaryFields,
+  usbInterfaceCapability
+} from "./adapterEvidence.ts";
+import type { DeviceAdapter, MobileDeviceModel } from "./types";
+import { uiText } from "../../../text.ts";
+
+export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
+  id: "mobile-device",
+  matches: ({ port }) => port.smartDevice != null
+    || (hasUsbInterface(port, 0x06, 0x01, 0x01)
+      && (hasUsbInterface(port, 0x02) || hasUsbInterface(port, 0x0a) || hasUsbInterface(port, 0xff))),
+  createModel: (context) => {
+    const title = deviceTitle(context, uiText.deviceAdapters.mobileDevice);
+    const connection = connectionFacts(context);
+    const protocols = interfaceProtocols(context.port);
+    const mediaTransfer = usbInterfaceCapability(context.port, 0x06, 0x01, 0x01);
+    const dataConnection = context.port.usb?.interfaces == null ? null
+      : hasUsbInterface(context.port, 0x02) || hasUsbInterface(context.port, 0x0a);
+    const vendorChannel = usbInterfaceCapability(context.port, 0xff);
+    const smart = context.port.smartDevice;
+    const deviceType = portableDeviceTypeLabel(smart?.deviceType) ?? uiText.deviceAdapters.mobileDevice;
+    const manufacturer = displayValue(smart?.manufacturer, context.port.manufacturer ?? undefined);
+    const model = displayValue(smart?.model, portDisplayName(context.port));
+    const firmwareVersion = displayValue(smart?.firmwareVersion, uiText.deviceAdapters.deviceNotReported);
+    const protocol = displayValue(smart?.protocol, mediaTransfer ? "MTP / PTP" : undefined);
+    const transport = displayValue(smart?.transport, connection.currentLink);
+    const storages = smart?.storages ?? [];
+    return {
+      adapterId: "mobile-device",
+      kind: "mobile-device",
+      deviceTypeLabel: deviceType,
+      title,
+      subtitle: joinSummary(manufacturer === "--" ? undefined : manufacturer, model, protocol),
+      badge: deviceType,
+      iconKind: resolveSmartDeviceIcon(smart?.deviceType),
+      ...connection,
+      mediaTransfer,
+      dataConnection,
+      vendorChannel,
+      interfaceProtocols: protocols,
+      manufacturer,
+      model,
+      firmwareVersion,
+      protocol,
+      transport,
+      informationIdentity: context.port.informationIdentity ?? null,
+      storages,
+      summaryFields: summaryFields(
+        [uiText.deviceAdapters.label.deviceType, deviceType],
+        [uiText.deviceAdapters.label.manufacturerModel, joinSummary(manufacturer === "--" ? undefined : manufacturer, model)],
+        [uiText.deviceAdapters.label.deviceProtocol, protocol],
+        [uiText.deviceAdapters.label.connectionTransport, transport]
+      ),
+      capabilityLabels: capabilityLabels(context.port),
+      searchTerms: [uiText.deviceAdapters.mobileDevice, "手机", "平板", "电脑", "mobile", "mtp", manufacturer, model, ...protocols]
+    };
+  }
+};
+
+// Choose icons from backend DevicePortableDeviceTypes identifiers.
+function resolveSmartDeviceIcon(deviceType?: string | null): MobileDeviceModel["iconKind"] {
+  switch (deviceType) {
+    case "tablet": return "tablet";
+    case "camera": return "camera";
+    default: return "smartphone";
+  }
+}

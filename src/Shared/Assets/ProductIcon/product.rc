@@ -1,0 +1,2 @@
+// Keep resource 1 first: Explorer, shortcuts, the tray and managed windows share it.
+1 ICON "product.ico"

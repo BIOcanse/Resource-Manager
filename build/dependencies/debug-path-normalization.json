@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "operation": "Unsigned DLL CodeView Windows PDB paths reduced to filenames; the Core dev.39 README local roots replaced with generic distribution wording. Unlisted members and executable bytes outside the listed debug-path spans are unchanged.",
+  "packages": [
+    {
+      "path": "build/dependencies/disk-sdk/packages/Disk.ReadWrite.0.1.0.nupkg",
+      "originalSha256": "2F6A75730F6190F3F7CC3F18944659FFAFACB169D98B39772556F197D3B8783A",
+      "sha256": "F746B7B5A7C9751597710457DC27477F8FC285C3D30D0EF2264F0B30CD2C5A57",
+      "size": 12273,
+      "changes": [
+        {
+          "entry": "lib/net10.0/Disk.ReadWrite.dll",
+          "offset": 18452,
+          "length": 96,
+          "pdb": "Disk.ReadWrite.pdb"
+        }
+      ],
+      "otherMemberBytesUnchanged": true,
+      "dllBytesOutsideDebugPathUnchanged": true
+    },
+    {
+      "path": "build/dependencies/fan-control-core/packages/FanControlCore.Library.0.1.0-dev.6.nupkg",
+      "originalSha256": "816F545D063B15F8A01971E9F7BF7828FB3FE267DF2B2D2A87E5222414364A27",
+      "sha256": "BD83ECFD03BB53B9D106E3A6B64B93AD86BDD1ABFAA38B919688998B80ED289A",
+      "size": 66186,
+      "changes": [
+        {
+          "entry": "lib/net10.0/FanControlCore.Library.dll",
+          "offset": 141748,
+          "length": 125,
+          "pdb": "FanControlCore.Library.pdb"
+        }
+      ],
+      "otherMemberBytesUnchanged": true,
+      "dllBytesOutsideDebugPathUnchanged": true
+    },
+    {
+      "path": "build/dependencies/freedom-point/packages/FreedomPoint.Core.0.1.0-dev.39.nupkg",
+      "originalSha256": "6E914DD4AEE911B26850A79156DCE3CDD68467A2BB910F15445689DD5739CBD7",
+      "sha256": "35D528C284D34BD0B50F7EF46F906AB2EAA2E303FC5E044D6E6F718E9976C9AA",
+      "size": 65981,
+      "changes": [
+        {
+          "entry": "lib/net10.0/FreedomPoint.Core.dll",
+          "offset": 203372,
+          "length": 133,
+          "pdb": "FreedomPoint.Core.pdb"
+        },
+        {
+          "entry": "README.md",
+          "kind": "package-readme-local-path-removal",
+          "line": 9,
+          "originalSha256": "E8693AEE7084E04B4EB68E5FC31B80F3E6DCB7A96FBC9DB2A63FDD6860165AB1",
+          "sha256": "EFEE8C5DD3AB550453112818C34252FB197F7392914E5F117DD8CBD302800D6F",
+          "originalSize": 3299,
+          "size": 3151
+        }
+      ],
+      "otherMemberBytesUnchanged": false,
+      "dllBytesOutsideDebugPathUnchanged": true,
+      "unlistedMemberBytesUnchanged": true
+    },
+    {
+      "path": "build/dependencies/freedom-point/packages/FreedomPoint.Generators.0.1.0-dev.39.nupkg",
+      "originalSha256": "5B48217611A902F877E4CC3DCF7F8DC5642F4BD6C91A242D4B595012599296C1",
+      "sha256": "AB012DC6A88885FBA41C79F251541B89F6DC565B5996C49BA7BB3F6D4D74553A",
+      "size": 28769,
+      "changes": [
+        {
+          "entry": "lib/net10.0/FreedomPoint.Generators.dll",
+          "offset": 72512,
+          "length": 145,
+          "pdb": "FreedomPoint.Generators.pdb"
+        }
+      ],
+      "otherMemberBytesUnchanged": true,
+      "dllBytesOutsideDebugPathUnchanged": true
+    }
+  ]
+}

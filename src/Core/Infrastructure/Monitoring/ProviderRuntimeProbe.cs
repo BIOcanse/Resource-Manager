@@ -1,0 +1,119 @@
+using ResourceManager.App.Application.Components;
+using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Domain.Components;
+using ResourceManager.App.Infrastructure.Dependencies;
+using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.ReadWrite;
+using ResourceManager.Shared.BrowserRuntimes;
+
+namespace ResourceManager.App.Infrastructure.Monitoring;
+
+public sealed class ProviderRuntimeProbe(
+    IRuntimePlanProvider runtimePlanProvider,
+    IHostEnvironment environment,
+    OptionalDependencyProbeResults? probeResults = null) : IProviderRuntimeProbe
+{
+    public ComponentProviderRuntimeProbeResult Probe(string componentId)
+        => Probe(componentId, deepVerify: false);
+
+    /// <summary>The plain probe returns the held result until a dependency install, removal, repair,
+    /// verify or refresh invalidates it; a deep verification always probes.</summary>
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Optional dependency installed, downloaded, removed, repaired, verified or refresh requested")]
+    public ComponentProviderRuntimeProbeResult Probe(string componentId, bool deepVerify)
+        => deepVerify || probeResults is null
+            ? ProbeNow(componentId, deepVerify)
+            : probeResults.GetProvider(componentId, () => ProbeNow(componentId, deepVerify: false));
+
+    private ComponentProviderRuntimeProbeResult ProbeNow(string componentId, bool deepVerify)
+    {
+        if (componentId.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase))
+        {
+            var discovery = BrowserRuntimeDiscovery.Discover(
+                PackagePathResolver.ResolvePackageRoot(AppContext.BaseDirectory));
+            var runtime = discovery.SharedRuntime;
+            return new ComponentProviderRuntimeProbeResult(
+                runtime is not null,
+                runtime is not null,
+                runtime is null ? ComponentProviderStates.Missing : ComponentProviderStates.RuntimeAvailable,
+                runtime is null ? "未检测到共享 WebView2 运行时。" : "共享 WebView2 运行时可用。",
+                runtime?.RuntimeDirectory);
+        }
+
+        if (componentId.Equals("amd-adlx-provider", StringComparison.OrdinalIgnoreCase))
+        {
+            var adlx = AmdAdlxRuntimeProbe.Probe();
+            return new ComponentProviderRuntimeProbeResult(
+                adlx.RuntimeAvailable,
+                adlx.InitializeExportAvailable,
+                adlx.State,
+                adlx.Message,
+                adlx.LibraryPath);
+        }
+
+
+
+        if (componentId.Equals("amd-smu-pawnio-provider", StringComparison.OrdinalIgnoreCase))
+        {
+            var pawnIo = PawnIoRuntimeProbe.Probe(environment.ContentRootPath, deepVerify);
+            return new ComponentProviderRuntimeProbeResult(
+                pawnIo.RuntimeAvailable,
+                pawnIo.DeviceAvailable,
+                pawnIo.State,
+                pawnIo.Message,
+                pawnIo.RuntimePath);
+        }
+
+        if (componentId.Equals("intel-msr-pawnio-provider", StringComparison.OrdinalIgnoreCase))
+        {
+            var module = Path.Combine(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "Dependencies", componentId, "IntelMSR.bin");
+            var runtime = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PawnIO", "PawnIOLib.dll");
+            var present = File.Exists(module) && File.Exists(runtime);
+            return new ComponentProviderRuntimeProbeResult(present, false,
+                present ? ComponentProviderStates.Installed : ComponentProviderStates.Missing,
+                present ? "运行库与模块已安装；逐项能力由 Intel CPU 控制探测确认。" : "需要显式安装 PawnIO 运行库和签名 IntelMSR 模块。", present ? runtime : null);
+        }
+
+        if (componentId.Equals("nvidia-nvapi-provider", StringComparison.OrdinalIgnoreCase))
+        {
+            var nvapi = HardwareSensorDependencyRuntimeProbe.ProbeNvidiaNvapi();
+            return new ComponentProviderRuntimeProbeResult(
+                nvapi.RuntimeAvailable,
+                nvapi.PrimaryCapabilityAvailable,
+                nvapi.State,
+                nvapi.Message,
+                nvapi.RuntimePath);
+        }
+
+        if (componentId.Equals("librehardwaremonitor-provider", StringComparison.OrdinalIgnoreCase))
+        {
+            var hardwareMonitor = HardwareSensorDependencyRuntimeProbe.ProbeLibreHardwareMonitor();
+            return new ComponentProviderRuntimeProbeResult(
+                hardwareMonitor.RuntimeAvailable,
+                hardwareMonitor.PrimaryCapabilityAvailable,
+                hardwareMonitor.State,
+                hardwareMonitor.Message,
+                hardwareMonitor.RuntimePath);
+        }
+
+
+
+        if (componentId.Equals(NotebookOemFanSensorReader.ComponentId, StringComparison.OrdinalIgnoreCase))
+        {
+            var notebookOem = NotebookOemFanSensorReader.ProbeRuntime(
+                runtimePlanProvider.Current.Monitoring.FirmwareProviders);
+            return new ComponentProviderRuntimeProbeResult(
+                notebookOem.RuntimeAvailable,
+                notebookOem.PrimaryCapabilityAvailable,
+                notebookOem.State,
+                notebookOem.Message,
+                notebookOem.RuntimePath);
+        }
+
+        return new ComponentProviderRuntimeProbeResult(
+            false,
+            false,
+            ComponentProviderStates.Missing,
+            "未配置该 Provider 的运行库探测。",
+            null);
+    }
+}

@@ -1,0 +1,24 @@
+{
+  "schema": "resource-manager/ledger-native-local-release/v1",
+  "status": "accepted-package-consumer",
+  "version": "0.1.0-dev.8",
+  "candidateManifestSha256": "d1f439309c5c8202c8005dc8b54773e58d14f5bcc0ea52fee10367b8c4f58cb2",
+  "nativeArchive": {
+    "file": "ResourceManager.Ledger.NativeSources.0.1.0-dev.8.zip",
+    "length": 141950,
+    "sha256": "3691030e12bee383ebb4624ef1363865a54d5b3054944397c1c7db70c1b5439c"
+  },
+  "consumerReceipt": {
+    "path": "rm-active-workspaces:ledger-ledger-dev8/release-round/consumer/consumer-receipt.json",
+    "sha256": "07f4dc204205b1a26d989199f41ca27c77e6abada94b1edb834c39f32537b0a5",
+    "resultPath": "rm-active-workspaces:ledger-ledger-dev8/release-round/consumer/consumer-result.json",
+    "resultSha256": "0ea4b77578def2fcc060862f220b474a8900855fc25599f9c550aa108070a984",
+    "nativeBuildResultPath": "rm-active-workspaces:ledger-ledger-dev8/release-round/consumer/profiles/u128-statistics0/native-output/native-build-result.json",
+    "nativeBuildResultSha256": "a80292723d2621eb6c9a000dc6480f9cbed20102576f9d9ffa101f4fc2e423e8",
+    "nativeDllPath": "rm-active-workspaces:ledger-ledger-dev8/release-round/consumer/profiles/u128-statistics0/native-output/ResourceManager.Ledger.Native.u128.dll",
+    "nativeDllSha256": "ff330fd78221f132c4c0523ec7b938ebb74d9df22945935963a3638ffa9f4987"
+  },
+  "capabilities": [
+    "optional-development-allocation-statistics"
+  ]
+}

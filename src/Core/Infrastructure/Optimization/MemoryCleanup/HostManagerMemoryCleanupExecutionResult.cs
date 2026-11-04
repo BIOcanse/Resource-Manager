@@ -1,0 +1,95 @@
+namespace ResourceManager.App.Infrastructure.Optimization;
+
+internal enum HostManagerMemoryCleanupRoundDisposition : byte
+{
+    Incomplete = 0,
+    InvalidCapacitySample = 1,
+    IncompleteCandidateProjection = 2,
+    MissingAttemptGeneration = 3,
+    PlannerFailed = 5,
+    CompleteNoDecision = 6,
+    DeferredByCycleBudget = 7,
+    BatchOutcomeUnknown = 9,
+    CompleteKnownFull = 11,
+    FinalAdmissionCapacityUnavailable = 13,
+    FinalAdmissionCandidateProjectionIncomplete = 14,
+    FinalAdmissionCaptureFailed = 15,
+    DeferredByCurrentFacts = 16,
+    FinalAdmissionWindowStateUnavailable = 17,
+    DeferredByCurrentCapacity = 18,
+    DeferredByCurrentPolicy = 19,
+    FinalAdmissionCandidatesUnknown = 20,
+    BlockedByValidationScope = 21,
+    ValidationEvidenceCapacityUnavailable = 23,
+    ValidationEvidenceSettlementFailed = 24,
+    PlannerConfigurationMismatch = 25,
+    AwaitingNewSchedulingRound = 26
+}
+
+internal readonly record struct HostManagerMemoryCleanupExecutionResult(
+    HostManagerMemoryCleanupRoundDisposition Disposition,
+    int CandidateCount,
+    ulong PlannerStateRevision,
+    int PlannedCount,
+    int RequestedCount,
+    int TerminalCount,
+    int SucceededCount)
+{
+    internal bool HasUnresolvedCurrentEffects =>
+        Disposition is HostManagerMemoryCleanupRoundDisposition.ValidationEvidenceSettlementFailed;
+
+    internal static HostManagerMemoryCleanupExecutionResult NotRun(
+        HostManagerMemoryCleanupRoundDisposition disposition)
+        => new(
+            disposition,
+            CandidateCount: 0,
+            PlannerStateRevision: 0,
+            PlannedCount: 0,
+            RequestedCount: 0,
+            TerminalCount: 0,
+            SucceededCount: 0);
+
+    internal static HostManagerMemoryCleanupExecutionResult CompleteNoDecision(
+        int candidateCount,
+        ulong plannerStateRevision)
+        => new(
+            HostManagerMemoryCleanupRoundDisposition.CompleteNoDecision,
+            candidateCount,
+            plannerStateRevision,
+            PlannedCount: 0,
+            RequestedCount: 0,
+            TerminalCount: 0,
+            SucceededCount: 0);
+
+    internal static HostManagerMemoryCleanupExecutionResult CompleteKnownFull(
+        int candidateCount,
+        ulong plannerStateRevision,
+        int count,
+        int succeededCount)
+        => new(
+            HostManagerMemoryCleanupRoundDisposition.CompleteKnownFull,
+            candidateCount,
+            plannerStateRevision,
+            count,
+            count,
+            count,
+            succeededCount);
+
+    internal static HostManagerMemoryCleanupExecutionResult Incomplete(
+        HostManagerMemoryCleanupRoundDisposition disposition =
+            HostManagerMemoryCleanupRoundDisposition.Incomplete,
+        int candidateCount = 0,
+        ulong plannerStateRevision = 0,
+        int plannedCount = 0,
+        int requestedCount = 0,
+        int terminalCount = 0,
+        int succeededCount = 0)
+        => new(
+            disposition,
+            candidateCount,
+            plannerStateRevision,
+            plannedCount,
+            requestedCount,
+            terminalCount,
+            succeededCount);
+}

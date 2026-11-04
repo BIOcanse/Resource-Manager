@@ -1,0 +1,18 @@
+/* Map data-tone to --tone-text, --tone-fill and --tone-edge. Reserve --accent for selection and actions. */
+[data-tone="normal"] { --tone: var(--ok); }
+[data-tone="info"] { --tone: var(--info); }
+[data-tone="warning"] { --tone: var(--warn); }
+[data-tone="error"] { --tone: var(--danger); }
+[data-tone="neutral"] { --tone: var(--muted); }
+
+[data-tone] {
+  --tone-text: color-mix(in oklab, var(--tone) 65%, var(--text));
+  --tone-fill: color-mix(in oklab, var(--tone) 13%, var(--surface));
+  --tone-edge: color-mix(in oklab, var(--tone) 48%, var(--line));
+}
+
+/* Counts convey quantity, so share accent styling regardless of severity. */
+.count-badge {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}

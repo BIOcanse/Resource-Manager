@@ -1,0 +1,1177 @@
+using Microsoft.Extensions.Logging;
+using ResourceManager.App.Infrastructure.Adaptation;
+using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.Optimization.Transactions;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.Adapter.LocalResources;
+
+namespace ResourceManager.App.Infrastructure.Optimization;
+
+public sealed partial class HostManagerSmartCoordinator
+{
+    // Work order and effect permission are separate: policy and placement both
+    // require the original NativeActionTransaction permit, but neither may
+    // consume the other's opportunity indefinitely while its backlog remains.
+    private enum NewEffectStage { MemoryTransaction, NativePolicy, Placement, MemoryCleanup }
+    private static readonly NewEffectStage[] NewEffectOrder =
+    [
+        NewEffectStage.MemoryTransaction,
+        NewEffectStage.NativePolicy,
+        NewEffectStage.Placement,
+        NewEffectStage.MemoryCleanup
+    ];
+    private int nextRealtimeNewEffectIndex;
+
+    private async Task RunForegroundNativeCycleAsync(
+        string trigger,
+        CancellationToken cancellationToken)
+        => await RunForegroundNativeCycleAsync(
+            trigger,
+            outerLoopContext: null,
+            cancellationToken);
+
+    private async Task RunForegroundNativeCycleAsync(
+        string trigger,
+        HostManagerSmartCoordinatorOuterLoopCycleContext? outerLoopContext,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var previousWake = schedulingWakeDeadline.Snapshot;
+            var result = await RunNativeCycleCoreAsync(
+                trigger,
+                realtimeCycle: false,
+                outerLoopContext,
+                cancellationToken);
+            await SynchronizeSmartSubscriptionsAsync(cancellationToken);
+            smartSubscriptions?.RoundCompleted();
+            var delay = smartSubscriptions?.HasOutput == true ? result.PublicationDrivenDelay : result.Delay;
+            var published = delay is { } timerDelay
+                ? schedulingWakeDeadline.PublishForeground(timerDelay)
+                : ClearOrdinaryWake(previousWake);
+            ObserveOuterLoop(
+                outerLoopContext,
+                HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished,
+                providerTimestamp: schedulingWakeDeadline.GetTimestamp(),
+                providerTimestampFrequency: schedulingWakeDeadline.TimestampFrequency,
+                publishedDeadline: published);
+            ObserveOuterLoop(
+                outerLoopContext,
+                HostManagerSmartCoordinatorOuterLoopPhase.WrapperCompleted,
+                outcome: "completed");
+        }
+        catch (OperationCanceledException)
+        {
+            ObserveOuterLoop(
+                outerLoopContext,
+                HostManagerSmartCoordinatorOuterLoopPhase.WrapperCompleted,
+                outcome: "canceled");
+            throw;
+        }
+        catch
+        {
+            PublishCpuLeasesUnavailable("scheduler-cycle-failed");
+            ObserveOuterLoop(
+                outerLoopContext,
+                HostManagerSmartCoordinatorOuterLoopPhase.WrapperCompleted,
+                outcome: "failed");
+            throw;
+        }
+    }
+
+    private async Task<HostManagerWakeDeadlineSnapshot> RunScheduledNativeCycleAsync(
+        HostManagerSmartCoordinatorOuterLoopCycleContext? outerLoopContext,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var previousWake = schedulingWakeDeadline.Snapshot;
+            var result = await RunNativeCycleCoreAsync(
+                "scheduled",
+                realtimeCycle: true,
+                outerLoopContext,
+                cancellationToken);
+            await SynchronizeSmartSubscriptionsAsync(cancellationToken);
+            smartSubscriptions?.RoundCompleted();
+            var delay = smartSubscriptions?.HasOutput == true ? result.PublicationDrivenDelay : result.Delay;
+            var published = delay is { } timerDelay ? schedulingWakeDeadline.PublishScheduled(timerDelay)
+                : ClearOrdinaryWake(previousWake);
+            ObserveOuterLoop(
+                outerLoopContext,
+                HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished,
+                providerTimestamp: schedulingWakeDeadline.GetTimestamp(),
+                providerTimestampFrequency: schedulingWakeDeadline.TimestampFrequency,
+                publishedDeadline: published);
+            ObserveOuterLoop(
+                outerLoopContext,
+                HostManagerSmartCoordinatorOuterLoopPhase.WrapperCompleted,
+                outcome: "completed");
+            return published;
+        }
+        catch (OperationCanceledException)
+        {
+            ObserveOuterLoop(
+                outerLoopContext,
+                HostManagerSmartCoordinatorOuterLoopPhase.WrapperCompleted,
+                outcome: "canceled");
+            throw;
+        }
+        catch
+        {
+            PublishCpuLeasesUnavailable("scheduler-cycle-failed");
+            ObserveOuterLoop(
+                outerLoopContext,
+                HostManagerSmartCoordinatorOuterLoopPhase.WrapperCompleted,
+                outcome: "failed");
+            throw;
+        }
+    }
+
+    private HostManagerWakeDeadlineSnapshot ClearOrdinaryWake(HostManagerWakeDeadlineSnapshot previous)
+    {
+        schedulingWakeDeadline.ClearScheduled(previous.Version);
+        return schedulingWakeDeadline.Snapshot;
+    }
+
+    private async Task<HostManagerNativeCycleSegmentResult> RunNativeCycleSegmentAsync(
+        string trigger,
+        bool realtimeCycle,
+        HostManagerSmartCoordinatorOuterLoopCycleContext? outerLoopContext,
+        CancellationToken cancellationToken,
+        List<HostManagerAutomaticGpuPlacement> firstUse)
+    {
+        ObserveOuterLoop(
+            outerLoopContext,
+            HostManagerSmartCoordinatorOuterLoopPhase.CoreEntered);
+        using var publicationLease =
+            runtimePlanProvider.AcquirePublicationLease();
+        var desired = smartCoordinatorRuntime.CaptureDesired(publicationLease);
+        var processEffectValidationScope =
+            processEffectValidationScopeAuthorityOwner.Capture();
+        var effectAdmission = HostManagerCycleEffectAdmission.CreateForValidation(
+            desired.RuntimePlan.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled,
+            processEffectValidationScope);
+        PublishCpuLeasesUnavailable(effectAdmission.IsScoreOnly ? "score-only"
+            : desired.RuntimePlan.CpuPlacementTopology is null ? "cpu-topology-unavailable" : "scheduler-cycle-in-progress");
+        using var cycleDiagnostics = HostManagerSmartCoordinatorCycleDiagnostics.Create(
+            this,
+            desired.RuntimePlan,
+            trigger,
+            realtimeCycle,
+            effectAdmission.IsScoreOnly,
+            outerLoopContext,
+            cancellationToken);
+        ObserveOuterLoop(
+            outerLoopContext,
+            HostManagerSmartCoordinatorOuterLoopPhase.ProfilerCreated,
+            diagnosticCycleSequence: cycleDiagnostics?.CycleSequence,
+            producerInstanceId: cycleDiagnostics?.ProducerInstanceId);
+        // Observe every original owner, even when another GPU operation is still pending.
+        var callbackSettled = TrySettleGpuCallbackPreparation();
+        var windowSettled = TrySettleGpuWindowExecution();
+        var checkpointSettled = await TrySettleGpuActionCheckpointAsync();
+        var placementStateAvailable = callbackSettled && windowSettled && checkpointSettled;
+        var gpuControlAvailable = placementStateAvailable
+            && !runningGpuPlacementActions.HasUnreleasedExternalControl;
+        if (effectAdmission.TryAcquire(
+                HostManagerCycleEffectKind.SelfLedgerMaintenance,
+                out var selfLedgerPermit))
+        {
+            await RunSelfLocalResourceManagerTickAsync(
+                selfLedgerPermit,
+                desired,
+                cancellationToken);
+        }
+        cycleDiagnostics?.Mark("self-ledger");
+        if (placementStateAvailable)
+        {
+            var state = await LoadRollbackStateAsync(cancellationToken);
+            if (effectAdmission.TryAcquire(
+                    HostManagerCycleEffectKind.NativeWorkspaceLifecycle,
+                    out var workspacePermit))
+            {
+                state = await EnsureNativeWorkspaceAsync(
+                    workspacePermit,
+                    desired,
+                    state,
+                    cancellationToken);
+            }
+            else if (!CanReuseNativeWorkspace(desired, state.NativeHostSessionIncarnation))
+            {
+                cycleDiagnostics?.Defer("native-workspace-unavailable-for-score-only");
+                return new(TimeSpan.FromMilliseconds(
+                    desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+            }
+        }
+        else if (!CanReuseNativeWorkspace(desired, nativeHostSessionIncarnation))
+        {
+            // A new workspace requires the shared placement ledger. Sampling and scoring do not.
+            if (desired.RuntimePlan.OptimizationMode.SchedulingEnabled)
+            {
+                var capture = await CaptureHostManagerSampleAsync(desired.RuntimePlan, cancellationToken);
+                var binding = HostManagerSchedulingPlanBinding.Create(desired);
+                if (capture.Sample is { } capturedSample)
+                {
+                    cycleDiagnostics?.CaptureSample(capturedSample);
+                    var scoring = RunSchedulingAuthority(
+                        desired.SmartCoordinator,
+                        desired.RuntimePlan.HostManager.CpuScoring!,
+                        desired.RuntimePlan.OptimizationMode,
+                        binding,
+                        capturedSample);
+                    cycleDiagnostics?.CaptureScoring(scoring);
+                }
+                else
+                {
+                    PublishSchedulingAuthorityUnavailable(roundNumber, binding,
+                        durableTimeSource.NextUtc(), capture.UnavailableReason ?? "sampling-snapshot-unavailable");
+                }
+            }
+            else
+            {
+                ClearNonAdaptedMemoryModeProjection();
+                schedulingAuthorityOwner.PublishUnavailable(roundNumber,
+                    HostManagerSchedulingPlanBinding.Create(desired), durableTimeSource.NextUtc(), "optimization-mode-normal");
+            }
+            cycleDiagnostics?.Defer("placement-ledger-busy-for-workspace");
+            return new(TimeSpan.FromMilliseconds(
+                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+        }
+        cycleDiagnostics?.Mark("workspace");
+        var workspace = nativeWorkspace
+            ?? throw new InvalidOperationException("The Host Manager smart coordinator workspace was not created.");
+        var budgetRule = desired.SmartCoordinator.HotPublish.RealtimeActionBudget;
+        int? processCount = null;
+        if (realtimeCycle && budgetRule.Mode == AppRealtimeActionBudgetModes.Percent)
+        {
+            // Sizing the percentage budget needs only the latest published inventory.
+            // Scheduling still captures its sample after recovery at the original point.
+            var gpuInventory = new SchedulingGpuInventorySnapshot(
+                SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []);
+            var inventory = schedulingProcessFactSource.ReadLatest(new SchedulingProcessFactRequest(
+                SchedulingProcessMetricMask.RuntimeState, gpuInventory));
+            if (inventory is not null)
+                processCount = inventory.ProjectValidFacts(gpuInventory).Processes.Count;
+            var unavailableReason = inventory is null ? "process-inventory-unavailable"
+                : processCount == 0 ? "process-inventory-empty" : null;
+            if (unavailableReason is not null)
+            {
+                lastCycleActionBudget = new HostManagerCycleActionBudgetDiagnostics(
+                    null, realtimeCycle, budgetRule.Mode, budgetRule.Count, budgetRule.Percent,
+                    processCount, unavailableReason);
+                cycleDiagnostics?.CaptureActionBudget(lastCycleActionBudget);
+                cycleDiagnostics?.Defer(unavailableReason);
+                return new(TimeSpan.FromMilliseconds(
+                    desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+            }
+        }
+        var maximumActionsThisCycle = ResolveMaximumActionsThisCycle(
+            realtimeCycle, workspace.Capacity.ActionCapacity, budgetRule, processCount);
+        lastCycleActionBudget = new HostManagerCycleActionBudgetDiagnostics(
+            maximumActionsThisCycle, realtimeCycle, budgetRule.Mode, budgetRule.Count,
+            budgetRule.Percent, processCount);
+        cycleDiagnostics?.CaptureActionBudget(lastCycleActionBudget);
+        effectAdmission.InitializeBudgets(
+            maximumActionsThisCycle,
+            maximumActionsThisCycle);
+        var recovery = await RecoverNativeTransactionsAsync(
+            effectAdmission,
+            cancellationToken);
+        cycleDiagnostics?.Mark("transaction-recovery");
+        if (recovery.IsBlocked)
+        {
+            cycleDiagnostics?.Defer("transaction-recovery-blocked");
+            return new(TimeSpan.FromMilliseconds(
+                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+        }
+        if (recovery.Changed)
+        {
+            authoritativeAppliedFactsRequired = true;
+        }
+        if (placementStateAvailable && !await ReconcileGpuRemoteCallsAsync(effectAdmission, cancellationToken))
+        {
+            placementStateAvailable = gpuControlAvailable = false;
+            cycleDiagnostics?.Mark("gpu-call-settlement-not-saved");
+        }
+        if (placementStateAvailable && !await PrepareLegacyStateAsync(effectAdmission, cancellationToken, gpuControlAvailable))
+        {
+            cycleDiagnostics?.Defer("legacy-state-preparation-blocked");
+            return new(TimeSpan.FromMilliseconds(
+                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+        }
+        cycleDiagnostics?.Mark("legacy-state");
+        if (placementStateAvailable && !await ReconcileExitedGpuWindowActionsAsync(effectAdmission, cancellationToken))
+        {
+            placementStateAvailable = gpuControlAvailable = false;
+            cycleDiagnostics?.Mark("window-exit-settlement-not-saved");
+        }
+        var runtimePlan = desired.RuntimePlan;
+        var modePlan = runtimePlan.OptimizationMode;
+        if (!modePlan.SchedulingEnabled)
+        {
+            cycleFactExclusions.Clear();
+            ClearNonAdaptedMemoryModeProjection();
+            schedulingAuthorityOwner.PublishUnavailable(
+                roundNumber,
+                HostManagerSchedulingPlanBinding.Create(desired),
+                durableTimeSource.NextUtc(),
+                "optimization-mode-normal");
+        }
+        var scoreOnlyEnabled = effectAdmission.IsScoreOnly;
+        HostManagerTransactionJournalAdmission? executionAdmission = null;
+        if (!scoreOnlyEnabled
+            && (!nativeActionTransactions.TryAcquireExecutionAdmission(out executionAdmission)
+                || executionAdmission is null))
+        {
+            cycleDiagnostics?.Defer("transaction-execution-admission-unavailable");
+            return new(TimeSpan.FromMilliseconds(
+                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+        }
+        await using var executionAdmissionOwner = executionAdmission;
+        var normalRestorationComplete = true;
+        if (!scoreOnlyEnabled
+            && string.Equals(
+                modePlan.Mode,
+                AppOptimizationModes.Normal,
+                StringComparison.Ordinal)
+            && !await RestoreOwnedEffectsForNormalModeAsync(
+                effectAdmission,
+                processEffectValidationScope,
+                executionAdmission
+                    ?? throw new InvalidOperationException(
+                        "Normal-mode ownership restoration has no journal admission."),
+                maximumActionsThisCycle,
+                cancellationToken,
+                placementStateAvailable,
+                gpuControlAvailable))
+        {
+            normalRestorationComplete = false;
+            cycleDiagnostics?.Defer("normal-mode-ownership-restoration-incomplete");
+        }
+        if (!modePlan.SchedulingEnabled)
+        {
+            if (runtimeCpuLeases.HasLeases && placementStateAvailable)
+            {
+                var leaseCapture = await CaptureHostManagerSampleAsync(runtimePlan, cancellationToken);
+                if (leaseCapture.Sample is { } leaseSample && runtimePlan.CpuPlacementTopology is not null)
+                    normalRestorationComplete &= await RunAutomaticPlacementCycleAsync(effectAdmission,
+                        processEffectValidationScope, desired, leaseSample, null, true, false,
+                        cancellationToken, gpuControlAvailable: gpuControlAvailable);
+            }
+            if (normalRestorationComplete) cycleDiagnostics?.Complete();
+            return new(normalRestorationComplete
+                ? runtimePlan.HostManager.SchedulerSamplingInterval
+                : TimeSpan.FromMilliseconds(desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds),
+                effectAdmission);
+        }
+        var schedulingPlanBinding = HostManagerSchedulingPlanBinding.Create(desired);
+        var sampleCapture = await CaptureHostManagerSampleAsync(
+            desired.RuntimePlan,
+            cancellationToken);
+        if (sampleCapture.Sample is not { } sample)
+        {
+            var unavailableReason = sampleCapture.UnavailableReason
+                ?? "sampling-snapshot-unavailable";
+            PublishSchedulingAuthorityUnavailable(
+                roundNumber,
+                schedulingPlanBinding,
+                durableTimeSource.NextUtc(),
+                unavailableReason);
+            cycleDiagnostics?.Defer(unavailableReason);
+            return new(TimeSpan.FromMilliseconds(
+                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+        }
+        cycleDiagnostics?.CaptureSample(sample);
+        cycleDiagnostics?.Mark("sampling");
+        var protection = await ResolveNativeProtectionAsync(cancellationToken);
+        var computeScoring = RunSchedulingAuthority(
+            desired.SmartCoordinator,
+            desired.RuntimePlan.HostManager.CpuScoring!,
+            modePlan,
+            schedulingPlanBinding,
+            sample);
+        cycleDiagnostics?.CaptureScoring(computeScoring);
+        var cpuPlacementEnabled = (modePlan.CpuPlacementEnabled || runtimeCpuLeases.HasLeases)
+            && desired.RuntimePlan.CpuPlacementTopology is not null;
+        if (!cpuPlacementEnabled) ResetCpuExclusivityState();
+        var gpuPlacementEnabled = modePlan.GpuPlacementEnabled
+            && gpuControlAvailable;
+        cycleDiagnostics?.CaptureGuards(
+            true,
+            cpuPlacementEnabled || gpuPlacementEnabled);
+        cycleDiagnostics?.Mark("scheduling-authority");
+        var ownershipSnapshot = effectAdmission.TryAcquire(
+            HostManagerCycleEffectKind.ExitedOwnershipReconciliation,
+            out var ownershipPermit)
+            ? await ReconcileExitedProcessOwnershipAsync(
+                ownershipPermit,
+                sample.ProcessFacts,
+                executionAdmission
+                    ?? throw new InvalidOperationException(
+                        "The ownership reconciliation effect has no journal execution admission."),
+                cancellationToken)
+            : await nativeActionTransactions.AppliedOwnership.ReadSnapshotAsync(
+                cancellationToken);
+        cycleDiagnostics?.Mark("ownership-reconciliation");
+        var sequence = unchecked((ulong)Interlocked.Increment(ref nativeCycleSequence));
+        if (sequence == 0)
+        {
+            throw new InvalidOperationException("The Host Manager smart coordinator cycle sequence wrapped to zero.");
+        }
+        ObserveOuterLoop(
+            outerLoopContext,
+            HostManagerSmartCoordinatorOuterLoopPhase.NativeSequenceAssigned,
+            nativeCycleSequence: sequence);
+        var firstEffectIndex = realtimeCycle ? nextRealtimeNewEffectIndex : 0;
+        var externalEffects = new NativeExternalEffectSink(
+            this,
+            processEffectValidationScope,
+            sample,
+            desired.RuntimePlan,
+            sequence,
+            cancellationToken);
+        for (var offset = 0; offset < NewEffectOrder.Length; offset++)
+        {
+            var effectKind = NewEffectOrder[
+                (firstEffectIndex + offset) % NewEffectOrder.Length];
+            switch (effectKind)
+            {
+                case NewEffectStage.MemoryTransaction:
+                    var memoryTransactions = default(NonAdaptedMemoryTransactionBatchResult);
+                    if (effectAdmission.TryAcquire(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction, out var memoryTransactionPermit))
+                    {
+                        memoryTransactions = await ApplyNonAdaptedMemoryModeTransactionsAsync(
+                            memoryTransactionPermit,
+                            processEffectValidationScope,
+                            schedulingPlanBinding,
+                            sample,
+                            CreateAppliedOwnershipFactIndex(ownershipSnapshot),
+                            executionAdmission
+                                ?? throw new InvalidOperationException(
+                                    "The memory transaction effect has no journal execution admission."),
+                            maximumActionsThisCycle,
+                            modePlan.NonAdaptedMemoryPriorityEnabled,
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        RecordRemainingMemoryDirectiveSkips("memory_effect_not_admitted");
+                    }
+                    cycleDiagnostics?.CaptureMemoryTransactions(memoryTransactions.TransactionCount);
+                    cycleDiagnostics?.Mark("memory-transactions");
+                    if (memoryTransactions.IsBlocked)
+                    {
+                        cycleDiagnostics?.Defer("memory-transaction-blocked");
+                        return new(TimeSpan.FromMilliseconds(
+                            desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+                    }
+                    if (memoryTransactions.TransactionCount != 0)
+                    {
+                        ownershipSnapshot = await nativeActionTransactions.AppliedOwnership
+                            .ReadSnapshotAsync(cancellationToken);
+                    }
+                    break;
+                case NewEffectStage.NativePolicy:
+                    if (!await RunNativePlanningAndActionsAsync(
+                            effectAdmission,
+                            processEffectValidationScope,
+                            desired,
+                            sample,
+                            computeScoring,
+                            CreateAppliedOwnershipFactIndex(ownershipSnapshot),
+                            protection,
+                            cpuPlacementEnabled,
+                            gpuPlacementEnabled,
+                            executionAdmission,
+                            sequence,
+                            trigger,
+                            cycleDiagnostics,
+                            cancellationToken))
+                    {
+                        return new(TimeSpan.FromMilliseconds(
+                            desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+                    }
+                    if (!scoreOnlyEnabled)
+                    {
+                        ownershipSnapshot = await nativeActionTransactions.AppliedOwnership
+                            .ReadSnapshotAsync(cancellationToken);
+                    }
+                    break;
+                case NewEffectStage.Placement:
+                    // A shared-journal recovery cannot be bypassed by moving
+                    // placement ahead of policy in this cycle's rotation.
+                    if (authoritativeAppliedFactsRequired || !placementStateAvailable)
+                    {
+                        cycleDiagnostics?.Mark("placement-ledger-busy");
+                        break;
+                    }
+                    var placementCompleted = await RunAutomaticPlacementCycleAsync(
+                        effectAdmission, processEffectValidationScope, desired, sample, computeScoring,
+                        cpuPlacementEnabled, gpuPlacementEnabled, cancellationToken, firstUse, gpuControlAvailable);
+                    if (!placementCompleted && !HasPendingGpuOwnerWork())
+                        return new(TimeSpan.FromMilliseconds(desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+                    if (!placementCompleted) cycleDiagnostics?.Mark("gpu-placement-pending");
+                    break;
+                case NewEffectStage.MemoryCleanup:
+                    await HostManagerNativeExternalEffectDispatcher.RunAsync(
+                        effectAdmission,
+                        modePlan.AutomaticMemoryCleanupEnabled,
+                        externalEffects);
+                    cycleDiagnostics?.Mark("memory-cleanup");
+                    if (externalEffects.MemoryCleanupResult.HasUnresolvedCurrentEffects)
+                    {
+                        cycleDiagnostics?.Defer("memory-cleanup-unresolved-effects");
+                        return new(TimeSpan.FromMilliseconds(
+                            desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+                    }
+                    break;
+            }
+        }
+
+        if (realtimeCycle && !scoreOnlyEnabled)
+        {
+            nextRealtimeNewEffectIndex = (firstEffectIndex + 1) % NewEffectOrder.Length;
+        }
+        cycleDiagnostics?.Complete();
+
+        var placementDeferred = !placementStateAvailable || !gpuControlAvailable
+            || HasPendingGpuOwnerWork();
+        return new(TimeSpan.FromMilliseconds(placementDeferred
+            ? desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds
+            : workspace.Snapshot.WakeAfterMilliseconds), effectAdmission)
+        {
+            PublicationDrivenDelay = placementDeferred
+                ? TimeSpan.FromMilliseconds(desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds)
+                : workspace.Snapshot.EarlyWakeAfterMilliseconds == uint.MaxValue
+                    ? null : TimeSpan.FromMilliseconds(workspace.Snapshot.EarlyWakeAfterMilliseconds)
+        };
+    }
+
+    private async Task RunSelfLocalResourceManagerTickAsync(
+        HostManagerCycleEffectPermit permit,
+        HostManagerSmartCoordinatorRuntimePlan desired,
+        CancellationToken cancellationToken)
+    {
+        permit.Require(HostManagerCycleEffectKind.SelfLedgerMaintenance);
+        try
+        {
+            var mode = HostManagerSelfMemoryModeProjection.Resolve(
+                desired.RuntimePlan.OptimizationMode.ResourceManagerSelfMemoryActionsEnabled,
+                HostManagerSchedulingPlanBinding.Create(desired),
+                schedulingAuthorityOwner.Capture());
+            selfLocalResourceManagerOwner.SetDesiredMemoryMode(mode);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Resource Manager self memory-mode projection failed closed to Normal for this cycle.");
+            try
+            {
+                selfLocalResourceManagerOwner.SetDesiredMemoryMode(
+                    LocalResourceSoftwareMemoryMode.Normal);
+            }
+            catch (Exception fallbackException)
+            {
+                logger.LogWarning(
+                    fallbackException,
+                    "Resource Manager self memory-mode Normal fallback could not be published; owned-memory maintenance will still run.");
+            }
+        }
+
+        var previousTrimSnapshot = selfLocalResourceManagerOwner.LastTrimResults;
+        try
+        {
+            var result = await selfLocalResourceManagerOwner.TickAsync(
+                cancellationToken);
+            if (result.Ledger.Released != 0)
+            {
+                logger.LogInformation(
+                    "Resource Manager owned-memory Ledger released {ReleasedCount} resources while scanning {ScannedCount}; {RegisteredBytes} bytes remain registered ({SystemPageBytes} system-page bytes).",
+                    result.Ledger.Released,
+                    result.Ledger.Scanned,
+                    result.Memory.RegisteredBytes,
+                    result.Memory.SystemPageBytes);
+            }
+            LogSelfWorkingSetResults(logger, result.TrimResults.Concat(result.RecheckedTrimObservations));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            LogFailedTickWorkingSets();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LogFailedTickWorkingSets();
+            logger.LogWarning(
+                exception,
+                "Resource Manager self ledger maintenance failed closed for this cycle.");
+        }
+
+        void LogFailedTickWorkingSets()
+        {
+            var observed = selfLocalResourceManagerOwner.LastTrimResults;
+            // Cancellation before this Tick acquired its gate leaves the previous
+            // snapshot untouched. Do not log that earlier cycle a second time.
+            if (!ReferenceEquals(previousTrimSnapshot, observed))
+                LogSelfWorkingSetResults(logger, observed);
+        }
+    }
+
+    internal static void LogSelfWorkingSetResults(ILogger logger,
+        IEnumerable<ResourceManagerSelfWorkingSetTrimResult> trims)
+    {
+        foreach (var trim in trims)
+        {
+            if (trim.Status != ResourceManager.Adapter.AdapterResourceActionStatus.Completed
+                || trim.ObservationPending)
+            {
+                logger.LogWarning(
+                    "Resource Manager {ProcessGroup} OS working-set batch returned {Status}; {RequestCount} exact process instances, observation pending {ObservationPending}, writer failure {Failure}. OS batch evidence {BatchEvidence}.",
+                    trim.Group, trim.Status, trim.Requests.Count,
+                    trim.ObservationPending, trim.Failure, System.Text.Json.JsonSerializer.Serialize(trim));
+            }
+            else
+            {
+                logger.LogDebug(
+                    "Resource Manager {ProcessGroup} OS working-set trim completed for {RequestCount} exact process instances; residency observations {Observations}.",
+                    trim.Group, trim.Requests.Count, trim.Observations);
+            }
+        }
+    }
+
+    internal static uint ResolveMaximumActionsThisCycle(
+        bool realtimeCycle,
+        uint actionCapacity,
+        CompiledHostManagerRealtimeActionBudgetPlan rule,
+        int? processCount)
+    {
+        if (actionCapacity == 0 || !rule.IsPublished || rule.Count > actionCapacity)
+            throw new InvalidDataException("The Host Manager action capacity and real-time budget rule are inconsistent.");
+        if (!realtimeCycle) return actionCapacity;
+        if (rule.Mode == AppRealtimeActionBudgetModes.Fixed) return checked((uint)rule.Count);
+        if (processCount is null or <= 0)
+            throw new InvalidDataException("A percentage action budget requires a nonempty process inventory.");
+        return checked((uint)(((long)processCount.Value * rule.Percent + 99) / 100));
+    }
+
+    private async Task<HostManagerRollbackStateDocument> EnsureNativeWorkspaceAsync(
+        HostManagerCycleEffectPermit permit,
+        HostManagerSmartCoordinatorRuntimePlan desired,
+        HostManagerRollbackStateDocument state,
+        CancellationToken cancellationToken)
+    {
+        permit.Require(HostManagerCycleEffectKind.NativeWorkspaceLifecycle);
+        var needsNewIncarnation = nativeWorkspace is null
+            || appliedNativeRuntimePlan is null
+            || appliedNativeRuntimePlan.SmartCoordinator.Recreate != desired.SmartCoordinator.Recreate;
+        if (needsNewIncarnation)
+        {
+            state = await ReserveRollbackSessionAsync(
+                cancellationToken);
+            var nextIncarnation = state.NativeHostSessionIncarnation;
+            EnsureNativeWorkspace(desired, nextIncarnation);
+            return state;
+        }
+
+        if (nativeHostSessionIncarnation == 0
+            || state.NativeHostSessionIncarnation != nativeHostSessionIncarnation)
+        {
+            throw new InvalidDataException(
+                "The Host Manager native workspace lost its durable host session incarnation.");
+        }
+
+        EnsureNativeWorkspace(desired, nativeHostSessionIncarnation);
+        return state;
+    }
+
+    private bool CanReuseNativeWorkspace(
+        HostManagerSmartCoordinatorRuntimePlan desired,
+        ulong durableIncarnation)
+    {
+        if (nativeWorkspace is null || appliedNativeRuntimePlan is null || pendingNativeWorkspaceClose is not null)
+        {
+            return false;
+        }
+
+        if (nativeHostSessionIncarnation == 0
+            || durableIncarnation != nativeHostSessionIncarnation)
+        {
+            throw new InvalidDataException(
+                "The Host Manager native workspace lost its durable host session incarnation.");
+        }
+
+        var applied = appliedNativeRuntimePlan;
+        return string.Equals(
+                applied.SmartCoordinator.ConfigurationSha256,
+                desired.SmartCoordinator.ConfigurationSha256,
+                StringComparison.Ordinal)
+            && applied.SmartCoordinator.Build == desired.SmartCoordinator.Build;
+    }
+
+    private void EnsureNativeWorkspace(HostManagerSmartCoordinatorRuntimePlan desired, ulong incarnation)
+    {
+        if (pendingNativeWorkspaceClose is not null)
+        {
+            pendingNativeWorkspaceClose.Dispose();
+            pendingNativeWorkspaceClose = null;
+        }
+        nativeWorkspace?.RequireNoOutstandingOperation();
+        if (nativeWorkspace is null)
+        {
+            var attempt = smartCoordinatorRuntime.BeginCreate(desired.HostPlan);
+            var configuration = desired.Configuration;
+            NativeSmartCoordinatorWorkspace? created = null;
+            try
+            {
+                created = new NativeSmartCoordinatorWorkspace(in configuration, selfLocalResourceManagerOwner.CreateScratch);
+            }
+            catch (Exception exception)
+            {
+                SettleSmartCoordinatorFailed(
+                    attempt,
+                    $"native-smart-coordinator:{exception.GetType().Name}");
+                throw;
+            }
+
+            try
+            {
+                HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
+                    smartCoordinatorRuntime.CompleteSucceeded(attempt),
+                    HostManagerModuleKind.SmartCoordinator);
+            }
+            catch
+            {
+                RetireFailedNativeWorkspace(created);
+                throw;
+            }
+            nativeWorkspace = created;
+            appliedNativeRuntimePlan = desired;
+            nativeHostSessionIncarnation = incarnation;
+            authoritativeAppliedFactsRequired = true;
+            return;
+        }
+
+        var applied = appliedNativeRuntimePlan
+            ?? throw new InvalidOperationException("The applied smart coordinator runtime identity is missing.");
+        if (string.Equals(
+                applied.SmartCoordinator.ConfigurationSha256,
+                desired.SmartCoordinator.ConfigurationSha256,
+                StringComparison.Ordinal)
+            && applied.SmartCoordinator.Build == desired.SmartCoordinator.Build)
+        {
+            return;
+        }
+
+        if (nativeWorkspace.Snapshot.Flags.HasFlag(NativeSmartCoordinatorSnapshotFlags.AwaitingFeedback))
+        {
+            throw new InvalidOperationException(
+                "The Host Manager smart coordinator cannot change generation while feedback is outstanding.");
+        }
+
+        if (applied.SmartCoordinator.Recreate == desired.SmartCoordinator.Recreate)
+        {
+            if (!smartCoordinatorRuntime.CanApplyHot(desired.HostPlan))
+            {
+                throw new InvalidOperationException(
+                    "The Host Manager deployment state rejected the smart coordinator hot generation.");
+            }
+
+            var attempt = smartCoordinatorRuntime.BeginHotPublish(desired.HostPlan);
+            try
+            {
+                var configuration = desired.Configuration;
+                RequireNativeStatus(nativeWorkspace.Reconfigure(in configuration), "reconfigure");
+            }
+            catch (Exception exception)
+            {
+                SettleSmartCoordinatorFailed(
+                    attempt,
+                    $"native-smart-coordinator:{exception.GetType().Name}");
+                throw;
+            }
+
+            try
+            {
+                HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
+                    smartCoordinatorRuntime.CompleteSucceeded(attempt),
+                    HostManagerModuleKind.SmartCoordinator);
+            }
+            catch
+            {
+                var previousConfiguration = applied.Configuration;
+                RequireNativeStatus(
+                    nativeWorkspace.Reconfigure(in previousConfiguration),
+                    "rollback-stale-hot-publish");
+                throw;
+            }
+            appliedNativeRuntimePlan = desired;
+            return;
+        }
+
+        var recreateAttempt = smartCoordinatorRuntime.BeginHostRecreateAndHotPublish(desired.HostPlan);
+        NativeSmartCoordinatorWorkspace replacement;
+        NativeSmartCoordinatorWorkspace? constructed = null;
+        try
+        {
+            ReachTransitionPoint(
+                HostManagerSmartCoordinatorTransitionPoint.BeforeReplacementCreate);
+            var configuration = desired.Configuration;
+            replacement = new NativeSmartCoordinatorWorkspace(in configuration, selfLocalResourceManagerOwner.CreateScratch);
+            constructed = replacement;
+            ReachTransitionPoint(
+                HostManagerSmartCoordinatorTransitionPoint.AfterReplacementCreate);
+        }
+        catch (Exception exception)
+        {
+            Exception? cleanup = null;
+            try { if (constructed is not null) RetireFailedNativeWorkspace(constructed); }
+            catch (Exception close) { cleanup = close; }
+            SettleSmartCoordinatorFailed(
+                recreateAttempt,
+                $"native-smart-coordinator:{exception.GetType().Name}");
+            if (cleanup is not null) throw new AggregateException(exception, cleanup);
+            throw;
+        }
+
+        try
+        {
+            ReachTransitionPoint(
+                HostManagerSmartCoordinatorTransitionPoint.BeforeDeploymentSettlement);
+            HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
+                smartCoordinatorRuntime.CompleteSucceeded(recreateAttempt),
+                HostManagerModuleKind.SmartCoordinator);
+            ReachTransitionPoint(
+                HostManagerSmartCoordinatorTransitionPoint.AfterDeploymentSettlement);
+        }
+        catch
+        {
+            RetireFailedNativeWorkspace(replacement);
+            throw;
+        }
+        try { ReachTransitionPoint(HostManagerSmartCoordinatorTransitionPoint.BeforePointerCutover); }
+        catch { RetireFailedNativeWorkspace(replacement); throw; }
+        var previous = nativeWorkspace;
+        pendingNativeWorkspaceClose = previous;
+        nativeWorkspace = replacement;
+        appliedNativeRuntimePlan = desired;
+        nativeHostSessionIncarnation = incarnation;
+        authoritativeAppliedFactsRequired = true;
+        ReachTransitionPoint(HostManagerSmartCoordinatorTransitionPoint.AfterPointerCutover);
+        previous.Dispose();
+        pendingNativeWorkspaceClose = null;
+    }
+
+    private void RetireFailedNativeWorkspace(NativeSmartCoordinatorWorkspace candidate)
+    {
+        if (pendingNativeWorkspaceClose is not null && !ReferenceEquals(pendingNativeWorkspaceClose, candidate))
+            throw new InvalidOperationException("A previous smart workspace still requires close.");
+        pendingNativeWorkspaceClose = candidate;
+        candidate.Dispose();
+        pendingNativeWorkspaceClose = null;
+    }
+
+    private void SettleSmartCoordinatorFailed(
+        HostManagerDeploymentAttemptToken attempt,
+        string failureCode)
+        => HostManagerDeploymentAttemptSettlementGuard.RequireFailed(
+            smartCoordinatorRuntime.CompleteFailed(attempt, failureCode, null),
+            HostManagerModuleKind.SmartCoordinator);
+
+    private HostManagerRollbackStateDocument ProjectNativeState(HostManagerRollbackStateDocument state)
+        => ProjectNativeState(state, Volatile.Read(ref publishedObservation));
+
+    private static HostManagerRollbackStateDocument ProjectNativeState(
+        HostManagerRollbackStateDocument state, PublishedObservation observation)
+    {
+        if (observation.NativeSnapshot is not { } snapshot)
+        {
+            return observation.Decisions.Failure is null ? state : state with { Coordinator = null };
+        }
+
+        return state with
+        {
+            LastRunAt = snapshot.ObservedAtMilliseconds == 0
+                ? state.LastRunAt
+                : DateTimeOffset.FromUnixTimeMilliseconds(snapshot.ObservedAtMilliseconds),
+            Coordinator = new(snapshot.StateRevision, snapshot.PendingCount,
+                snapshot.InflightCount, (ulong)snapshot.ReasonMask)
+        };
+    }
+
+    private static void RequireNativeStatus(
+        NativeSmartCoordinatorStatus status,
+        string operation)
+    {
+        if (status != NativeSmartCoordinatorStatus.Ok)
+        {
+            throw new InvalidDataException(
+                $"Host Manager smart coordinator {operation} failed with status {(int)status} ({status}).");
+        }
+    }
+
+    // Native planning produces the restricted status; exclusion rows reuse its reason.
+    internal static NativePlanFailureStatus NativePlanStatusCode(NativeSmartCoordinatorStatus status)
+        => NativePlanFailureStatus.FromReason(status switch
+        {
+            NativeSmartCoordinatorStatus.InvalidArgument => SchedulingFactExclusionReason.InvalidArgument,
+            NativeSmartCoordinatorStatus.AbiMismatch => SchedulingFactExclusionReason.AbiMismatch,
+            NativeSmartCoordinatorStatus.Unavailable => SchedulingFactExclusionReason.Unavailable,
+            NativeSmartCoordinatorStatus.NoData => SchedulingFactExclusionReason.NoData,
+            NativeSmartCoordinatorStatus.BufferTooSmall => SchedulingFactExclusionReason.BufferTooSmall,
+            NativeSmartCoordinatorStatus.StaleGeneration => SchedulingFactExclusionReason.StaleGeneration,
+            NativeSmartCoordinatorStatus.OutOfMemory => SchedulingFactExclusionReason.OutOfMemory,
+            NativeSmartCoordinatorStatus.CapacityExceeded => SchedulingFactExclusionReason.CapacityExceeded,
+            NativeSmartCoordinatorStatus.ConflictingFacts => SchedulingFactExclusionReason.ConflictingFacts,
+            NativeSmartCoordinatorStatus.FeedbackMismatch => SchedulingFactExclusionReason.FeedbackMismatch,
+            NativeSmartCoordinatorStatus.RecreateRequired => SchedulingFactExclusionReason.RecreateRequired,
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Expected a native plan failure status.")
+        });
+
+    private static void RequireNativePlanStatus(
+        NativeSmartCoordinatorStatus status,
+        NativeSmartCoordinatorWorkspace workspace,
+        uint inputCount,
+        in NativeSmartCoordinatorSnapshot previousSnapshot)
+    {
+        if (status == NativeSmartCoordinatorStatus.Ok)
+        {
+            return;
+        }
+
+        var processCount = 0U;
+        var softwareKeys = new HashSet<ulong>();
+        var gpuStates = new HashSet<(ulong TargetKey, uint ProcessId,
+            ulong ProcessStartKey, uint DeviceIndex)>();
+        using var view = workspace.CreateScratchView();
+        foreach (var row in view.Inputs[..checked((int)inputCount)])
+        {
+            if (row.ValidMask.HasFlag(
+                    NativeSmartCoordinatorInputValidity.ProcessIdentity)
+                && row.MetricKind == NativeSmartCoordinatorMetricKind.None)
+            {
+                processCount++;
+            }
+            if (row.ValidMask.HasFlag(
+                    NativeSmartCoordinatorInputValidity.SoftwareIdentity))
+            {
+                softwareKeys.Add(row.SoftwareKey);
+            }
+            if (row.MetricKind is NativeSmartCoordinatorMetricKind.GpuUsagePercent
+                    or NativeSmartCoordinatorMetricKind.VramUsagePercent)
+            {
+                gpuStates.Add((
+                    row.TargetKey,
+                    row.ProcessId,
+                    row.ProcessStartKey,
+                    row.DeviceIndex));
+            }
+        }
+
+        var capacity = workspace.Capacity;
+        throw new InvalidDataException(
+            $"Host Manager smart coordinator plan failed with status {(int)status} ({status}); "
+            + $"projected input/process/software/gpu counts {inputCount}/{processCount}/{softwareKeys.Count}/{gpuStates.Count}; "
+            + $"capacities input/process/software/gpu/action/feedback/atomic "
+            + $"{capacity.InputRowCapacity}/{capacity.ProcessCapacity}/{capacity.SoftwareCapacity}/{capacity.GpuStateCapacity}/{capacity.ActionCapacity}/{capacity.FeedbackCapacity}/{capacity.AtomicGroupCapacity}; "
+            + $"previous snapshot process/software/rows/pending/inflight/actions "
+            + $"{previousSnapshot.ProcessCount}/{previousSnapshot.SoftwareCount}/{previousSnapshot.SnapshotRowCount}/{previousSnapshot.PendingCount}/{previousSnapshot.InflightCount}/{previousSnapshot.ActionCount}.");
+    }
+
+    internal static unsafe void ValidateNativeSnapshot(
+        NativeSmartCoordinatorSnapshot snapshot,
+        NativeSmartCoordinatorCapacity capacity,
+        ulong expectedConfigurationGeneration,
+        ulong expectedCycleSequence,
+        long expectedObservedAtMilliseconds,
+        long expectedScheduleBaseAtMilliseconds,
+        ulong expectedPlanEpoch,
+        uint expectedMaximumActionsThisCycle,
+        bool requireNoActions,
+        bool expectedScoreOnly)
+    {
+        var expectedNextWake = expectedScheduleBaseAtMilliseconds > long.MaxValue - snapshot.WakeAfterMilliseconds
+            ? long.MaxValue
+            : expectedScheduleBaseAtMilliseconds + snapshot.WakeAfterMilliseconds;
+        var invalidFactsFlag = snapshot.Flags.HasFlag(NativeSmartCoordinatorSnapshotFlags.HasInvalidFacts);
+        var awaitingFeedbackFlag = snapshot.Flags.HasFlag(NativeSmartCoordinatorSnapshotFlags.AwaitingFeedback);
+        var scoreOnlyFlag = snapshot.Flags.HasFlag(NativeSmartCoordinatorSnapshotFlags.ScoreOnly);
+        var rowCount = checked((ulong)snapshot.ProcessCount + snapshot.SoftwareCount);
+        var maximumPlanActions = Math.Min((ulong)snapshot.ProcessCount, expectedMaximumActionsThisCycle);
+        var maximumPending = (ulong)snapshot.ProcessCount;
+        if (snapshot.AbiVersion != NativeSmartCoordinatorAbi.Version
+            || snapshot.StructSize != NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorSnapshot>()
+            || snapshot.SnapshotRowStructSize != NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorSnapshotRow>()
+            || (snapshot.Flags & ~NativeSmartCoordinatorSnapshotFlags.Known) != 0
+            || (snapshot.ReasonMask & ~NativeSmartCoordinatorReason.Known) != 0
+            || snapshot.ConfigurationGeneration != expectedConfigurationGeneration
+            || snapshot.ConfigurationGeneration != capacity.ConfigurationGeneration
+            || snapshot.CycleSequence != expectedCycleSequence
+            || snapshot.PlanEpoch == 0
+            || (expectedPlanEpoch != 0 && snapshot.PlanEpoch != expectedPlanEpoch)
+            || snapshot.StateRevision == 0
+            || snapshot.ObservedAtMilliseconds != expectedObservedAtMilliseconds
+            || snapshot.NextWakeAtMilliseconds != expectedNextWake
+            || expectedMaximumActionsThisCycle > capacity.ActionCapacity
+            || snapshot.ActionCount > capacity.ActionCapacity
+            || snapshot.ProcessCount > capacity.ProcessCapacity
+            || snapshot.SoftwareCount > capacity.SoftwareCapacity
+            || snapshot.InflightCount > capacity.FeedbackCapacity
+            || snapshot.SnapshotRowCount > capacity.SnapshotRowCapacity
+            || snapshot.SnapshotRowCount != rowCount
+            || snapshot.PendingCount > maximumPending
+            || invalidFactsFlag != (snapshot.InvalidFactCount != 0)
+            || awaitingFeedbackFlag != (snapshot.InflightCount != 0)
+            || snapshot.Flags.HasFlag(NativeSmartCoordinatorSnapshotFlags.EventBoostActive)
+                != (snapshot.EventBoostRoundsRemaining > 0)
+            || scoreOnlyFlag != expectedScoreOnly
+            || (requireNoActions && snapshot.ActionCount != 0)
+            || (!requireNoActions && snapshot.ActionCount > maximumPlanActions)
+            || snapshot.Reserved[0] != 0
+            || snapshot.Reserved[1] != 0)
+        {
+            throw new InvalidDataException(
+                "The Host Manager smart coordinator returned an invalid snapshot envelope.");
+        }
+    }
+
+    internal static void ValidateNativeSnapshotRows(
+        ReadOnlySpan<NativeSmartCoordinatorSnapshotRow> rows,
+        NativeSmartCoordinatorSnapshot snapshot)
+    {
+        if (rows.Length != snapshot.SnapshotRowCount)
+        {
+            throw new InvalidDataException(
+                "The Host Manager smart coordinator snapshot row span does not match its envelope.");
+        }
+
+        var processIdentities = new HashSet<(ulong TargetKey, uint ProcessId, ulong ProcessStartKey)>();
+        var softwareIdentities = new HashSet<ulong>();
+        uint pendingCount = 0;
+        uint minimumInflightCount = 0;
+        uint maximumInflightCount = 0;
+        var processFlags = NativeSmartCoordinatorSnapshotRowFlags.ProcessOwned
+            | NativeSmartCoordinatorSnapshotRowFlags.ProcessInflight
+            | NativeSmartCoordinatorSnapshotRowFlags.FreezeReady
+            | NativeSmartCoordinatorSnapshotRowFlags.CriticalFact;
+        var softwareFlags = NativeSmartCoordinatorSnapshotRowFlags.CriticalFact;
+        var softwareValidity = NativeSmartCoordinatorInputValidity.SoftwareIdentity
+            | NativeSmartCoordinatorInputValidity.SoftwareKind
+            | NativeSmartCoordinatorInputValidity.SurfaceFacts
+            | NativeSmartCoordinatorInputValidity.BaseScore
+            | NativeSmartCoordinatorInputValidity.Eligibility
+            | NativeSmartCoordinatorInputValidity.Protection;
+
+        for (var index = 0; index < rows.Length; index++)
+        {
+            var row = rows[index];
+            if (row.StructSize != NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorSnapshotRow>()
+                || (row.Flags & ~NativeSmartCoordinatorSnapshotRowFlags.Known) != 0
+                || (row.ValidMask & ~NativeSmartCoordinatorInputValidity.Known) != 0
+                || (row.ReasonMask & ~NativeSmartCoordinatorReason.Known) != 0
+                || !Enum.IsDefined(row.RowKind)
+                || !Enum.IsDefined(row.SoftwareKind)
+                || !Enum.IsDefined(row.RuntimeState)
+                || row.ProtectionLevel > 1
+                || !Enum.IsDefined(row.DesiredProcessGrade)
+                || !Enum.IsDefined(row.AppliedProcessGrade)
+                || !Enum.IsDefined(row.PendingProcessGrade)
+                || !IsFiniteNonNegative(row.BaseScore)
+                || !IsFiniteNonNegative(row.CpuScore)
+                || !IsFiniteNonNegative(row.CpuOccupancyPercent)
+                || row.CpuOccupancyPercent > 100
+                || row.ReservedProcessScore0 != 0
+                || row.ReservedProcessRatio0 != 0
+                || row.LastSeenCycle == 0
+                || row.LastSeenCycle > snapshot.CycleSequence
+                || row.Reserved0 != 0
+                || row.Reserved1 != 0)
+            {
+                throw new InvalidDataException(
+                    $"Host Manager smart coordinator snapshot row {index} failed its POD contract.");
+            }
+
+            if (row.RowKind == NativeSmartCoordinatorSnapshotRowKind.Process)
+            {
+                var hasSoftware = row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.SoftwareIdentity);
+                if ((uint)index >= snapshot.ProcessCount
+                    || !row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessIdentity)
+                    || row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.Metric)
+                    || row.TargetKey == 0
+                    || row.ProcessId == 0
+                    || row.ProcessStartKey == 0
+                    || hasSoftware != (row.SoftwareKey != 0)
+                    || (row.Flags & ~processFlags) != 0
+                    || !processIdentities.Add((row.TargetKey, row.ProcessId, row.ProcessStartKey)))
+                {
+                    throw new InvalidDataException(
+                        $"Host Manager smart coordinator process snapshot row {index} has an invalid shape.");
+                }
+
+                if (row.ProcessPendingCount != 0)
+                {
+                    pendingCount++;
+                }
+                if (row.Flags.HasFlag(NativeSmartCoordinatorSnapshotRowFlags.ProcessInflight))
+                {
+                    minimumInflightCount++;
+                    maximumInflightCount++;
+                }
+            }
+            else
+            {
+                if ((uint)index < snapshot.ProcessCount
+                    || (row.ValidMask & NativeSmartCoordinatorInputValidity.SoftwareIdentity) == 0
+                    || (row.ValidMask & ~softwareValidity) != 0
+                    || row.TargetKey == 0
+                    || row.TargetKey != row.SoftwareKey
+                    || row.ProcessId != 0
+                    || row.ProcessStartKey != 0
+                    || (row.Flags & ~softwareFlags) != 0
+                    || row.ProcessPendingCount != 0
+                    || row.FailureCount != 0
+                    || row.PendingFirstSeenMilliseconds != 0
+                    || row.PendingLastSeenMilliseconds != 0
+                    || row.LastFeedbackMilliseconds != 0
+                    || row.GameStartedAtMilliseconds != 0
+                    || (!row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.Protection)
+                        && row.ProtectionLevel != 0)
+                    || row.CpuOccupancyPercent != 0
+                    || row.DesiredProcessGrade != NativeSmartCoordinatorProcessGrade.Normal
+                    || row.AppliedProcessGrade != NativeSmartCoordinatorProcessGrade.Normal
+                    || row.PendingProcessGrade != NativeSmartCoordinatorProcessGrade.Normal
+                    || !softwareIdentities.Add(row.SoftwareKey))
+                {
+                    throw new InvalidDataException(
+                        $"Host Manager smart coordinator software snapshot row {index} has an invalid shape.");
+                }
+
+            }
+        }
+
+        if (processIdentities.Count != snapshot.ProcessCount
+            || softwareIdentities.Count != snapshot.SoftwareCount
+            || pendingCount != snapshot.PendingCount
+            || snapshot.InflightCount < minimumInflightCount
+            || snapshot.InflightCount > maximumInflightCount)
+        {
+            throw new InvalidDataException(
+                "The Host Manager smart coordinator snapshot row aggregates do not match their envelope.");
+        }
+    }
+
+    private static bool IsFiniteNonNegative(double value)
+        => double.IsFinite(value) && value >= 0;
+
+    private static ulong NextNativeStateRevision(ulong revision)
+    {
+        var next = unchecked(revision + 1);
+        return next == 0 ? 1 : next;
+    }
+}

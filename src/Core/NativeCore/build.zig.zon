@@ -1,0 +1,1 @@
+.{ .fingerprint = 0xfc05b083e61837b3, .name = .rm_nativecore, .version = "0.0.0", .minimum_zig_version = "0.17.0", .dependencies = .{ .control_tree_sdk = .{ .path = "../../../build/dependencies/control-tree-sdk" } }, .paths = .{""} }

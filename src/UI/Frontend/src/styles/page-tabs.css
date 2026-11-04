@@ -1,0 +1,154 @@
+/* Share --page-tab-* appearance tokens across navigation tabs; local classes own geometry. */
+
+:root {
+  --page-tab-radius: var(--radius-sm);
+  --page-tab-bg: var(--surface-strong);
+  --page-tab-border: transparent;
+  --page-tab-fg: var(--text);
+  --page-tab-bg-hover: var(--accent-soft);
+  --page-tab-border-hover: color-mix(in oklab, var(--accent) 40%, var(--line));
+  --page-tab-fg-hover: var(--text);
+  --page-tab-active-bg: var(--accent);
+  --page-tab-active-border: var(--accent-soft);
+  --page-tab-active-fg: var(--on-accent);
+  --page-tab-active-shadow: none;
+  --page-tab-active-bg-hover: var(--accent-hover);
+  --page-tab-active-border-hover: var(--accent-hover);
+}
+
+.page-tab {
+  border: 1px solid var(--page-tab-border);
+  border-radius: var(--page-tab-radius);
+  background: var(--page-tab-bg);
+  color: var(--page-tab-fg);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.page-tab:not(.active):not(:disabled):hover {
+  border-color: var(--page-tab-border-hover);
+  background: var(--page-tab-bg-hover);
+  color: var(--page-tab-fg-hover);
+}
+
+/* Reserve solid accent fill for the current page. */
+.page-tab.active {
+  border-color: var(--page-tab-active-border);
+  background: var(--page-tab-active-bg);
+  color: var(--page-tab-active-fg);
+  box-shadow: var(--page-tab-active-shadow);
+}
+
+.page-tab.active:hover {
+  border-color: var(--page-tab-active-border-hover);
+  background: var(--page-tab-active-bg-hover);
+}
+
+.page-tab:disabled {
+  opacity: 0.55;
+}
+
+/* Stack item backgrounds below the sliding indicator and text; mix text color using --tab-cover. */
+
+.has-selection-indicator {
+  position: relative;
+  isolation: isolate;
+}
+
+.selection-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  box-sizing: border-box;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.page-tab-indicator {
+  border: 1px solid var(--page-tab-active-border);
+  border-radius: var(--page-tab-radius);
+  background: var(--page-tab-active-bg);
+  box-shadow: var(--page-tab-active-shadow);
+}
+
+.has-selection-indicator:has(.page-tab.active:not(:disabled):hover) > .page-tab-indicator {
+  border-color: var(--page-tab-active-border-hover);
+  background: var(--page-tab-active-bg-hover);
+}
+
+.has-selection-indicator .page-tab {
+  --tab-cover: 0;
+  position: relative;
+  color: color-mix(in oklab, var(--page-tab-active-fg) calc(var(--tab-cover) * 100%), var(--page-tab-fg));
+}
+
+.has-selection-indicator .page-tab.active {
+  --tab-cover: 1;
+}
+
+.has-selection-indicator .page-tab,
+.has-selection-indicator .page-tab.active,
+.has-selection-indicator .page-tab.active:hover,
+.has-selection-indicator .page-tab:not(.active):not(:disabled):hover {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.has-selection-indicator .page-tab:not(.active):not(:disabled):hover {
+  color: color-mix(in oklab, var(--page-tab-active-fg) calc(var(--tab-cover) * 100%), var(--page-tab-fg-hover));
+}
+
+/* Item backgrounds become visible as the indicator moves away. */
+.has-selection-indicator .page-tab::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -2;
+  border: 1px solid var(--page-tab-border);
+  border-radius: inherit;
+  background: var(--page-tab-bg);
+  pointer-events: none;
+}
+
+.has-selection-indicator .page-tab:not(.active):not(:disabled):hover::before {
+  border-color: var(--page-tab-border-hover);
+  background: var(--page-tab-bg-hover);
+}
+
+/* Dim disabled backgrounds and text separately; item opacity would create a stacking context above the indicator. */
+.has-selection-indicator .page-tab:disabled {
+  opacity: 1;
+  color: color-mix(in oklab, color-mix(in oklab, var(--page-tab-active-fg) calc(var(--tab-cover) * 100%), var(--page-tab-fg)) 55%, transparent);
+}
+
+.has-selection-indicator .page-tab:disabled::before {
+  opacity: 0.55;
+}
+
+/* Without animation, selected-item geometry fills the same indicator without JavaScript or anchor positioning. */
+body:is([data-animations="none"], [data-animations="ultra"]) .selection-indicator {
+  inset: 0;
+  width: auto !important;
+  height: auto !important;
+  transform: none !important;
+  opacity: 1 !important;
+  visibility: hidden !important;
+}
+body:is([data-animations="none"], [data-animations="ultra"]) .selection-indicator-target > .selection-indicator {
+  visibility: visible !important;
+}
+body:is([data-animations="none"], [data-animations="ultra"]) .page-tab > .selection-indicator {
+  inset: -1px;
+}
+body:is([data-animations="none"], [data-animations="ultra"]) .page-tab.active:not(:disabled):hover > .page-tab-indicator {
+  border-color: var(--page-tab-active-border-hover);
+  background: var(--page-tab-active-bg-hover);
+}
+body:is([data-animations="none"], [data-animations="ultra"]) .segment.active:disabled > .segment-indicator {
+  background: var(--segment-active-disabled-bg);
+  box-shadow: none;
+}

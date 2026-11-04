@@ -1,0 +1,11 @@
+{
+  "file_format_version": "1.2.0",
+  "layer": {
+    "name": "VK_LAYER_RESOURCE_MANAGER_gpu_placement",
+    "type": "GLOBAL",
+    "library_path": ".\\ResourceManager.VulkanPlacementLayer.dll",
+    "api_version": "1.4.341",
+    "implementation_version": "1",
+    "description": "Resource Manager per-instance GPU placement"
+  }
+}

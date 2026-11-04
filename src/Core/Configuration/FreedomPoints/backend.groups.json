@@ -1,0 +1,223 @@
+{
+  "contractFingerprint": "ABABC148DEDDD3A549089EDCF652A9D27584417B2496D6DA369A26181C42FF8C",
+  "groups": [
+    {
+      "key": "resource-manager/backend",
+      "parent": null,
+      "name": "backend",
+      "description": "Backend-owned decisions. Current migration covers CPU remediation and its existing scheduling/history consumers, not every backend setting.",
+      "order": 0,
+      "points": []
+    },
+    {
+      "key": "resource-manager/backend/monitoring",
+      "parent": "resource-manager/backend",
+      "name": "monitoring",
+      "description": "Backend subscriptions publish current values; readers do not sample.",
+      "order": 0,
+      "points": [
+        "0001000200040001",
+        "0001000200040002",
+        "0001000200050000",
+        "0001000200050001",
+        "0001000200050002",
+        "0001000200050003",
+        "0001000200050004",
+        "0001000200050005",
+        "0001000200050006",
+        "0001000200050007",
+        "0001000200050008",
+        "0001000200050009",
+        "000100020005000A",
+        "0001000200040003",
+        "0001000200040004"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/monitoring/cpu_residency",
+      "parent": "resource-manager/backend/monitoring",
+      "name": "cpu_residency",
+      "description": "Per-process CPU core observations, distinct from a weighted CPU score.",
+      "order": 0,
+      "points": [
+        "0001000200080000",
+        "0001000200090000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scheduling",
+      "parent": "resource-manager/backend",
+      "name": "scheduling",
+      "description": "Scheduling reads shared snapshots and requests persistent backend subscriptions.",
+      "order": 1,
+      "points": [
+        "00010002000C0000",
+        "00010002000D0000",
+        "00010002000D0001",
+        "00010002000D0002",
+        "00010002000D0003",
+        "00010002000D0004",
+        "00010002000D0005",
+        "00010002000D0006",
+        "00010002000D0007",
+        "00010002000D0008",
+        "00010002000D0009"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scheduling/transitions",
+      "parent": "resource-manager/backend/scheduling",
+      "name": "transitions",
+      "description": "Transition decisions, game startup grace and failure retry are independent quantities.",
+      "order": 0,
+      "points": [
+        "0001000200120000",
+        "0001000200120001",
+        "0001000200120002",
+        "0001000200130000",
+        "0001000200130001"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scheduling/placement",
+      "parent": "resource-manager/backend/scheduling",
+      "name": "placement",
+      "description": "Placement is not the CPU score denominator.",
+      "order": 1,
+      "points": [
+        "0001000200140000",
+        "0001000200140001",
+        "0001000200150000",
+        "0001000200150001",
+        "0001000200150002",
+        "0001000200150003",
+        "0001000200150004",
+        "0001000200160000",
+        "0001000200170000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scoring",
+      "parent": "resource-manager/backend",
+      "name": "scoring",
+      "description": "One software-scoring definition; CPU and GPU remain separate resource dimensions.",
+      "order": 2,
+      "points": [
+        "0001000200190000",
+        "0001000200190001",
+        "00010002001B0000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scoring/cpu",
+      "parent": "resource-manager/backend/scoring",
+      "name": "cpu",
+      "description": "Physical-core usage is weighted by the compiled per-core capacity and divided by the shared machine baseline. CPU-input and score smoothing remain separate pending consumers.",
+      "order": 0,
+      "points": [
+        "00010002001D0000",
+        "00010002001D0001",
+        "00010002001E0000",
+        "00010002001E0001",
+        "00010002001E0002",
+        "00010002001F0000",
+        "00010002001F0001",
+        "00010002001F0002",
+        "00010002001F0003"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/service_recovery",
+      "parent": "resource-manager/backend",
+      "name": "service_recovery",
+      "description": "Background service crash recovery.",
+      "order": 3,
+      "points": [
+        "0001000200200000",
+        "0001000200210000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/trusted_access",
+      "parent": "resource-manager/backend",
+      "name": "trusted_access",
+      "description": "Bounded local authorization request lifetime.",
+      "order": 4,
+      "points": [
+        "0001000200240000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/business_blocks",
+      "parent": "resource-manager/backend",
+      "name": "business_blocks",
+      "description": "Fixed-capacity backend business-block control settings.",
+      "order": 5,
+      "points": [
+        "0001000200280000",
+        "0001000200280001",
+        "0001000200280002",
+        "0001000200280003",
+        "0001000200280004",
+        "0001000200280005",
+        "0001000200280006"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/hardware_bridge",
+      "parent": "resource-manager/backend",
+      "name": "hardware_bridge",
+      "description": "Optional hardware helpers and control writers: availability, request and stop timing, fan curve feed, EC channel. Availability checks never start a helper.",
+      "order": 6,
+      "points": [
+        "00010002002C0000",
+        "00010002002C0001",
+        "00010002002D0000",
+        "00010002002D0001",
+        "00010002002D0002",
+        "00010002002D0003"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/memory_cpu_tiers",
+      "parent": "resource-manager/backend",
+      "name": "\u5185\u5B58\u4E0E CPU \u53D6\u820D",
+      "description": "Five tiers from lowest memory pressure (1) to lowest CPU pressure (5). Each point holds one option\u0027s five tier cells; the stop buffer and service identity cache cells stay in the monitoring group. The settings owner resolves tier plus user overrides into the effective values.",
+      "order": 7,
+      "points": [
+        "0001000200350000",
+        "0001000200350001",
+        "0001000200350002",
+        "0001000200350003",
+        "0001000200350004",
+        "0001000200350005",
+        "0001000200350006",
+        "0001000200350007",
+        "0001000200350008",
+        "0001000200350009",
+        "000100020035000A",
+        "000100020035000B"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/persistence",
+      "parent": "resource-manager/backend",
+      "name": "persistence",
+      "description": "Disk writes and disk usage of the service\u0027s own stores.",
+      "order": 9,
+      "points": [
+        "0001000200390000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/metric_snapshot",
+      "parent": "resource-manager/backend",
+      "name": "metric_snapshot",
+      "description": "Hardware metric owner admission limits; existing catalog and source policies remain with their compiled owners.",
+      "order": 10,
+      "points": [
+        "00010002003D0000"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "schema": "rm/native-source-dependency/v1",
+  "name": "llhttp",
+  "version": "9.4.3",
+  "source": "https://github.com/nodejs/llhttp",
+  "sourceTag": "release/v9.4.3",
+  "sourceCommit": "0e815792b167a9bd8ace259b95b7da953776c288",
+  "license": "MIT",
+  "build": {
+    "upstreamCmake": "CMakeLists.txt is provenance only, not the RM build entrance",
+    "include": "include",
+    "cStandard": "c99",
+    "toolchain": "Zig 0.17.0",
+    "sources": [
+      "src/api.c",
+      "src/http.c",
+      "src/llhttp.c"
+    ],
+    "generation": "Upstream release contains generated C; no Node, npm or generator at build or runtime",
+    "recipe": "rm-build.zig",
+    "link": "static into NativeCore"
+  },
+  "strictMode": {
+    "lenientFlags": 0,
+    "requirement": "Keep all lenient switches disabled, including after reset. H-parse owns enforcement.",
+    "obsoleteDefine": "LLHTTP_STRICT_MODE is not consumed by this release; do not rely on it",
+    "rmResponsibility": "Host/Origin, duplicate security headers, upgrade rejection, URL/query policy, body limits, cancellation and routing remain RM-owned",
+    "initialization": "llhttp_init(HTTP_REQUEST)"
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "length": 1069,
+      "sha256": "628168D68BB5A8A17E0BBEFB3BD74E326E1EDC20583D76F52F457C82C921867D"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "length": 3912,
+      "sha256": "68BE1234E2876B0141660F486AE68F7D1206A03970127B003C87A9C11013924E"
+    },
+    {
+      "path": "src/api.c",
+      "length": 13384,
+      "sha256": "0F8590206FE2F264DB2825401B5FB856B979EE1363DC88B06F36DC9577AFB941"
+    },
+    {
+      "path": "src/http.c",
+      "length": 5209,
+      "sha256": "A1F2B23168F8E9B5BFA464C89027D3CA259FC649AE3D7E72BFFF997D1AEB5D72"
+    },
+    {
+      "path": "src/llhttp.c",
+      "length": 321801,
+      "sha256": "391E7C99912ABF3B1C9DD8A9C85FDEAAC2663E9FA55B6F3871154D16FEF8B892"
+    },
+    {
+      "path": "include/llhttp.h",
+      "length": 31469,
+      "sha256": "5BC82FA51B19AA8BEE7D921038393FBFC74E8CC9BAE0844C2D82C102FB8CFD68"
+    }
+  ]
+}

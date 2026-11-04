@@ -1,0 +1,280 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <Import Project="../../build/scripts/build/HardwareMonitorCoreFiles.targets" />
+  <Target Name="GenerateStateItems"
+          Condition="'$(DesignTimeBuild)' != 'true'"
+          Inputs="$(MSBuildProjectDirectory)/../Shared/StateItems/state-items.json;$(MSBuildProjectDirectory)/../../build/scripts/build/Generate-StateItems.ps1;$(MSBuildProjectDirectory)/../../build/scripts/build/StateItemRegistry.psm1"
+          Outputs="$(IntermediateOutputPath)StateItems.g.cs">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../build/scripts/build/Generate-StateItems.ps1&quot; -Registry &quot;$(MSBuildProjectDirectory)/../Shared/StateItems/state-items.json&quot; -Process backend -Namespace ResourceManager.App.StateItems -Output &quot;$(IntermediateOutputPath)StateItems.g.cs&quot;" />
+  </Target>
+  <!-- Always include the output, including when the incremental generation target is skipped. -->
+  <Target Name="IncludeStateItems" BeforeTargets="CoreCompile;FreedomPointCompilerInputs" DependsOnTargets="GenerateStateItems" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)StateItems.g.cs" />
+    </ItemGroup>
+  </Target>
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>ResourceManager</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\Shared\Assets\ProductIcon\product.ico</ApplicationIcon>
+    <AdlxBridgeRoot Condition="'$(AdlxBridgeRoot)' == ''">$(MSBuildProjectDirectory)\Native\AdlxBridge</AdlxBridgeRoot>
+    <GpuMigrationProbeRoot Condition="'$(GpuMigrationProbeRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuMigrationProbe</GpuMigrationProbeRoot>
+    <GpuPlacementShimRoot Condition="'$(GpuPlacementShimRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuPlacementShim</GpuPlacementShimRoot>
+    <GpuLaunchBrokerRoot Condition="'$(GpuLaunchBrokerRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuLaunchBroker</GpuLaunchBrokerRoot>
+    <GpuWindowActionRoot Condition="'$(GpuWindowActionRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuWindowAction</GpuWindowActionRoot>
+    <GpuPlacementExternalRoot Condition="'$(GpuPlacementExternalRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuPlacementExternal</GpuPlacementExternalRoot>
+    <GpuPlacementPreparationRoot Condition="'$(GpuPlacementPreparationRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuPlacementPreparation</GpuPlacementPreparationRoot>
+    <NativeCoreRoot Condition="'$(NativeCoreRoot)' == ''">$(MSBuildProjectDirectory)\NativeCore</NativeCoreRoot>
+    <NativeCoreZigExecutable Condition="'$(NativeCoreZigExecutable)' == ''">zig</NativeCoreZigExecutable>
+    <NativeCoreTargetArgument Condition="'$(NativeCoreTarget)' != ''">-Dtarget=$(NativeCoreTarget)</NativeCoreTargetArgument>
+    <!-- MSBuild booleans are case-insensitive; Zig arguments and artifact paths use canonical spelling. -->
+    <NativeCoreStateNames Condition="'$(ResourceManagerStateNames)' == 'true'">true</NativeCoreStateNames>
+    <NativeCoreStateNames Condition="'$(ResourceManagerStateNames)' == 'false'">false</NativeCoreStateNames>
+    <NativeCoreStateNamesArgument>-Dstate-names=$(NativeCoreStateNames)</NativeCoreStateNamesArgument>
+    <NativeCoreOptimize Condition="'$(NativeCoreOptimize)' == '' and '$(Configuration)' == 'Debug'">Debug</NativeCoreOptimize>
+    <NativeCoreOptimize Condition="'$(NativeCoreOptimize)' == ''">ReleaseFast</NativeCoreOptimize>
+    <NativeCoreInstallRoot Condition="'$(NativeCoreInstallRoot)' == ''">$(NativeCoreRoot)\zig-out\msbuild\$(NativeCoreOptimize)\state-names-$(NativeCoreStateNames)</NativeCoreInstallRoot>
+    <NativeCoreOutput Condition="'$(NativeCoreOutput)' == ''">$(NativeCoreInstallRoot)\bin\ResourceManager.NativeCore.dll</NativeCoreOutput>
+    <ClientAppRoot>$(MSBuildProjectDirectory)\..\..\src\UI\Frontend</ClientAppRoot>
+    <ResourceManagerLedgerPowerShell Condition="'$(ResourceManagerLedgerPowerShell)' == ''">pwsh</ResourceManagerLedgerPowerShell>
+    <ResourceManagerLedgerZigExecutable Condition="'$(ResourceManagerLedgerZigExecutable)' == ''">zig</ResourceManagerLedgerZigExecutable>
+    <ResourceManagerLedgerSdkRoot Condition="'$(ResourceManagerLedgerSdkRoot)' == ''">$(MSBuildProjectDirectory)\..\..\build\dependencies\ledger-sdk</ResourceManagerLedgerSdkRoot>
+    <ResourceManagerLedgerFreedomPointFeed Condition="'$(ResourceManagerLedgerFreedomPointFeed)' == ''">$(MSBuildProjectDirectory)\..\..\build\dependencies\freedom-point\packages</ResourceManagerLedgerFreedomPointFeed>
+    <DiskCheckpointNativeRoot Condition="'$(DiskCheckpointNativeRoot)' == ''">$(MSBuildProjectDirectory)\..\..\build\dependencies\disk-sdk\native\display-checkpoint</DiskCheckpointNativeRoot>
+    <DiskCheckpointPowerShell Condition="'$(DiskCheckpointPowerShell)' == ''">pwsh</DiskCheckpointPowerShell>
+    <!-- The Web SDK defaults to Server GC. This background service uses Workstation GC, and
+         ConserveMemory lets the GC compact a fragmented gen2/LOH.
+         Gen0MaxBudget caps the gen0 allocation budget, which the GC otherwise sizes from the L3 cache.
+         The budget is written to ResourceManager.runtimeconfig.json, where it
+         can be changed or removed; System.GC.Gen0Size is not read from that file. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+  </PropertyGroup>
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="4194304" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.48" />
+    <PackageReference Include="ResourceManager.Ledger" Version="0.1.0-dev.9" />
+    <PackageReference Include="FanControlCore.Library" Version="0.1.0-dev.6" />
+    <PackageReference Include="Disk.ReadWrite" Version="0.1.0" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="4.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.14" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    <PackageReference Include="System.Management" Version="10.0.14" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FreedomPointContracts\ResourceManager.FreedomPointContracts.csproj" />
+    <ProjectReference Include="..\ReadWriteCore\ResourceManager.ReadWriteCore.csproj" />
+    <ProjectReference Include="..\SubscriptionCore\ResourceManager.SubscriptionCore.csproj" />
+    <ProjectReference Include="..\..\sdk\csharp\ResourceManager.Adapter.Abstractions\ResourceManager.Adapter.Abstractions.csproj" />
+    <ProjectReference Include="..\..\sdk\csharp\ResourceManager.Adapter.SharedMemory\ResourceManager.Adapter.SharedMemory.csproj" />
+    <ProjectReference Include="..\..\src\Shared\ResourceManager.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Runtime state never belongs to a build or release, even if present beside the project. -->
+    <Using Include="ResourceManager.Subscription.Native" />
+    <Using Include="ResourceManager.Subscription" />
+    <Using Include="ResourceManager.ReadWrite.Publications" />
+    <Using Include="ResourceManager.ReadWrite.Native" />
+    <Using Include="ResourceManager.ReadWrite.Native.Pdh" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Pdh" />
+    <Using Include="ResourceManager.ReadWrite.Helpers" />
+    <Using Include="ResourceManager.ReadWrite.Information" />
+    <Using Include="ResourceManager.ReadWrite.ProcessFields" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Processes" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices.Battery" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices.Display" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Gpu" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Nvidia" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Intel" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Intel.Msr" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Amd" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Amd.Smu" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices.Usb" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices.Models" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Cpu" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Cpu.Models" />
+    <Content Remove="Config\**;UserData\**;Dependencies\**;Misc\**" />
+    <Content Remove="Configuration\Disk\**" />
+    <None Remove="Config\**;UserData\**;Dependencies\**;Misc\**" />
+    <!-- Native artifact manifests are composed by their package owners, not Web SDK content. -->
+    <Content Remove="Native\**\*.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Configuration\HostManager\default.json"
+                      LogicalName="ResourceManager.Configuration.HostManager.default.json" />
+    <EmbeddedResource Include="Configuration\FreedomPoints\backend.json"
+                      LogicalName="ResourceManager.Configuration.FreedomPoints.backend.json" />
+    <EmbeddedResource Include="Configuration\Cpu\baseline-defaults.json"
+                      LogicalName="ResourceManager.Configuration.Cpu.baseline-defaults.json" />
+    <EmbeddedResource Include="Configuration\DeviceTopology\form-factor-rules.json"
+                      LogicalName="ResourceManager.Configuration.DeviceTopology.form-factor-rules.json" />
+    <!--
+      随发行版提供的软件策略档案（mergeOrder 里 OfficialResourceManagerProfile 那一层）。
+      它是产品数据，不是运行时状态 —— 所以随程序集发出去，
+      而不是躺在 UserData 下面等用户自己有。
+    -->
+    <EmbeddedResource Include="Configuration\SoftwareProfiles\official.json"
+                      LogicalName="ResourceManager.Configuration.SoftwareProfiles.official.json" />
+    <None Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\NOTICE" Link="NOTICE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="$(DiskCheckpointNativeRoot)\Disk.ReadWrite.Native.dll" TargetPath="Native\DiskCheckpoint\Disk.ReadWrite.Native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="$(DiskCheckpointNativeRoot)\native.json" TargetPath="Native\DiskCheckpoint\native.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\ReadWriteCore\ThirdPartyNotices\EdidModes.NOTICE.md" Link="ThirdPartyNotices\EdidModes.NOTICE.md" TargetPath="ThirdPartyNotices\EdidModes.NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Update="ThirdPartyNotices\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="$(AdlxBridgeRoot)\bin\win-x64\ResourceManager.AdlxBridge.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.AdlxBridge.dll" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuMigrationProbeRoot)\bin\win-x64\ResourceManager.GpuMigrationProbe.exe" Condition="Exists('$(GpuMigrationProbeRoot)\bin\win-x64\ResourceManager.GpuMigrationProbe.exe')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.GpuMigrationProbe.exe" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuMigrationProbeRoot)\bin\win-x64\ResourceManager.D3D11WindowReselectProbe.exe" Condition="Exists('$(GpuMigrationProbeRoot)\bin\win-x64\ResourceManager.D3D11WindowReselectProbe.exe')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.D3D11WindowReselectProbe.exe" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuMigrationProbeRoot)\bin\win-x64\shim\d3d11.dll" Condition="Exists('$(GpuMigrationProbeRoot)\bin\win-x64\shim\d3d11.dll')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\d3d11.dll" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.GpuPlacementShim.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuPlacementShim.dll" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.GpuPlacementBootstrap.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuPlacementBootstrap.dll" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.VulkanPlacementLayer.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.VulkanPlacementLayer.dll" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementShimRoot)\ResourceManager.VulkanPlacementLayer.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.VulkanPlacementLayer.json" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuLaunchBrokerRoot)\bin\win-x64\ResourceManager.GpuLaunchBroker.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.GpuLaunchBroker.exe" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuWindowActionRoot)\bin\win-x64\ResourceManager.GpuWindowAction.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuWindowAction.exe" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuPlacementExternal.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuPlacementExternal.exe" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuRendererExternal.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuRendererExternal.exe" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementPreparationRoot)\bin\win-x64\ResourceManager.GpuPlacementPreparation.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuPlacementPreparation.exe" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementShimRoot)\third_party\minhook\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ThirdPartyNotices\MinHook.LICENSE.txt" />
+    <None Include="$(GpuPlacementShimRoot)\third_party\detours\LICENSE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ThirdPartyNotices\MicrosoftDetours.LICENSE.md" />
+    <!-- The selected names/optimization artifact can be older than another configuration's output. -->
+    <None Include="$(NativeCoreOutput)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" TargetPath="ResourceManager.NativeCore.dll" ExcludeFromSingleFile="true" Visible="false" />
+    <Content Update="Infrastructure\Resources\NetworkProxySignatures\proxy-signatures.v1.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="Infrastructure\Resources\SoftwareIdentity\software-identities.v1.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="Infrastructure\Resources\SoftwareIssues\software-issues.v1.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="Infrastructure\Resources\SoftwareMetadata\software-metadata.v1.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="Infrastructure\Resources\SoftwareMetadata\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Update="Infrastructure\Resources\DeviceIds\usb.ids" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="DeviceIds\usb.ids" />
+    <Content Update="Infrastructure\Resources\DeviceIds\pci.ids" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="DeviceIds\pci.ids" />
+    <None Update="Infrastructure\Resources\DeviceIds\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="DeviceIds\THIRD_PARTY_NOTICES.md" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+  <ItemGroup>
+    <GpuPlacementShimSource Include="$(GpuPlacementShimRoot)\**\*.c" />
+    <GpuPlacementShimSource Include="$(GpuPlacementShimRoot)\**\*.cpp" />
+    <GpuPlacementShimSource Include="$(GpuPlacementShimRoot)\**\*.h" />
+    <GpuPlacementShimSource Include="$(GpuPlacementShimRoot)\**\*.inc" />
+    <GpuPlacementShimSource Include="$(GpuPlacementShimRoot)\build.cmd" />
+  </ItemGroup>
+  <Target Name="BuildResourceManagerLedger" BeforeTargets="PrepareForBuild;AssignTargetPaths;GetCopyToOutputDirectoryItems"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <ResourceManagerLedgerWorkRoot Condition="'$(ResourceManagerLedgerWorkRoot)' == ''">$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)Ledger', '$(MSBuildProjectDirectory)'))</ResourceManagerLedgerWorkRoot>
+      <ResourceManagerLedgerOutputRoot Condition="'$(ResourceManagerLedgerBuildRoot)' == ''">$(ResourceManagerLedgerWorkRoot)\consumer</ResourceManagerLedgerOutputRoot>
+      <ResourceManagerLedgerOutputRoot Condition="'$(ResourceManagerLedgerBuildRoot)' != ''">$(ResourceManagerLedgerBuildRoot)</ResourceManagerLedgerOutputRoot>
+    </PropertyGroup>
+    <Error Condition="'$(SkipResourceManagerLedgerBuild)' == 'true'" Text="The product requires its paired Ledger Native library and generated identity. Supply ResourceManagerLedgerBuildRoot for a verified existing result; skipping Ledger is not supported." />
+    <MakeDir Directories="$(ResourceManagerLedgerWorkRoot)" />
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)"
+          Command="&quot;$(ResourceManagerLedgerPowerShell)&quot; -NoProfile -File &quot;$(MSBuildProjectDirectory)\..\..\build\scripts\build\Build-ResourceManagerLedger.ps1&quot; -WorkRoot &quot;$(ResourceManagerLedgerWorkRoot)&quot; -BuildRoot &quot;$(ResourceManagerLedgerBuildRoot)&quot; -SdkRoot &quot;$(ResourceManagerLedgerSdkRoot)&quot; -FreedomPointFeed &quot;$(ResourceManagerLedgerFreedomPointFeed)&quot; -ZigPath &quot;$(ResourceManagerLedgerZigExecutable)&quot;" />
+    <ItemGroup>
+      <Compile Include="$(ResourceManagerLedgerOutputRoot)\LedgerOwnerShape.g.cs;$(ResourceManagerLedgerOutputRoot)\LedgerOwnerBuild.g.cs" />
+      <None Include="$(ResourceManagerLedgerOutputRoot)\ResourceManager.Ledger.Native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.Ledger.Native.dll" ExcludeFromSingleFile="true" Visible="false" />
+    </ItemGroup>
+  </Target>
+  <ItemGroup>
+    <GpuLaunchBrokerSource Include="$(GpuLaunchBrokerRoot)\**\*.cpp" />
+    <GpuLaunchBrokerSource Include="$(GpuLaunchBrokerRoot)\**\*.h" />
+    <GpuLaunchBrokerSource Include="$(GpuLaunchBrokerRoot)\build.cmd" />
+  </ItemGroup>
+  <ItemGroup>
+    <NativeCoreSource Include="$(NativeCoreRoot)\build.zig" />
+    <NativeCoreSource Include="$(NativeCoreRoot)\build_invocation.zig" />
+    <NativeCoreSource Include="$(NativeCoreRoot)\build.zig.zon" />
+    <NativeCoreSource Include="$(NativeCoreRoot)\src\**\*.zig" />
+    <NativeCoreSource Include="$(MSBuildProjectDirectory)\..\..\build\dependencies\control-tree-sdk\*;$(MSBuildProjectDirectory)\..\..\build\scripts\build\Restore-ControlTreeSdk.ps1" />
+    <NativeCoreSource Include="$(MSBuildProjectDirectory)\..\Shared\StateItems\state-items.json;$(MSBuildProjectDirectory)\..\..\build\scripts\build\Generate-StateItems.ps1;$(MSBuildProjectDirectory)\..\..\build\scripts\build\StateItemRegistry.psm1" />
+  </ItemGroup>
+  <ItemGroup>
+    <GpuWindowActionSource Include="$(GpuWindowActionRoot)\ResourceManagerGpuWindowAction.cpp" />
+    <GpuWindowActionSource Include="$(GpuWindowActionRoot)\WindowActionProtocol.h" />
+    <GpuWindowActionSource Include="$(GpuWindowActionRoot)\..\GpuPlacementCommon\WorkerPipeClient.h" />
+    <GpuWindowActionSource Include="$(GpuWindowActionRoot)\build.cmd" />
+  </ItemGroup>
+  <Target Name="BuildGpuPlacementShim"
+          BeforeTargets="PrepareForBuild"
+          Inputs="@(GpuPlacementShimSource)"
+          Outputs="$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.GpuPlacementShim.dll;$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.GpuPlacementBootstrap.dll;$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.VulkanPlacementLayer.dll"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuPlacementNativeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(GpuPlacementShimRoot)" Command="cmd.exe /d /c .\build.cmd" />
+  </Target>
+  <ItemGroup>
+    <GpuPlacementPreparationSource Include="$(GpuPlacementPreparationRoot)\*.cpp;$(GpuPlacementPreparationRoot)\*.h;$(GpuPlacementPreparationRoot)\build.cmd" />
+    <GpuPlacementPreparationSource Include="$(GpuPlacementShimRoot)\OpenGlCallbackSource.cpp;$(GpuPlacementShimRoot)\OpenGlCallbackSourceCodec.cpp" />
+    <GpuPlacementPreparationSource Include="$(GpuPlacementShimRoot)\**\*.h;$(GpuPlacementShimRoot)\**\*.inc;$(GpuPlacementShimRoot)\third_party\minhook\src\**\*.c" />
+    <GpuPlacementPreparationSource Include="$(GpuWindowActionRoot)\..\GpuPlacementCommon\WorkerPipeClient.h;$(GpuWindowActionRoot)\WindowActionProtocol.h" />
+  </ItemGroup>
+  <Target Name="BuildGpuPlacementPreparation"
+          BeforeTargets="PrepareForBuild"
+          Inputs="@(GpuPlacementPreparationSource);@(ProductIconSource)"
+          Outputs="$(GpuPlacementPreparationRoot)\bin\win-x64\ResourceManager.GpuPlacementPreparation.exe"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuPlacementPreparationNativeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(GpuPlacementPreparationRoot)" Command="cmd.exe /d /c .\build.cmd" />
+  </Target>
+  <Target Name="BuildGpuLaunchBroker"
+          BeforeTargets="PrepareForBuild"
+          Inputs="@(GpuLaunchBrokerSource);@(ProductIconSource)"
+          Outputs="$(GpuLaunchBrokerRoot)\bin\win-x64\ResourceManager.GpuLaunchBroker.exe;$(GpuLaunchBrokerRoot)\bin\win-x64\ResourceManager.GpuLaunchTargetProbe.exe"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuLaunchBrokerNativeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(GpuLaunchBrokerRoot)" Command="cmd.exe /d /c .\build.cmd" />
+  </Target>
+  <Target Name="BuildAdlxBridge" BeforeTargets="PrepareForBuild"
+          Inputs="$(AdlxBridgeRoot)\ResourceManagerAdlxBridge.c;$(AdlxBridgeRoot)\ResourceManagerAdlxDeclarations.inc;$(AdlxBridgeRoot)\ResourceManagerAdlxTuning.inc;$(AdlxBridgeRoot)\build.cmd"
+          Outputs="$(AdlxBridgeRoot)\bin\win-x64\ResourceManager.AdlxBridge.dll"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipAdlxBridgeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(AdlxBridgeRoot)" Command="cmd.exe /d /c .\build.cmd" />
+  </Target>
+  <Target Name="ValidateResourceManagerStateNames" BeforeTargets="PrepareForBuild;BuildNativeCore">
+    <Error Condition="'$(ResourceManagerStateNames)' != 'true' and '$(ResourceManagerStateNames)' != 'false'"
+           Text="ResourceManagerStateNames must be true or false (case-insensitive); received '$(ResourceManagerStateNames)'." />
+  </Target>
+  <Target Name="BuildNativeCore"
+          BeforeTargets="PrepareForBuild"
+          Inputs="@(NativeCoreSource)"
+          Outputs="$(NativeCoreOutput)"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipNativeCoreBuild)' != 'true'">
+    <Exec WorkingDirectory="$(NativeCoreRoot)" Command="&quot;$(NativeCoreZigExecutable)&quot; build -j$(ResourceManagerZigJobs) --prefix &quot;$(NativeCoreInstallRoot)&quot; $(NativeCoreTargetArgument) -Doptimize=$(NativeCoreOptimize) $(NativeCoreStateNamesArgument)" />
+  </Target>
+  <Target Name="BuildGpuWindowAction"
+          BeforeTargets="PrepareForBuild"
+          Inputs="@(GpuWindowActionSource);@(ProductIconSource)"
+          Outputs="$(GpuWindowActionRoot)\bin\win-x64\ResourceManager.GpuWindowAction.exe"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuWindowActionNativeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(GpuWindowActionRoot)" Command="cmd.exe /d /c .\build.cmd" />
+  </Target>
+  <ItemGroup>
+    <GpuPlacementExternalSource Include="$(GpuPlacementExternalRoot)\*.cpp;$(GpuPlacementExternalRoot)\*.h;$(GpuPlacementExternalRoot)\build.cmd" />
+  </ItemGroup>
+  <Target Name="BuildGpuPlacementExternal" BeforeTargets="PrepareForBuild"
+          Inputs="@(GpuPlacementExternalSource);@(ProductIconSource)"
+          Outputs="$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuPlacementExternal.exe;$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuRendererExternal.exe"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuPlacementExternalNativeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(GpuPlacementExternalRoot)" Command="cmd.exe /d /c .\build.cmd" />
+  </Target>
+  <ItemGroup>
+    <ProductIconSource Include="..\Shared\Assets\ProductIcon\product.ico;..\Shared\Assets\ProductIcon\product.rc" />
+  </ItemGroup>
+  <Target Name="BuildClientApp"
+          BeforeTargets="ComputeFilesToPublish"
+          Condition="Exists('$(ClientAppRoot)\package.json') and '$(SkipClientAppBuild)' != 'true'">
+    <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm install" Condition="!Exists('$(ClientAppRoot)\node_modules')" />
+    <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm run build" />
+  </Target>
+  <Target Name="RemoveReleasePortableDebugSymbolsFromPublish"
+          AfterTargets="ComputeFilesToPublish"
+          BeforeTargets="CopyFilesToPublishDirectory"
+          Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="VerifyDiskCheckpointNative" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="&quot;$(DiskCheckpointPowerShell)&quot; -NoLogo -NoProfile -NonInteractive -File &quot;$(MSBuildProjectDirectory)\..\..\build\scripts\build\Verify-DiskCheckpointNative.ps1&quot; -DeclarationPath &quot;$(MSBuildProjectDirectory)\Configuration\Disk\display-checkpoint.disk.json&quot; -NativeRoot &quot;$(DiskCheckpointNativeRoot)&quot; -DependencyManifestPath &quot;$(MSBuildProjectDirectory)\..\..\build\dependencies\disk-sdk\dependency-manifest.json&quot;" />
+  </Target>
+</Project>

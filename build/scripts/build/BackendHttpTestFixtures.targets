@@ -1,0 +1,29 @@
+<Project>
+  <PropertyGroup>
+    <BackendHttpFixtureZig Condition="'$(BackendHttpFixtureZig)' == ''">zig</BackendHttpFixtureZig>
+    <BackendHttpFixtureOptimize Condition="'$(BackendHttpFixtureOptimize)' == '' and '$(Configuration)' == 'Debug'">Debug</BackendHttpFixtureOptimize>
+    <BackendHttpFixtureOptimize Condition="'$(BackendHttpFixtureOptimize)' == ''">ReleaseFast</BackendHttpFixtureOptimize>
+    <BackendHttpFixtureRoot Condition="'$(BackendHttpFixtureRoot)' == '' and '$(ResourceManagerLedgerWorkRoot)' != ''">$(ResourceManagerLedgerWorkRoot)/backend-http-fixtures</BackendHttpFixtureRoot>
+    <BackendHttpFixtureRoot Condition="'$(BackendHttpFixtureRoot)' == ''">$(IntermediateOutputPath)backend-http-fixtures</BackendHttpFixtureRoot>
+    <BackendHttpFixtureRoot>$([System.IO.Path]::GetFullPath('$(BackendHttpFixtureRoot)', '$(MSBuildProjectDirectory)'))</BackendHttpFixtureRoot>
+    <BackendHttpFixtureCacheRoot Condition="'$(BackendHttpFixtureCacheRoot)' == ''">$(BackendHttpFixtureRoot)/cache</BackendHttpFixtureCacheRoot>
+    <BackendHttpFixtureGlobalCacheRoot Condition="'$(BackendHttpFixtureGlobalCacheRoot)' == ''">$(BackendHttpFixtureRoot)/global-cache</BackendHttpFixtureGlobalCacheRoot>
+    <ResourceManagerZigJobs Condition="'$(ResourceManagerZigJobs)' == ''">1</ResourceManagerZigJobs>
+    <BackendHttpFixtureBuild Condition="'$(BackendHttpFixtureDirectory)' == ''">true</BackendHttpFixtureBuild>
+    <BackendHttpFixtureDirectory Condition="'$(BackendHttpFixtureDirectory)' == ''">$(BackendHttpFixtureRoot)/bin</BackendHttpFixtureDirectory>
+  </PropertyGroup>
+  <!-- Main owns every NotificationHttpTests/KernelLeakReportTests case. The
+       HttpCommon slice owns only the explicitly excluded common-listener files.
+       These are separate TEST DLLs and never replace or enter NativeCore. -->
+  <Target Name="DeployBackendHttpTestFixtures" AfterTargets="Build">
+    <Exec Condition="'$(BackendHttpFixtureBuild)' == 'true'" WorkingDirectory="$(MSBuildProjectDirectory)/../../src/Core/NativeCore"
+          EnvironmentVariables="ZIG_GLOBAL_CACHE_DIR=$(BackendHttpFixtureGlobalCacheRoot)"
+          Command="&quot;$(BackendHttpFixtureZig)&quot; build --build-file h_family_build.zig build-main-http-fixtures -j$(ResourceManagerZigJobs) -Doptimize=$(BackendHttpFixtureOptimize) --prefix &quot;$(BackendHttpFixtureRoot)&quot; --cache-dir &quot;$(BackendHttpFixtureCacheRoot)&quot;" />
+    <ItemGroup>
+      <BackendHttpTestFixture Include="$(BackendHttpFixtureDirectory)/ResourceManager.HttpCommon.Fixture.dll" />
+      <BackendHttpTestFixture Include="$(BackendHttpFixtureDirectory)/ResourceManager.KernelHistory.Fixture.dll" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(BackendHttpTestFixture.Identity)')" Text="Missing dedicated backend HTTP fixture: %(BackendHttpTestFixture.Identity)" />
+    <Copy SourceFiles="@(BackendHttpTestFixture)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

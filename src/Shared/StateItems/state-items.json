@@ -1,0 +1,2567 @@
+{
+  "entries": [
+    {
+      "uid": 1,
+      "kind": "block",
+      "process": "backend",
+      "name": "Program",
+      "comment": "Root of the backend control tree: the program itself."
+    },
+    {
+      "uid": 2,
+      "kind": "block",
+      "process": "backend",
+      "name": "NativeEtwLifetimeService",
+      "comment": "Owns the lifetime of the three native ETW producer flows."
+    },
+    {
+      "uid": 3,
+      "kind": "block",
+      "process": "backend",
+      "name": "TrustedAccessRequestOwner",
+      "comment": "Maintains and publishes pending requests for trusted access."
+    },
+    {
+      "uid": 4,
+      "kind": "block",
+      "process": "backend",
+      "name": "TrustedAccessInvocationHostedService",
+      "comment": "Processes trusted invocations from external callers and publishes their results."
+    },
+    {
+      "uid": 5,
+      "kind": "block",
+      "process": "backend",
+      "name": "RuntimeSpecializationCoordinator",
+      "comment": "Publishes the compiled runtime plan used by backend services."
+    },
+    {
+      "uid": 6,
+      "kind": "block",
+      "process": "backend",
+      "name": "AutomaticProductUpdateService",
+      "comment": "Checks for automatic product updates and produces update decisions in the Windows service host."
+    },
+    {
+      "uid": 7,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerSamplingSubscriptionOwner",
+      "comment": "Owns the shared workspace for sampling subscriptions."
+    },
+    {
+      "uid": 8,
+      "kind": "item",
+      "process": "backend",
+      "name": "HostStartPermitted",
+      "comment": "Current authoritative HostStartPermitted fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "BackendHostPermitFacts"
+      },
+      "perBlock": true,
+      "trigger": "event",
+      "changeEvent": "NonOwningHostedService.StartStop"
+    },
+    {
+      "uid": 9,
+      "kind": "item",
+      "process": "backend",
+      "name": "SamplingGpuTelemetryInUse",
+      "comment": "Current authoritative SamplingGpuTelemetryInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
+    },
+    {
+      "uid": 10,
+      "kind": "item",
+      "process": "backend",
+      "name": "SamplingHardwareMetricsInUse",
+      "comment": "Current authoritative SamplingHardwareMetricsInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
+    },
+    {
+      "uid": 11,
+      "kind": "item",
+      "process": "backend",
+      "name": "SamplingCpuTopologyInUse",
+      "comment": "Current authoritative SamplingCpuTopologyInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
+    },
+    {
+      "uid": 12,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerPublicServiceCoordinatorOwner",
+      "comment": "Owns the workspace that produces public service tasks."
+    },
+    {
+      "uid": 13,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerOperationCoordinatorOwner",
+      "comment": "Owns the workspace that produces requested operation results."
+    },
+    {
+      "uid": 14,
+      "kind": "block",
+      "process": "backend",
+      "name": "SqlitePortableSoftwareRegistry",
+      "comment": "Maintains the persistent registry of portable software."
+    },
+    {
+      "uid": 15,
+      "kind": "block",
+      "process": "backend",
+      "name": "ServiceAutoStartSettings",
+      "comment": "Maintains the configured service automatic startup policy."
+    },
+    {
+      "uid": 16,
+      "kind": "block",
+      "process": "backend",
+      "name": "ServiceRecoverySettings",
+      "comment": "Maintains the configured service recovery policy."
+    },
+    {
+      "uid": 17,
+      "kind": "block",
+      "process": "backend",
+      "name": "ControlDesiredStateReassertion",
+      "comment": "Reapplies the desired state of hardware controls when required."
+    },
+    {
+      "uid": 18,
+      "kind": "block",
+      "process": "backend",
+      "name": "FanCurveTemperatureFeed",
+      "comment": "Feeds sampled temperatures to software fan curves."
+    },
+    {
+      "uid": 19,
+      "kind": "block",
+      "process": "backend",
+      "name": "ControlActualStateReader",
+      "comment": "Samples the actual state of hardware controls."
+    },
+    {
+      "uid": 20,
+      "kind": "block",
+      "process": "backend",
+      "name": "FanControlCoreLifetimeService",
+      "comment": "Owns and provides the native fan control runtime."
+    },
+    {
+      "uid": 21,
+      "kind": "item",
+      "process": "backend",
+      "name": "SamplingCpuResidencyInUse",
+      "comment": "Current authoritative SamplingCpuResidencyInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
+    },
+    {
+      "uid": 22,
+      "kind": "block",
+      "process": "backend",
+      "name": "PortableSoftwareDiscoveryService",
+      "comment": "Discovers portable software from observed process activity."
+    },
+    {
+      "uid": 23,
+      "kind": "block",
+      "process": "backend",
+      "name": "EtwPhysicalDiskIoAttributionReader",
+      "comment": "Attributes physical disk activity from kernel ETW events."
+    },
+    {
+      "uid": 24,
+      "kind": "block",
+      "process": "backend",
+      "name": "EtwNetworkTcpIpAttributionReader",
+      "comment": "Attributes TCP/IP network activity from kernel ETW events."
+    },
+    {
+      "uid": 25,
+      "kind": "block",
+      "process": "backend",
+      "name": "GpuPlacementProcessHistoryObserver",
+      "comment": "Produces graphics API history for processes, used for GPU placement."
+    },
+    {
+      "uid": 26,
+      "kind": "item",
+      "process": "backend",
+      "name": "MemoryCpuTierEffective",
+      "comment": "The settings owner's memory/CPU tier resolution: each option's effective value, category, source and apply mode; initially published from AppSettingsCurrent and republished only when the resolution changes. Option owners read it on their next use.",
+      "storage": "reference",
+      "type": "ResourceManager.App.Domain.Settings.MemoryCpuTierResolution",
+      "owner": {
+        "component": "JsonAppSettingsStore"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "JsonAppSettingsStore initial AppSettingsCurrent publication or memoryCpuTier change"
+    },
+    {
+      "uid": 27,
+      "kind": "block",
+      "process": "backend",
+      "name": "JsonDebugDiagnosticLogWriter",
+      "comment": "Writes diagnostic snapshots to the debug log."
+    },
+    {
+      "uid": 28,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerReportCoordinatorOwner",
+      "comment": "Owns the workspace that produces reports."
+    },
+    {
+      "uid": 29,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerSmartCoordinator",
+      "comment": "Coordinates the active optimization runtime and produces optimization decisions."
+    },
+    {
+      "uid": 30,
+      "kind": "block",
+      "process": "backend",
+      "name": "PresentFrameEtwSource",
+      "comment": "Produces frame timing and graphics API observations from Present ETW events."
+    },
+    {
+      "uid": 31,
+      "kind": "block",
+      "process": "backend",
+      "name": "GpuAllocationCollector",
+      "comment": "Produces GPU allocation observations from native ETW sessions."
+    },
+    {
+      "uid": 32,
+      "kind": "block",
+      "process": "backend",
+      "name": "DxgkrnlVidMmEtwTelemetryZone",
+      "comment": "Produces GPU memory residual evidence from VidMm ETW events."
+    },
+    {
+      "uid": 33,
+      "kind": "block",
+      "process": "backend",
+      "name": "DeviceTopologySnapshotProvider",
+      "comment": "Publishes current device topology snapshots."
+    },
+    {
+      "uid": 34,
+      "kind": "block",
+      "process": "backend",
+      "name": "GpuTelemetryWorkerSupervisor",
+      "comment": "Supervises native GPU sampling workers and publishes their GPU metrics."
+    },
+    {
+      "uid": 35,
+      "kind": "block",
+      "process": "backend",
+      "name": "WindowsHardwareMetricSampler",
+      "comment": "Samples hardware metrics on Windows."
+    },
+    {
+      "uid": 36,
+      "kind": "block",
+      "process": "backend",
+      "name": "CpuTopologySnapshotProvider",
+      "comment": "Publishes current CPU topology snapshots."
+    },
+    {
+      "uid": 37,
+      "kind": "block",
+      "process": "backend",
+      "name": "EtwCpuCoreResidencyReader",
+      "comment": "Samples CPU core residency from kernel ETW observations."
+    },
+    {
+      "uid": 38,
+      "kind": "block",
+      "process": "backend",
+      "name": "EtwSystemInterruptSnapshotSource",
+      "comment": "Publishes interrupt activity snapshots from kernel ETW observations."
+    },
+    {
+      "uid": 39,
+      "kind": "block",
+      "process": "backend",
+      "name": "WindowsResourceBreakdownSampler",
+      "comment": "Publishes resource use snapshots and their per-process breakdown."
+    },
+    {
+      "uid": 40,
+      "kind": "block",
+      "process": "desktop",
+      "name": "Program",
+      "comment": "Root of the resident frontend control tree."
+    },
+    {
+      "uid": 41,
+      "kind": "block",
+      "process": "desktop",
+      "name": "MainFrontend",
+      "comment": "Owns the main frontend branch under Frontend."
+    },
+    {
+      "uid": 42,
+      "kind": "block",
+      "process": "desktop",
+      "name": "Tray",
+      "comment": "Owns the system tray icon, menu and notification branch under Frontend."
+    },
+    {
+      "uid": 43,
+      "kind": "block",
+      "process": "desktop",
+      "name": "SingleInstance",
+      "comment": "Receives requests through the single-instance UI channel."
+    },
+    {
+      "uid": 44,
+      "kind": "block",
+      "process": "desktop",
+      "name": "BackendConnection",
+      "comment": "Maintains the current backend session and reconnects after session loss."
+    },
+    {
+      "uid": 45,
+      "kind": "block",
+      "process": "window",
+      "name": "MainWindow",
+      "comment": "Owns the main application window lifetime."
+    },
+    {
+      "uid": 46,
+      "kind": "block",
+      "process": "desktop",
+      "name": "DesktopObservation",
+      "comment": "Observes desktop activity using the current backend session."
+    },
+    {
+      "uid": 47,
+      "kind": "block",
+      "process": "desktop",
+      "name": "Overlay",
+      "comment": "Owns the performance overlay lifetime."
+    },
+    {
+      "uid": 48,
+      "kind": "block",
+      "process": "window",
+      "name": "LoopbackProxy",
+      "comment": "Owns the loopback proxy used by the main window."
+    },
+    {
+      "uid": 49,
+      "kind": "block",
+      "process": "window",
+      "name": "WebViewHost",
+      "comment": "Owns the embedded browser lifetime."
+    },
+    {
+      "uid": 50,
+      "kind": "block",
+      "process": "desktop",
+      "name": "TrayNotifications",
+      "comment": "Observes backend notifications for the system tray."
+    },
+    {
+      "uid": 51,
+      "kind": "item",
+      "process": "backend",
+      "name": "SamplingInterruptsInUse",
+      "comment": "Current authoritative SamplingInterruptsInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
+    },
+    {
+      "uid": 52,
+      "kind": "item",
+      "process": "backend",
+      "name": "ProgramShuttingDown",
+      "comment": "Whether terminal backend shutdown has begun. The host stopping turn publishes this event.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "BusinessBlockDependencyLifetime host stopping turn"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "BusinessBlockScheduler.ShutdownAsync terminal shutdown requested"
+    },
+    {
+      "uid": 53,
+      "kind": "item",
+      "process": "backend",
+      "name": "PresentNativeSessionAvailable",
+      "comment": "Whether the Present native ETW session is available. The process-wide publisher marks it unavailable after an unconfirmed release, permission refusal or exhausted session capacity.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "NativeEtwSessionAvailability"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "NativeEtwSessionAvailability initial publication or Report failure"
+    },
+    {
+      "uid": 54,
+      "kind": "item",
+      "process": "backend",
+      "name": "GpuAllocationNativeSessionAvailable",
+      "comment": "Whether the GPU allocation native ETW session is available. The process-wide publisher marks it unavailable after an unconfirmed release, permission refusal or exhausted session capacity.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "NativeEtwSessionAvailability"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "NativeEtwSessionAvailability initial publication or Report failure"
+    },
+    {
+      "uid": 55,
+      "kind": "item",
+      "process": "backend",
+      "name": "VidMmNativeSessionAvailable",
+      "comment": "Whether the VidMm native ETW session is available. The process-wide publisher marks it unavailable after an unconfirmed release, permission refusal or exhausted session capacity.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "NativeEtwSessionAvailability"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "NativeEtwSessionAvailability initial publication or Report failure"
+    },
+    {
+      "uid": 56,
+      "kind": "block",
+      "process": "desktop",
+      "name": "OverlayToggleHotkey",
+      "comment": "Registers the configured toggle-performance-overlay-foreground hotkey and toggles the foreground software's overlay through the backend."
+    },
+    {
+      "uid": 57,
+      "kind": "item",
+      "process": "desktop",
+      "name": "OverlayToggleHotkeyEnabled",
+      "comment": "Backend settings fact: the toggle-performance-overlay-foreground hotkey is enabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop Host settings subscription publication (systemIntegration.hotkeys)"
+    },
+    {
+      "uid": 58,
+      "kind": "item",
+      "process": "desktop",
+      "name": "ProgramShuttingDown",
+      "comment": "Whether terminal UI shutdown has begun. The UI exit path publishes this event.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident host shutdown path"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Shared controller shutdown requested"
+    },
+    {
+      "uid": 59,
+      "kind": "item",
+      "process": "desktop",
+      "name": "ProgramStarted",
+      "comment": "Whether the UI process has started its control trees. The startup path publishes this event.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident host startup path"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Resident host start process-started"
+    },
+    {
+      "uid": 60,
+      "kind": "item",
+      "process": "desktop",
+      "name": "WindowWanted",
+      "comment": "Whether the user currently wants the main window open. Window requests publish change events.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident host user operation paths"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Resident host show-window or close-window"
+    },
+    {
+      "uid": 61,
+      "kind": "item",
+      "process": "desktop",
+      "name": "BackendSessionReady",
+      "comment": "Whether the current backend session is ready. The backend connection flow publishes session transition events.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "block": 44
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Resident host backend session bind, transition or unbind"
+    },
+    {
+      "uid": 62,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostMemoryProtection",
+      "comment": "Host memory protection: holds commit and process subscriptions and acts when commit reaches the threshold."
+    },
+    {
+      "uid": 63,
+      "kind": "item",
+      "process": "backend",
+      "name": "HostMemoryProtectionEnabled",
+      "comment": "Whether the user enabled host memory protection. Settings changes publish the event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostMemoryProtectionService settings"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "HostMemoryProtectionService.ApplySettingsAsync settings-published"
+    },
+    {
+      "uid": 64,
+      "kind": "item",
+      "process": "backend",
+      "name": "MemoryProtectionNormalRunningPointExists",
+      "comment": "Whether a normal running point exists for this service run. Creating a point publishes the event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostMemoryProtectionService normal running point"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "HostMemoryProtectionService.CreatePointAsync normal-running-point-created"
+    },
+    {
+      "uid": 65,
+      "kind": "item",
+      "process": "backend",
+      "name": "MemoryProtectionReserveBuilt",
+      "comment": "Whether every configured disk reserve entry is fully built. Reserve configuration and rebuild publish the event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostMemoryProtectionService reserve readiness"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "HostMemoryProtectionService reserve-configuring, reserve-rebuilding or reserve-rebuilt publication"
+    },
+    {
+      "uid": 66,
+      "kind": "item",
+      "process": "backend",
+      "name": "CpuThreadDiagnosticRequests",
+      "comment": "Per-request target process identities and query-only thread handles; explicit diagnostic demand only. Disposing the holder closes all handles.",
+      "storage": "own",
+      "type": "System.Collections.Generic.HashSet<ResourceManager.ReadWrite.Windows.Processes.EtwCpuResidencyCaptureOwner.ThreadDiagnosticRequest>",
+      "owner": {
+        "component": "EtwCpuResidencyCaptureOwner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "EtwCpuResidencyCaptureOwner request-thread-diagnostic holder acquired or disposed"
+    },
+    {
+      "uid": 67,
+      "kind": "item",
+      "process": "backend",
+      "name": "CpuProcessThreadWindow",
+      "comment": "Requested process closed ETW execution window with optional raw thread identity, name, start module and separately bounded Windows user/kernel counter deltas.",
+      "storage": "reference",
+      "type": "ResourceManager.ReadWrite.Windows.Processes.CpuProcessThreadWindow",
+      "owner": {
+        "component": "EtwCpuResidencyCaptureOwner.ThreadDiagnosticRequest"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "EtwCpuResidencyCaptureOwner completed requested execution window publication"
+    },
+    {
+      "uid": 68,
+      "kind": "item",
+      "process": "backend",
+      "name": "AppSettingsCurrent",
+      "comment": "Current normalized persisted backend settings, published only by JsonAppSettingsStore.",
+      "storage": "reference",
+      "type": "ResourceManager.App.Domain.Settings.AppSettings",
+      "owner": {
+        "component": "JsonAppSettingsStore"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "JsonAppSettingsStore initial load or committed settings publication"
+    },
+    {
+      "uid": 69,
+      "kind": "item",
+      "process": "backend",
+      "name": "StartupModuleSettingsCurrent",
+      "comment": "Current injected-module selections, published only by JsonStartupModuleSettingsStore.",
+      "storage": "reference",
+      "type": "ResourceManager.App.Domain.GpuPlacement.StartupModuleSettingsDocument",
+      "owner": {
+        "component": "JsonStartupModuleSettingsStore"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "JsonStartupModuleSettingsStore initial load or committed module selections publication"
+    },
+    {
+      "uid": 70,
+      "kind": "item",
+      "process": "backend",
+      "name": "KernelLeakReport",
+      "comment": "Read-only suspected growth report held by KernelLeakObserver; the KernelLeakObservation block writes it while running and resets it to normal NotObserved when stopped, independently of report readers.",
+      "storage": "reference",
+      "type": "ResourceManager.App.Domain.KernelLeak.KernelLeakReport",
+      "owner": {
+        "component": "KernelLeakObserver"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "KernelLeakObserver report publication after each sampling frame or run failure"
+    },
+    {
+      "uid": 71,
+      "kind": "item",
+      "process": "backend",
+      "name": "KernelLeakSeries",
+      "comment": "Bounded per-process-start-key handle rings exist only during KernelLeakObservation execution and are cleared on stop; retained registry entry pending unified removal of non-decision hot-path data.",
+      "storage": "own",
+      "type": "ResourceManager.App.Infrastructure.KernelLeak.KernelLeakSeries",
+      "owner": {
+        "component": "KernelLeakObserver"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "KernelLeakObserver sampling frame, holder exit or run failure"
+    },
+    {
+      "uid": 72,
+      "kind": "condition",
+      "process": "backend",
+      "name": "PresentEtwChildShouldRun",
+      "comment": "Host admitted and subscribed field in use, session available.",
+      "perBlock": false,
+      "node": 2,
+      "items": [
+        {
+          "item": 8,
+          "block": 30
+        },
+        {
+          "item": 112
+        },
+        {
+          "item": 53
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 30
+    },
+    {
+      "uid": 73,
+      "kind": "condition",
+      "process": "backend",
+      "name": "GpuAllocationEtwChildShouldRun",
+      "comment": "Host admitted and subscribed field in use, session available.",
+      "perBlock": false,
+      "node": 2,
+      "items": [
+        {
+          "item": 8,
+          "block": 31
+        },
+        {
+          "item": 113
+        },
+        {
+          "item": 54
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 31
+    },
+    {
+      "uid": 74,
+      "kind": "condition",
+      "process": "backend",
+      "name": "VidMmEtwChildShouldRun",
+      "comment": "Host admitted and subscribed field in use, session available.",
+      "perBlock": false,
+      "node": 2,
+      "items": [
+        {
+          "item": 8,
+          "block": 32
+        },
+        {
+          "item": 114
+        },
+        {
+          "item": 55
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 32
+    },
+    {
+      "uid": 75,
+      "kind": "block",
+      "process": "backend",
+      "name": "Backend",
+      "comment": "Wraps the complete backend service lifetime and its feature domains."
+    },
+    {
+      "uid": 76,
+      "kind": "block",
+      "process": "backend",
+      "name": "ServiceHost",
+      "comment": "Groups runtime-plan compilation, service settings, diagnostics and automatic updates."
+    },
+    {
+      "uid": 77,
+      "kind": "block",
+      "process": "backend",
+      "name": "Monitoring",
+      "comment": "Groups metric sampling, native ETW sessions, resource observation and display topology."
+    },
+    {
+      "uid": 78,
+      "kind": "block",
+      "process": "backend",
+      "name": "HardwareControl",
+      "comment": "Groups fan sessions, software-curve temperatures, saved hardware settings and actual control values."
+    },
+    {
+      "uid": 79,
+      "kind": "block",
+      "process": "backend",
+      "name": "Optimization",
+      "comment": "Groups intelligent resource optimization and GPU placement history observation."
+    },
+    {
+      "uid": 80,
+      "kind": "block",
+      "process": "backend",
+      "name": "Reports",
+      "comment": "Groups backend report producers, including optimization and kernel-leak reports."
+    },
+    {
+      "uid": 81,
+      "kind": "block",
+      "process": "backend",
+      "name": "SoftwareManagement",
+      "comment": "Groups software identity, file queries, portable registration and discovery."
+    },
+    {
+      "uid": 82,
+      "kind": "block",
+      "process": "backend",
+      "name": "TrustedAccess",
+      "comment": "Groups trusted access requests, approvals and invocation processing."
+    },
+    {
+      "uid": 83,
+      "kind": "block",
+      "process": "backend",
+      "name": "PublicServices",
+      "comment": "Groups public services and model tasks."
+    },
+    {
+      "uid": 84,
+      "kind": "condition",
+      "process": "backend",
+      "name": "AlwaysWanted",
+      "comment": "Runs with its parent only after explicit host admission; admission never implies business activity.",
+      "perBlock": true,
+      "items": [
+        {
+          "item": 8
+        },
+        {
+          "item": 119
+        }
+      ],
+      "conditions": [],
+      "children": []
+    },
+    {
+      "uid": 85,
+      "kind": "item",
+      "process": "backend",
+      "name": "SamplingResourceBreakdownInUse",
+      "comment": "Current authoritative SamplingResourceBreakdownInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
+    },
+    {
+      "uid": 86,
+      "kind": "condition",
+      "process": "backend",
+      "name": "HostMemoryProtectionReady",
+      "comment": "Explicit host admission and memory protection enabled, normal running point present, reserve built.",
+      "perBlock": false,
+      "node": 75,
+      "items": [
+        {
+          "item": 8,
+          "block": 62
+        },
+        {
+          "item": 63
+        },
+        {
+          "item": 64
+        },
+        {
+          "item": 65
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 62
+    },
+    {
+      "uid": 87,
+      "kind": "block",
+      "process": "desktop",
+      "name": "ForceTerminateHotkey",
+      "comment": "Registers and handles the configured force-terminate hotkey."
+    },
+    {
+      "uid": 88,
+      "kind": "block",
+      "process": "desktop",
+      "name": "TaskManagerReplacement",
+      "comment": "Owns the configured task-manager replacement integration."
+    },
+    {
+      "uid": 89,
+      "kind": "block",
+      "process": "desktop",
+      "name": "WindowProcess",
+      "comment": "Owns the complete lifetime of the child .NET window process."
+    },
+    {
+      "uid": 90,
+      "kind": "block",
+      "process": "window",
+      "name": "Program",
+      "comment": "Root of the child window process control tree."
+    },
+    {
+      "uid": 91,
+      "kind": "item",
+      "process": "window",
+      "name": "ParentWantsMeRunning",
+      "comment": "Window pipe input: ParentWantsMeRunning.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "NativeWindowBlockTrees parent pipe"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "NativeWindowBlockTrees.SetParentWantsRunningAsync parent pipe demand changed"
+    },
+    {
+      "uid": 92,
+      "kind": "item",
+      "process": "window",
+      "name": "BackendSessionReady",
+      "comment": "Window pipe input: BackendSessionReady.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "NativeWindowBlockTrees parent pipe"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "NativeWindowBlockTrees.SetBackendSessionAsync backend session readiness changed"
+    },
+    {
+      "uid": 93,
+      "kind": "item",
+      "process": "window",
+      "name": "ProgramShuttingDown",
+      "comment": "Window pipe input: ProgramShuttingDown.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "NativeWindowBlockTrees parent pipe"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "BusinessBlockScheduler.ShutdownAsync terminal window shutdown requested"
+    },
+    {
+      "uid": 94,
+      "kind": "item",
+      "process": "desktop",
+      "name": "OverlayEnabled",
+      "comment": "Backend settings fact: at least one software in performanceOverlay has its overlay enabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop Host settings subscription publication (performanceOverlay)"
+    },
+    {
+      "uid": 95,
+      "kind": "item",
+      "process": "desktop",
+      "name": "ForceTerminateHotkeyEnabled",
+      "comment": "Resident preference or backend settings fact: ForceTerminateHotkeyEnabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SystemIntegration force-terminate settings publication (phase-A placeholder)"
+    },
+    {
+      "uid": 96,
+      "kind": "item",
+      "process": "desktop",
+      "name": "ForceTerminateHotkeyValid",
+      "comment": "Resident preference or backend settings fact: ForceTerminateHotkeyValid; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SystemIntegration hotkey validation publication (phase-A placeholder)"
+    },
+    {
+      "uid": 97,
+      "kind": "item",
+      "process": "desktop",
+      "name": "TaskManagerReplacementEnabled",
+      "comment": "Resident preference or backend settings fact: TaskManagerReplacementEnabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SystemIntegration task-manager settings publication (phase-A placeholder)"
+    },
+    {
+      "uid": 98,
+      "kind": "item",
+      "process": "desktop",
+      "name": "NotificationsEnabled",
+      "comment": "Resident preference or backend settings fact: NotificationsEnabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop Host.readPreferences preferences-changed publication"
+    },
+    {
+      "uid": 99,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "ProgramActive",
+      "comment": "ProgramStarted wants Frontend; absent is false. Controller shutdown independently revokes the root permit.",
+      "perBlock": false,
+      "node": 40,
+      "items": [
+        {
+          "item": 59
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 101
+    },
+    {
+      "uid": 100,
+      "kind": "block",
+      "process": "desktop",
+      "name": "SystemIntegration",
+      "comment": "Groups force-terminate hotkey and task-manager replacement under MainFrontend; runs until stopped."
+    },
+    {
+      "uid": 101,
+      "kind": "block",
+      "process": "desktop",
+      "name": "Frontend",
+      "comment": "Owns the whole resident frontend: MainFrontend and Tray are sibling branches."
+    },
+    {
+      "uid": 102,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "AlwaysWanted",
+      "comment": "A direct child required whenever its parent runs.",
+      "perBlock": true,
+      "items": [],
+      "conditions": [],
+      "children": []
+    },
+    {
+      "uid": 103,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "ForceTerminateHotkeyWanted",
+      "comment": "The force-terminate setting is enabled and its configured hotkey is valid.",
+      "perBlock": false,
+      "node": 100,
+      "items": [
+        {
+          "item": 95
+        },
+        {
+          "item": 96
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 87
+    },
+    {
+      "uid": 104,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "TaskManagerReplacementWanted",
+      "comment": "The task-manager replacement setting is enabled.",
+      "perBlock": false,
+      "node": 100,
+      "items": [
+        {
+          "item": 97
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 88
+    },
+    {
+      "uid": 105,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "WindowProcessWanted",
+      "comment": "The resident user-operation owner wants the window process open.",
+      "perBlock": false,
+      "node": 41,
+      "items": [
+        {
+          "item": 60
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 89
+    },
+    {
+      "uid": 106,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "DesktopObservationWanted",
+      "comment": "A backend session is ready for desktop observation.",
+      "perBlock": false,
+      "node": 44,
+      "items": [
+        {
+          "item": 61
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 46
+    },
+    {
+      "uid": 107,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "OverlayWanted",
+      "comment": "A backend session is ready and at least one overlay is enabled.",
+      "perBlock": false,
+      "node": 44,
+      "items": [
+        {
+          "item": 61
+        },
+        {
+          "item": 94
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 47
+    },
+    {
+      "uid": 108,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "TrayNotificationsWanted",
+      "comment": "A backend session is ready and at least one tray notification setting is enabled.",
+      "perBlock": false,
+      "node": 42,
+      "items": [
+        {
+          "item": 61
+        },
+        {
+          "item": 98
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 50
+    },
+    {
+      "uid": 109,
+      "kind": "item",
+      "process": "desktop",
+      "name": "BackendSession",
+      "comment": "不可变后端会话由常驻进程的后端连接块持有；完整值留在宿主，变化事件通知窗口转发消费者。",
+      "storage": "reference",
+      "type": "ResourceManager.Desktop.main.Session",
+      "owner": {
+        "block": 44
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop backend session bind, transition or unbind"
+    },
+    {
+      "uid": 110,
+      "kind": "item",
+      "process": "backend",
+      "name": "DeviceTopologyVolumeFreeSpaceCurrent",
+      "comment": "Current exact-volume free-space fields from deviceTopology.volume-free-space; consumer item use is a fact for the topology node, never a business start/stop decision here.",
+      "storage": "reference",
+      "type": "ResourceManager.ReadWrite.Information.DeviceInformationSnapshot",
+      "owner": {
+        "block": 33
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "DeviceTopologyCaptureOwner selected volume free-space content changed"
+    },
+    {
+      "uid": 111,
+      "kind": "item",
+      "process": "backend",
+      "name": "SamplingDeviceTopologyInUse",
+      "comment": "Current authoritative SamplingDeviceTopologyInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
+    },
+    {
+      "uid": 112,
+      "kind": "item",
+      "process": "backend",
+      "name": "GraphicsApiObservationInUse",
+      "comment": "Current authoritative GraphicsApiObservationInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 113,
+      "kind": "item",
+      "process": "backend",
+      "name": "ProcessDedicatedGpuMemoryInUse",
+      "comment": "Current authoritative ProcessDedicatedGpuMemoryInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 114,
+      "kind": "item",
+      "process": "backend",
+      "name": "VramResidualInUse",
+      "comment": "Current authoritative VramResidualInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 115,
+      "kind": "item",
+      "process": "backend",
+      "name": "DiskAttributionInUse",
+      "comment": "Current authoritative DiskAttributionInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 116,
+      "kind": "item",
+      "process": "backend",
+      "name": "NetworkAttributionInUse",
+      "comment": "Current authoritative NetworkAttributionInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 117,
+      "kind": "item",
+      "process": "backend",
+      "name": "DebugLoggingEnabled",
+      "comment": "Current authoritative DebugLoggingEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 118,
+      "kind": "item",
+      "process": "backend",
+      "name": "AutomaticUpdatesEnabled",
+      "comment": "Current authoritative AutomaticUpdatesEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 119,
+      "kind": "item",
+      "process": "backend",
+      "name": "HostedRunEnded",
+      "comment": "A hosted worker run ended without a stop request. Its process-lifetime result owner waits for new host admission or a new compiled plan; classified resource failures instead use the resource holder availability.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostedRunResultFacts"
+      },
+      "perBlock": true,
+      "trigger": "event",
+      "changeEvent": "HostedRunResultFacts.RunResultChanged"
+    },
+    {
+      "uid": 120,
+      "kind": "item",
+      "process": "backend",
+      "name": "AppliedFanControlExists",
+      "comment": "An applied OEM temporary manual duty or enabled full-speed override is kept effective by the open FanCore session. Software plans use SoftwareCurveRunNeeded; persistent firmware curves and automatic mode do not hold a session.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ControlPlane"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "AppliedIntentsChanged"
+    },
+    {
+      "uid": 121,
+      "kind": "item",
+      "process": "backend",
+      "name": "AppliedControlIntentsExist",
+      "comment": "Current authoritative AppliedControlIntentsExist fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ControlPlane"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "AppliedIntentsChanged"
+    },
+    {
+      "uid": 122,
+      "kind": "item",
+      "process": "backend",
+      "name": "OptimizationEnabled",
+      "comment": "Current authoritative OptimizationEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 123,
+      "kind": "item",
+      "process": "backend",
+      "name": "ActiveCpuLeasesExist",
+      "comment": "Current authoritative ActiveCpuLeasesExist fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimeCpuLeaseStore"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "ActiveCpuLeasesChanged"
+    },
+    {
+      "uid": 124,
+      "kind": "item",
+      "process": "backend",
+      "name": "SmartOwnedStatePending",
+      "comment": "Current authoritative SmartOwnedStatePending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostManagerSmartCoordinator"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SmartOwnedStateChanged"
+    },
+    {
+      "uid": 125,
+      "kind": "item",
+      "process": "backend",
+      "name": "GpuApiHistoryEnabled",
+      "comment": "Current authoritative GpuApiHistoryEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 126,
+      "kind": "item",
+      "process": "backend",
+      "name": "BackgroundReportsEnabled",
+      "comment": "Current authoritative BackgroundReportsEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 127,
+      "kind": "item",
+      "process": "backend",
+      "name": "PortableDiscoveryEnabled",
+      "comment": "Current authoritative PortableDiscoveryEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 128,
+      "kind": "item",
+      "process": "backend",
+      "name": "PublicServiceEnabled",
+      "comment": "Current authoritative PublicServiceEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 129,
+      "kind": "item",
+      "process": "backend",
+      "name": "DebugWriterPending",
+      "comment": "Current authoritative DebugWriterPending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "JsonDebugDiagnosticLogWriter"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingRecordsChanged"
+    },
+    {
+      "uid": 130,
+      "kind": "item",
+      "process": "backend",
+      "name": "TrustedRequestsPending",
+      "comment": "Current authoritative TrustedRequestsPending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "TrustedAccessRequestOwner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingRequestsChanged"
+    },
+    {
+      "uid": 131,
+      "kind": "item",
+      "process": "backend",
+      "name": "PublicServiceTasksPending",
+      "comment": "Current authoritative PublicServiceTasksPending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostManagerPublicServiceCoordinatorOwner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingTasksChanged"
+    },
+    {
+      "uid": 132,
+      "kind": "item",
+      "process": "desktop",
+      "name": "OverlayToggleHotkeyValid",
+      "comment": "Backend settings fact: the toggle-performance-overlay-foreground key set is not empty; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop Host settings subscription publication (systemIntegration.hotkeys)"
+    },
+    {
+      "uid": 133,
+      "kind": "item",
+      "process": "backend",
+      "name": "OperationsPending",
+      "comment": "Current authoritative OperationsPending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostManagerOperationCoordinatorOwner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingOperationsChanged"
+    },
+    {
+      "uid": 134,
+      "kind": "item",
+      "process": "backend",
+      "name": "ActualControlValuesInUse",
+      "comment": "Current authoritative ActualControlValuesInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ControlActualStateReader"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionsChanged"
+    },
+    {
+      "uid": 135,
+      "kind": "condition",
+      "process": "backend",
+      "name": "DebugWriterShouldRun",
+      "comment": "Explicit host admission and precise business facts for JsonDebugDiagnosticLogWriter; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 76,
+      "items": [
+        {
+          "item": 8,
+          "block": 27
+        },
+        {
+          "item": 117
+        },
+        {
+          "item": 129
+        },
+        {
+          "item": 119,
+          "block": 27
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 27
+    },
+    {
+      "uid": 136,
+      "kind": "condition",
+      "process": "backend",
+      "name": "AutomaticUpdateShouldRun",
+      "comment": "Explicit host admission and precise business facts for AutomaticProductUpdateService; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 76,
+      "items": [
+        {
+          "item": 8,
+          "block": 6
+        },
+        {
+          "item": 118
+        },
+        {
+          "item": 119,
+          "block": 6
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 6
+    },
+    {
+      "uid": 137,
+      "kind": "condition",
+      "process": "backend",
+      "name": "SamplingOwnerShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerSamplingSubscriptionOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 77,
+      "items": [
+        {
+          "item": 8,
+          "block": 7
+        },
+        {
+          "item": 9
+        },
+        {
+          "item": 10
+        },
+        {
+          "item": 11
+        },
+        {
+          "item": 21
+        },
+        {
+          "item": 51
+        },
+        {
+          "item": 85
+        },
+        {
+          "item": 111
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 7
+    },
+    {
+      "uid": 138,
+      "kind": "condition",
+      "process": "backend",
+      "name": "GpuTelemetryShouldRun",
+      "comment": "Explicit host admission and precise business facts for GpuTelemetryWorkerSupervisor; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 34
+        },
+        {
+          "item": 9
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 34
+    },
+    {
+      "uid": 139,
+      "kind": "condition",
+      "process": "backend",
+      "name": "HardwareMetricsShouldRun",
+      "comment": "Explicit host admission and precise business facts for WindowsHardwareMetricSampler; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 35
+        },
+        {
+          "item": 10
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 35
+    },
+    {
+      "uid": 140,
+      "kind": "condition",
+      "process": "backend",
+      "name": "CpuTopologyShouldRun",
+      "comment": "Explicit host admission and precise business facts for CpuTopologySnapshotProvider; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 36
+        },
+        {
+          "item": 11
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 36
+    },
+    {
+      "uid": 141,
+      "kind": "condition",
+      "process": "backend",
+      "name": "CpuResidencyShouldRun",
+      "comment": "Explicit host admission and precise business facts for EtwCpuCoreResidencyReader; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 37
+        },
+        {
+          "item": 21
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 37
+    },
+    {
+      "uid": 142,
+      "kind": "condition",
+      "process": "backend",
+      "name": "InterruptsShouldRun",
+      "comment": "Explicit host admission and precise business facts for EtwSystemInterruptSnapshotSource; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 38
+        },
+        {
+          "item": 51
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 38
+    },
+    {
+      "uid": 143,
+      "kind": "condition",
+      "process": "backend",
+      "name": "ResourceBreakdownShouldRun",
+      "comment": "Explicit host admission and precise business facts for WindowsResourceBreakdownSampler; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 39
+        },
+        {
+          "item": 85
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 39
+    },
+    {
+      "uid": 144,
+      "kind": "condition",
+      "process": "backend",
+      "name": "DeviceTopologyShouldRun",
+      "comment": "Explicit host admission and precise business facts for DeviceTopologySnapshotProvider; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 33
+        },
+        {
+          "item": 111
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 33
+    },
+    {
+      "uid": 145,
+      "kind": "condition",
+      "process": "backend",
+      "name": "NativeEtwGroupShouldRun",
+      "comment": "Explicit host admission and precise business facts for NativeEtwLifetimeService; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 77,
+      "items": [
+        {
+          "item": 8,
+          "block": 2
+        },
+        {
+          "item": 112
+        },
+        {
+          "item": 53
+        },
+        {
+          "item": 113
+        },
+        {
+          "item": 54
+        },
+        {
+          "item": 114
+        },
+        {
+          "item": 55
+        },
+        {
+          "item": 8,
+          "block": 30
+        },
+        {
+          "item": 8,
+          "block": 31
+        },
+        {
+          "item": 8,
+          "block": 32
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 2
+    },
+    {
+      "uid": 146,
+      "kind": "condition",
+      "process": "backend",
+      "name": "DiskAttributionShouldRun",
+      "comment": "Explicit host admission and precise business facts for EtwPhysicalDiskIoAttributionReader; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 77,
+      "items": [
+        {
+          "item": 8,
+          "block": 23
+        },
+        {
+          "item": 115
+        },
+        {
+          "item": 119,
+          "block": 23
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 23
+    },
+    {
+      "uid": 147,
+      "kind": "condition",
+      "process": "backend",
+      "name": "NetworkAttributionShouldRun",
+      "comment": "Explicit host admission and precise business facts for EtwNetworkTcpIpAttributionReader; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 77,
+      "items": [
+        {
+          "item": 8,
+          "block": 24
+        },
+        {
+          "item": 116
+        },
+        {
+          "item": 119,
+          "block": 24
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 24
+    },
+    {
+      "uid": 148,
+      "kind": "condition",
+      "process": "backend",
+      "name": "FanCoreShouldRun",
+      "comment": "Permit and availability gate temporary applied manual control, pending commands, active readings and existing session curve work. Existing work keeps the session running but cannot open it.",
+      "perBlock": false,
+      "node": 78,
+      "items": [
+        {
+          "item": 8,
+          "block": 20
+        },
+        {
+          "item": 171
+        },
+        {
+          "item": 120
+        },
+        {
+          "item": 160
+        },
+        {
+          "item": 161
+        },
+        {
+          "item": 170
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 20
+    },
+    {
+      "uid": 149,
+      "kind": "condition",
+      "process": "backend",
+      "name": "FanTemperatureShouldRun",
+      "comment": "Run temperature push and the software curve entry together only while the current session still has curve work.",
+      "perBlock": false,
+      "node": 20,
+      "items": [
+        {
+          "item": 170
+        },
+        {
+          "item": 119,
+          "block": 18
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 18
+    },
+    {
+      "uid": 150,
+      "kind": "condition",
+      "process": "backend",
+      "name": "ControlReassertionShouldRun",
+      "comment": "Explicit host admission and precise business facts for ControlDesiredStateReassertion; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 78,
+      "items": [
+        {
+          "item": 8,
+          "block": 17
+        },
+        {
+          "item": 121
+        },
+        {
+          "item": 172
+        },
+        {
+          "item": 119,
+          "block": 17
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 17
+    },
+    {
+      "uid": 151,
+      "kind": "condition",
+      "process": "backend",
+      "name": "ActualControlShouldRun",
+      "comment": "Explicit host admission and precise business facts for ControlActualStateReader; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 78,
+      "items": [
+        {
+          "item": 8,
+          "block": 19
+        },
+        {
+          "item": 134
+        },
+        {
+          "item": 119,
+          "block": 19
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 19
+    },
+    {
+      "uid": 152,
+      "kind": "condition",
+      "process": "backend",
+      "name": "SmartShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerSmartCoordinator; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 79,
+      "items": [
+        {
+          "item": 8,
+          "block": 29
+        },
+        {
+          "item": 122
+        },
+        {
+          "item": 123
+        },
+        {
+          "item": 124
+        },
+        {
+          "item": 119,
+          "block": 29
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 29
+    },
+    {
+      "uid": 153,
+      "kind": "condition",
+      "process": "backend",
+      "name": "GpuApiHistoryShouldRun",
+      "comment": "Explicit host admission and precise business facts for GpuPlacementProcessHistoryObserver; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 79,
+      "items": [
+        {
+          "item": 8,
+          "block": 25
+        },
+        {
+          "item": 125
+        },
+        {
+          "item": 119,
+          "block": 25
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 25
+    },
+    {
+      "uid": 154,
+      "kind": "condition",
+      "process": "backend",
+      "name": "BackgroundReportsShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerReportCoordinatorOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 80,
+      "items": [
+        {
+          "item": 8,
+          "block": 28
+        },
+        {
+          "item": 126
+        },
+        {
+          "item": 119,
+          "block": 28
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 28
+    },
+    {
+      "uid": 155,
+      "kind": "condition",
+      "process": "backend",
+      "name": "PortableDiscoveryShouldRun",
+      "comment": "Explicit host admission and precise business facts for PortableSoftwareDiscoveryService; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 81,
+      "items": [
+        {
+          "item": 8,
+          "block": 22
+        },
+        {
+          "item": 127
+        },
+        {
+          "item": 119,
+          "block": 22
+        },
+        {
+          "item": 173
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 22
+    },
+    {
+      "uid": 156,
+      "kind": "condition",
+      "process": "backend",
+      "name": "TrustedRequestsShouldRun",
+      "comment": "Explicit host admission and precise business facts for TrustedAccessRequestOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 82,
+      "items": [
+        {
+          "item": 8,
+          "block": 3
+        },
+        {
+          "item": 130
+        },
+        {
+          "item": 119,
+          "block": 3
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 3
+    },
+    {
+      "uid": 157,
+      "kind": "condition",
+      "process": "backend",
+      "name": "PublicServiceShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerPublicServiceCoordinatorOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 83,
+      "items": [
+        {
+          "item": 8,
+          "block": 12
+        },
+        {
+          "item": 128
+        },
+        {
+          "item": 131
+        },
+        {
+          "item": 119,
+          "block": 12
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 12
+    },
+    {
+      "uid": 158,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "OverlayToggleHotkeyWanted",
+      "comment": "The toggle-performance-overlay-foreground setting is enabled and its configured hotkey is valid.",
+      "perBlock": false,
+      "node": 100,
+      "items": [
+        {
+          "item": 57
+        },
+        {
+          "item": 132
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 56
+    },
+    {
+      "uid": 159,
+      "kind": "condition",
+      "process": "backend",
+      "name": "OperationsShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerOperationCoordinatorOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 75,
+      "items": [
+        {
+          "item": 8,
+          "block": 13
+        },
+        {
+          "item": 133
+        },
+        {
+          "item": 119,
+          "block": 13
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 13
+    },
+    {
+      "uid": 160,
+      "kind": "item",
+      "process": "backend",
+      "name": "FanCommandPending",
+      "comment": "Whether an accepted fan command or control-plane fan operation is queued, executing, or awaiting outcome publication. The owner publishes only changes between zero and nonzero pending work.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "FanControlCoreClient"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "FanControlCoreClient pending command count crosses zero"
+    },
+    {
+      "uid": 161,
+      "kind": "item",
+      "process": "backend",
+      "name": "FanReadingsInUse",
+      "comment": "Whether an active actual-control-value subscription includes a fan whose readings use FanCore. The subscription table publishes only transitions between no readers and one or more readers.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ControlActualStateReader"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "FanReadingsChanged"
+    },
+    {
+      "uid": 162,
+      "kind": "item",
+      "process": "backend",
+      "name": "KernelLeakObservationEnabled",
+      "comment": "Current authoritative KernelLeakObservationEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 163,
+      "kind": "block",
+      "process": "backend",
+      "name": "KernelLeakObservation",
+      "comment": "Observes suspected kernel-resource leaks in its own execution flow under Reports."
+    },
+    {
+      "uid": 164,
+      "kind": "condition",
+      "process": "backend",
+      "name": "KernelLeakObservationShouldRun",
+      "comment": "Run kernel leak observation only when its published enablement fact has a true value.",
+      "perBlock": false,
+      "node": 80,
+      "items": [
+        {
+          "item": 162
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 163
+    },
+    {
+      "uid": 165,
+      "kind": "block",
+      "process": "backend",
+      "name": "HardwareBridgeProcessOwner",
+      "comment": "Owns the GPL hardware helper process and its per-run readings section."
+    },
+    {
+      "uid": 166,
+      "kind": "item",
+      "process": "backend",
+      "name": "HardwareCommandPending",
+      "comment": "Bridge-backed commands accepted, queued, executing or awaiting control-plane outcome publication; a multi-command write holds one continuous pending scope.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HardwareCommandQueue"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingChanged"
+    },
+    {
+      "uid": 167,
+      "kind": "item",
+      "process": "backend",
+      "name": "HardwareBridgeReadingsInUse",
+      "comment": "Bridge-sourced reading subscription items have a live consumer; periodic reading is not a command.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HardwareBridgeReadingSubscriptions"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "ReadingsInUseChanged"
+    },
+    {
+      "uid": 168,
+      "kind": "item",
+      "process": "backend",
+      "name": "HardwareBridgeAvailable",
+      "comment": "Resident process owner reports whether a bridge run can currently be attempted; only recognized unavailable failures change this fact.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HardwareBridgeProcessOwner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "AvailabilityChanged"
+    },
+    {
+      "uid": 169,
+      "kind": "condition",
+      "process": "backend",
+      "name": "HardwareBridgeShouldRun",
+      "comment": "HardwareControl runs the host-permitted, available helper only for accepted bridge commands through outcome publication or bridge readings in use; applied settings alone do not hold it. No-value is false.",
+      "perBlock": false,
+      "node": 78,
+      "items": [
+        {
+          "item": 8,
+          "block": 165
+        },
+        {
+          "item": 166
+        },
+        {
+          "item": 167
+        },
+        {
+          "item": 168
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 165
+    },
+    {
+      "uid": 170,
+      "kind": "item",
+      "process": "backend",
+      "name": "SoftwareCurveRunNeeded",
+      "comment": "The current fan session has recorded software plans or firmware hand-back still to retry; false without a session.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "FanControlCoreClient"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SoftwareCurveRunNeededChanged"
+    },
+    {
+      "uid": 171,
+      "kind": "item",
+      "process": "backend",
+      "name": "FanCoreAvailable",
+      "comment": "Persistent fan owner availability: only recognised merged Open failures clear it; any successful Open restores it.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "FanControlCoreClient"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "AvailabilityChanged"
+    },
+    {
+      "uid": 172,
+      "kind": "item",
+      "process": "backend",
+      "name": "ControlKeepAliveEnabled",
+      "comment": "The settings owner's current control.keepAlive choice; initially published from AppSettingsCurrent and republished only when that choice changes.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "JsonAppSettingsStore"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "JsonAppSettingsStore initial AppSettingsCurrent publication or control.keepAlive change"
+    },
+    {
+      "uid": 173,
+      "kind": "item",
+      "process": "backend",
+      "name": "PortableAttributionCatalogAvailable",
+      "comment": "The catalog holder can supply portable process attribution. It publishes failure immediately and checks only while unavailable; permission and ABI failures cannot recover in this process.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimeProcessAttributionCatalogProvider"
+      },
+      "perBlock": false,
+      "trigger": "poll",
+      "pollInterval": "RuntimeProcessAttributionCatalogAvailability:RecoveryCheckIntervalSeconds"
+    },
+    {
+      "uid": 174,
+      "kind": "block",
+      "process": "backend",
+      "name": "SystemEventReports",
+      "comment": "Native-owned SystemEventReports business flow under Reports."
+    },
+    {
+      "uid": 175,
+      "kind": "item",
+      "process": "backend",
+      "name": "SystemEventReportsEnabled",
+      "comment": "Current native settings enablement; unavailable values do not run.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "FreezeReportsHost"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "FreezeReportsHost.SettingsChanged"
+    },
+    {
+      "uid": 176,
+      "kind": "condition",
+      "process": "backend",
+      "name": "SystemEventReportsShouldRun",
+      "comment": "Run only while native settings enable this report business flow.",
+      "perBlock": false,
+      "node": 80,
+      "items": [
+        {
+          "item": 175
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 174
+    },
+    {
+      "uid": 177,
+      "kind": "block",
+      "process": "backend",
+      "name": "FreezeRecorder",
+      "comment": "Native-owned FreezeRecorder business flow under Reports."
+    },
+    {
+      "uid": 178,
+      "kind": "item",
+      "process": "backend",
+      "name": "FreezeRecorderEnabled",
+      "comment": "Current native settings enablement; unavailable values do not run.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "FreezeReportsHost"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "FreezeReportsHost.SettingsChanged"
+    },
+    {
+      "uid": 179,
+      "kind": "condition",
+      "process": "backend",
+      "name": "FreezeRecorderShouldRun",
+      "comment": "Run only while native settings enable this report business flow.",
+      "perBlock": false,
+      "node": 80,
+      "items": [
+        {
+          "item": 178
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 177
+    },
+    {
+      "uid": 180,
+      "kind": "block",
+      "process": "backend",
+      "name": "CpuMonopolyProtection",
+      "comment": "CPU monopoly protection: subscribes process CPU and priority and normalizes one monopolizing process at a time."
+    },
+    {
+      "uid": 181,
+      "kind": "item",
+      "process": "backend",
+      "name": "CpuMonopolyProtectionEnabled",
+      "comment": "The user enabled CPU monopoly protection; published by settings changes.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "CpuMonopolyProtectionService settings"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "CpuMonopolyProtectionService.ApplySettingsAsync settings-published"
+    },
+    {
+      "uid": 182,
+      "kind": "condition",
+      "process": "backend",
+      "name": "CpuMonopolyProtectionReady",
+      "comment": "Explicit host admission and CPU monopoly protection enabled.",
+      "perBlock": false,
+      "node": 75,
+      "items": [
+        {
+          "item": 8,
+          "block": 180
+        },
+        {
+          "item": 181
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 180
+    }
+  ]
+}

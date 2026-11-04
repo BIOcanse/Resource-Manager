@@ -1,0 +1,934 @@
+using System.Text.Json;
+using System.Security.Cryptography;
+using ResourceManager.App.Application.Settings;
+using ResourceManager.App.Application.TrustedAccess;
+using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.App.StateItems;
+using ResourceManager.Shared.BusinessBlocks;
+using ResourceManager.Shared.BusinessBlocks.State;
+
+namespace ResourceManager.App.Infrastructure.Settings;
+
+public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettingsSubscriptionSource
+{
+    private static readonly JsonSerializerOptions JsonOptions = new JsonAppSettingsStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    }).Options;
+
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly ILogger<JsonAppSettingsStore>? logger;
+    private readonly string settingsPath;
+    private readonly string lastKnownGoodPath;
+    private AppSettings? cachedSettings;
+    private DateTimeOffset cachedUpdatedAt;
+    private AppSettingsSourceMetadata? cachedSource;
+    private readonly StateCell<AppSettings> current;
+    private readonly StateCell<bool> controlKeepAliveEnabled;
+    private readonly StateCell<MemoryCpuTierResolution> memoryCpuTier;
+    private readonly RuntimeConfigWriter? runtimeConfig;
+    private readonly StateAuthority authority;
+    private readonly CrashDumpKeySettings? crashDumpKeys;
+    private readonly ITrustedAccessKeyStore? legacyTrustedAccessStore;
+
+    public JsonAppSettingsStore(
+        StateAuthority authority,
+        IHostEnvironment environment,
+        ILogger<JsonAppSettingsStore>? logger = null,
+        RuntimeConfigWriter? runtimeConfig = null,
+        CrashDumpKeySettings? crashDumpKeys = null,
+        ITrustedAccessKeyStore? legacyTrustedAccessStore = null)
+    {
+        settingsPath = ResolveSettingsPath(environment.ContentRootPath);
+        lastKnownGoodPath = ResolveLastKnownGoodPath(settingsPath);
+        this.logger = logger;
+        this.authority = authority;
+        current = authority.ClaimCell<AppSettings>(StateItemUids.AppSettingsCurrent);
+        controlKeepAliveEnabled = authority.ClaimCell<bool>(StateItemUids.ControlKeepAliveEnabled);
+        memoryCpuTier = authority.ClaimCell<MemoryCpuTierResolution>(StateItemUids.MemoryCpuTierEffective);
+        this.runtimeConfig = runtimeConfig;
+        this.crashDumpKeys = crashDumpKeys;
+        this.legacyTrustedAccessStore = legacyTrustedAccessStore;
+    }
+
+    public async Task<AppSettingsUpdateResult> LoadAsync(CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (cachedSettings is not null)
+            {
+                return new AppSettingsUpdateResult(
+                    cachedSettings,
+                    cachedUpdatedAt,
+                    settingsPath,
+                    cachedSource ?? throw new InvalidOperationException(
+                        "The cached settings source metadata is missing."));
+            }
+
+            var loaded = await LoadCoreAsync(cancellationToken);
+            var updatedAt = File.Exists(settingsPath)
+                ? File.GetLastWriteTimeUtc(settingsPath)
+                : DateTimeOffset.UtcNow;
+            cachedSettings = await PublishCurrentAsync(OwnSettings(loaded.Settings), loaded.Source.EffectiveSha256);
+            cachedUpdatedAt = updatedAt;
+            cachedSource = loaded.Source;
+            return new AppSettingsUpdateResult(
+                cachedSettings,
+                updatedAt,
+                settingsPath,
+                loaded.Source);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async Task<AppSettingsUpdateResult> LoadReadOnlyAsync(
+        CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var loaded = await LoadReadOnlyCoreAsync(cancellationToken);
+            var updatedAt = File.Exists(settingsPath)
+                ? File.GetLastWriteTimeUtc(settingsPath)
+                : DateTimeOffset.UtcNow;
+            return new AppSettingsUpdateResult(
+                loaded.Settings,
+                updatedAt,
+                settingsPath,
+                loaded.Source);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public Task<AppSettingsUpdateResult> SaveAsync(
+        AppSettings settings,
+        CancellationToken cancellationToken)
+        => SaveInternalAsync(
+            settings,
+            validateBeforeCommit: null,
+            cancellationToken);
+
+    public Task<AppSettingsUpdateResult> SaveValidatedAsync(
+        AppSettings settings,
+        Func<AppSettingsUpdateResult, CancellationToken, Task> validateBeforeCommit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(validateBeforeCommit);
+        return SaveInternalAsync(settings, validateBeforeCommit, cancellationToken);
+    }
+
+    private async Task<AppSettingsUpdateResult> SaveInternalAsync(
+        AppSettings settings,
+        Func<AppSettingsUpdateResult, CancellationToken, Task>? validateBeforeCommit,
+        CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var normalized = OwnSettings(AppSettingsNormalizer.Normalize(settings));
+            var previous = cachedSettings;
+            CrashDumpKeyPrepared? crashKeyWrite = null;
+            if (crashDumpKeys is not null)
+            {
+                previous ??= (await LoadCoreAsync(cancellationToken)).Settings;
+                crashKeyWrite = crashDumpKeys.Prepare(previous, normalized);
+                normalized = OwnSettings(crashKeyWrite.Settings);
+            }
+            var changed = cachedSource?.EffectiveSha256 != ComputeEffectiveDigest(normalized);
+            if (!changed && previous is not null && File.Exists(settingsPath))
+            {
+                var unchanged = new AppSettingsUpdateResult(
+                    previous,
+                    cachedUpdatedAt,
+                    settingsPath,
+                    cachedSource ?? CreateSavedSource(normalized));
+                if (validateBeforeCommit is not null)
+                {
+                    await validateBeforeCommit(unchanged, cancellationToken);
+                }
+                // A previously failed restore still owns a durable pre-image and may be retried by saving off.
+                if (crashKeyWrite is not { Operation: 2 }) return unchanged;
+            }
+
+            var directory = Path.GetDirectoryName(settingsPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var committed = await SaveCoreAsync(
+                normalized,
+                validateBeforeCommit,
+                cancellationToken);
+            // Snapshot-first ordering: native cannot touch a system value until its exact pre-image is durable.
+            if (crashKeyWrite is not null)
+            {
+                var restored = crashDumpKeys!.ApplyCommitted(crashKeyWrite);
+                if (restored)
+                {
+                    normalized = normalized with { SystemIntegration = normalized.SystemIntegration with
+                    { CrashDumpKeys = normalized.SystemIntegration.CrashDumpKeys with { PreviousValues = null } } };
+                    // Clearing ownership is another validated durable image. A failed save leaves the off+snapshot
+                    // image recoverable; another explicit save of off retries the idempotent restore.
+                    try { committed = await SaveCoreAsync(normalized, validateBeforeCommit, CancellationToken.None); }
+                    catch (AppSettingsCommitAmbiguousException) { throw; }
+                    catch (Exception error)
+                    { throw new AppSettingsCommitAmbiguousException("The off setting and restored crash key values committed, but pre-image ownership could not be cleared.", error); }
+                }
+                committed = committed with { CrashDumpKeys = crashDumpKeys.Diagnostics };
+            }
+            cachedSettings = await PublishCurrentAsync(normalized, committed.Source.EffectiveSha256);
+            cachedUpdatedAt = committed.UpdatedAt;
+            cachedSource = committed.Source;
+            return committed;
+        }
+        catch (AppSettingsCommitAmbiguousException)
+        {
+            await current.PublishNoValueAsync(NoValueReason.ReadFailed, SettingsChanged);
+            throw;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static readonly BusinessBlockReason SettingsChanged = new(
+        BusinessBlockRequestKind.Configuration, nameof(JsonAppSettingsStore), "app-settings", 0);
+
+    private async Task<AppSettings> PublishCurrentAsync(AppSettings settings, string digest)
+    {
+        var previous = authority.Read<AppSettings>(StateItemUids.AppSettingsCurrent);
+        if (previous.HasValue && ComputeEffectiveDigest(previous.Value) == digest) return previous.Value;
+        await current.PublishAsync(settings, SettingsChanged);
+        // Event: project the authoritative settings publication, without polling or
+        // waking the control rule for unrelated settings/interval changes.
+        var keepAlive = authority.Read<AppSettings>(StateItemUids.AppSettingsCurrent).Value.Control?.KeepAlive ?? false;
+        var published = authority.Read<bool>(StateItemUids.ControlKeepAliveEnabled);
+        if (!published.HasValue || published.Value != keepAlive)
+            await controlKeepAliveEnabled.PublishAsync(keepAlive, SettingsChanged);
+        await PublishMemoryCpuTierAsync(settings);
+        return settings;
+    }
+
+    // Event: the tier table is resolved once per settings publication and published only when the tier,
+    // an effective value or a source changed; option owners read it on their next use.
+    private async Task PublishMemoryCpuTierAsync(AppSettings settings)
+    {
+        var resolution = MemoryCpuTierResolver.Resolve(MemoryCpuTierTable.Product, settings.MemoryCpuTier);
+        var published = authority.Read<MemoryCpuTierResolution>(StateItemUids.MemoryCpuTierEffective);
+        if (published.HasValue && published.Value.SameAs(resolution)) return;
+        foreach (var ignored in resolution.Ignored)
+            logger?.LogWarning("The stored memory/CPU tier entry {Path} is not applied ({Code}).", ignored.Path, ignored.Code);
+        await memoryCpuTier.PublishAsync(resolution, SettingsChanged);
+        runtimeConfig?.Apply(new(resolution.Values.GcGen0MaxBudget, resolution.Values.GcConserveMemory), logger);
+    }
+
+    private static AppSettings OwnSettings(AppSettings settings) => settings with
+    {
+        SystemIntegration = settings.SystemIntegration with
+        {
+            CrashDumpKeys = settings.SystemIntegration.CrashDumpKeys with
+            {
+                PreviousValues = settings.SystemIntegration.CrashDumpKeys.PreviousValues is { } snapshot
+                    ? new CrashDumpKeySnapshot(Array.AsReadOnly(snapshot.Values.Select(static value => value with { Data = value.Data.ToArray() }).ToArray())) : null
+            },
+            Hotkeys = Array.AsReadOnly(settings.SystemIntegration.Hotkeys.Select(hotkey => hotkey with
+                { Encoding = Array.AsReadOnly(hotkey.Encoding.ToArray()) }).ToArray())
+        },
+        Reports = settings.Reports is { } reports
+            ? reports with { RuleOverrides = Array.AsReadOnly(reports.RuleOverrides.ToArray()) } : null,
+        MemoryProtection = settings.MemoryProtection is { } protection
+            ? protection with { Reserves = Array.AsReadOnly((protection.Reserves ?? []).ToArray()),
+                ProtectedProcesses = protection.ProtectedProcesses is null ? null! : Array.AsReadOnly(protection.ProtectedProcesses.ToArray()) } : null,
+        MemoryCpuTier = settings.MemoryCpuTier is { } tier
+            ? tier with { Overrides = new System.Collections.ObjectModel.ReadOnlyDictionary<string, JsonElement>(
+                (tier.Overrides ?? new Dictionary<string, JsonElement>()).ToDictionary(
+                    static entry => entry.Key, static entry => entry.Value.Clone(), StringComparer.Ordinal)) }
+            : null,
+        TargetedRecording = settings.TargetedRecording is { } recording
+            ? new AppTargetedRecordingSettings(Array.AsReadOnly((recording.Profiles ?? []).Select(static profile => profile with
+                { Items = Array.AsReadOnly((profile.Items ?? []).ToArray()) }).ToArray())) : null,
+        PerformanceOverlay = settings.PerformanceOverlay is { } overlay
+            ? new AppPerformanceOverlaySettings(new System.Collections.ObjectModel.ReadOnlyDictionary<string, AppPerformanceOverlaySoftwareSettings>(
+                (overlay.Software ?? new Dictionary<string, AppPerformanceOverlaySoftwareSettings>()).ToDictionary(
+                    static entry => entry.Key, static entry => entry.Value with
+                    { Items = entry.Value.Items is null ? null : Array.AsReadOnly(entry.Value.Items.ToArray()) },
+                    StringComparer.OrdinalIgnoreCase))) : null
+    };
+
+    public async IAsyncEnumerable<AppSettings> SubscribeAsync(string holder,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        // A read-scoped subscriber never repairs, migrates or backs up a settings file.
+        // The same write gate orders initial publication, registration and later commits.
+        SettingsSubscriptionHolder<AppSettings> subscription;
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!authority.Read<AppSettings>(StateItemUids.AppSettingsCurrent).HasValue)
+            {
+                var loaded = await LoadReadOnlyCoreAsync(cancellationToken);
+                await PublishCurrentAsync(OwnSettings(loaded.Settings), loaded.Source.EffectiveSha256);
+            }
+            subscription = new(authority, StateItemUids.AppSettingsCurrent, holder);
+        }
+        finally { gate.Release(); }
+        using (subscription)
+            await foreach (var value in subscription.ReadAsync(cancellationToken)) yield return value;
+    }
+
+    private async Task<LoadedSettings> LoadCoreAsync(CancellationToken cancellationToken)
+    {
+        if (!File.Exists(settingsPath))
+        {
+            var recovered = await TryRecoverMissingPrimaryAsync(
+                persist: true,
+                cancellationToken);
+            if (recovered is not null)
+            {
+                return recovered;
+            }
+
+            var defaultImage = await CreateDefaultSettingsAsync(cancellationToken);
+            var defaults = defaultImage.Settings;
+            if (defaultImage.Migrated)
+                _ = await SaveCoreAsync(defaults, validateBeforeCommit: null, cancellationToken);
+            var digest = ComputeEffectiveDigest(defaults);
+            return new LoadedSettings(
+                defaults,
+                new AppSettingsSourceMetadata(
+                    AppSettingsSourceKind.BundledFirstRun,
+                    defaults.Version,
+                    digest,
+                    digest,
+                    RewritePerformed: defaultImage.Migrated));
+        }
+
+        var sourceBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(settingsPath, cancellationToken);
+        ParsedSettingsImage image;
+        try
+        {
+            image = await ParseSettingsImageAsync(sourceBytes, settingsPath, cancellationToken);
+        }
+        catch (UnsupportedAppSettingsSchemaException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsRecoverableSettingsCorruption(exception))
+        {
+            return await RecoverFromCorruptionAsync(
+                sourceBytes,
+                exception,
+                cancellationToken);
+        }
+
+        if (image.RequiresRewrite)
+        {
+            PresentationPreferenceRemoval.PreserveLegacyImage(
+                settingsPath, sourceBytes, PresentationPreferenceRemoval.HasAppFields);
+            _ = await SaveCoreAsync(
+                image.Settings,
+                validateBeforeCommit: null,
+                cancellationToken);
+        }
+        else
+        {
+            await EnsureLastKnownGoodAsync(image.Settings, cancellationToken);
+        }
+
+        return new LoadedSettings(
+            image.Settings,
+            new AppSettingsSourceMetadata(
+                image.RequiresRewrite
+                    ? AppSettingsSourceKind.MigratedPersisted
+                    : AppSettingsSourceKind.Persisted,
+                image.SourceVersion,
+                Convert.ToHexString(SHA256.HashData(sourceBytes)),
+                ComputeEffectiveDigest(image.Settings),
+                image.RequiresRewrite));
+    }
+
+    private async Task<LoadedSettings> LoadReadOnlyCoreAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(settingsPath))
+        {
+            var recovered = await TryRecoverMissingPrimaryAsync(
+                persist: false,
+                cancellationToken);
+            if (recovered is not null)
+            {
+                return recovered;
+            }
+
+            var defaultImage = await CreateDefaultSettingsAsync(cancellationToken);
+            var defaults = defaultImage.Settings;
+            var digest = ComputeEffectiveDigest(defaults);
+            return new LoadedSettings(
+                defaults,
+                new AppSettingsSourceMetadata(
+                    AppSettingsSourceKind.BundledFirstRun,
+                    defaults.Version,
+                    digest,
+                    digest,
+                    RewritePerformed: false));
+        }
+
+        var sourceBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(settingsPath, cancellationToken);
+        try
+        {
+            var image = await ParseSettingsImageAsync(sourceBytes, settingsPath, cancellationToken);
+            return new LoadedSettings(
+                image.Settings,
+                new AppSettingsSourceMetadata(
+                    image.RequiresRewrite
+                        ? AppSettingsSourceKind.MigratedPersisted
+                        : AppSettingsSourceKind.Persisted,
+                    image.SourceVersion,
+                    image.InputSha256,
+                    ComputeEffectiveDigest(image.Settings),
+                    RewritePerformed: false)
+                {
+                    LastKnownGoodPath = lastKnownGoodPath
+                });
+        }
+        catch (UnsupportedAppSettingsSchemaException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsRecoverableSettingsCorruption(exception))
+        {
+            return await RecoverReadOnlyFromCorruptionAsync(
+                sourceBytes,
+                exception,
+                cancellationToken);
+        }
+    }
+
+    private async Task<LoadedSettings> RecoverReadOnlyFromCorruptionAsync(
+        byte[] corruptSourceBytes,
+        Exception primaryFailure,
+        CancellationToken cancellationToken)
+    {
+        if (File.Exists(lastKnownGoodPath))
+        {
+            var lastKnownGoodBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(
+                lastKnownGoodPath,
+                cancellationToken);
+            try
+            {
+                var lastKnownGood = await ParseSettingsImageAsync(
+                    lastKnownGoodBytes,
+                    lastKnownGoodPath, cancellationToken);
+                logger?.LogWarning(
+                    primaryFailure,
+                    "Application settings are corrupt; a read-only last-known-good fallback is in use without modifying persisted files.");
+                return new LoadedSettings(
+                    lastKnownGood.Settings,
+                    new AppSettingsSourceMetadata(
+                        AppSettingsSourceKind.RecoveredLastKnownGood,
+                        lastKnownGood.SourceVersion,
+                        lastKnownGood.InputSha256,
+                        ComputeEffectiveDigest(lastKnownGood.Settings),
+                        RewritePerformed: false)
+                    {
+                        RecoveryDisposition = "readOnlyLastKnownGoodFallback",
+                        LastKnownGoodPath = lastKnownGoodPath
+                    });
+            }
+            catch (UnsupportedAppSettingsSchemaException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (IsRecoverableSettingsCorruption(exception))
+            {
+                logger?.LogWarning(
+                    exception,
+                    "The application settings last-known-good image is also corrupt; read-only defaults will be used.");
+            }
+        }
+
+        var defaultImage = await CreateDefaultSettingsAsync(cancellationToken);
+        var defaults = defaultImage.Settings;
+        logger?.LogWarning(
+            primaryFailure,
+            "Application settings are corrupt; read-only defaults are in use without modifying persisted files.");
+        return new LoadedSettings(
+            defaults,
+            new AppSettingsSourceMetadata(
+                AppSettingsSourceKind.RecoveredDefaultsAfterCorruption,
+                defaults.Version,
+                Convert.ToHexString(SHA256.HashData(corruptSourceBytes)),
+                ComputeEffectiveDigest(defaults),
+                RewritePerformed: false)
+            {
+                RecoveryDisposition = "readOnlyDefaultsFallback",
+                LastKnownGoodPath = lastKnownGoodPath
+            });
+    }
+
+    private async Task<AppSettingsUpdateResult> SaveCoreAsync(
+        AppSettings settings,
+        Func<AppSettingsUpdateResult, CancellationToken, Task>? validateBeforeCommit,
+        CancellationToken cancellationToken)
+    {
+        var directory = Path.GetDirectoryName(settingsPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var payload = JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions);
+        var temporaryPath = $"{settingsPath}.{Guid.NewGuid():N}.tmp";
+        var committed = false;
+        try
+        {
+            await using (var stream = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                64 * 1024,
+                FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await stream.WriteAsync(payload, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+                stream.Flush(flushToDisk: true);
+            }
+
+            await ValidateImageAsync(temporaryPath, payload, cancellationToken);
+            var staged = new AppSettingsUpdateResult(
+                settings,
+                File.GetLastWriteTimeUtc(temporaryPath),
+                settingsPath,
+                CreateSavedSource(settings));
+            if (validateBeforeCommit is not null)
+            {
+                await validateBeforeCommit(staged, cancellationToken);
+            }
+
+            WindowsNativeAtomicFileCommitter.CommitReplace(temporaryPath, settingsPath);
+            committed = true;
+            cachedSettings = null;
+            cachedSource = null;
+            await ValidateImageAsync(settingsPath, payload, cancellationToken);
+            var committedUpdatedAt = new DateTimeOffset(
+                File.GetLastWriteTimeUtc(settingsPath),
+                TimeSpan.Zero);
+            if (committedUpdatedAt != staged.UpdatedAt)
+            {
+                throw new InvalidDataException(
+                    "The committed application settings timestamp differs from the validated candidate.");
+            }
+            await WriteLastKnownGoodAsync(payload, cancellationToken);
+            return staged;
+        }
+        catch (Exception exception) when (committed)
+        {
+            throw new AppSettingsCommitAmbiguousException(
+                "The application settings replacement committed, but strict post-commit validation failed.",
+                exception);
+        }
+        finally
+        {
+            _ = WindowsNativeAtomicFileCommitter.DeleteExact(temporaryPath);
+        }
+    }
+
+    private static async Task ValidateImageAsync(
+        string path,
+        byte[] expectedPayload,
+        CancellationToken cancellationToken)
+    {
+        var committedPayload = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(path, cancellationToken);
+        var committed = JsonSerializer.Deserialize<AppSettings>(committedPayload, JsonOptions)
+            ?? throw new InvalidDataException(
+                "The application settings image is empty.");
+        var normalizedReadback = AppSettingsNormalizer.Normalize(committed);
+        var normalizedReadbackPayload =
+            JsonSerializer.SerializeToUtf8Bytes(normalizedReadback, JsonOptions);
+        if (!normalizedReadbackPayload.AsSpan().SequenceEqual(expectedPayload))
+        {
+            throw new InvalidDataException(
+                "The application settings image failed strict readback validation.");
+        }
+    }
+
+    private static AppSettingsSourceMetadata CreateSavedSource(AppSettings settings)
+    {
+        var digest = ComputeEffectiveDigest(settings);
+        return new AppSettingsSourceMetadata(
+            AppSettingsSourceKind.SavedPersisted,
+            settings.Version,
+            digest,
+            digest,
+            RewritePerformed: false);
+    }
+
+    private static string ComputeEffectiveDigest(AppSettings settings)
+        => Convert.ToHexString(SHA256.HashData(
+            JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions)));
+
+    private sealed record LoadedSettings(
+        AppSettings Settings,
+        AppSettingsSourceMetadata Source);
+
+    private sealed record ParsedSettingsImage(
+        AppSettings Settings,
+        string SourceVersion,
+        bool RequiresRewrite,
+        string InputSha256);
+
+    private async Task<LoadedSettings> RecoverFromCorruptionAsync(
+        byte[] corruptSourceBytes,
+        Exception primaryFailure,
+        CancellationToken cancellationToken)
+    {
+        ParsedSettingsImage? lastKnownGood = null;
+        byte[]? lastKnownGoodBytes = null;
+        Exception? lastKnownGoodFailure = null;
+        if (File.Exists(lastKnownGoodPath))
+        {
+            lastKnownGoodBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(
+                lastKnownGoodPath,
+                cancellationToken);
+            try
+            {
+                lastKnownGood = await ParseSettingsImageAsync(
+                    lastKnownGoodBytes,
+                    lastKnownGoodPath, cancellationToken);
+            }
+            catch (UnsupportedAppSettingsSchemaException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (IsRecoverableSettingsCorruption(exception))
+            {
+                lastKnownGoodFailure = exception;
+            }
+        }
+
+        var quarantinePath = await CreateQuarantineArtifactAsync(
+            settingsPath,
+            "corrupt",
+            corruptSourceBytes,
+            cancellationToken);
+        logger?.LogError(
+            primaryFailure,
+            "Application settings were corrupt and quarantined at {QuarantinePath}.",
+            quarantinePath);
+
+        if (lastKnownGood is not null)
+        {
+            _ = await SaveCoreAsync(
+                lastKnownGood.Settings,
+                validateBeforeCommit: null,
+                cancellationToken);
+            logger?.LogWarning(
+                "Application settings were restored from last-known-good image {LastKnownGoodPath}.",
+                lastKnownGoodPath);
+            return new LoadedSettings(
+                lastKnownGood.Settings,
+                new AppSettingsSourceMetadata(
+                    AppSettingsSourceKind.RecoveredLastKnownGood,
+                    lastKnownGood.SourceVersion,
+                    lastKnownGood.InputSha256,
+                    ComputeEffectiveDigest(lastKnownGood.Settings),
+                    lastKnownGood.RequiresRewrite)
+                {
+                    RecoveryDisposition = "recoveredLastKnownGood",
+                    RecoveryArtifactPath = quarantinePath,
+                    LastKnownGoodPath = lastKnownGoodPath
+                });
+        }
+
+        if (lastKnownGoodBytes is not null && lastKnownGoodFailure is not null)
+        {
+            var lastKnownGoodQuarantinePath = await CreateQuarantineArtifactAsync(
+                lastKnownGoodPath,
+                "last-good-corrupt",
+                lastKnownGoodBytes,
+                cancellationToken);
+            logger?.LogError(
+                lastKnownGoodFailure,
+                "The last-known-good application settings image was also corrupt and was quarantined at {QuarantinePath}.",
+                lastKnownGoodQuarantinePath);
+        }
+
+        var defaultImage = await CreateDefaultSettingsAsync(cancellationToken);
+        var defaults = defaultImage.Settings;
+        _ = await SaveCoreAsync(
+            defaults,
+            validateBeforeCommit: null,
+            cancellationToken);
+        logger?.LogWarning(
+            "Application settings were restored to safe defaults because no valid last-known-good image existed.");
+        return new LoadedSettings(
+            defaults,
+            new AppSettingsSourceMetadata(
+                AppSettingsSourceKind.RecoveredDefaultsAfterCorruption,
+                defaults.Version,
+                Convert.ToHexString(SHA256.HashData(corruptSourceBytes)),
+                ComputeEffectiveDigest(defaults),
+                RewritePerformed: true)
+            {
+                RecoveryDisposition = "recoveredDefaultsAfterCorruption",
+                RecoveryArtifactPath = quarantinePath,
+                LastKnownGoodPath = lastKnownGoodPath
+            });
+    }
+
+    private async Task EnsureLastKnownGoodAsync(
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var payload = JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions);
+            await WriteLastKnownGoodAsync(payload, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger?.LogWarning(exception,
+                "The validated primary application settings are in use; backup maintenance failed at {BackupPath}.",
+                lastKnownGoodPath);
+        }
+    }
+
+    private async Task<LoadedSettings?> TryRecoverMissingPrimaryAsync(
+        bool persist,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(lastKnownGoodPath))
+        {
+            return null;
+        }
+
+        var sourceBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(lastKnownGoodPath, cancellationToken);
+        ParsedSettingsImage image;
+        try
+        {
+            image = await ParseSettingsImageAsync(sourceBytes, lastKnownGoodPath, cancellationToken);
+        }
+        catch (UnsupportedAppSettingsSchemaException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsRecoverableSettingsCorruption(exception))
+        {
+            logger?.LogWarning(
+                exception,
+                "The application settings primary is missing and its last-known-good image is invalid; bundled defaults will be used.");
+            return null;
+        }
+
+        if (persist)
+        {
+            _ = await SaveCoreAsync(
+                image.Settings,
+                validateBeforeCommit: null,
+                cancellationToken);
+        }
+
+        logger?.LogWarning(
+            "The application settings primary was missing and was recovered from {LastKnownGoodPath}.",
+            lastKnownGoodPath);
+        return new LoadedSettings(
+            image.Settings,
+            new AppSettingsSourceMetadata(
+                AppSettingsSourceKind.RecoveredLastKnownGood,
+                image.SourceVersion,
+                image.InputSha256,
+                ComputeEffectiveDigest(image.Settings),
+                RewritePerformed: persist)
+            {
+                RecoveryDisposition = persist
+                    ? "recoveredMissingPrimaryFromLastKnownGood"
+                    : "readOnlyMissingPrimaryLastKnownGoodFallback",
+                LastKnownGoodPath = lastKnownGoodPath
+            });
+    }
+
+    private async Task WriteLastKnownGoodAsync(
+        byte[] payload,
+        CancellationToken cancellationToken)
+    {
+        if (File.Exists(lastKnownGoodPath))
+        {
+            var existing = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(lastKnownGoodPath, cancellationToken);
+            if (existing.AsSpan().SequenceEqual(payload))
+            {
+                return;
+            }
+        }
+
+        var temporaryPath = $"{lastKnownGoodPath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await WriteDurableImageAsync(temporaryPath, payload, cancellationToken);
+            await ValidateImageAsync(temporaryPath, payload, cancellationToken);
+            WindowsNativeAtomicFileCommitter.CommitReplace(
+                temporaryPath,
+                lastKnownGoodPath);
+            await ValidateImageAsync(lastKnownGoodPath, payload, cancellationToken);
+        }
+        finally
+        {
+            _ = WindowsNativeAtomicFileCommitter.DeleteExact(temporaryPath);
+        }
+    }
+
+    private static async Task WriteDurableImageAsync(
+        string path,
+        byte[] payload,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            path,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            64 * 1024,
+            FileOptions.Asynchronous | FileOptions.WriteThrough);
+        await stream.WriteAsync(payload, cancellationToken);
+        await stream.FlushAsync(cancellationToken);
+        stream.Flush(flushToDisk: true);
+    }
+
+    private async Task<(AppSettings Settings, bool Migrated)> CreateDefaultSettingsAsync(
+        CancellationToken cancellationToken)
+    {
+        var defaults = AppSettingsDefaults.Create();
+        var legacy = await ReadLegacyNormalActionsAllowedAsync(cancellationToken);
+        return (defaults with { NormalActionsAllowed = legacy ?? defaults.NormalActionsAllowed }, legacy.HasValue);
+    }
+
+    // Upgrade-only bridge. Once the property has been saved it is never read from key state again.
+    // The privilege upgrade must complete LoadAsync before deleting the legacy Security directory.
+    private async Task<bool?> ReadLegacyNormalActionsAllowedAsync(CancellationToken cancellationToken)
+    {
+        if (legacyTrustedAccessStore is null || !legacyTrustedAccessStore.DatabaseExists) return null;
+        try
+        {
+            return await legacyTrustedAccessStore.ReadDefaultEnabledAsync(cancellationToken);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            // A failed legacy read must not be mistaken for corrupt settings and recovered as enabled.
+            throw new IOException("The legacy normal-action choice could not be migrated.", error);
+        }
+    }
+
+    private async Task<ParsedSettingsImage> ParseSettingsImageAsync(
+        byte[] sourceBytes,
+        string sourcePath, CancellationToken cancellationToken)
+    {
+        using var document = JsonDocument.Parse(sourceBytes);
+        if (document.RootElement.ValueKind != JsonValueKind.Object
+            || !document.RootElement.TryGetProperty("version", out var versionElement)
+            || versionElement.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(versionElement.GetString()))
+        {
+            throw new InvalidDataException(
+                $"The settings file '{sourcePath}' has no valid version identity.");
+        }
+
+        var sourceVersion = versionElement.GetString()!;
+        if (!AppSettingsMigrator.SupportsSourceVersion(sourceVersion))
+        {
+            throw new UnsupportedAppSettingsSchemaException(
+                $"The settings file '{sourcePath}' uses unsupported schema '{sourceVersion}'.");
+        }
+
+        var missingNormalActions = !document.RootElement.TryGetProperty("normalActionsAllowed", out _);
+        var requiresRewrite = missingNormalActions || AppSettingsMigrator.RequiresRewrite(document.RootElement);
+        var legacyNormalActions = missingNormalActions
+            ? await ReadLegacyNormalActionsAllowedAsync(cancellationToken) : null;
+        var settings = AppSettingsMigrator.MigrateForRead(document.RootElement, legacyNormalActions);
+        return new ParsedSettingsImage(
+            settings,
+            sourceVersion,
+            requiresRewrite,
+            Convert.ToHexString(SHA256.HashData(sourceBytes)));
+    }
+
+    private static bool IsRecoverableSettingsCorruption(Exception exception)
+        => (exception is JsonException || exception is InvalidDataException)
+            && exception is not UnsupportedAppSettingsSchemaException;
+
+    private static async Task<string> CreateQuarantineArtifactAsync(
+        string sourcePath,
+        string disposition,
+        byte[] sourceBytes,
+        CancellationToken cancellationToken)
+    {
+        var directory = Path.GetDirectoryName(sourcePath)
+            ?? throw new InvalidOperationException(
+                "The application settings file has no parent directory.");
+        var digest = Convert.ToHexString(SHA256.HashData(sourceBytes));
+        var quarantinePath = Path.Combine(
+            directory,
+            $"{Path.GetFileNameWithoutExtension(sourcePath)}.{disposition}." +
+            $"{DateTime.UtcNow:yyyyMMddTHHmmssfffffffZ}.{digest[..16]}." +
+            $"{Guid.NewGuid():N}{Path.GetExtension(sourcePath)}");
+        var temporaryPath = $"{quarantinePath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await WriteDurableImageAsync(temporaryPath, sourceBytes, cancellationToken);
+            var staged = await File.ReadAllBytesAsync(temporaryPath, cancellationToken);
+            if (!staged.AsSpan().SequenceEqual(sourceBytes))
+            {
+                throw new InvalidDataException(
+                    "The application settings quarantine artifact failed strict readback validation.");
+            }
+
+            WindowsNativeAtomicFileCommitter.CommitNew(temporaryPath, quarantinePath);
+            var committed = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(quarantinePath, cancellationToken);
+            if (!committed.AsSpan().SequenceEqual(sourceBytes))
+            {
+                throw new InvalidDataException(
+                    "The committed application settings quarantine artifact differs from the source bytes.");
+            }
+
+            return quarantinePath;
+        }
+        finally
+        {
+            _ = WindowsNativeAtomicFileCommitter.DeleteExact(temporaryPath);
+        }
+    }
+
+    private static string ResolveSettingsPath(string contentRootPath)
+    {
+        var packageRoot = PackagePathResolver.ResolvePackageRoot(contentRootPath);
+        return Path.Combine(packageRoot, "Config", "app-settings.json");
+    }
+
+    private static string ResolveLastKnownGoodPath(string canonicalPath)
+    {
+        var directory = Path.GetDirectoryName(canonicalPath)
+            ?? throw new InvalidOperationException(
+                "The application settings path has no parent directory.");
+        return Path.Combine(
+            directory,
+            $"{Path.GetFileNameWithoutExtension(canonicalPath)}.last-good" +
+            Path.GetExtension(canonicalPath));
+    }
+}
+
+internal sealed class AppSettingsCommitAmbiguousException(
+    string message,
+    Exception innerException) : IOException(message, innerException);
+
+internal sealed class UnsupportedAppSettingsSchemaException(string message)
+    : IOException(message);

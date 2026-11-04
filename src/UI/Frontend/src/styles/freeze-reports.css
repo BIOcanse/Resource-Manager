@@ -1,0 +1,388 @@
+/* Share report panel styling; transitions and animation belong in motion.css. */
+.freeze-report {
+  --settings-number-width: 140px;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+.freeze-report-stage,
+.freeze-report-subpage {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.freeze-report-header {
+  margin: 0;
+  padding: 0;
+}
+
+.freeze-report-header-actions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.panel-header.freeze-report-subpage-header {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.freeze-report-subpage-title {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.freeze-report-subpage-title:focus {
+  outline: none;
+}
+
+.freeze-report-subpage .user-details-section h4 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.freeze-report-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.freeze-report-note.warning {
+  color: var(--warn);
+}
+
+/* Reserve three summary cells before data arrives. */
+.freeze-report-summary {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+  gap: 8px;
+}
+
+.freeze-report-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 8px 10px;
+}
+
+.freeze-report-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.freeze-report-summary dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+
+.freeze-report-gaps {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.freeze-report-gaps-title {
+  margin: 0;
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.freeze-report-gaps ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.freeze-report-items,
+.freeze-report-events {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.freeze-report-item,
+.freeze-report-event {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 10px 12px;
+}
+
+.freeze-report-item.history {
+  background: transparent;
+}
+
+.freeze-report-item-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.freeze-report-item-title,
+.freeze-report-event-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.freeze-report-item-tags {
+  flex: none;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.freeze-report-tag-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.freeze-report-tag {
+  flex: none;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+
+.freeze-report-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
+}
+
+.freeze-report-facts > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 6px 8px;
+}
+
+.freeze-report-facts dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.freeze-report-facts dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.freeze-report-xml summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.freeze-report-xml pre {
+  max-height: 320px;
+  margin: 6px 0 0;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 8px;
+  color: var(--text);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+
+.freeze-report-tag-details {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  font-size: 13px;
+}
+
+.freeze-report-tag-details > div {
+  display: contents;
+}
+
+.freeze-report-tag-details dt {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.freeze-report-tag-details dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* Keep chart dimensions unchanged while loading or empty. */
+.freeze-curves {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.freeze-curve {
+  min-width: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 8px 10px;
+}
+
+.freeze-curve figcaption {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 10px;
+  font-size: 12px;
+}
+
+.freeze-curve figcaption strong {
+  color: var(--text);
+}
+
+.freeze-curve figcaption span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.freeze-curve svg {
+  width: 100%;
+  height: 64px;
+  overflow: visible;
+}
+
+.freeze-curve polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.freeze-curve circle {
+  fill: var(--accent);
+}
+
+
+.freeze-settings-result {
+  min-height: 1.5em;
+}
+
+.freeze-settings-lock {
+  color: var(--warn);
+}
+
+.freeze-settings-readonly {
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Match setting placeholders to numeric input dimensions. */
+.freeze-settings-control-placeholder {
+  width: var(--settings-number-width);
+  height: 54px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.freeze-settings-lines {
+  resize: vertical;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+.freeze-rule-table {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.freeze-rule-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(150px, 1fr) minmax(150px, 1fr) max-content;
+  align-items: center;
+  gap: 6px;
+  min-width: 860px;
+}
+
+.freeze-rule-row .settings-text-field {
+  width: 100%;
+}
+
+.freeze-rule-head {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.freeze-rule-actions {
+  display: flex;
+  justify-content: flex-start;
+}

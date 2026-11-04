@@ -1,0 +1,16 @@
+{
+  "schema": "resource-manager/control-tree-sdk/v1",
+  "version": "0.1.0-dev.1",
+  "sourceCommit": "079a66e26a41d1fd2fa33a69e9e3425cd2123e77",
+  "zigVersion": "0.17.0",
+  "manifest": {
+    "file": "manifest.0.1.0-dev.1.json",
+    "length": 14206,
+    "sha256": "2c369aa91231832fb25373d0177414aab3bca9e5e1a1233997e321cd3553a511"
+  },
+  "archive": {
+    "file": "ControlTree.Sources.0.1.0-dev.1.zip",
+    "length": 127806,
+    "sha256": "2b36c59f7f6e70b396d81b07d48280a374d711057aa5dcd30b3f6a3e9754caa5"
+  }
+}

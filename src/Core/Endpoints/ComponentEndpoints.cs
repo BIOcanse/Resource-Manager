@@ -1,0 +1,113 @@
+using ResourceManager.App.Application.Adaptation;
+using ResourceManager.App.Application.Components;
+using ResourceManager.App.Application.Controlled;
+using ResourceManager.App.Application.CpuTopology;
+using ResourceManager.App.Application.Dependencies;
+using ResourceManager.App.Application.GpuPlacement;
+using ResourceManager.App.Application.LocalSystem;
+using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Application.Optimization;
+using ResourceManager.App.Application.Operations;
+using ResourceManager.App.Application.ResourceBreakdown;
+using ResourceManager.App.Application.ResourceTable;
+using ResourceManager.App.Application.Settings;
+using ResourceManager.App.Application.Software;
+using ResourceManager.App.Domain.Adaptation;
+using ResourceManager.App.Domain.Components;
+using ResourceManager.App.Domain.Controlled;
+using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Domain.LocalSystem;
+using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Domain.ResourceTable;
+using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Infrastructure.Operations;
+using ResourceManager.App.Hosting.StartupCapabilities;
+using ResourceManager.App.Endpoints.Transport;
+
+namespace ResourceManager.App.Endpoints;
+
+public static partial class ResourceManagerEndpointRouteBuilderExtensions
+{
+    private static IEndpointRouteBuilder MapComponentEndpoints(
+        this IEndpointRouteBuilder app,
+        StartupCapabilitySet startupCapabilities)
+    {
+        // Statuses come from the held dependency probe; ?refresh=true probes the files again.
+        app.MapGet("/api/components", async (
+            HttpContext context,
+            bool? refresh,
+            IComponentManager componentManager,
+            IOptionalDependencyManager dependencyManager,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryReadInteractiveCaller(context, out var caller))
+                return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
+            if (refresh == true) dependencyManager.InvalidateStatuses();
+            return Results.Ok(await componentManager.GetStatusesAsync(caller.WindowsSid, cancellationToken));
+        }).AllowAnonymous();
+
+        // 版本对话框的数据源：已验证版本 + 最新版本。最新版本解析失败时该项带原因返回，
+        // 不会让整个请求失败，界面仍然可以选已验证版本。
+        app.MapGet("/api/components/{id}/versions", async (
+            string id,
+            IOptionalDependencyManager dependencyManager,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await dependencyManager.GetVersionOptionsAsync(id, cancellationToken));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.NotFound(new EndpointErrorPayload(ex.Message));
+            }
+        }).AllowAnonymous();
+
+        if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
+        {
+            app.MapPost("/api/components/{id}/install", async (
+            string id,
+            ComponentActionRequest request,
+            HttpContext context,
+            IHostManagerOperationCommandService operationService,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryReadInteractiveCaller(context, out var caller))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            try
+            {
+                return Results.Ok(HostManagerOperationWireProjection.Project(
+                    await operationService.SubmitAsync(
+                    HostManagerOperationRequestCodec.ComponentInstall(id, request,
+                        caller),
+                    cancellationToken)));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
+            }
+            });
+
+            app.MapPost("/api/components/{id}/verify", async (
+            string id,
+            IComponentManager componentManager,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await componentManager.VerifyAsync(id, cancellationToken));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
+            }
+            });
+        }
+
+        return app;
+    }
+}

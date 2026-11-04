@@ -1,0 +1,115 @@
+/* Share --segment-* appearance tokens across value selectors; local classes own geometry. */
+
+:root {
+  --segment-track-bg: var(--line);
+  --segment-track-border: var(--line);
+  --segment-track-radius: var(--radius-sm);
+  --segment-radius: 0;
+  --segment-bg: var(--surface);
+  --segment-fg: var(--muted);
+  --segment-bg-hover: var(--surface-strong);
+  --segment-fg-hover: var(--text);
+  --segment-active-bg: var(--accent);
+  --segment-active-fg: var(--on-accent);
+  --segment-active-shadow: none;
+  --segment-disabled-bg: var(--control-disabled-bg);
+  --segment-disabled-fg: var(--control-disabled-text);
+  --segment-active-disabled-bg: var(--control-disabled-bg);
+  --segment-active-disabled-fg: var(--control-disabled-text);
+}
+
+.segmented {
+  border: 1px solid var(--segment-track-border);
+  border-radius: var(--segment-track-radius);
+  overflow: hidden;
+  background: var(--segment-track-bg);
+}
+
+/* Track-colored gaps separate segments. */
+.segment {
+  border: 0;
+  border-radius: var(--segment-radius);
+  background: var(--segment-bg);
+  color: var(--segment-fg);
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.segment:not(.active):not(:disabled):hover {
+  background: var(--segment-bg-hover);
+  color: var(--segment-fg-hover);
+}
+
+.segment.active {
+  background: var(--segment-active-bg);
+  color: var(--segment-active-fg);
+  box-shadow: var(--segment-active-shadow);
+}
+
+/* Draw focus rings inside the clipped track using segment text color for contrast. */
+.segment:focus-visible {
+  outline-color: var(--text);
+  outline-offset: -2px;
+}
+
+.segment.active:focus-visible {
+  outline-color: var(--segment-active-fg);
+}
+
+/* Stack segment backgrounds below the sliding indicator and mix text color using --tab-cover. */
+
+.segment-indicator {
+  border-radius: var(--segment-radius);
+  background: var(--segment-active-bg);
+  box-shadow: var(--segment-active-shadow);
+}
+
+.has-selection-indicator:has(.segment.active:disabled) > .segment-indicator {
+  background: var(--segment-active-disabled-bg);
+  box-shadow: none;
+}
+
+.has-selection-indicator .segment {
+  --tab-cover: 0;
+  position: relative;
+  color: color-mix(in oklab, var(--segment-active-fg) calc(var(--tab-cover) * 100%), var(--segment-fg));
+}
+
+.has-selection-indicator .segment.active {
+  --tab-cover: 1;
+}
+
+.has-selection-indicator .segment,
+.has-selection-indicator .segment.active,
+.has-selection-indicator .segment:not(.active):not(:disabled):hover,
+.has-selection-indicator .segment:disabled:disabled {
+  background: transparent;
+  box-shadow: none;
+}
+
+.has-selection-indicator .segment:not(.active):not(:disabled):hover {
+  color: color-mix(in oklab, var(--segment-active-fg) calc(var(--tab-cover) * 100%), var(--segment-fg-hover));
+}
+
+.has-selection-indicator .segment:disabled:disabled {
+  color: color-mix(in oklab, var(--segment-active-disabled-fg) calc(var(--tab-cover) * 100%), var(--segment-disabled-fg));
+}
+
+.has-selection-indicator .segment::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: inherit;
+  background: var(--segment-bg);
+  pointer-events: none;
+}
+
+.has-selection-indicator .segment:not(.active):not(:disabled):hover::before {
+  background: var(--segment-bg-hover);
+}
+
+.has-selection-indicator .segment:disabled::before {
+  background: var(--segment-disabled-bg);
+}

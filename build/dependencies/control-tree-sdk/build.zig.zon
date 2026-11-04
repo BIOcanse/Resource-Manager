@@ -1,0 +1,1 @@
+.{ .fingerprint = 0x5cf02501b0e6f237, .name = .rm_control_tree_sdk, .version = "0.1.0-dev.1", .minimum_zig_version = "0.17.0", .paths = .{""} }

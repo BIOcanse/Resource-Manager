@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <DesktopNativeRoot>$(MSBuildThisFileDirectory)..\..\..\src\UI\Desktop</DesktopNativeRoot>
+    <DesktopNativeZigExecutable Condition="'$(DesktopNativeZigExecutable)' == ''">zig</DesktopNativeZigExecutable>
+    <DesktopNativeOptimize Condition="'$(DesktopNativeOptimize)' == '' and '$(Configuration)' == 'Debug'">Debug</DesktopNativeOptimize>
+    <DesktopNativeOptimize Condition="'$(DesktopNativeOptimize)' == ''">ReleaseFast</DesktopNativeOptimize>
+    <ResourceManagerDesktopInteropInstallRoot Condition="'$(ResourceManagerDesktopInteropInstallRoot)' == ''">$(DesktopNativeRoot)\zig-out\interop\$(DesktopNativeOptimize)</ResourceManagerDesktopInteropInstallRoot>
+    <DesktopNativeOutput>$(ResourceManagerDesktopInteropInstallRoot)\bin\ResourceManager.Desktop.Native.dll</DesktopNativeOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <DesktopNativeSource Include="$(DesktopNativeRoot)\build.zig;$(DesktopNativeRoot)\src\desktop_native_abi.zig;$(DesktopNativeRoot)\src\launcher\*.zig;$(DesktopNativeRoot)\src\window_process\*.zig" />
+    <DesktopNativeSource Include="$(MSBuildThisFileFullPath)" />
+    <None Include="$(DesktopNativeOutput)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always"
+          TargetPath="ResourceManager.Desktop.Native.dll" ExcludeFromSingleFile="true" Visible="false" />
+  </ItemGroup>
+  <Target Name="BuildDesktopNativeInterop" BeforeTargets="PrepareForBuild;AssignTargetPaths;GetCopyToOutputDirectoryItems"
+          Inputs="@(DesktopNativeSource)" Outputs="$(DesktopNativeOutput)" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(DesktopNativeRoot)"
+          Command="&quot;$(DesktopNativeZigExecutable)&quot; build desktop-native -j$(ResourceManagerZigJobs) -Dinterop-only=true -Doptimize=$(DesktopNativeOptimize) --prefix &quot;$(ResourceManagerDesktopInteropInstallRoot)&quot;" />
+  </Target>
+</Project>

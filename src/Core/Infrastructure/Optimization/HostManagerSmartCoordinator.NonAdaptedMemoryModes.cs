@@ -1,0 +1,69 @@
+using System.Collections.Immutable;
+using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Infrastructure.NativeCore;
+
+namespace ResourceManager.App.Infrastructure.Optimization;
+
+public sealed partial class HostManagerSmartCoordinator
+{
+    private HostManagerNonAdaptedMemoryModeProjectionSnapshot? lastNonAdaptedMemoryModeProjection;
+
+    internal HostManagerNonAdaptedMemoryModeProjectionSnapshot? NonAdaptedMemoryModeProjection
+        => Volatile.Read(ref lastNonAdaptedMemoryModeProjection);
+
+    private HostManagerNonAdaptedMemoryModeProjectionSnapshot ProjectNonAdaptedMemoryModes(
+        HostManagerComputeScoringCycleResult compute,
+        HostManagerMemoryModeDesiredSnapshot memoryModes,
+        HostManagerSample sample,
+        HostManagerMemoryModePolicy policy)
+    {
+        var members = compute.Cpu!.Scores
+            .Where(static score => score.Kind == NativeComputeScoringOutputKind.ProcessCpu)
+            .Select(static score => new HostManagerComputeProcessIdentity(score.ProcessId, score.ProcessStartKey))
+            .ToHashSet();
+        var capabilities = ImmutableArray.CreateBuilder<HostManagerNonAdaptedMemoryProcessCapability>(
+            members.Count);
+        foreach (var target in sample.Targets)
+        {
+            if (target.ProcessIds.Count != 1)
+            {
+                continue; // The runtime-fact boundary already diagnosed this excluded target.
+            }
+
+            var processId = target.ProcessIds[0];
+            if (!target.ProcessStartKeys.TryGetValue(processId, out var processStartKey)
+                || processStartKey == 0)
+            {
+                continue;
+            }
+            if (!members.Contains(new HostManagerComputeProcessIdentity(processId, processStartKey)))
+            {
+                continue;
+            }
+
+            // Omission also restores an already-owned priority through the existing projection-gap transaction.
+            capabilities.Add(new(
+                processId,
+                processStartKey,
+                target.SoftwareId,
+                target.CanApplyAutomaticPolicy
+                    && target.BaseScore < policy.Configuration.HighTierMinimumBaseScore
+                    && !target.GpuPlacementPolicy.MemorySchedulingExcluded));
+        }
+
+        return HostManagerNonAdaptedMemoryModeProjection.Create(
+            compute,
+            memoryModes,
+            sample.ProcessFacts,
+            capabilities.ToImmutable(),
+            policy.OptimizeMemoryPriority,
+            policy.PagedFrozenMemoryPriority);
+    }
+
+    private void PublishNonAdaptedMemoryModeProjection(
+        HostManagerNonAdaptedMemoryModeProjectionSnapshot projection)
+        => Volatile.Write(ref lastNonAdaptedMemoryModeProjection, projection);
+
+    private void ClearNonAdaptedMemoryModeProjection()
+        => Volatile.Write(ref lastNonAdaptedMemoryModeProjection, null);
+}

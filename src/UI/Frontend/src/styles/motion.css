@@ -1,0 +1,539 @@
+/* Animation styles and motion categories are registered in presentation/animationStyle.ts. */
+
+:root {
+  --motion-fast: 100ms;
+  --motion-medium: 180ms;
+  --motion-page: 260ms;
+  --motion-panel: 300ms;
+  --motion-bar: 360ms;
+  --ease-decel: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* Use near-linear easing for continuously updated bar widths. */
+  --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
+}
+
+/* Smooth motion uses softer timing; retain bar easing to avoid restarting each update. */
+body[data-animations="smooth"] {
+  --motion-fast: 150ms;
+  --motion-medium: 260ms;
+  --motion-page: 380ms;
+  --motion-panel: 420ms;
+  --motion-bar: 480ms;
+  --ease-decel: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.1, 1);
+  --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
+}
+
+
+body[data-animations="desktop"] {
+  --motion-fast: 100ms;
+  --motion-medium: 180ms;
+  --motion-page: 260ms;
+  --motion-panel: 300ms;
+  --motion-bar: 360ms;
+  --ease-decel: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
+}
+
+/* Terminal motion uses fixed steps with the standard duration. */
+body[data-animations="terminal"] {
+  --motion-fast: 100ms;
+  --motion-medium: 180ms;
+  --motion-page: 260ms;
+  --motion-panel: 300ms;
+  --motion-bar: 360ms;
+  --ease-decel: steps(4, end);
+  --ease-standard: steps(4, end);
+  --ease-bar: steps(4, end);
+}
+
+
+body[data-animations="none"],
+body[data-animations="ultra"] {
+  --motion-fast: 0ms;
+  --motion-medium: 0ms;
+  --motion-page: 0ms;
+  --motion-panel: 0ms;
+  --motion-bar: 0ms;
+  --ease-decel: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
+}
+
+/* Translate scroll children for edge rubber-banding without moving layout or the scroll container. */
+[data-edge-band] > * {
+  translate: 0 var(--edge-band, 0px);
+}
+
+/* Place resize overrides after style tokens so equal specificity wins. */
+body[data-window-resizing="yes"] {
+  --motion-fast: 0ms;
+  --motion-medium: 0ms;
+  --motion-page: 0ms;
+  --motion-panel: 0ms;
+  --motion-bar: 0ms;
+}
+
+/* Enter with opacity only so hit targets and focus remain at final geometry from the first frame. */
+@keyframes motion-fade-in {
+  from { opacity: 0; }
+}
+
+
+button {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+:where(body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"])) button:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+/* Indicator coverage drives text color; scaling would create a stacking context above the indicator. */
+.has-selection-indicator .page-tab,
+.has-selection-indicator .segment {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.has-selection-indicator .page-tab::before,
+.has-selection-indicator .segment::before,
+.page-tab-indicator,
+.segment-indicator {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+:where(body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"])) .has-selection-indicator .page-tab:active,
+:where(body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"])) .has-selection-indicator .segment:active {
+  transform: none;
+}
+
+input,
+select,
+textarea {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+/* The interaction runtime drives switch geometry and colors; do not add CSS transitions. */
+
+
+.resource-table-head-cell,
+.resource-table-column-resizer::after,
+.cpu-core,
+.cpu-ccd,
+.settings-credit-link,
+.settings-credit-source,
+.ui-disclosure-header {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+.fan-curve-point {
+  transition: fill var(--motion-fast) var(--ease-standard);
+}
+
+/* The presentation layer owns page and panel transitions; avoid CSS entry animations. */
+/* The presentation layer animates dialogs and backdrops. */
+
+.toast {
+  animation: motion-fade-in var(--motion-page) var(--ease-decel);
+}
+
+.standard-select-popover,
+.standard-context-menu,
+.disk-usage-context-menu,
+.help-hint-popover,
+.hover-tooltip {
+  animation: motion-fade-in var(--motion-fast) var(--ease-decel);
+}
+
+
+/* Use device-pixel geometry for segment transitions without promoting each segment to a layer. */
+.resource-segment,
+.resource-process-segment,
+.resource-segment-empty {
+  transition: box-shadow var(--motion-medium) var(--ease-standard);
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-segment-layer.motion-segment {
+  transition:
+    transform var(--motion-bar) var(--ease-bar),
+    width var(--motion-bar) var(--ease-bar);
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-segment-layer.motion-segment > .resource-segment,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-segment-layer.motion-segment > .resource-process-segment,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-segment-layer.motion-segment > .resource-segment-empty {
+  transition: box-shadow var(--motion-medium) var(--ease-standard);
+}
+
+/* Fade tooltips only on mount; moving between segments updates their content in place. */
+.resource-tooltip {
+  animation: motion-fade-in var(--motion-fast) var(--ease-standard);
+}
+
+/* Key panels by softwareId so segment changes replay entry while updates retain the node. */
+.resource-process-panel {
+  animation: motion-fade-in var(--motion-panel) var(--ease-decel);
+}
+
+
+/* Transition state tint only; recycled rows change their base color immediately. */
+.resource-table-row {
+  transition: --row-tint-amount var(--motion-fast) var(--ease-standard);
+}
+
+/* Animate arrow rotation only in motion-enabled styles; process rows use presentation entry and exit slots. */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-row-expander svg {
+  transition: transform var(--motion-medium) var(--ease-standard);
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-table-row[data-enter-slot="row"] > .resource-table-cell {
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
+}
+
+/* Expanded content takes its final layout immediately and fades in. */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .ui-disclosure-content[data-enter-slot="disclosure"] {
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
+}
+
+
+.resource-table-sort-indicator {
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-table-sort-indicator {
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-standard);
+}
+
+/* Pulse loading bars until the first reading, then replace them without animating subsequent values. */
+@keyframes motion-pending-pulse {
+  50% { opacity: 0.45; }
+}
+
+.metric-pending-bar {
+  animation: motion-pending-pulse 1200ms ease-in-out infinite;
+}
+
+.metric-value:not(.pending) {
+  animation: motion-fade-in var(--motion-medium) var(--ease-standard);
+}
+
+
+.metric-card {
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-medium) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+
+.slot-actions {
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+
+
+.management-card {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-medium) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.management-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
+  background: color-mix(in oklab, var(--surface-soft) 88%, var(--accent-soft));
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-card:hover {
+  box-shadow: var(--elev-2), var(--edge-highlight);
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-action-button:not(:disabled),
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-settings-button:not(:disabled) {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-medium) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-action-button:not(:disabled):hover,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-settings-button:not(:disabled):hover {
+  transform: none;
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-action-button:not(:disabled):active,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-settings-button:not(:disabled):active {
+  transform: none;
+}
+
+.edit-slot,
+.resource-breakdown-item {
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard);
+}
+
+/* New edit slots start at final geometry and fade in. */
+.edit-slot,
+.slot-add {
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
+}
+
+/* Fade the machine illustration only when the backend form factor changes. */
+.device-machine-figure {
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
+}
+
+
+.targeted-report-list-row,
+.targeted-report-detail {
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
+}
+
+.targeted-report-list-row {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.targeted-recording-status > p,
+.targeted-recording-alert,
+.targeted-report-note.error {
+  animation: motion-fade-in var(--motion-fast) var(--ease-standard);
+}
+
+/* Exit ghosts are inert and hidden from accessibility. Only ghosts move or scale; retain final frames until removal. */
+@keyframes motion-fade-out {
+  to { opacity: 0; }
+}
+
+@keyframes motion-sink-out {
+  to { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes motion-dialog-out {
+  to { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+
+@keyframes motion-toast-out {
+  to { opacity: 0; transform: translateX(24px); }
+}
+
+@keyframes motion-content-out {
+  to { opacity: 0; transform: translate(var(--exit-shift-x, 0px), var(--exit-shift-y, 0px)); }
+}
+
+@keyframes motion-row-out {
+  to { opacity: 0; transform: translateY(-6px); }
+}
+
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost]:is(.standard-select-popover, .standard-context-menu, .disk-usage-context-menu, .help-hint-popover, .hover-tooltip) {
+  animation: motion-sink-out var(--motion-fast) var(--ease-standard) forwards;
+}
+
+/* Dialog exit ghosts fade, shift down and shrink. */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].modal-backdrop {
+  animation: motion-fade-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].modal-backdrop > .modal {
+  animation: motion-dialog-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].toast {
+  animation: motion-toast-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+/* Shift outgoing content opposite the incoming transition direction. */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost][data-exit-slot="content"] {
+  animation: motion-content-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+/* Animate process-row cells because the row transform positions the virtual slot. */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].resource-table-row {
+  animation: motion-fade-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].resource-table-row > .resource-table-cell {
+  animation: motion-row-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+/* Collapsed content releases layout immediately while its ghost fades out. */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost][data-exit-slot="disclosure"] {
+  animation: motion-fade-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost]:is(.resource-process-panel, .edit-slot, .targeted-report-list-row, .targeted-report-detail, .device-machine-figure) {
+  animation: motion-sink-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].resource-tooltip {
+  animation: motion-fade-out var(--motion-fast) var(--ease-standard) forwards;
+}
+
+/* Suppress nested entry effects and transitions on reflow copies. */
+[data-reflow-copy],
+[data-reflow-copy] * {
+  animation: none !important;
+  transition: none !important;
+}
+
+
+body[data-animations="none"] *,
+body[data-animations="none"] *::before,
+body[data-animations="none"] *::after,
+body[data-animations="ultra"] *,
+body[data-animations="ultra"] *::before,
+body[data-animations="ultra"] *::after {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+}
+
+/* Ultra mode flattens visual tokens without changing layout; use transparent zero shadows in shadow lists. */
+body[data-animations="ultra"] {
+  --shadow: 0 0 0 0 transparent;
+  --modal-shadow: 0 0 0 0 transparent;
+  --elev-1: 0 0 0 0 transparent;
+  --elev-2: 0 0 0 0 transparent;
+  --elev-3: 0 0 0 0 transparent;
+  --edge-highlight: 0 0 0 0 transparent;
+  --hairline: var(--line);
+}
+
+/* Keep color feedback available in every style; restrict lift, press and rotation to normal motion. */
+.settings-row,
+.device-port-item,
+.optimization-report,
+.device-port-icon {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-medium) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-decel),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+.settings-row:hover {
+  background: color-mix(in oklab, var(--surface-soft) 92%, var(--accent-soft));
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .device-port-item:not(:disabled):hover,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .optimization-report:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .device-port-item:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .modal-header .icon-button:not(:disabled):hover {
+  transform: rotate(4deg);
+}
+
+body[data-animations="ultra"] .resource-table-header,
+body[data-animations="ultra"] .resource-table-row,
+body[data-animations="ultra"] .resource-segment-layer,
+body[data-animations="ultra"] .resource-segment-canvas {
+  will-change: auto;
+}
+
+body[data-animations="ultra"] .device-port-item:hover,
+body[data-animations="ultra"] .optimization-report:hover,
+body[data-animations="ultra"] .modal-header .icon-button:hover {
+  box-shadow: none;
+}
+
+body[data-animations="ultra"] .device-port-icon {
+  background: var(--surface);
+  box-shadow: none;
+}
+
+body[data-animations="ultra"] .modal,
+body[data-animations="ultra"] .optimization-report,
+body[data-animations="ultra"] .settings-section-panel {
+  box-shadow: none;
+}
+
+body[data-animations="ultra"] .window-shellbar,
+body[data-animations="ultra"] .page-subnav {
+  backdrop-filter: none;
+  background: var(--surface);
+}
+
+
+
+/* Use :where for the global keyboard focus ring so component-owned rings take precedence. */
+:where(:focus-visible) {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+
+.settings-switch input:focus-visible + .settings-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Match virtual table headers to measured scrollbar width. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--line) 82%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--line) 82%, transparent);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

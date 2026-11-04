@@ -1,0 +1,54 @@
+* text=auto
+
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
+
+*.cs text
+*.c text
+*.js text
+*.css text
+*.html text
+*.md text
+*.json text
+/src/Core/NativeCore/src/dependencies/probe/*.bin -text
+/src/Core/Infrastructure/Dependencies/NativeDependencyProbeUnicodeProfile.cs text eol=lf
+*.xml text
+src/Shared/StateItems/state-items.json text eol=lf
+/src/Core/NativeCore/src/configuration/NativePolicy.g.zig text eol=lf
+/src/Core/NativeCore/src/interaction/http/http_json_allowed_bmp.zig text eol=lf
+/src/Shared/SharedSection/src/NativePolicy.g.zig text eol=lf
+
+/tools/catalog-validation/software-metadata/Inputs/*.json text eol=lf
+/tools/catalog-validation/software-metadata/Generated/*.json text eol=lf
+/src/Core/Infrastructure/Resources/SoftwareMetadata/*.json text eol=lf
+/src/UI/Frontend/index.html text eol=lf
+/src/UI/Desktop/src/text/generated/overlay_metric_labels.zig text eol=lf
+/src/UI/Desktop/src/text/generated/tray.zig text eol=lf
+/src/UI/Desktop/src/generated/*.zig text eol=lf
+/src/UI/Core/Preferences/Generated/DesktopPoints.Structure.g.cs text eol=lf
+/src/UI/Frontend/src/preferences/generated/desktopPoints.structure.ts text eol=lf
+/src/Core/Configuration/FreedomPoints/backend.groups.json text eol=lf
+/src/UI/Core/Preferences/Generated/FrontendPoints.Structure.g.cs text eol=lf
+/src/UI/Frontend/src/preferences/generated/frontendPoints.structure.ts text eol=lf
+
+# Dependency payloads and their manifests/notices are verified as delivered bytes.
+# Text normalization would invalidate provider hashes, including mixed line endings.
+/build/dependencies/ledger-sdk/** -text
+/build/dependencies/disk-sdk/** -text
+/build/dependencies/fan-control-core/** -text
+/build/dependencies/freedom-point/** -text
+/build/dependencies/llhttp/** -text
+/sdk/freedom-point/** -text
+# Cross-language projection is compared byte-for-byte by its generator.
+src/UI/Desktop/src/generated/product_layout.zig text eol=lf
+
+# Preserve the upstream npm license text used by the acknowledgement check.
+/src/Core/ThirdPartyNotices/Picocolors.LICENSE.txt text eol=lf
+
+/src/Shared/Assets/ProductIcon/*.svg -text
+/build/dependencies/control-tree-sdk/** -text
+/build/dependencies/llhttp/** -text
+/tests/App/Fixtures/HttpHost/*.json text eol=lf
+/build/dependencies/llhttp/src/llhttp.c whitespace=-blank-at-eol

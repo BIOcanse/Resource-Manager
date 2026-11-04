@@ -1,0 +1,371 @@
+/* Share report panel styling; animation belongs in motion.css. */
+.kernel-leak-report {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+/* Content transitions alternate between the list and detail views. */
+.kernel-leak-stage,
+.kernel-leak-item-page {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+
+.panel-header.kernel-leak-item-page-header {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.kernel-leak-item-page-title {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.kernel-leak-item-page-title:focus {
+  outline: none;
+}
+
+.kernel-leak-item-page .user-details-section h4 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kernel-leak-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.kernel-leak-note.warning {
+  color: var(--warn);
+}
+
+
+.kernel-leak-summary {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+  gap: 8px;
+}
+
+.kernel-leak-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 8px 10px;
+}
+
+.kernel-leak-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kernel-leak-summary dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+
+.kernel-leak-observation {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+  gap: 8px;
+}
+
+.kernel-leak-observation > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.kernel-leak-observation dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kernel-leak-observation dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+
+.kernel-leak-previous-run {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.kernel-leak-previous-run-title {
+  margin: 0;
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.kernel-leak-previous-run dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 14px;
+  font-size: 13px;
+}
+
+.kernel-leak-previous-run dl > div {
+  display: contents;
+}
+
+.kernel-leak-previous-run dt {
+  color: var(--muted);
+}
+
+.kernel-leak-previous-run dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.kernel-leak-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.kernel-leak-item {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 10px 12px;
+}
+
+.kernel-leak-item-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kernel-leak-item-title {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.kernel-leak-item-title strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.kernel-leak-item-title span {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subdue historical entry headings while keeping evidence readable. */
+.kernel-leak-item.history {
+  background: transparent;
+}
+
+.kernel-leak-item.history .kernel-leak-item-title strong {
+  color: var(--muted);
+}
+
+.kernel-leak-item-tags {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kernel-leak-history,
+.kernel-leak-kind {
+  flex: none;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Allow long image paths to wrap without widening the panel. */
+.kernel-leak-holder {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 14px;
+  font-size: 13px;
+}
+
+.kernel-leak-holder > div {
+  display: contents;
+}
+
+.kernel-leak-holder dt {
+  color: var(--muted);
+}
+
+.kernel-leak-holder dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.kernel-leak-path dd {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+/* Distinguish unavailable values from real readings with muted, proportional text. */
+/* Keep the page title available to screen readers and align actions to the end. */
+.kernel-leak-header {
+  margin: 0;
+  padding: 0;
+}
+
+.kernel-leak-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kernel-leak-report .metadata-state {
+  color: var(--muted);
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.kernel-leak-service-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.kernel-leak-service {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+
+.kernel-leak-evidence {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 6px;
+}
+
+.kernel-leak-evidence > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 6px 8px;
+}
+
+.kernel-leak-evidence dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.kernel-leak-evidence dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Wrap action reasons on narrow windows. */
+.kernel-leak-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  border-top: 1px solid var(--divider-soft);
+  padding-top: 8px;
+}
+
+.kernel-leak-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kernel-leak-action-button {
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kernel-leak-action-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.kernel-leak-action-reason {
+  color: var(--muted);
+  font-size: 12px;
+}

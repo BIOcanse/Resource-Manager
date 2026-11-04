@@ -1,0 +1,289 @@
+using ResourceManager.App.Domain.Settings;
+
+namespace ResourceManager.App.Application.Settings;
+
+public static class AppSettingsNormalizer
+{
+    public static AppSettings Normalize(AppSettings? settings)
+    {
+        if (settings is null)
+        {
+            return AppSettingsDefaults.Create();
+        }
+
+        return new AppSettings(
+            AppSettingsDefaults.CurrentVersion,
+            NormalizePerformance(settings.Performance),
+            NormalizeSystemIntegration(settings.SystemIntegration),
+            NormalizeDebug(settings.Debug),
+            NormalizePublicService(settings.PublicService),
+            NormalizeAiModelService(settings.AiModelService),
+            new AppUpdateSettings(AppUpdateModes.Normalize(settings.Update?.Mode),
+                settings.Update?.PeriodicCheckEnabled ?? false,
+                Math.Clamp(settings.Update?.CheckIntervalHours ?? 24, 24, 168)),
+            new AppHardwareControlSettings(Math.Clamp(settings.Control?.ReassertionIntervalSeconds ?? 120, 1, 86_400),
+                settings.Control?.KeepAlive ?? false),
+            // Rule values are validated against the rule profile by the runtime plan compiler, not rewritten here.
+            new AppReportSettings(settings.Reports?.RuleOverrides ?? []),
+            (settings.MemoryProtection ?? new HostMemoryProtectionSettings()) with
+                { Reserves = settings.MemoryProtection?.Reserves?.ToArray() ?? [],
+                    ProtectedProcesses = settings.MemoryProtection is { } protection ? protection.ProtectedProcesses?.ToArray()! : ["explorer.exe"] },
+            // Tier and override values are validated against the tier table by the settings write gate, not rewritten here.
+            NormalizeMemoryCpuTier(settings.MemoryCpuTier),
+            NormalizeTargetedRecording(settings.TargetedRecording),
+            NormalizePerformanceOverlay(settings.PerformanceOverlay),
+            // Keep supplied values intact: the write gate rejects invalid protection settings before commit.
+            settings.CpuMonopolyProtection ?? new CpuMonopolyProtectionSettings(),
+            settings.NormalActionsAllowed);
+    }
+
+    // A missing section has no overlay. Each entry's omitted fields take the build's declared defaults so
+    // every reader gets complete values; values are kept as written otherwise (the write gate rejects
+    // out-of-range ones before commit). Valid ids are trimmed and compared ignoring case. Malformed maps
+    // stay intact for validation: normalization must not turn a rejected write into a different valid write.
+    public static AppPerformanceOverlaySettings NormalizePerformanceOverlay(AppPerformanceOverlaySettings? settings)
+    {
+        var defaults = AppSettingsDefaults.PerformanceOverlay;
+        var software = new Dictionary<string, AppPerformanceOverlaySoftwareSettings>(StringComparer.OrdinalIgnoreCase);
+        if (settings is null) return new AppPerformanceOverlaySettings(software);
+        if (settings.Software is null) return settings;
+        foreach (var (id, entry) in settings.Software)
+        {
+            if (string.IsNullOrWhiteSpace(id) || entry is null
+                || !software.TryAdd(id.Trim(), defaults.Complete(entry))) return settings;
+        }
+        return new AppPerformanceOverlaySettings(software);
+    }
+
+    // A missing section, or one without profiles, is the single default profile. Item values are kept as
+    // written: the coordinator rejects invalid ones before commit instead of rewriting them here.
+    private static AppTargetedRecordingSettings NormalizeTargetedRecording(AppTargetedRecordingSettings? settings)
+    {
+        if (settings?.Profiles is not { Count: > 0 } profiles) return TargetedRecordingProfileDefaults.Create();
+        return new AppTargetedRecordingSettings(profiles.Where(static profile => profile is not null)
+            .Select(static profile => profile with
+            {
+                Items = (profile.Items ?? []).Where(static item => item is not null).Select(static item => item with
+                {
+                    Source = item.Source ?? TargetedRecordingProfileDefaults.AutoSource,
+                    SyncPrecision = item.SyncPrecision ?? TargetedRecordingSyncPrecisions.Mid
+                }).ToArray()
+            }).ToArray());
+    }
+
+    private static MemoryCpuTierSettings NormalizeMemoryCpuTier(MemoryCpuTierSettings? tier)
+        => new(tier?.Tier ?? MemoryCpuTierSettings.DefaultTier,
+            new Dictionary<string, System.Text.Json.JsonElement>(
+                tier?.Overrides ?? new Dictionary<string, System.Text.Json.JsonElement>(), StringComparer.Ordinal));
+
+    private static AppPerformanceSettings NormalizePerformance(AppPerformanceSettings? performance)
+    {
+        return new AppPerformanceSettings(
+            NormalizeOptimizationMode(performance?.OptimizationMode),
+            performance?.PreciseGpuPlacementEnabled ?? AppSettingsDefaults.Create().Performance.PreciseGpuPlacementEnabled,
+            NormalizeGpuOverflowPercent(performance?.GpuOverflowUsagePercent, AppSettingsDefaults.GpuOverflowUsagePercent),
+            NormalizeGpuOverflowPercent(performance?.GpuOverflowDedicatedMemoryPercent, AppSettingsDefaults.GpuOverflowDedicatedMemoryPercent),
+            NormalizeDangerPercent(performance?.PhysicalMemoryAutomaticCleanupPercent, AppSettingsDefaults.PhysicalMemoryAutomaticCleanupPercent),
+            NormalizeDangerPercent(performance?.VirtualMemoryAutomaticCleanupPercent, AppSettingsDefaults.VirtualMemoryAutomaticCleanupPercent),
+            NormalizeTargetUsagePercent(performance?.PhysicalMemoryOptimizationTargetUsagePercent, AppSettingsDefaults.PhysicalMemoryOptimizationTargetUsagePercent),
+            NormalizeTargetUsagePercent(performance?.VirtualMemoryOptimizationTargetUsagePercent, AppSettingsDefaults.VirtualMemoryOptimizationTargetUsagePercent),
+            AppRealtimeActionBudgetModes.Normalize(performance?.RealtimeActionBudgetMode),
+            Math.Clamp(
+                performance?.RealtimeActionBudgetCount ?? AppSettingsDefaults.RealtimeActionBudgetCount,
+                AppSettingsDefaults.MinRealtimeActionBudgetCount,
+                AppSettingsDefaults.MaxRealtimeActionBudgetCount),
+            Math.Clamp(
+                performance?.RealtimeActionBudgetPercent ?? AppSettingsDefaults.RealtimeActionBudgetPercent,
+                AppSettingsDefaults.MinRealtimeActionBudgetPercent,
+                AppSettingsDefaults.MaxRealtimeActionBudgetPercent))
+        {
+            KeepSmartRecordHistory = performance?.KeepSmartRecordHistory ?? false
+        };
+    }
+
+    private static AppSystemIntegrationSettings NormalizeSystemIntegration(AppSystemIntegrationSettings? systemIntegration)
+    {
+        return new AppSystemIntegrationSettings(
+            systemIntegration?.TaskManagerShortcutReplacementEnabled ?? false,
+            NormalizeEditableHotkeys(systemIntegration?.Hotkeys),
+            systemIntegration?.AutoStartEnabled ?? false,
+            systemIntegration?.RestartAfterCrashEnabled ?? true,
+            Math.Clamp(systemIntegration?.CrashRestartDelaySeconds ?? 10, 1, 3600),
+            Math.Clamp(systemIntegration?.CrashRestartCount ?? 3, 1, 10))
+        {
+            CrashDumps = NormalizeCrashDumps(systemIntegration?.CrashDumps),
+            CrashDumpKeys = systemIntegration?.CrashDumpKeys ?? new(),
+            DeviceRestart = ValidateDeviceRestart(systemIntegration?.DeviceRestart ?? new())
+        };
+    }
+
+    private static AppDeviceRestartSettings ValidateDeviceRestart(AppDeviceRestartSettings settings)
+    {
+        if (ResourceManager.App.Infrastructure.DeviceActions.DeviceActionNativeBridge.ValidateCapacity(settings.RecordCapacity) != 0)
+            throw new AppSettingsPatchException("invalid-device-action-record-capacity", "$.systemIntegration.deviceRestart.recordCapacity");
+        return settings;
+    }
+
+    // Unknown values return to the record defaults; the keep count's upper bound is the compiled freedom point
+    // service_recovery.crash_reports.keep_count_maximum, applied where the plan is known (CrashDumpSettings).
+    private static AppCrashDumpSettings NormalizeCrashDumps(AppCrashDumpSettings? crashDumps)
+    {
+        var defaults = new AppCrashDumpSettings();
+        if (crashDumps is null) return defaults;
+        return new AppCrashDumpSettings(
+            AppCrashDumpModes.IsSupported(crashDumps.Mode) ? crashDumps.Mode : defaults.Mode,
+            AppCrashDumpTypes.IsSupported(crashDumps.DumpType) ? crashDumps.DumpType : defaults.DumpType,
+            crashDumps.KeepCount >= 1 ? crashDumps.KeepCount : defaults.KeepCount);
+    }
+
+    private static AppLocalPublicServiceSettings NormalizePublicService(
+        AppLocalPublicServiceSettings? publicService)
+    {
+        return new AppLocalPublicServiceSettings(
+            publicService?.Enabled ?? false,
+            publicService?.FileIndexEnabled ?? false,
+            publicService?.DatabaseServiceEnabled ?? false,
+            publicService?.AiModelCatalogEnabled ?? false);
+    }
+
+    private static AppAiModelServiceSettings NormalizeAiModelService(
+        AppAiModelServiceSettings? aiModelService)
+    {
+        return new AppAiModelServiceSettings(
+            Provider: "lm-studio",
+            Endpoint: NormalizeLmStudioEndpoint(aiModelService?.Endpoint),
+            AutoStartEnabled: aiModelService?.AutoStartEnabled ?? false);
+    }
+
+    private static string NormalizeLmStudioEndpoint(string? endpoint)
+    {
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
+            || !uri.IsLoopback
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+        {
+            return "http://127.0.0.1:1234";
+        }
+
+        return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+    }
+
+    public static IReadOnlyList<AppEditableHotkeySettings> NormalizeEditableHotkeys(
+        IEnumerable<AppEditableHotkeySettings>? hotkeys)
+    {
+        var normalized = (hotkeys ?? [])
+            .Where(static hotkey => hotkey is not null && !string.IsNullOrWhiteSpace(hotkey.ActionId))
+            .Select(static hotkey =>
+            {
+                var encoding = NormalizeHotkeyEncoding(hotkey.Encoding);
+                var enabled = hotkey.Enabled && encoding[0] != 0;
+                if (enabled
+                    && string.Equals(
+                        hotkey.ActionId,
+                        AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground,
+                        StringComparison.Ordinal)
+                    && !AppSettingsHotkeySafetyValidator.IsSafeDestructiveEncoding(encoding))
+                {
+                    enabled = false;
+                }
+                return new AppEditableHotkeySettings(
+                    hotkey.ActionId.Trim(),
+                    enabled,
+                    encoding);
+            })
+            .GroupBy(static hotkey => hotkey.ActionId, StringComparer.Ordinal)
+            .Select(static group => group.First())
+            .Take(32)
+            .ToList();
+
+        if (normalized.All(static hotkey =>
+                !string.Equals(
+                    hotkey.ActionId,
+                    AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground,
+                    StringComparison.Ordinal)))
+        {
+            normalized.Add(new AppEditableHotkeySettings(
+                AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground,
+                Enabled: false,
+                Encoding: [0, 0, 0, 0, 0, 0, 0]));
+        }
+
+        if (normalized.All(static hotkey => !string.Equals(hotkey.ActionId,
+                AppSystemIntegrationActionIds.TogglePerformanceOverlayForeground, StringComparison.Ordinal)))
+            normalized.Add(AppSettingsDefaults.TogglePerformanceOverlayHotkeyDefault());
+
+        return normalized;
+    }
+
+    public static IReadOnlyList<int> NormalizeHotkeyEncoding(IEnumerable<int>? encoding)
+    {
+        var source = (encoding ?? []).Take(7).ToArray();
+        var keys = new List<int>(4);
+        var relations = new List<int>(3);
+        for (var keyIndex = 0; keyIndex < 4; keyIndex++)
+        {
+            var slotIndex = keyIndex * 2;
+            var virtualKey = slotIndex < source.Length ? source[slotIndex] : 0;
+            if (virtualKey is <= 0 or > 255 || keys.Contains(virtualKey))
+            {
+                continue;
+            }
+
+            if (keys.Count > 0)
+            {
+                var relationIndex = slotIndex - 1;
+                relations.Add(relationIndex >= 0
+                    && relationIndex < source.Length
+                    && source[relationIndex] == 1
+                        ? 1
+                        : 0);
+            }
+
+            keys.Add(virtualKey);
+        }
+
+        var result = new int[7];
+        for (var index = 0; index < keys.Count; index++)
+        {
+            result[index * 2] = keys[index];
+            if (index > 0)
+            {
+                result[(index * 2) - 1] = relations[index - 1];
+            }
+        }
+
+        return result;
+    }
+
+    private static AppDebugSettings NormalizeDebug(AppDebugSettings? debug)
+    {
+        var debugModeEnabled = debug?.DebugModeEnabled == true;
+        return new AppDebugSettings(
+            debugModeEnabled,
+            debug?.DebugLogEnabled == true,
+            debug?.HostManagerSmartCoordinatorScoreOnlyEnabled == true,
+            debug?.HostManagerSmartCoordinatorPerformanceLogEnabled == true);
+    }
+
+    private static string NormalizeOptimizationMode(string? mode)
+        => AppOptimizationModes.Normalize(mode);
+
+    private static byte NormalizeDangerPercent(byte? percent, byte fallback)
+    {
+        return (byte)Math.Clamp(
+            percent ?? fallback,
+            AppSettingsDefaults.MinAdaptedResourceDangerPercent,
+            AppSettingsDefaults.MaxAdaptedResourceDangerPercent);
+    }
+
+    private static byte NormalizeGpuOverflowPercent(byte? percent, byte fallback)
+        => (byte)Math.Clamp((int)(percent ?? fallback), 1, 100);
+
+    private static byte NormalizeTargetUsagePercent(byte? percent, byte fallback)
+    {
+        return (byte)Math.Clamp(
+            (int)(percent ?? fallback),
+            5,
+            95);
+    }
+
+}

@@ -1,0 +1,46 @@
+using ResourceManager.App.Domain.CpuTopology;
+
+namespace ResourceManager.App.Domain.RuntimeSpecialization;
+
+public sealed record CompiledRuntimePlan(
+    long Version,
+    DateTimeOffset CompiledAt,
+    string Reason,
+    CompiledHostManagerPlan HostManager,
+    CompiledGpuPlacementPlan GpuPlacement,
+    CompiledBaseScorePlan BaseScore,
+    CompiledHardwareScorePlan HardwareScores,
+    CompiledOptimizationModePlan OptimizationMode,
+    CompiledDiagnosticsPlan Diagnostics,
+    CompiledMonitoringPlan Monitoring)
+{
+    public IReadOnlyList<string> RuntimeCapabilityConstrainedPaths { get; init; } = [];
+
+    public bool AutoStartEnabled { get; init; }
+
+    public bool AutomaticUpdatesEnabled { get; init; }
+
+    public Settings.HostMemoryProtectionSettings MemoryProtection { get; init; } = new();
+
+    public Settings.CpuMonopolyProtectionSettings CpuMonopolyProtection { get; init; } = new();
+
+    public Settings.AppSystemIntegrationSettings ServiceRecovery { get; init; } = new(false, []);
+
+    public CpuBaselineRatioSettings? CpuBaseline { get; init; }
+
+    public CpuTopologySnapshot? CpuPlacementTopology { get; init; }
+
+    internal global::FreedomPoint.ConfigurationChange? FreedomPointPreview { get; init; }
+
+    public static CompiledRuntimePlan Default { get; } = new(
+        0,
+        DateTimeOffset.MinValue,
+        "default",
+        CompiledHostManagerPlan.Unpublished,
+        CompiledGpuPlacementPlan.Default,
+        CompiledBaseScorePlan.Empty,
+        CompiledHardwareScorePlan.Default,
+        CompiledOptimizationModePlan.Default,
+        CompiledDiagnosticsPlan.Default,
+        CompiledMonitoringPlan.Default);
+}

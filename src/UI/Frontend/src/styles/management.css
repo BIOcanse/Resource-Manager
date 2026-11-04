@@ -1,0 +1,267 @@
+
+.controlled-list,
+.management-list {
+  display: grid;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.controlled-item,
+.component-item,
+.software-item {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--divider);
+  padding: 12px 0 0;
+}
+
+.controlled-item strong {
+  color: var(--text);
+}
+
+.component-item strong,
+.software-item strong {
+  color: var(--text);
+}
+
+/* Reserve a secondary tab row below the title bar on every page. */
+.page-subnav {
+  position: fixed;
+  top: var(--shellbar-height);
+  left: 0;
+  right: 0;
+  z-index: 25;
+  height: var(--managementbar-height);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  background: var(--shell-bg);
+  border-bottom: 1px solid var(--divider);
+  backdrop-filter: var(--shell-backdrop);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.shell-pages::-webkit-scrollbar,
+.page-subnav::-webkit-scrollbar {
+  height: 6px;
+}
+
+.shell-pages::-webkit-scrollbar-thumb,
+.page-subnav::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.page-subnav-slot,
+.page-subnav-group,
+.page-subnav-root,
+.page-subnav-tabs {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* Keep each primary page tab group mounted and hide inactive groups. */
+.page-subnav-group[hidden] {
+  display: none;
+}
+
+.page-subnav-tabs {
+  gap: 8px;
+}
+
+
+.page-subnav-tab {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 12px;
+}
+
+.management-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.component-item,
+.software-item {
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--surface-soft);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+.management-card {
+  min-height: 96px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.component-summary,
+.software-summary {
+  min-width: 0;
+}
+
+.management-card-title {
+  display: block;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Reset global button styling so title buttons retain heading appearance. */
+.management-card-title-button,
+.management-card-title-button:hover {
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.management-card-title-button:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.management-card-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.management-root-warning-icon {
+  flex: 0 0 auto;
+  color: var(--warn);
+}
+
+.management-card-purpose {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow: hidden;
+  /* Allow descriptions two lines before truncation to preserve distinguishing details. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.software-issue-tag-strip {
+  min-width: 0;
+  margin-top: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.software-issue-tag {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid var(--tone-edge);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+  color: var(--tone-text);
+  background: var(--tone-fill);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.component-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-content: center;
+}
+
+.software-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-content: center;
+  max-width: 188px;
+}
+
+.management-action-button {
+  min-width: 104px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  /* Keep action labels on one line to avoid changing card height. */
+  white-space: nowrap;
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+.management-action-button:not(:disabled):hover {
+  box-shadow: var(--elev-2), var(--edge-highlight);
+}
+
+/* Status labels have no button border or shadow. */
+.management-status-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 6px;
+  color: var(--tone-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.management-settings-button {
+  width: 34px;
+  min-width: 34px;
+  min-height: 32px;
+  padding: 0;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+.management-settings-button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  box-shadow: var(--elev-2), var(--edge-highlight);
+}
+
+.management-empty {
+  grid-column: 1 / -1;
+  min-height: 120px;
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: var(--empty-bg);
+  color: var(--muted);
+}

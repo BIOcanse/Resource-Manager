@@ -1,0 +1,165 @@
+import { createSignal, For, Show } from "solid-js";
+import { formatBytes } from "../../presentation/byteUnits.ts";
+import { uiText } from "../../text.ts";
+import { DiskUsageTreemapPlane } from "./DiskUsageTreemapPlane";
+import { StandardSelect } from "../../components/StandardSelect.tsx";
+import type { DiskUsageTileFacts } from "./diskUsageLayoutFacts.ts";
+import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
+import type {
+  DiskUsageLayout,
+  DiskUsageScanSummary
+} from "./diskUsageLayoutTypes.ts";
+
+/** Render summary, treemap, and pointer-following tile facts. */
+export function DiskUsageResultPanel(props: {
+  summary: DiskUsageScanSummary;
+  layout: DiskUsageLayout;
+  selectedRootIndex: number;
+  onSelectRoot: (rootIndex: number) => void;
+  selectedNodeId: number;
+  factsOf: (nodeId: number) => DiskUsageTileFacts | undefined;
+  labelOf: (nodeId: number) => string;
+  onSelect: (nodeId: number) => void;
+  onActivate: (nodeId: number) => void;
+  onContextMenu: (nodeId: number, clientX: number, clientY: number) => void;
+  onViewChanged: (view: DiskUsageViewWindow) => void;
+  /** Reset both the viewport and layout to full-map coverage. */
+  onResetView: () => void;
+  resetNonce: number;
+  onNavigateUp: () => void;
+  canNavigateUp: boolean;
+  queryPageNumber: number;
+  queryPartial: boolean;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  onNextPage: () => void;
+  onPreviousPage: () => void;
+  queryBusy: boolean;
+}) {
+  const [hover, setHover] = createSignal<{ node: number; x: number; y: number } | null>(null);
+  const hovered = () => {
+    const current = hover();
+    return current && current.node >= 0 ? props.factsOf(current.node) : undefined;
+  };
+
+  return (
+    <div class="panel disk-usage-result">
+      <div class="panel-header">
+        <div class="optimization-heading">
+          <h2>{props.layout.rootPath}</h2>
+          <span>
+            {uiText.diskUsage.scanKind[
+              props.summary.scanKind as keyof typeof uiText.diskUsage.scanKind
+            ] ?? props.summary.scanKind}
+            {" · "}
+            {uiText.diskUsage.scanTotals(
+              formatBytes(props.layout.rootSizeBytes, "storage"),
+              props.summary.fileCount,
+              props.summary.directoryCount)}
+          </span>
+          <Show when={props.summary.roots.length > 1}>
+            <StandardSelect<string>
+              class="settings-select disk-usage-root-selector"
+              value={String(props.selectedRootIndex)}
+              options={props.summary.roots.map((root, index) => ({
+                value: String(index),
+                label: root
+              }))}
+              ariaLabel={uiText.diskUsage.rootSelectorLabel}
+              searchable={props.summary.roots.length > 6}
+              searchPlaceholder={uiText.diskUsage.rootSelectorLabel}
+              onChange={(value) => props.onSelectRoot(Number(value))}
+            />
+          </Show>
+        </div>
+        <div class="disk-usage-view-actions">
+          <button
+            class="secondary"
+            type="button"
+            onClick={props.onResetView}
+          >
+            {uiText.diskUsage.resetView}
+          </button>
+          <Show when={props.canNavigateUp}>
+            <button class="secondary" type="button" onClick={props.onNavigateUp}>
+              {uiText.diskUsage.navigateUp}
+            </button>
+          </Show>
+        </div>
+      </div>
+
+      <Show when={props.queryPartial || props.hasPreviousPage}>
+        <div class="disk-usage-query-pages" aria-busy={props.queryBusy}>
+          <p role="note">{uiText.diskUsage.partialQuery}</p>
+          <div class="disk-usage-view-actions">
+            <button class="secondary" type="button" disabled={!props.hasPreviousPage || props.queryBusy} onClick={props.onPreviousPage}>
+              {uiText.diskUsage.previousPage}
+            </button>
+            <span role="status">{uiText.diskUsage.queryPage(props.queryPageNumber)}</span>
+            <button class="secondary" type="button" disabled={!props.hasNextPage || props.queryBusy} onClick={props.onNextPage}>
+              {uiText.diskUsage.nextPage}
+            </button>
+          </div>
+        </div>
+      </Show>
+
+      <Show when={props.summary.skipped.length > 0}>
+        <div class="disk-usage-warning" role="note">
+          <strong>{uiText.diskUsage.skipped}</strong>
+          <ul>
+            <For each={props.summary.skipped}>
+              {(entry) => (
+                <li>
+                  {entry.target}
+                  {" — "}
+                  {uiText.diskUsage.skipReason[
+                    entry.reason as keyof typeof uiText.diskUsage.skipReason
+                  ] ?? entry.reason}
+                </li>
+              )}
+            </For>
+          </ul>
+        </div>
+      </Show>
+
+      <DiskUsageTreemapPlane
+        layout={props.layout}
+        selectedNodeId={props.selectedNodeId}
+        labelOf={props.labelOf}
+        onSelect={props.onSelect}
+        onActivate={props.onActivate}
+        onContextMenu={props.onContextMenu}
+        onViewChanged={props.onViewChanged}
+        resetNonce={props.resetNonce}
+        onHover={(node, x, y) => setHover(node >= 0 ? { node, x, y } : null)}
+      />
+
+      <Show when={hovered()}>
+        {(node) => (
+          <div
+            class="disk-usage-hover-tip"
+            role="status"
+            style={{
+              left: `${hover()!.x + 14}px`,
+              top: `${hover()!.y + 16}px`
+            }}
+          >
+            <strong>{node().name || node().fullPath}</strong>
+            <span>{formatBytes(node().sizeBytes, "storage")}</span>
+            <Show when={node().isDirectory}>
+              <span>{uiText.diskUsage.fileCount(node().fileCount)}</span>
+            </Show>
+
+            <span class="disk-usage-hover-path">{node().fullPath}</span>
+          </div>
+        )}
+      </Show>
+
+      <Show when={props.layout.omittedCount > 0}>
+        <p class="disk-usage-omitted">
+          {uiText.diskUsage.omitted(props.layout.omittedCount)}
+        </p>
+      </Show>
+    </div>
+  );
+}

@@ -1,0 +1,198 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
+import { createMemo, createSignal, For, Show } from "solid-js";
+import { Download, ExternalLink, Info, RefreshCw } from "lucide-solid";
+import { UserDetailsDialog } from "../../components/UserDetailsDialog";
+import type { ManagedComponent } from "../../types";
+import type { BrowserRuntimeEntry, BrowserRuntimeSnapshot } from "./browserRuntimeTypes";
+import { browserRuntimeKindLabel, browserRuntimeSourceLabel } from "./browserRuntimePresentation";
+import { uiText } from "../../text.ts";
+import { CurrentPageHeading } from "../../app/navigation/currentPageName.tsx";
+import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
+
+interface BrowserRuntimePageProps {
+  snapshot: BrowserRuntimeSnapshot | null;
+  installComponent: ManagedComponent | undefined;
+  actionLabel: string | undefined;
+  refreshInProgress: boolean;
+  onRefresh: () => void;
+  onInstall: (component: ManagedComponent) => void;
+}
+
+export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
+  const [selectedRuntime, setSelectedRuntime] = createSignal<BrowserRuntimeEntry | null>(null);
+  const browsers = createMemo(() =>
+    (props.snapshot?.candidates ?? []).filter((candidate) => candidate.kind !== "web_view2_runtime"));
+  const installAvailable = () => {
+    const component = props.installComponent;
+    return component && (component.canInstall || component.canDownload || component.installerAvailable);
+  };
+
+  return (
+    <>
+      <header class="browser-runtime-header">
+        <div>
+          <CurrentPageHeading />
+          <p>{uiText.browserRuntime.description}</p>
+        </div>
+        <div class="browser-runtime-actions">
+          <Show when={!props.snapshot?.sharedRuntime && installAvailable()}>
+            <button
+              class="primary icon-text-button"
+              type="button"
+              disabled={Boolean(props.actionLabel)}
+              onClick={() => props.installComponent && props.onInstall(props.installComponent)}
+            >
+              <Download size={16} aria-hidden="true" />
+              <span>{props.actionLabel || uiText.browserRuntime.downloadShared}</span>
+            </button>
+          </Show>
+          <button
+            class="secondary icon-text-button"
+            type="button"
+            disabled={props.refreshInProgress}
+            onClick={props.onRefresh}
+          >
+            <RefreshCw size={16} aria-hidden="true" />
+            <StableLabel labels={{ idle: uiText.browserRuntime.refresh, busy: uiText.browserRuntime.refreshing }} current={props.refreshInProgress ? "busy" : "idle"} />
+          </button>
+        </div>
+      </header>
+
+      <section class="browser-runtime-current" aria-labelledby="sharedRuntimeHeading">
+        <div class="browser-runtime-section-heading">
+          <div>
+            <div class="title-with-hint">
+              <h3 id="sharedRuntimeHeading">{uiText.browserRuntime.sharedRuntimeTitle}</h3>
+              <HelpHint label={uiText.browserRuntime.sharedRuntimeTitle}>{uiText.browserRuntime.sharedRuntimeDescription}</HelpHint>
+            </div>
+          </div>
+          <Show when={props.installComponent?.definition?.sourcePageUrl}>
+            {(url) => (
+              <button
+                class="secondary icon-button"
+                type="button"
+                aria-label={uiText.browserRuntime.openOfficialSource}
+                data-name-tooltip=""
+                onClick={() => window.open(String(url()), "_blank", "noopener")}
+              >
+                <ExternalLink size={16} aria-hidden="true" />
+              </button>
+            )}
+          </Show>
+        </div>
+        <Show
+          when={props.snapshot?.sharedRuntime}
+          fallback={(
+            <div class="browser-runtime-empty">
+              <strong>{uiText.browserRuntime.noSharedRuntime}</strong>
+              <span>{uiText.browserRuntime.noSharedRuntimeDetail}</span>
+            </div>
+          )}
+        >
+          {(runtime) => (
+            <RuntimeIdentity
+              runtime={runtime()}
+              label={uiText.browserRuntime.inUse}
+              onShowDetails={() => setSelectedRuntime(runtime())}
+            />
+          )}
+        </Show>
+      </section>
+
+      <section class="browser-runtime-browsers" aria-labelledby="browserCandidatesHeading">
+        <div class="browser-runtime-section-heading">
+          <div>
+            <div class="title-with-hint">
+              <h3 id="browserCandidatesHeading">{uiText.browserRuntime.installedBrowsersTitle}</h3>
+              <HelpHint label={uiText.browserRuntime.installedBrowsersTitle}>{uiText.browserRuntime.installedBrowsersDescription}</HelpHint>
+            </div>
+          </div>
+          <span class="browser-runtime-count">{uiText.browserRuntime.itemCount(browsers().length)}</span>
+        </div>
+        <div class="browser-runtime-list">
+          <Show
+            when={browsers().length > 0}
+            fallback={<div class="browser-runtime-empty">{uiText.browserRuntime.noBrowsers}</div>}
+          >
+            <For each={browsers()}>
+              {(browser) => (
+                <RuntimeIdentity
+                  runtime={browser}
+                  label={props.snapshot?.browserFallback?.id === browser.id ? uiText.browserRuntime.currentFallback : undefined}
+                  onShowDetails={() => setSelectedRuntime(browser)}
+                />
+              )}
+            </For>
+          </Show>
+        </div>
+      </section>
+      <UserDetailsDialog
+        open={selectedRuntime() !== null}
+        title={uiText.browserRuntime.detailTitle(selectedRuntime()?.name ?? uiText.browserRuntime.fallbackRuntimeName)}
+        summary={runtimeSummary(selectedRuntime())}
+        sections={runtimeDetailSections(selectedRuntime())}
+        onClose={() => setSelectedRuntime(null)}
+      />
+    </>
+  );
+}
+
+function RuntimeIdentity(props: {
+  runtime: BrowserRuntimeEntry;
+  label?: string;
+  onShowDetails: () => void;
+}) {
+  return (
+    <article class="browser-runtime-row">
+      <div class="browser-runtime-row-main">
+        <strong>{props.runtime.name}</strong>
+        {/* Show a version row only when the runtime reports a version. */}
+        <Show when={props.runtime.version}>{(version) => <span>{uiText.browserRuntime.version(version())}</span>}</Show>
+      </div>
+      <Show when={props.label}>
+        <span class="browser-runtime-selection">{props.label}</span>
+      </Show>
+      <button
+        class="secondary icon-button browser-runtime-details-button"
+        type="button"
+        aria-label={uiText.browserRuntime.detailsOf(props.runtime.name)}
+        data-name-tooltip=""
+        onClick={props.onShowDetails}
+      >
+        <Info size={16} aria-hidden="true" />
+      </button>
+    </article>
+  );
+}
+
+function runtimeSummary(runtime: BrowserRuntimeEntry | null) {
+  if (!runtime) {
+    return undefined;
+  }
+
+  if (runtime.kind === "web_view2_runtime") {
+    return uiText.browserRuntime.sharedRuntimePurpose;
+  }
+
+  return runtime.kind === "gecko_browser"
+    ? uiText.browserRuntime.externalBrowserPurpose
+    : uiText.browserRuntime.chromiumReusePurpose;
+}
+
+function runtimeDetailSections(runtime: BrowserRuntimeEntry | null) {
+  if (!runtime) {
+    return [];
+  }
+
+  return [{
+    title: uiText.browserRuntime.runtimeInfoTitle,
+    items: [
+      { label: uiText.browserRuntime.field.kind, value: browserRuntimeKindLabel(runtime.kind) },
+      ...(runtime.version ? [{ label: uiText.browserRuntime.field.version, value: runtime.version }] : []),
+      { label: uiText.browserRuntime.field.state, value: runtime.selected ? uiText.browserRuntime.inUse : uiText.browserRuntime.available },
+      { label: uiText.browserRuntime.field.source, value: browserRuntimeSourceLabel(runtime.source) },
+      { label: uiText.browserRuntime.field.runtimeDirectory, value: runtime.runtimeDirectory },
+      { label: uiText.browserRuntime.field.executable, value: runtime.executablePath }
+    ]
+  }];
+}

@@ -1,0 +1,117 @@
+import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
+
+export const enMonitorViewsCopy: Pick<
+  AppCopy,
+  "resourceBreakdownView" | "resourceTableView" | "contextMenu" | "metricPicker" | "manualSoftwareModal" | "observationNotice"
+> = {
+  resourceBreakdownView: {
+    itemCount: (count: number) => plural("en-US", count, { one: "{count} item", other: "{count} items" }),
+    cancelEditLabel: "Cancel resource usage item editing",
+    cancel: "Cancel",
+    saveLabel: "Save resource usage items",
+    editLabel: "Edit resource usage items",
+    emptyTitle: "No resource usage items configured yet",
+    noDataTitle: "No resource usage data to show right now",
+    emptyDetail: "Enter edit mode to choose which resource metrics to show.",
+    noDataDetail: "No displayable data has arrived yet; it updates automatically once the data source is ready.",
+    editorLabel: "Resource usage item editor",
+    showBar: (metric: string) => `Show ${metric}`,
+    scaleModeLabel: (metric: string) => `${metric} scale mode`,
+    moveUp: (label: string) => `Move ${label} up`,
+    moveDown: (label: string) => `Move ${label} down`,
+    unavailable: "Unavailable",
+    processUsage: (name: string) => `${name} process usage`,
+    metric: {
+      virtualMemoryUsage: "Virtual memory committed",
+      diskIo: "Disk I/O",
+      diskRead: "Disk read",
+      diskWrite: "Disk write",
+      networkTraffic: "External network traffic",
+      networkReceive: "External network receive",
+      networkSend: "External network send",
+      rawNetworkTraffic: "Raw network traffic",
+      rawNetworkReceive: "Raw network receive",
+      rawNetworkSend: "Raw network send"
+    }
+  },
+  resourceTableView: {
+    addColumn: "Add column",
+    removeColumn: (column: string) => "Remove the {column} column".replace("{column}", column),
+    cancelEditLabel: "Cancel resource list column editing",
+    cancel: "Cancel",
+    saveLabel: "Save resource list columns",
+    editLabel: "Edit resource list columns",
+    noMatchTitle: "No matching resources",
+    noMatchDetail: "The current filter matches no software or process.",
+    clearSearch: "Clear search",
+    emptyTitle: "No resources to show right now",
+    emptyDetail: "Sampling finished, but this view has no software or process records.",
+    columnEditorLabel: "Resource list column editor",
+    showColumn: (column: string) => `Show the ${column} column`,
+    moveColumnLeft: (column: string) => `Move the ${column} column left`,
+    moveColumnRight: (column: string) => `Move the ${column} column right`,
+    resizeColumn: (column: string) => `Resize the ${column} column`,
+    moreActions: (name: string) => `More actions: ${name}`,
+    currentItem: "this item",
+    heatSharedLegend: "Bar under the value: solid is own, dashed is the shared share",
+    memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}\nOwn ${own} · shared share ${shared}`,
+    unknownStatus: "Status unknown"
+  },
+  contextMenu: {
+    viewOnly: "This startup profile is view-only and does not run system actions.",
+    collapse: "Collapse",
+    expand: "Expand",
+    noExpandableGroup: "This list has no expandable process group.",
+    endTask: "End task",
+    noRunningProcess: "No matching running process.",
+    createDump: "Create memory dump file",
+    noDumpProcess: "No process available for a memory dump.",
+    goToDetails: "Go to details",
+    openFileLocation: "Open file location",
+    noFileLocation: "No install directory or process path to open.",
+    onlineSearch: "Search online",
+    properties: "Properties",
+    noPropertiesPath: "No file or directory path to open properties for."
+  },
+  metricPicker: {
+    notRead: "Not read yet",
+    title: "Choose a monitoring item",
+    searchPlaceholder: "Search by name, category, or device",
+    searchLabel: "Search monitoring items",
+    clearSearchLabel: "Clear the monitoring item search",
+    count: (count: number) => plural("en-US", count, { one: "{count} monitoring item", other: "{count} monitoring items" }),
+    listLabel: "Monitoring items",
+    empty: "No matching monitoring item",
+    needsInstall: (name: string) => `Needs installing: ${name}`,
+    sourceLabel: "Source",
+    sourceAutomatic: (current: string | null) => current ? `Automatic (now ${current})` : "Automatic",
+    sourcePreferred: "Preferred here",
+    sourceHint: "Automatic lets the app pick the most accurate source for this PC. A specific source is read on its own and shows as unavailable when it cannot be read.",
+    deviceFields: "Device fields",
+    cancel: "Cancel",
+    confirm: "Confirm"
+  },
+  manualSoftwareModal: {
+    defaultName: "Manually adapted software",
+    noCandidates: "No software available to add. Refresh the software list first.",
+    software: "Software",
+    searchSoftware: "Search software",
+    name: "Name",
+    rootDirectory: "Root directory",
+    rootPlaceholder: "One directory per line, for example D:\\Tools\\App",
+    cancel: "Cancel",
+    saving: "Saving",
+    additionalRoots: (count: number) => plural("en-US", count, { one: "{count} more directory", other: "{count} more directories" })
+  },
+  observationNotice: {
+    loading: (label: string) => `Loading ${label}`,
+    stale: (label: string) => `Showing the last ${label}`,
+    unavailable: (label: string) => `${label} unavailable`,
+    profileDisabled: (label: string) => `${label} is unavailable in this startup profile`,
+    profileDisabledDetail: "This startup profile does not provide that data source.",
+    staleDetail: "Live refresh failed, so the content below is not the current state.",
+    capturedAt: (time: string) => `Captured ${time}`,
+    retry: "Retry"
+  }
+};

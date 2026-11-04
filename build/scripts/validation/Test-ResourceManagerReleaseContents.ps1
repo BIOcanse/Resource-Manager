@@ -1,0 +1,68 @@
+[CmdletBinding()]
+param([Parameter(Mandatory = $true)][string]$RootDirectory)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$root = [IO.Path]::GetFullPath($RootDirectory)
+$repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
+$jsonHashes = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$trackedJson = @(& git -C $repository ls-files -- '*.json')
+if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate universal source data.' }
+foreach ($relative in $trackedJson) {
+    [void]$jsonHashes.Add((Get-FileHash -LiteralPath (Join-Path $repository $relative) -Algorithm SHA256).Hash)
+}
+# Vite and the Web SDK generate these manifests; their build outputs, not local settings, are authoritative.
+foreach ($relative in @('src\Core\wwwroot\frontend-build.json',
+        'src\Core\obj\Release\net10.0-windows\win-x64\staticwebassets.publish.endpoints.json')) {
+    [void]$jsonHashes.Add((Get-FileHash -LiteralPath (Join-Path $repository $relative) -Algorithm SHA256).Hash)
+}
+$queue = [Collections.Generic.Queue[string]]::new()
+$queue.Enqueue($root)
+$count = 0
+while ($queue.Count -gt 0) {
+    $directory = $queue.Dequeue()
+    foreach ($item in @(Get-Item -LiteralPath $directory) + @(Get-ChildItem -LiteralPath $directory -Force)) {
+        if (++$count -gt 100000) { throw 'Unexpected release tree size.' }
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Reparse point in package: $($item.FullName)" }
+        if ($item.FullName -eq $directory) { continue }
+        if ($item.PSIsContainer) {
+            if ($item.FullName -ieq (Join-Path $root 'Internal/Management')) { throw 'Release image contains installed management state.' }
+            if ($item.Name -in @('UserData', 'Dependencies', 'Misc', '.codex', '.git', 'node_modules', 'obj', 'logs')) {
+                throw "Runtime or development directory in package: $($item.FullName)"
+            }
+            if ($item.Name -eq 'Config' -and @(Get-ChildItem -LiteralPath $item.FullName -Force).Count -ne 0) {
+                throw 'Release Config must be empty; user configuration must not be copied.'
+            }
+            $queue.Enqueue($item.FullName)
+        } elseif ($item.Extension -in @('.db', '.sqlite', '.sqlite3', '.log', '.pdb', '.etl', '.trx') -or
+                  $item.Name -in @('app-settings.json', 'software-registry.json', 'control-desired-state.json')) {
+            throw "Local state or development artifact in package: $($item.FullName)"
+        } elseif ($item.Extension -eq '.json' -and $item.Name -notin @('resource-manager-final-image.manifest.json', 'release-manifest.json', 'runtime-modules.json') -and
+                  $item.Name -notlike '*.deps.json' -and $item.Name -notlike '*.runtimeconfig.json') {
+            if (-not $jsonHashes.Contains((Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash)) {
+                throw "JSON is not a tracked product default: $($item.FullName)"
+            }
+        }
+    }
+}
+& (Join-Path $PSScriptRoot 'Test-ResourceManagerFinalImage.ps1') -RootDirectory (Join-Path $root 'Bin') | Out-Null
+$catalog = Get-Content -LiteralPath (Join-Path $root 'runtime-modules.json') -Raw | ConvertFrom-Json
+$imageCatalog = Get-Content -LiteralPath (Join-Path $root 'Bin/runtime-modules.json') -Raw | ConvertFrom-Json
+foreach ($module in @($imageCatalog.modules)) {
+    foreach ($asset in @($module.image, $module.manifest)) {
+        if ($null -ne $asset) { $asset.relativePath = 'Bin/' + $asset.relativePath }
+    }
+}
+if (($catalog | ConvertTo-Json -Depth 8 -Compress) -cne ($imageCatalog | ConvertTo-Json -Depth 8 -Compress)) {
+    throw 'Installed runtime module catalog differs from the composed image paths or metadata.'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $root 'Config') -PathType Container)) { throw 'Missing empty Config directory.' }
+foreach ($name in @('Install.exe', 'Start.exe', 'UninstallResourceManager.exe', 'Internal\UpdateManager\ResourceManager.UpdateManager.exe')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root $name) -PathType Leaf)) {
+        throw "Missing EXE entry: $name"
+    }
+}
+foreach ($name in @('Install.cmd', 'Start.cmd', 'Restart.cmd', 'scripts')) {
+    if (Test-Path -LiteralPath (Join-Path $root $name)) {
+        throw "Release package still contains a script entry: $name"
+    }
+}

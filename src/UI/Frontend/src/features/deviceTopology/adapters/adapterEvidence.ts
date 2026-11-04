@@ -1,0 +1,154 @@
+import { formatInterfaceNumber } from "../../../presentation/interfaceNumbers.ts";
+import { formatBytes as formatBytesInUnits } from "../../../presentation/byteUnits.ts";
+import { transportLabel } from "../deviceVocabulary.ts";
+import type { DeviceTopologyPort } from "../../../types";
+import type {
+  DeviceAdapterContext,
+  SpecializedDeviceSummaryField,
+  SpecializedInternalDeviceFacts
+} from "./types";
+import { uiText } from "../../../text.ts";
+
+export function firstText(...values: Array<string | null | undefined>) {
+  return values.map((value) => value?.trim()).find(Boolean);
+}
+
+export function displayValue(value: string | null | undefined, fallback = "--") {
+  return firstText(value) ?? fallback;
+}
+
+export function joinSummary(...values: Array<string | null | undefined>) {
+  return values.map((value) => value?.trim()).filter(Boolean).join(" · ");
+}
+
+export function meaningfulSpeed(port: DeviceTopologyPort) {
+  const value = firstText(port.usb?.negotiatedSpeed, port.speed);
+  return !value || value === "不适用" || value === "未知" || value === "未连接"
+    ? "--"
+    : value;
+}
+
+export function deviceTitle(context: DeviceAdapterContext, fallback = uiText.deviceAdapters.usbDevice) {
+  return firstText(
+    context.port.usb?.productName,
+    context.port.display?.monitorName,
+    context.fallbackTitle,
+    context.port.displayName
+  ) ?? fallback;
+}
+
+export function interfaceProtocols(port: DeviceTopologyPort) {
+  return port.usb?.interfaces == null
+    ? [uiText.deviceTopology.deviceCategory.unknown]
+    : port.usb.interfaces.map(({ classCode, subClassCode, protocolCode }) => {
+      const codes = `${classCode}/${subClassCode}/${protocolCode}`;
+      let label: string | undefined;
+      if (classCode === 0x01 && subClassCode === 0x01) label = uiText.deviceAdapters.label.audioControl;
+      if (classCode === 0x01 && subClassCode === 0x02) label = uiText.deviceAdapters.label.audioStreaming;
+      if (classCode === 0x03) label = uiText.deviceAdapters.label.hidControls;
+      if (classCode === 0x03 && subClassCode === 0x01 && protocolCode === 0x01) label = uiText.deviceAdapters.hidKeyboard;
+      if (classCode === 0x03 && subClassCode === 0x01 && protocolCode === 0x02) label = uiText.deviceAdapters.hidMouse;
+      if (classCode === 0x0e && subClassCode === 0x01) label = uiText.deviceSpecialized.videoControl;
+      if (classCode === 0x0e && subClassCode === 0x02) label = uiText.deviceSpecialized.videoStreaming;
+      if (classCode === 0x06 && subClassCode === 0x01 && protocolCode === 0x01) label = uiText.deviceSpecialized.mediaTransfer;
+      if (classCode === 0x02 || classCode === 0x0a) label = uiText.deviceSpecialized.dataConnection;
+      if (classCode === 0xff) label = uiText.deviceSpecialized.vendorChannel;
+      return label ? `${label} (${codes})` : codes;
+    });
+}
+
+export function hasUsbInterface(port: DeviceTopologyPort, classCode: number, subClassCode?: number, protocolCode?: number) {
+  return port.usb?.interfaces?.some((usbInterface) => usbInterface.classCode === classCode
+    && (subClassCode === undefined || usbInterface.subClassCode === subClassCode)
+    && (protocolCode === undefined || usbInterface.protocolCode === protocolCode)) ?? false;
+}
+
+export function usbInterfaceCapability(port: DeviceTopologyPort, classCode: number, subClassCode?: number, protocolCode?: number) {
+  return port.usb?.interfaces == null ? null : hasUsbInterface(port, classCode, subClassCode, protocolCode);
+}
+
+export function usbDeviceClass(port: DeviceTopologyPort) {
+  return port.usb?.deviceClassCode == null
+    ? uiText.deviceTopology.deviceCategory.unknown
+    : String(port.usb.deviceClassCode);
+}
+
+export function hasAnyEvidence(port: DeviceTopologyPort, pattern: RegExp) {
+  return [
+    port.displayName,
+    port.hardwareKind,
+    port.pnpClass,
+    port.deviceId,
+    port.service,
+    port.usb?.productName,
+    port.advancedInterconnect?.kind,
+    port.advancedInterconnect?.technology,
+    ...port.hardwareIds,
+    ...port.compatibleIds
+  ].some((value) => pattern.test(value ?? ""));
+}
+
+export function capabilityLabels(port: DeviceTopologyPort) {
+  return interfaceProtocols(port);
+}
+
+export function summaryFields(...fields: Array<[string, string | null | undefined]>): SpecializedDeviceSummaryField[] {
+  return fields.map(([label, value]) => ({ label, value: displayValue(value) }));
+}
+
+export function connectionFacts(context: DeviceAdapterContext) {
+  return {
+    upstreamInterface: displayValue(context.parentTitle),
+    currentLink: meaningfulSpeed(context.port)
+  };
+}
+
+export function internalDeviceFacts(
+  context: DeviceAdapterContext
+): SpecializedInternalDeviceFacts | undefined {
+  if (context.scope !== "internal") {
+    return undefined;
+  }
+
+  const port = context.port;
+  return {
+    transport: transportLabel(port.transport),
+    manufacturer: displayValue(port.manufacturer, port.idResolution?.vendorName ?? "--"),
+    driverService: displayValue(port.service),
+    deviceStatus: displayValue(port.status),
+    location: displayValue(port.locationInfo),
+    catalogIdentity: displayValue(port.idResolution?.deviceName)
+  };
+}
+
+export function usbSpecification(port: DeviceTopologyPort) {
+  return displayValue(port.usb?.deviceSpecification);
+}
+
+export function deviceRevision(port: DeviceTopologyPort) {
+  return displayValue(port.usb?.deviceRevision);
+}
+
+export function activeCapabilities(values: Array<[string, boolean | null]>) {
+  return values.filter(([, enabled]) => enabled === true).map(([label]) => label);
+}
+
+/** Topology capacities describe storage, so use the shared decimal storage-unit formatter. */
+export function formatBytes(value: number | null | undefined, fallback = "--") {
+  return formatBytesInUnits(value, "storage", undefined, fallback);
+}
+
+export function formatRate(value: number | null | undefined, unit: string, fallback = "--") {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${formatInterfaceNumber(value, { maximumFractionDigits: 2 })} ${unit}`
+    : fallback;
+}
+
+export function formatPollingInterval(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "--";
+  }
+  return value >= 1000
+    ? `${formatInterfaceNumber(value / 1000, { maximumFractionDigits: 3 })} ms`
+    : `${formatInterfaceNumber(value, { maximumFractionDigits: 1 })} us`;
+}

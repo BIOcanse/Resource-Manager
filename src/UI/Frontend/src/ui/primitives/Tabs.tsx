@@ -1,0 +1,185 @@
+import { useHorizontalReveal } from "../../interactions/solid/horizontalReveal.ts";
+import {
+  Show,
+  createContext,
+  createSignal,
+  createUniqueId,
+  onCleanup,
+  useContext,
+  type Accessor,
+  type JSX
+} from "solid-js";
+import { moveRovingFocus } from "./RovingFocus.ts";
+import { useSelectionIndicator } from "../../interactions/solid/selectionIndicator.ts";
+import { useContentTransition } from "../../interactions/solid/contentTransition.ts";
+
+/* Tab order drives the selection indicator and panel transition direction. */
+
+interface TabsContextValue {
+  readonly value: () => string;
+  readonly setValue: (value: string) => void;
+  readonly idPrefix: string;
+  /** Register tabs in render order; their index is their order coordinate. */
+  readonly order: Accessor<number>;
+  readonly registerTrigger: (value: string) => void;
+  readonly registerPanel: (value: string, element: HTMLElement) => void;
+}
+
+const TabsContext = createContext<TabsContextValue>();
+
+export function TabsRoot(props: {
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly id?: string;
+  readonly class?: string;
+  readonly children: JSX.Element;
+}) {
+  const generatedId = createUniqueId();
+  const [triggers, setTriggers] = createSignal<readonly string[]>([]);
+  const panels = new Map<string, HTMLElement>();
+  let root: HTMLDivElement | undefined;
+  const order = () => Math.max(0, triggers().indexOf(props.value));
+  const context: TabsContextValue = {
+    value: () => props.value,
+    setValue: props.onChange,
+    idPrefix: props.id ?? `tabs-${generatedId}`,
+    order,
+    registerTrigger: (value) => {
+      setTriggers((current) => [...current, value]);
+      onCleanup(() => setTriggers((current) => current.filter((item) => item !== value)));
+    },
+    registerPanel: (value, element) => {
+      panels.set(value, element);
+      onCleanup(() => {
+        if (panels.get(value) === element) panels.delete(value);
+      });
+    }
+  };
+  // Exit the old panel copy and enter the new panel; groups without panels need no transition.
+  useContentTransition({
+    name: "页签面板",
+    key: () => props.value,
+    order,
+    stage: () => panels.get(props.value),
+    snapshot: () => "clone",
+    distance: 5
+  });
+  return (
+    <TabsContext.Provider value={context}>
+      <div ref={root} class={props.class ? `ui-tabs-root ${props.class}` : "ui-tabs-root"}>{props.children}</div>
+    </TabsContext.Provider>
+  );
+}
+
+export function TabsList(props: {
+  readonly ariaLabel: string;
+  readonly class?: string;
+  readonly children: JSX.Element;
+}) {
+  const context = requireTabsContext();
+  let listElement: HTMLDivElement | undefined;
+  let indicatorElement: HTMLSpanElement | undefined;
+  useHorizontalReveal({
+    container: () => listElement,
+    selected: () => listElement?.querySelector<HTMLElement>("[role='tab'][aria-selected='true']") ?? null,
+    change: context.value
+  });
+  useSelectionIndicator({
+    name: `页签组 ${context.idPrefix}`,
+    container: () => listElement,
+    indicator: () => indicatorElement,
+    selected: () => listElement?.querySelector<HTMLElement>("[role='tab'][aria-selected='true']") ?? null,
+    items: () => [...(listElement?.querySelectorAll<HTMLElement>("[role='tab']") ?? [])],
+    order: context.order
+  });
+  return (
+    <div
+      ref={listElement}
+      class={props.class ? `${props.class} has-selection-indicator` : "has-selection-indicator"}
+      role="tablist"
+      aria-label={props.ariaLabel}
+      aria-orientation="horizontal"
+      onKeyDown={(event) => moveRovingFocus(event, {
+        selector: "[role='tab']:not(:disabled)",
+        previousKeys: ["ArrowLeft"],
+        nextKeys: ["ArrowRight"],
+        activate: (element) => element.click()
+      })}
+    >
+      <span ref={indicatorElement} class="selection-indicator page-tab-indicator" aria-hidden="true" />
+      {props.children}
+    </div>
+  );
+}
+
+export function TabsTrigger(props: {
+  readonly value: string;
+  readonly id?: string;
+  readonly controls?: string;
+  readonly class?: string;
+  readonly disabled?: boolean;
+  readonly children: JSX.Element;
+}) {
+  const context = requireTabsContext();
+  const value = normalizeTabValue(props.value);
+  context.registerTrigger(value);
+  const selected = () => context.value() === value;
+  return (
+    <button
+      id={props.id ?? `${context.idPrefix}-tab-${value}`}
+      class={props.class}
+      classList={{ active: selected() }}
+      type="button"
+      role="tab"
+      aria-selected={selected()}
+      aria-controls={props.controls ?? `${context.idPrefix}-panel-${value}`}
+      tabIndex={selected() ? 0 : -1}
+      disabled={props.disabled}
+      data-tab-value={value}
+      onClick={() => context.setValue(value)}
+    >
+      {props.children}
+    </button>
+  );
+}
+
+export function TabsPanel(props: {
+  readonly value: string;
+  readonly class?: string;
+  readonly children: JSX.Element;
+}) {
+  const context = requireTabsContext();
+  const value = normalizeTabValue(props.value);
+  const selected = () => context.value() === value;
+  return (
+    <div
+      ref={(element) => context.registerPanel(value, element)}
+      id={`${context.idPrefix}-panel-${value}`}
+      class={props.class}
+      role="tabpanel"
+      hidden={!selected()}
+      tabIndex={selected() ? 0 : -1}
+      aria-labelledby={`${context.idPrefix}-tab-${value}`}
+    >
+      <Show when={selected()}>
+        {props.children}
+      </Show>
+    </div>
+  );
+}
+
+function requireTabsContext(): TabsContextValue {
+  const context = useContext(TabsContext);
+  if (!context) {
+    throw new Error("Tabs components must be nested inside TabsRoot.");
+  }
+  return context;
+}
+
+function normalizeTabValue(value: string): string {
+  const normalized = value.trim();
+  if (!normalized || !/^[a-z0-9_-]+$/iu.test(normalized)) {
+    throw new Error("A stable tab value is required.");
+  }
+  return normalized;
+}

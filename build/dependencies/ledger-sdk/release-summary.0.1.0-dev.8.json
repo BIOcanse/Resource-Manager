@@ -1,0 +1,70 @@
+{
+  "schema": "resource-manager/ledger-release-summary/v1",
+  "version": "0.1.0-dev.8",
+  "status": "accepted-package-consumer",
+  "fixCommit": "bf2ea6935530c0a8a73b38b730ec6c5be5ef2305",
+  "manifestSha256": "bd97a636cd62729c88106808b6e23b935f400f1b016a3c2ab21f384e7cd76cf3",
+  "requiredZigVersion": "0.17.0",
+  "windows": "Four installed UID/statistics profiles x 15; old write-watch negative and fixed positive",
+  "linux": {
+    "target": "x86_64-linux-musl",
+    "binding": "packaged example, generated LedgerBinding public C ABI",
+    "passed": true,
+    "kernel": "6.6.87.2-microsoft-standard-WSL2",
+    "pageSize": 4096,
+    "limitKind": "virtual-address-space-not-RSS",
+    "cases": [
+      {
+        "file": "region-before-linux-musl",
+        "sha256": "b9fedbbbae2c7fb13dcd1a4b8253db9d4ead9fcadf7cb405f0f2006ab9f4acc7",
+        "exitCode": 0,
+        "timedOut": false,
+        "groupEmpty": true,
+        "elapsedSeconds": 0.016986358000000035,
+        "rlimitAS": 134217728,
+        "rlimitCPUSeconds": 10,
+        "timeoutSeconds": 30,
+        "staticElf": true
+      },
+      {
+        "file": "region-after-linux-musl",
+        "sha256": "d134e6fc0118abc9976da87ce6e71ee14a7f7d3f63fc181c1bde13c81cc5d590",
+        "exitCode": 0,
+        "timedOut": false,
+        "groupEmpty": true,
+        "elapsedSeconds": 0.017253234000000006,
+        "rlimitAS": 134217728,
+        "rlimitCPUSeconds": 10,
+        "timeoutSeconds": 30,
+        "staticElf": true
+      },
+      {
+        "file": "ledger-static-u128",
+        "sha256": "2f97a98ba5e45c4fca3a43ca5e047a0c533b7f10eddf6618a65de6461d74e8a5",
+        "exitCode": 0,
+        "timedOut": false,
+        "groupEmpty": true,
+        "elapsedSeconds": 0.017841387999999903,
+        "rlimitAS": 134217728,
+        "rlimitCPUSeconds": 10,
+        "timeoutSeconds": 30,
+        "staticElf": true
+      },
+      {
+        "file": "ledger-static-u256",
+        "sha256": "0574faa4776607bf201f5fc5feb5fefa5b9a66fd212b565924d49ebce697457a",
+        "exitCode": 0,
+        "timedOut": false,
+        "groupEmpty": true,
+        "elapsedSeconds": 0.018385057999999788,
+        "rlimitAS": 134217728,
+        "rlimitCPUSeconds": 10,
+        "timeoutSeconds": 30,
+        "staticElf": true
+      }
+    ],
+    "privateEvidenceSha256": "0ce34d28dd53b1f84186abf9fb7123e8bab49ab363ba30b7efc33520d601874c"
+  },
+  "scope": "Small serial WSL fixtures, not GDC product migration, Linux C#, Android or full-capacity qualification",
+  "nativePairing": "Use same-release SDK, generated identity and Native; ABI v1 alone does not qualify mixing dev.2-4 with dev.5+ end semantics."
+}

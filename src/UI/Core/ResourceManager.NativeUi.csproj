@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../build/scripts/build/DesktopNativeInterop.targets" />
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>ResourceManager.NativeUi</AssemblyName>
+    <RootNamespace>ResourceManager.NativeUi</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\Shared\Assets\ProductIcon\product.ico</ApplicationIcon>
+    <CopyOutputSymbolsToPublishDirectory Condition="'$(Configuration)' == 'Release'">false</CopyOutputSymbolsToPublishDirectory>
+  </PropertyGroup>
+  <!-- Caps the gen0 allocation budget, which the GC otherwise sizes from the L3 cache. Tray state on
+       candidate 0.3.7-beta.20261030.2 (2026-10-30): live objects 1.9 MiB, GC committed 20 MiB. It is written
+       to ResourceManager.NativeUi.runtimeconfig.json, where it can be changed or removed. -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="2097152" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.48" />
+  </ItemGroup>
+  <Target Name="GenerateStateItems"
+          Condition="'$(DesignTimeBuild)' != 'true'"
+          Inputs="$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json;$(MSBuildProjectDirectory)/../../../build/scripts/build/Generate-StateItems.ps1;$(MSBuildProjectDirectory)/../../../build/scripts/build/StateItemRegistry.psm1"
+          Outputs="$(IntermediateOutputPath)StateItems.g.cs">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../build/scripts/build/Generate-StateItems.ps1&quot; -Registry &quot;$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json&quot; -Process window -Namespace ResourceManager.NativeUi.StateItems -Output &quot;$(IntermediateOutputPath)StateItems.g.cs&quot;" />
+  </Target>
+  <Target Name="IncludeStateItems" BeforeTargets="CoreCompile;FreedomPointCompilerInputs" DependsOnTargets="GenerateStateItems" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)StateItems.g.cs" />
+    </ItemGroup>
+  </Target>
+  <Target Name="GenerateFrontendPreferenceValues" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../build/scripts/build/Generate-FrontendPreferences.ps1&quot; -WorkRoot &quot;$(ResourceManagerLedgerWorkRoot)&quot; -GeneratorPath &quot;$(ResourceManagerFrontendGeneratorPath)&quot; -DesktopGeneratorPath &quot;$(ResourceManagerDesktopGeneratorPath)&quot;" />
+    <ItemGroup>
+      <Compile Remove="@(Compile)" Condition="'%(Compile.Filename)%(Compile.Extension)' == 'FrontendPoints.Values.g.cs'" />
+      <Compile Include="$(MSBuildProjectDirectory)\Preferences\Generated\FrontendPoints.Values.g.cs" />
+      <Compile Remove="@(Compile)" Condition="'%(Compile.Filename)%(Compile.Extension)' == 'DesktopPoints.Structure.g.cs'" />
+      <Compile Include="$(MSBuildProjectDirectory)\Preferences\Generated\DesktopPoints.Structure.g.cs" />
+      <Compile Include="$(ResourceManagerLedgerWorkRoot)\desktop-points\DesktopPoints.Values.g.cs" />
+    </ItemGroup>
+  </Target>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\ResourceManager.Shared.csproj" />
+    <None Include="..\..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\..\NOTICE" Link="NOTICE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\Core\ThirdPartyNotices\WebView2.*.txt" Link="ThirdPartyNotices\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Update="WebView\InstallWebView2Runtime.ps1" Link="InstallWebView2Runtime.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\Core\ThirdPartyNotices\DotNet.*.txt;..\..\Core\ThirdPartyNotices\Microsoft.MIT.txt;..\..\Core\ThirdPartyNotices\ManagedDependencyAcknowledgements.md" Link="ThirdPartyNotices\%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+  <Target Name="RemoveReleasePortableDebugSymbolsFromPublish"
+          AfterTargets="ComputeFilesToPublish"
+          BeforeTargets="CopyFilesToPublishDirectory"
+          Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+</Project>

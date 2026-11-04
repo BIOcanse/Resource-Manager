@@ -1,0 +1,197 @@
+using ResourceManager.ReadWrite.Windows.Frames;
+using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Overlay;
+using ResourceManager.App.Domain.ResourceBreakdown;
+
+namespace ResourceManager.App.Application.Overlay;
+
+public sealed record PerformanceOverlayMetricItem(
+    string MetricId, double? Value, string Unit, string State, string? Reason);
+
+public sealed record PerformanceOverlayFrameStream(
+    string Source, ulong SwapChain, int PresentCount,
+    bool Selected, DateTimeOffset LastPresentAt, FrameIntervalStatistics Statistics);
+
+public sealed record PerformanceOverlayTarget(
+    string SoftwareId, int ProcessId, ulong ProcessStartKey,
+    IReadOnlyList<PerformanceOverlayMetricItem> Metrics,
+    IReadOnlyList<PerformanceOverlayFrameStream> FrameStreams);
+
+/// <summary>The current value of one requested overlay item, in the targeted recording item contract.
+/// SelectedSource is what the request asked for (auto or a source); ActualSource is where the value came
+/// from. IntervalOrigin is item, natural or profile-default (the subscription interval). SyncPrecision is
+/// echoed only. State is current or unavailable; Reason is target-not-running or value-unavailable.</summary>
+public sealed record PerformanceOverlayItemValue(
+    string Kind, string Id, string? Unit, string SelectedSource, string? ActualSource,
+    int IntervalMs, string IntervalOrigin, string SyncPrecision,
+    double? Value, string State, string? Reason, DateTimeOffset? ObservedAt);
+
+public sealed record PerformanceOverlaySnapshot(
+    int Version, DateTimeOffset CapturedAt, IReadOnlyList<PerformanceOverlayTarget> Targets)
+{
+    public IReadOnlyList<DeviceMetricFieldSnapshot> Fields { get; init; } = [];
+
+    /// <summary>Values of the request's items, in request order; empty when the request has no items.</summary>
+    public IReadOnlyList<PerformanceOverlayItemValue> Items { get; init; } = [];
+}
+
+public static class PerformanceOverlayProjection
+{
+    public static IReadOnlyList<SchedulingProcessFact> SelectTargets(
+        IReadOnlyList<string> softwareIds,
+        SchedulingProcessFactSnapshot? processes)
+    {
+        if (processes is null || processes.InventoryStatus != SamplingObservationStatus.Current)
+        {
+            return [];
+        }
+
+        var enabled = softwareIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var attributedProcesses = processes.HasSeparateFoundationPayloads
+            ? processes.AttributionProcesses : processes.Processes;
+        var liveIdentities = processes.HasSeparateFoundationPayloads
+            ? processes.InventoryProcesses.Select(static process => (process.ProcessId, process.ProcessStartKey)).ToHashSet()
+            : null;
+        return attributedProcesses
+            .Where(process => process.ProcessId > 0 && process.ProcessStartKey > 0
+                && (liveIdentities is null || liveIdentities.Contains((process.ProcessId, process.ProcessStartKey)))
+                && enabled.Contains(process.SoftwareId))
+            .GroupBy(static process => (process.ProcessId, process.ProcessStartKey))
+            .Select(static group => group.First())
+            .OrderBy(static process => process.SoftwareId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static process => process.ProcessId)
+            .ToArray();
+    }
+
+    public static PerformanceOverlaySnapshot Create(
+        IReadOnlyList<string> softwareIds,
+        IReadOnlyList<string> metricIds,
+        SchedulingProcessFactSnapshot? processes,
+        ResourceBreakdownSnapshot? breakdown,
+        HardwareMetricSnapshot? hardware,
+        FrameTimingSnapshot? frames,
+        DateTimeOffset capturedAt)
+    {
+        var systemDefinitions = hardware is null
+            ? new Dictionary<string, MetricDefinition>(StringComparer.OrdinalIgnoreCase)
+            : MetricCatalog.ForPerformanceOverlay(hardware).ToDictionary(
+                static item => item.Id, StringComparer.OrdinalIgnoreCase);
+        var targets = SelectTargets(softwareIds, processes).Select(process =>
+        {
+            var metricProcess = processes?.Processes.FirstOrDefault(item =>
+                item.ProcessId == process.ProcessId
+                && item.ProcessStartKey == process.ProcessStartKey);
+            var frameProcess = frames?.Processes.FirstOrDefault(item =>
+                item.ProcessId == process.ProcessId
+                && item.ProcessStartKey > 0
+                && checked((ulong)item.ProcessStartKey) == process.ProcessStartKey);
+            var streams = (frameProcess?.Streams ?? [])
+                .OrderByDescending(static item => item.PresentCount)
+                .ThenBy(static item => item.Source)
+                .ThenBy(static item => item.SwapChain)
+                .ToArray();
+            var selectedStream = streams.FirstOrDefault();
+            var streamRows = streams.Select(item => new PerformanceOverlayFrameStream(
+                item.Source switch
+                {
+                    FramePresentSource.Dxgi => "dxgi",
+                    FramePresentSource.Direct3D9 => "direct3D9",
+                    _ => "graphicsKernel"
+                },
+                item.SwapChain, item.PresentCount,
+                ReferenceEquals(item, selectedStream), item.LastPresentAt, item.Statistics)).ToArray();
+            var metrics = metricIds.Select(metricId => ProjectMetric(
+                metricId, process, metricProcess, breakdown, hardware, frames, selectedStream,
+                systemDefinitions)).ToArray();
+            return new PerformanceOverlayTarget(
+                process.SoftwareId,
+                process.ProcessId,
+                process.ProcessStartKey,
+                metrics,
+                streamRows);
+        }).ToArray();
+        return new PerformanceOverlaySnapshot(3, capturedAt, targets);
+    }
+
+    private static PerformanceOverlayMetricItem ProjectMetric(
+        string metricId,
+        SchedulingProcessFact process,
+        SchedulingProcessFact? metricProcess,
+        ResourceBreakdownSnapshot? breakdown,
+        HardwareMetricSnapshot? hardware,
+        FrameTimingSnapshot? frames,
+        FrameTimingStream? stream,
+        IReadOnlyDictionary<string, MetricDefinition> systemDefinitions)
+    {
+        if (metricId is PerformanceOverlayMetricIds.Fps
+            or PerformanceOverlayMetricIds.FrameTime
+            or PerformanceOverlayMetricIds.OnePercentLow
+            or PerformanceOverlayMetricIds.PointOnePercentLow)
+        {
+            var unit = metricId == PerformanceOverlayMetricIds.FrameTime ? "ms" : "FPS";
+            if (frames is { Complete: false }) return Missing(metricId, unit, "frame-events-lost");
+            if (stream is null) return Missing(metricId, unit, "no-frame-data");
+            var statistics = stream.Statistics;
+            var value = metricId switch
+            {
+                PerformanceOverlayMetricIds.Fps => statistics.AverageFps,
+                PerformanceOverlayMetricIds.FrameTime => statistics.DurationMs / statistics.IntervalCount,
+                PerformanceOverlayMetricIds.OnePercentLow => statistics.OnePercentLowFps,
+                _ => statistics.PointOnePercentLowFps
+            };
+            return Current(metricId, value, unit);
+        }
+
+        if (metricId == PerformanceOverlayMetricIds.Cpu)
+        {
+            return metricProcess?.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.CpuUsage) == true
+                ? Current(metricId, metricProcess.CpuUsagePercent, "%")
+                : Missing(metricId, "%", "process-cpu-unavailable");
+        }
+
+        if (metricId is PerformanceOverlayMetricIds.Gpu
+            or PerformanceOverlayMetricIds.Memory
+            or PerformanceOverlayMetricIds.Vram)
+        {
+            var sourceId = metricId == PerformanceOverlayMetricIds.Memory
+                ? "memory.usage"
+                : metricId == PerformanceOverlayMetricIds.Gpu ? "usage" : "vram";
+            var bars = breakdown?.Bars.Where(bar => metricId == PerformanceOverlayMetricIds.Memory
+                ? bar.MetricId.Equals(sourceId, StringComparison.OrdinalIgnoreCase)
+                : bar.MetricId.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase)
+                  && bar.MetricId.EndsWith($".{sourceId}", StringComparison.OrdinalIgnoreCase))
+                ?? [];
+            var values = bars.Where(static bar => bar.ObservationStatus == SamplingObservationStatus.Current)
+                .SelectMany(static bar => bar.Software)
+                .Where(software => software.SoftwareId.Equals(process.SoftwareId, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(static software => software.Processes)
+                .Where(item => item.ProcessId == process.ProcessId && item.ProcessStartKey is > 0
+                    && checked((ulong)item.ProcessStartKey.Value) == process.ProcessStartKey)
+                .Select(static item => item.Value)
+                .ToArray();
+            var unit = metricId == PerformanceOverlayMetricIds.Gpu ? "%" : MetricUnits.Bytes;
+            return values.Length > 0
+                ? Current(metricId, metricId == PerformanceOverlayMetricIds.Gpu
+                    ? Math.Min(100, values.Sum()) : values.Sum(), unit)
+                : Missing(metricId, unit, "process-metric-unavailable");
+        }
+
+        if (!systemDefinitions.TryGetValue(metricId, out var definition))
+            return Missing(metricId, string.Empty, "unknown-metric");
+        if (!definition.Selectable)
+            return Missing(metricId, definition.Unit, "metric-unavailable");
+        var item = hardware?.Items.GetValueOrDefault(metricId);
+        return item?.NumericValue is { } number && double.IsFinite(number)
+            ? Current(metricId, number, definition.Unit)
+            : Missing(metricId, definition.Unit, "metric-unavailable");
+    }
+
+    private static PerformanceOverlayMetricItem Current(string id, double value, string unit) =>
+        double.IsFinite(value)
+            ? new(id, value, unit, "current", null)
+            : Missing(id, unit, "metric-unavailable");
+
+    private static PerformanceOverlayMetricItem Missing(string id, string unit, string reason) =>
+        new(id, null, unit, "unavailable", reason);
+}

@@ -1,0 +1,1002 @@
+const std = @import("std");
+const protocol = @import("protocol.zig");
+const session_module = @import("session.zig");
+const process_scores = @import("process_scores.zig");
+
+test "welfare follows direct free capacity continuously through saturation" {
+    var config = testConfig();
+    config.welfare_base_score = 100;
+    var envelope = testEnvelope(1, 2, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    envelope.gpu_free_ratio = 1;
+    envelope.vram_free_ratio = 1;
+    var previous: f64 = 101;
+    for (0..1001) |step| {
+        const usage = @as(f64, @floatFromInt(step)) / 1000;
+        envelope.cpu_free_ratio = 1 - usage;
+        envelope.memory_free_ratio = 1 - usage;
+        const welfare = try process_scores.calculateWelfare(&config, &envelope);
+        try std.testing.expectApproxEqAbs(100 * (1 - usage), welfare.cpu_bonus, 1e-12);
+        try std.testing.expectApproxEqAbs(welfare.cpu_bonus, welfare.memory_bonus, 1e-12);
+        try std.testing.expect(welfare.cpu_bonus < previous);
+        if (step > 0) try std.testing.expectApproxEqAbs(@as(f64, 0.1), previous - welfare.cpu_bonus, 1e-12);
+        previous = welfare.cpu_bonus;
+    }
+    for ([_]f64{ 0, 100 }) |valid| {
+        config.welfare_base_score = valid;
+        try std.testing.expect(protocol.validateConfig(&config));
+    }
+    for ([_]f64{ -1, 101, std.math.nan(f64), std.math.inf(f64) }) |bad| {
+        config.welfare_base_score = bad;
+        try std.testing.expect(!protocol.validateConfig(&config));
+    }
+    config.welfare_base_score = 60;
+    config.maximum_base_importance = 50;
+    try std.testing.expect(!protocol.validateConfig(&config));
+}
+
+test "each software receives one full welfare independent of software and member counts" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 100, 1, 0),
+        processRow(2, 20, 200, 2, 100, 1, 0),
+        processRow(3, 30, 300, 1, 100, 1, 0),
+        processRow(4, 40, 400, 3, 100, 1, 0),
+    };
+    for ([_]usize{ 2, 3, 4 }, 1..) |count, generation| {
+        var envelope = testEnvelope(generation, count, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+        envelope.cpu_free_ratio = 1;
+        envelope.gpu_free_ratio = 1;
+        envelope.vram_free_ratio = 1;
+        envelope.memory_free_ratio = 1;
+        var outputs: [16]protocol.ScoreOutput = undefined;
+        envelope.output_capacity = outputs.len;
+        var snapshot = std.mem.zeroes(protocol.Snapshot);
+        try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+            session,
+            &envelope,
+            &processes,
+            @intCast(count),
+            null,
+            0,
+            &outputs,
+            outputs.len,
+            &snapshot,
+        ));
+        var software_count: usize = 0;
+        for (outputSection(&outputs, &snapshot, .software_cpu)) |row| {
+            try std.testing.expectEqual(@as(f64, 60), row.score);
+            software_count += 1;
+        }
+        try std.testing.expectEqual(if (count == 4) @as(usize, 3) else 2, software_count);
+    }
+}
+
+test "software memory score uses CPU raw sum and only memory welfare" {
+    var config = testConfig();
+    config.cpu_baseline_ratio = 0.5;
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 100, 1, 10),
+        processRow(2, 20, 200, 1, 100, 1, 20),
+    };
+    for ([_]f64{ 0.65, 0 }, 1..) |cpu_free, generation| {
+        var envelope = testEnvelope(generation, processes.len, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+        envelope.cpu_free_ratio = cpu_free;
+        envelope.memory_free_ratio = 1;
+        var outputs: [16]protocol.ScoreOutput = undefined;
+        envelope.output_capacity = outputs.len;
+        var snapshot = std.mem.zeroes(protocol.Snapshot);
+        try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+            session,
+            &envelope,
+            &processes,
+            processes.len,
+            null,
+            0,
+            &outputs,
+            outputs.len,
+            &snapshot,
+        ));
+        try std.testing.expectEqual(@as(u32, 1), snapshot.software_memory_output_count);
+        for (outputSection(&outputs, &snapshot, .software_memory)) |row|
+            try std.testing.expectApproxEqAbs(@as(f64, 120), row.score, 1e-10);
+        for (outputSection(&outputs, &snapshot, .software_cpu)) |row|
+            try std.testing.expectApproxEqAbs(if (generation == 1) @as(f64, 99) else 60, row.score, 1e-10);
+    }
+}
+
+test "virtual software shares its remaining capacity score without recipient state or baseline multipliers" {
+    var config = testConfig();
+    config.cpu_baseline_ratio = 0.5;
+    config.cpu_state_multipliers[1] = 3;
+    config.gpu_state_multipliers[1] = 2;
+    var envelope = testEnvelope(1, 2, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    envelope.cpu_free_ratio = 0.5;
+    envelope.gpu_free_ratio = 1;
+    envelope.vram_free_ratio = 1;
+    envelope.memory_free_ratio = 1;
+    const welfare = try process_scores.calculateWelfare(&config, &envelope);
+    try std.testing.expectEqual(@as(f64, 30), welfare.budget);
+    try std.testing.expectEqual(@as(f64, 15), welfare.share);
+    var process = processRow(1, 10, 100, 1, 80, 2, 25);
+    process.runtime_state = 1;
+    try std.testing.expectEqual(@as(f64, 255), try process_scores.cpu(&config, &process, welfare.share));
+    const gpu = gpuRow(process, 11, 1, 25);
+    try std.testing.expectEqual(@as(f64, 55), try process_scores.gpu(&config, &process, &gpu, welfare.share));
+
+    envelope.welfare_eligible_process_count = 0;
+    try std.testing.expectEqual(@as(f64, 0), (try process_scores.calculateWelfare(&config, &envelope)).share);
+    config.welfare_base_score = 0;
+    try std.testing.expectEqual(@as(f64, 0), (try process_scores.calculateWelfare(&config, &envelope)).budget);
+    config.welfare_base_score = 101;
+    try std.testing.expect(!protocol.validateConfig(&config));
+}
+
+test "CPU configuration requires an explicit baseline ratio and current scoring ABI" {
+    var config = testConfig();
+    config.cpu_baseline_ratio = 0;
+    try std.testing.expect(!protocol.validateConfig(&config));
+    config.cpu_baseline_ratio = 0.5;
+    try std.testing.expect(protocol.validateConfig(&config));
+    config.abi_version = 0x0006_0000;
+    try std.testing.expect(!protocol.validateConfig(&config));
+}
+
+test "configuration rejects finite values whose declared score range can overflow" {
+    var config = testConfig();
+    config.maximum_base_importance = 1.0e308;
+    try std.testing.expect(!protocol.validateConfig(&config));
+
+    config = testConfig();
+    config.maximum_policy_multiplier = 1.0e200;
+    try std.testing.expect(!protocol.validateConfig(&config));
+
+    try std.testing.expect(protocol.validateConfig(&testConfig()));
+}
+
+test "all CPU scores use a shared baseline without clipping reference use" {
+    for ([_]f64{ 1, 0.5, 0.25 }) |reference_ratio| {
+        var config = testConfig();
+        config.cpu_baseline_ratio = reference_ratio;
+        const session = try session_module.Session.create(&config, &.{1});
+        defer session.destroy();
+        for ([_]f64{ 0, 10, 40, 80, 100 }, 0..) |occupancy, index| {
+            var processes = [_]protocol.ProcessInput{
+                processRow(1, 10, 100, 1, 100, 1, occupancy),
+            };
+            const score = try runCpuSoftwareScore(session, index + 1, &processes);
+            try std.testing.expectApproxEqAbs(
+                occupancy / reference_ratio,
+                score,
+                0.0000001,
+            );
+        }
+    }
+}
+
+test "baseline normalization is identical for every software and preserves member sums" {
+    var config = testConfig();
+    config.cpu_baseline_ratio = 0.5;
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 100, 1, 30),
+        processRow(2, 20, 200, 1, 100, 1, 20),
+        processRow(3, 30, 300, 2, 100, 1, 10),
+    };
+    var envelope = testEnvelope(1, processes.len, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    var outputs: [8]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        null,
+        0,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(@as(u32, 3), snapshot.process_cpu_output_count);
+    try std.testing.expectEqual(@as(u32, 2), snapshot.software_cpu_output_count);
+    try std.testing.expectEqual(@as(f64, 60), outputs[0].score);
+    try std.testing.expectEqual(@as(f64, 40), outputs[1].score);
+    try std.testing.expectEqual(@as(f64, 20), outputs[2].score);
+    try std.testing.expectEqual(@as(f64, 100), outputs[3].score);
+    try std.testing.expectEqual(@as(u32, 2), outputs[3].member_count);
+    try std.testing.expectEqual(@as(f64, 20), outputs[4].score);
+    try std.testing.expectEqual(@as(u32, 1), outputs[4].member_count);
+}
+
+test "narrow output rows name their input rows section by section" {
+    try std.testing.expectEqual(@as(usize, 16), @sizeOf(protocol.ScoreOutput));
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    // Input order differs from identity and aggregate order, so input_index is never the emit position.
+    var processes = [_]protocol.ProcessInput{
+        processRow(0, 30, 300, 2, 80, 1, 10),
+        processRow(1, 10, 100, 1, 80, 1, 20),
+        processRow(2, 20, 200, 1, 80, 1, 30),
+    };
+    var gpus = [_]protocol.GpuInput{
+        gpuRow(processes[2], 22, 0, 40),
+        gpuRow(processes[1], 11, 1, 25),
+        gpuRow(processes[2], 11, 2, 35),
+    };
+    var envelope = testEnvelope(1, processes.len, gpus.len, 2, protocol.EnvelopeFlags.cpu_snapshot_complete | protocol.EnvelopeFlags.gpu_snapshot_complete);
+    var outputs: [16]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    // Each expected row is { input_index, member_count }.
+    const expected = [_]struct { section: OutputSection, rows: []const [2]u32 }{
+        // Process rows follow identity order (process id, start key, adapter key) and name themselves.
+        .{ .section = .process_cpu, .rows = &.{ .{ 1, 1 }, .{ 2, 1 }, .{ 0, 1 } } },
+        // Software rows follow aggregate order and name their first counted member.
+        .{ .section = .software_cpu, .rows = &.{ .{ 1, 2 }, .{ 0, 1 } } },
+        .{ .section = .process_gpu, .rows = &.{ .{ 1, 1 }, .{ 2, 1 }, .{ 0, 1 } } },
+        .{ .section = .software_gpu, .rows = &.{ .{ 1, 2 }, .{ 0, 1 } } },
+        .{ .section = .software_memory, .rows = &.{ .{ 1, 2 }, .{ 0, 1 } } },
+    };
+    var total: usize = 0;
+    for (expected) |entry| {
+        const rows = outputSection(&outputs, &snapshot, entry.section);
+        try std.testing.expectEqual(entry.rows.len, rows.len);
+        for (rows, entry.rows) |row, want| {
+            try std.testing.expectEqual(want[0], row.input_index);
+            try std.testing.expectEqual(want[1], row.member_count);
+        }
+        total += rows.len;
+    }
+    try std.testing.expectEqual(@as(usize, snapshot.output_count), total);
+    try std.testing.expectEqual(@as(u64, 11), gpus[outputSection(&outputs, &snapshot, .software_gpu)[0].input_index].adapter_key);
+    try std.testing.expectEqual(@as(u64, 2), processes[outputSection(&outputs, &snapshot, .software_cpu)[1].input_index].software_key);
+}
+
+test "configuration output capacity covers every process and software score" {
+    var config = testConfig();
+    const required_output_count = 3 * config.maximum_process_count + 2 * config.maximum_gpu_row_count;
+
+    config.maximum_output_count = required_output_count;
+    try std.testing.expect(protocol.validateConfig(&config));
+
+    config.maximum_output_count = required_output_count - 1;
+    try std.testing.expect(!protocol.validateConfig(&config));
+
+    config.maximum_process_count = std.math.maxInt(u32);
+    config.maximum_gpu_row_count = 1;
+    config.maximum_output_count = std.math.maxInt(u32);
+    try std.testing.expect(!protocol.validateConfig(&config));
+}
+
+test "zero occupancy is exact zero and software CPU is the member sum" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(2, 20, 200, 1, 100, 1, 0),
+        processRow(1, 10, 100, 1, 100, 1, 50),
+    };
+    var envelope = testEnvelope(1, processes.len, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    var outputs: [8]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        null,
+        0,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(@as(u32, 2), snapshot.process_cpu_output_count);
+    try std.testing.expectEqual(@as(u32, 1), snapshot.software_cpu_output_count);
+    try std.testing.expectEqual(@as(f64, 50), outputs[0].score);
+    try std.testing.expectEqual(@as(f64, 0), outputs[1].score);
+    try std.testing.expect(!std.math.signbit(outputs[1].score));
+    try std.testing.expectEqual(@as(f64, 50), outputs[2].score);
+    try std.testing.expectEqual(@as(u32, 2), outputs[2].member_count);
+}
+
+test "per adapter GPU scores are isolated and aggregate by stable adapter key" {
+    var config = testConfig();
+    config.cpu_baseline_ratio = 0.5;
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 80, 1, 20),
+        processRow(2, 20, 200, 1, 80, 1, 30),
+    };
+    var gpus = [_]protocol.GpuInput{
+        gpuRow(processes[1], 22, 2, 0),
+        gpuRow(processes[0], 11, 1, 25),
+        gpuRow(processes[0], 22, 1, 50),
+        gpuRow(processes[1], 11, 2, 25),
+    };
+    var envelope = testEnvelope(
+        1,
+        processes.len,
+        gpus.len,
+        2,
+        protocol.EnvelopeFlags.cpu_snapshot_complete | protocol.EnvelopeFlags.gpu_snapshot_complete,
+    );
+    var outputs: [16]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(@as(u32, 4), snapshot.process_gpu_output_count);
+    try std.testing.expectEqual(@as(u32, 2), snapshot.software_gpu_output_count);
+    const software_gpu_start = snapshot.process_cpu_output_count + snapshot.software_cpu_output_count +
+        snapshot.process_gpu_output_count;
+    try std.testing.expectEqual(@as(u64, 11), gpus[outputs[software_gpu_start].input_index].adapter_key);
+    try std.testing.expectEqual(@as(f64, 40), outputs[software_gpu_start].score);
+    try std.testing.expectEqual(@as(u64, 22), gpus[outputs[software_gpu_start + 1].input_index].adapter_key);
+    try std.testing.expectEqual(@as(f64, 40), outputs[software_gpu_start + 1].score);
+}
+
+test "same round recomputation is deterministic and permits changed inputs" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{processRow(1, 10, 100, 1, 80, 1, 20)};
+    var gpus = [_]protocol.GpuInput{gpuRow(processes[0], 11, 1, 25)};
+    var envelope = testEnvelope(1, 1, 1, 1, protocol.EnvelopeFlags.gpu_snapshot_complete);
+    var outputs: [4]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+
+    const first_score = outputs[0].score;
+
+    // Repeating a round remains a pure computation.
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(first_score, outputs[0].score);
+    try std.testing.expectEqual(@as(u64, 1), snapshot.round_number);
+    gpus[0].gpu_occupancy_percent = 50;
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(first_score * 2, outputs[0].score);
+}
+
+test "sparse GPU rows accept different observed adapter sets" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 80, 1, 20),
+        processRow(2, 20, 200, 1, 80, 1, 30),
+    };
+    var gpus = [_]protocol.GpuInput{
+        gpuRow(processes[0], 11, 1, 25),
+        gpuRow(processes[0], 22, 1, 50),
+        gpuRow(processes[1], 11, 1, 25),
+        gpuRow(processes[1], 33, 1, 50),
+    };
+    var envelope = testEnvelope(
+        1,
+        processes.len,
+        gpus.len,
+        2,
+        protocol.EnvelopeFlags.gpu_snapshot_complete,
+    );
+    var outputs: [16]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+}
+
+test "sparse GPU rows retain observed processes when another has no adapter" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 80, 1, 20),
+        processRow(2, 20, 200, 1, 80, 1, 30),
+    };
+    var gpus = [_]protocol.GpuInput{
+        gpuRow(processes[0], 11, 1, 25),
+    };
+    var envelope = testEnvelope(
+        1,
+        processes.len,
+        gpus.len,
+        2,
+        protocol.EnvelopeFlags.gpu_snapshot_complete,
+    );
+    var outputs: [16]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(@as(u32, 1), snapshot.process_gpu_output_count);
+}
+
+test "sparse GPU rows exclude duplicate adapter identities" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 80, 1, 20),
+    };
+    var gpus = [_]protocol.GpuInput{
+        gpuRow(processes[0], 11, 1, 25),
+        gpuRow(processes[0], 11, 1, 50),
+    };
+    var envelope = testEnvelope(
+        1,
+        processes.len,
+        gpus.len,
+        2,
+        protocol.EnvelopeFlags.gpu_snapshot_complete,
+    );
+    var outputs: [16]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(@as(u32, 0), snapshot.output_count);
+    try std.testing.expect(snapshot.invalid_fact_count >= 2);
+}
+
+test "split process occupancy does not add a process floor" {
+    var config = testConfig();
+    const first = try session_module.Session.create(&config, &.{1});
+    defer first.destroy();
+    const second = try session_module.Session.create(&config, &.{1});
+    defer second.destroy();
+    var one = [_]protocol.ProcessInput{processRow(1, 10, 100, 1, 90, 1, 60)};
+    var split = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 90, 1, 20),
+        processRow(2, 20, 200, 1, 90, 1, 40),
+    };
+    const one_score = try runCpuSoftwareScore(first, 1, &one);
+    const split_score = try runCpuSoftwareScore(second, 1, &split);
+    try std.testing.expectEqual(one_score, split_score);
+    try std.testing.expectEqual(@as(f64, 54), one_score);
+}
+
+test "duplicate process instances are excluded even when software differs" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 100, 1, 10),
+        processRow(2, 10, 100, 2, 100, 1, 20),
+        processRow(3, 30, 300, 3, 100, 1, 30),
+    };
+    var envelope = testEnvelope(1, processes.len, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    var outputs: [8]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        null,
+        0,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(@as(u32, 1), snapshot.process_cpu_output_count);
+    try std.testing.expectEqual(@as(u32, 3), snapshot.output_count);
+    try std.testing.expectEqual(@as(u32, 2), snapshot.invalid_fact_count);
+}
+
+test "incomplete CPU domain publishes no score instead of a default" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{processRow(1, 10, 100, 1, 100, 1, 50)};
+    var gpus = [_]protocol.GpuInput{gpuRow(processes[0], 11, 1, 25)};
+    var envelope = testEnvelope(1, 1, 1, 1, protocol.EnvelopeFlags.gpu_snapshot_complete);
+    var outputs: [8]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(@as(u32, 0), snapshot.process_cpu_output_count);
+    try std.testing.expectEqual(@as(u32, 0), snapshot.software_cpu_output_count);
+    try std.testing.expectEqual(@as(u32, 1), snapshot.process_gpu_output_count);
+    try std.testing.expectEqual(@as(u32, 1), snapshot.software_gpu_output_count);
+}
+
+fn runCpuSoftwareScore(
+    session: *session_module.Session,
+    generation: u64,
+    processes: []protocol.ProcessInput,
+) !f64 {
+    var envelope = testEnvelope(generation, processes.len, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    var outputs: [16]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        processes.ptr,
+        @intCast(processes.len),
+        null,
+        0,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    const software = outputSection(&outputs, &snapshot, .software_cpu);
+    if (software.len == 0) return error.MissingSoftwareCpuScore;
+    return software[0].score;
+}
+
+const OutputSection = enum { process_cpu, software_cpu, process_gpu, software_gpu, software_memory };
+
+// Reads one output section the way the managed caller does: by the snapshot counts, in protocol order.
+fn outputSection(
+    outputs: []const protocol.ScoreOutput,
+    snapshot: *const protocol.Snapshot,
+    section: OutputSection,
+) []const protocol.ScoreOutput {
+    const counts = [_]u32{
+        snapshot.process_cpu_output_count,
+        snapshot.software_cpu_output_count,
+        snapshot.process_gpu_output_count,
+        snapshot.software_gpu_output_count,
+        snapshot.software_memory_output_count,
+    };
+    var start: usize = 0;
+    for (counts[0..@intFromEnum(section)]) |count| start += count;
+    return outputs[start..][0..counts[@intFromEnum(section)]];
+}
+
+fn testConfig() protocol.Config {
+    return .{
+        .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.Config),
+        .generation = 1,
+        .field_mask = protocol.ConfigFields.required,
+        .maximum_process_count = 16,
+        .maximum_gpu_row_count = 32,
+        .maximum_output_count = 112,
+        .cpu_core_count = 1,
+        .cpu_baseline_ratio = 1,
+        .welfare_base_score = 60,
+        .cpu_state_multipliers = .{ 1, 1, 1, 1, 1, 1, 0 },
+        .gpu_state_multipliers = .{ 1, 1, 1, 1, 1, 1, 0 },
+        .maximum_base_importance = 100,
+        .maximum_policy_multiplier = 4,
+        .reserved = .{ 0, 0 },
+    };
+}
+
+fn testEnvelope(
+    generation: u64,
+    process_count: usize,
+    gpu_count: usize,
+    adapter_count: u32,
+    flags: u64,
+) protocol.GenerationEnvelope {
+    return .{
+        .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.GenerationEnvelope),
+        .process_input_struct_size = @sizeOf(protocol.ProcessInput),
+        .gpu_input_struct_size = @sizeOf(protocol.GpuInput),
+        .output_struct_size = @sizeOf(protocol.ScoreOutput),
+        .reserved0 = 0,
+        .round_number = generation,
+        .valid_mask = protocol.EnvelopeValidity.welfare_capacity,
+        .flags = flags,
+        .process_count = @intCast(process_count),
+        .gpu_row_count = @intCast(gpu_count),
+        .gpu_adapter_count = adapter_count,
+        .output_capacity = 1,
+        .cpu_free_ratio = 0,
+        .gpu_free_ratio = 0,
+        .vram_free_ratio = 0,
+        .memory_free_ratio = 0,
+        .welfare_eligible_process_count = @intCast(process_count),
+        .reserved1 = 0,
+    };
+}
+
+fn processRow(
+    source_index: u32,
+    process_id: u32,
+    start_key: u64,
+    software_key: u64,
+    base_importance: f64,
+    policy_multiplier: f64,
+    occupancy: f64,
+) protocol.ProcessInput {
+    return .{
+        .struct_size = @sizeOf(protocol.ProcessInput),
+        .flags = protocol.ProcessFlags.running | protocol.ProcessFlags.cpu_metrics_complete |
+            protocol.ProcessFlags.gpu_metrics_complete,
+        .valid_mask = protocol.ProcessValidity.cpu_required,
+        .target_key = 1000 + source_index,
+        .software_key = software_key,
+        .process_start_key = start_key,
+        .base_importance = base_importance,
+        .cpu_policy_multiplier = policy_multiplier,
+        .weighted_cpu_use_percent = occupancy,
+        .source_index = source_index,
+        .process_id = process_id,
+        .runtime_state = @intFromEnum(protocol.RuntimeState.background_process),
+        .reserved0 = .{ 0, 0, 0, 0, 0, 0, 0 },
+        .reserved = 0,
+    };
+}
+
+fn gpuRow(
+    process: protocol.ProcessInput,
+    adapter_key: u64,
+    source_index: u32,
+    occupancy: f64,
+) protocol.GpuInput {
+    return .{
+        .struct_size = @sizeOf(protocol.GpuInput),
+        .flags = 0,
+        .valid_mask = protocol.GpuValidity.required,
+        .target_key = process.target_key,
+        .software_key = process.software_key,
+        .process_start_key = process.process_start_key,
+        .adapter_key = adapter_key,
+        .gpu_policy_multiplier = 1,
+        .gpu_occupancy_percent = occupancy,
+        .source_index = source_index,
+        .process_id = process.process_id,
+        .reserved = .{ 0, 0 },
+    };
+}
+
+// Explicit allocation belongs to this test fixture, never to Session.score.
+fn scoreWithScratchFixture(
+    session: *session_module.Session,
+    envelope: *const protocol.GenerationEnvelope,
+    processes: ?[*]const protocol.ProcessInput,
+    process_capacity: u32,
+    gpus: ?[*]const protocol.GpuInput,
+    gpu_capacity: u32,
+    outputs: ?[*]protocol.ScoreOutput,
+    output_capacity: u32,
+    snapshot: *protocol.Snapshot,
+) protocol.Status {
+    const capacity = session.capacity();
+    const words = std.testing.allocator.alloc(u64, @intCast((capacity.scratch_byte_count + 7) / 8)) catch @panic("test scratch allocation failed");
+    defer std.testing.allocator.free(words);
+    const bytes = std.mem.sliceAsBytes(words);
+    @memset(bytes, 0xa5);
+    return session_module.score(session, envelope, processes, process_capacity, gpus, gpu_capacity, outputs, output_capacity, @ptrCast(bytes.ptr), capacity.scratch_byte_count, snapshot);
+}
+
+test "scratch capacity is actual typed extent with unchanged ABI offsets" {
+    const scratch = @import("scratch.zig");
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    const actual = session.capacity();
+    try std.testing.expectEqual(@as(u32, 0x00080000), actual.abi_version);
+    try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.Capacity));
+    try std.testing.expectEqual(@as(usize, 40), @offsetOf(protocol.Capacity, "scratch_byte_count"));
+    try std.testing.expectEqual(@as(usize, 48), @offsetOf(protocol.Capacity, "scratch_alignment"));
+    try std.testing.expectEqual(@as(usize, 52), @offsetOf(protocol.Capacity, "reserved0"));
+    try std.testing.expectEqual(@as(usize, 56), @offsetOf(protocol.Capacity, "reserved"));
+    try std.testing.expectEqual(@as(u64, 16) * (@sizeOf(scratch.ProcessWork) + 8) +
+        @as(u64, 32) * (@sizeOf(scratch.GpuWork) + 8), actual.scratch_byte_count);
+    try std.testing.expectEqual(@as(u32, scratch.alignment), actual.scratch_alignment);
+    try std.testing.expectEqual(@as(u32, 0), actual.reserved0);
+    try std.testing.expectEqualSlices(u64, &.{ 0, 0 }, &actual.reserved);
+    // Layout only: no large allocation and no invented Int32 byte-count gate.
+    config.maximum_process_count = std.math.maxInt(u32);
+    config.maximum_gpu_row_count = std.math.maxInt(u32);
+    try std.testing.expect(scratch.Layout.init(&config).byte_count > std.math.maxInt(u32));
+}
+
+test "bad scratch rejects before writes" {
+    const scratch = @import("scratch.zig");
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    const capacity = session.capacity();
+    const words = try std.testing.allocator.alloc(u64, @intCast((capacity.scratch_byte_count + 7) / 8));
+    defer std.testing.allocator.free(words);
+    const bytes = std.mem.sliceAsBytes(words);
+    @memset(bytes, 0xa5);
+    var processes = [_]protocol.ProcessInput{processRow(1, 10, 100, 1, 100, 1, 50)};
+    var outputs = std.mem.zeroes([4]protocol.ScoreOutput);
+    outputs[0].score = 987;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    snapshot.round_number = 999;
+    var envelope = testEnvelope(1, 1, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    envelope.output_capacity = outputs.len;
+    const bad = [_]struct { pointer: ?*anyopaque, length: u64, status: protocol.Status }{
+        .{ .pointer = null, .length = capacity.scratch_byte_count, .status = .invalid_argument },
+        .{ .pointer = @ptrCast(bytes.ptr), .length = scratch.Layout.initRows(1, 0).byte_count - 1, .status = .buffer_too_small },
+        .{ .pointer = @ptrCast(bytes.ptr + 1), .length = capacity.scratch_byte_count, .status = .invalid_argument },
+        .{ .pointer = @ptrCast(bytes.ptr), .length = std.math.maxInt(u64), .status = .invalid_argument },
+        .{ .pointer = @ptrFromInt(std.math.maxInt(usize) - 7), .length = capacity.scratch_byte_count, .status = .invalid_argument },
+    };
+    for (bad) |item| {
+        try std.testing.expectEqual(item.status, session_module.score(session, &envelope, &processes, 1, null, 0, &outputs, outputs.len, item.pointer, item.length, &snapshot));
+        try std.testing.expectEqual(@as(f64, 987), outputs[0].score);
+        try std.testing.expectEqual(@as(u64, 999), snapshot.round_number);
+        for (bytes) |byte| try std.testing.expectEqual(@as(u8, 0xa5), byte);
+    }
+    try std.testing.expectEqual(protocol.Status.ok, session_module.score(session, &envelope, &processes, 1, null, 0, &outputs, outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &snapshot));
+    try std.testing.expectEqual(@as(f64, 50), outputs[0].score);
+}
+
+test "scratch binds only submitted rows and leaves the tail untouched" {
+    const scratch = @import("scratch.zig");
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    const length = scratch.Layout.initRows(1, 1).byte_count;
+    try std.testing.expect(length < session.capacity().scratch_byte_count);
+    const words = try std.testing.allocator.alloc(u64, @intCast(length / 8 + 1));
+    defer std.testing.allocator.free(words);
+    const bytes = std.mem.sliceAsBytes(words);
+    @memset(bytes, 0xa5);
+    var processes = [_]protocol.ProcessInput{processRow(1, 10, 100, 1, 100, 1, 50)};
+    var gpus = [_]protocol.GpuInput{gpuRow(processes[0], 11, 0, 25)};
+    var outputs: [5]protocol.ScoreOutput = undefined;
+    var envelope = testEnvelope(1, 1, 1, 1, protocol.EnvelopeFlags.cpu_snapshot_complete | protocol.EnvelopeFlags.gpu_snapshot_complete);
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.score(session, &envelope,
+        &processes, 1, &gpus, 1, &outputs, outputs.len, @ptrCast(bytes.ptr), length, &snapshot));
+    try std.testing.expectEqual(@as(u32, 5), snapshot.output_count);
+    for (bytes[@intCast(length)..]) |byte| try std.testing.expectEqual(@as(u8, 0xa5), byte);
+}
+
+test "scratch cannot alias actual input output or envelope" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    const capacity = session.capacity();
+    var processes = [_]protocol.ProcessInput{processRow(1, 10, 100, 1, 100, 1, 50)};
+    var outputs = std.mem.zeroes([4]protocol.ScoreOutput);
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    var envelope = testEnvelope(1, 1, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    envelope.output_capacity = outputs.len;
+    for ([_]*anyopaque{ @ptrCast(&processes), @ptrCast(&outputs), @ptrCast(&envelope), @ptrCast(&snapshot) }) |pointer| {
+        try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.score(session, &envelope, &processes, 1, null, 0, &outputs, outputs.len, pointer, capacity.scratch_byte_count, &snapshot));
+        try std.testing.expectEqual(@as(f64, 50), processes[0].weighted_cpu_use_percent);
+        try std.testing.expectEqual(@as(u64, 0), snapshot.round_number);
+    }
+}
+
+test "one poisoned region is sequentially reused by independent CPU GPU sessions" {
+    var config = testConfig();
+    const cpu = try session_module.Session.create(&config, &.{1});
+    defer cpu.destroy();
+    const gpu = try session_module.Session.create(&config, &.{1});
+    defer gpu.destroy();
+    const capacity = cpu.capacity();
+    try std.testing.expectEqual(capacity.scratch_byte_count, gpu.capacity().scratch_byte_count);
+    const words = try std.testing.allocator.alloc(u64, @intCast((capacity.scratch_byte_count + 7) / 8));
+    defer std.testing.allocator.free(words);
+    const bytes = std.mem.sliceAsBytes(words);
+    var processes = [_]protocol.ProcessInput{processRow(1, 10, 100, 1, 100, 1, 50)};
+    var gpus = [_]protocol.GpuInput{gpuRow(processes[0], 11, 1, 25)};
+    var cpu_outputs: [4]protocol.ScoreOutput = undefined;
+    var gpu_outputs: [4]protocol.ScoreOutput = undefined;
+    var cpu_snapshot = std.mem.zeroes(protocol.Snapshot);
+    var gpu_snapshot = std.mem.zeroes(protocol.Snapshot);
+    var cpu_envelope = testEnvelope(1, 1, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    var gpu_envelope = testEnvelope(1, 1, 1, 1, protocol.EnvelopeFlags.gpu_snapshot_complete);
+    cpu_envelope.output_capacity = cpu_outputs.len;
+    gpu_envelope.output_capacity = gpu_outputs.len;
+    @memset(bytes, 0xa5);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.score(cpu, &cpu_envelope, &processes, 1, null, 0, &cpu_outputs, cpu_outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &cpu_snapshot));
+    const saved = cpu_outputs;
+    @memset(bytes, 0x5a);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.score(gpu, &gpu_envelope, &processes, 1, &gpus, 1, &gpu_outputs, gpu_outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &gpu_snapshot));
+    try std.testing.expectEqual(@as(f64, 50), cpu_outputs[0].score);
+    try std.testing.expectEqual(@as(f64, 25), gpu_outputs[0].score);
+    try std.testing.expectEqualSlices(u8, std.mem.asBytes(&saved), std.mem.asBytes(&cpu_outputs));
+    cpu_envelope.round_number = 2;
+    @memset(bytes, 0xff);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.score(cpu, &cpu_envelope, &processes, 1, null, 0, &cpu_outputs, cpu_outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &cpu_snapshot));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.score(gpu, &gpu_envelope, &processes, 1, &gpus, 1, &gpu_outputs, gpu_outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &gpu_snapshot));
+}
+
+test "bad CPU runtime and GPU facts exclude only their process domain" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    var processes = [_]protocol.ProcessInput{
+        processRow(1, 10, 100, 1, 80, 1, 20),
+        processRow(2, 20, 200, 1, 80, 1, 30),
+        processRow(3, 30, 300, 1, 80, 1, 40),
+    };
+    processes[0].weighted_cpu_use_percent = std.math.nan(f64);
+    processes[1].runtime_state = @intFromEnum(protocol.RuntimeState.unknown);
+    var gpus = [_]protocol.GpuInput{
+        gpuRow(processes[0], 11, 1, 25),
+        gpuRow(processes[1], 11, 2, 25),
+        gpuRow(processes[2], 11, 3, std.math.nan(f64)),
+    };
+    var envelope = testEnvelope(1, processes.len, gpus.len, 1, protocol.EnvelopeFlags.cpu_snapshot_complete | protocol.EnvelopeFlags.gpu_snapshot_complete);
+    var outputs: [16]protocol.ScoreOutput = undefined;
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+    try std.testing.expectEqual(@as(u32, 1), snapshot.process_cpu_output_count);
+    try std.testing.expectEqual(@as(u32, 1), snapshot.process_gpu_output_count);
+    try std.testing.expect(snapshot.invalid_fact_count >= 3);
+    for (outputSection(&outputs, &snapshot, .process_cpu)) |row|
+        try std.testing.expectEqual(@as(u32, 30), processes[row.input_index].process_id);
+    for (outputSection(&outputs, &snapshot, .process_gpu)) |row|
+        try std.testing.expectEqual(@as(u32, 10), gpus[row.input_index].process_id);
+    for (outputSection(&outputs, &snapshot, .software_cpu)) |row|
+        try std.testing.expectEqual(@as(u32, 1), row.member_count);
+    for (outputSection(&outputs, &snapshot, .software_gpu)) |row|
+        try std.testing.expectEqual(@as(u32, 1), row.member_count);
+    processes[0].struct_size = 0;
+    try std.testing.expectEqual(protocol.Status.abi_mismatch, scoreWithScratchFixture(
+        session,
+        &envelope,
+        &processes,
+        processes.len,
+        &gpus,
+        gpus.len,
+        &outputs,
+        outputs.len,
+        &snapshot,
+    ));
+}
+
+test "malformed fact flags masks and reserved bytes preserve sibling scoring" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    for (0..8) |kind| {
+        var processes = [_]protocol.ProcessInput{
+            processRow(1, 10, 100, 1, 80, 1, 20),
+            processRow(2, 20, 200, 2, 80, 1, 30),
+        };
+        var gpus = [_]protocol.GpuInput{
+            gpuRow(processes[0], 11, 1, 25),
+            gpuRow(processes[1], 11, 2, 35),
+        };
+        switch (kind) {
+            0 => processes[0].flags |= @as(u32, 1) << 31,
+            1 => processes[0].valid_mask |= @as(u64, 1) << 63,
+            2 => processes[0].reserved0[0] = 1,
+            3 => processes[0].reserved = 1,
+            4 => gpus[0].flags = 1,
+            5 => gpus[0].valid_mask |= @as(u64, 1) << 63,
+            6 => gpus[0].reserved[0] = 1,
+            7 => gpus[0].reserved[1] = 1,
+            else => unreachable,
+        }
+        var envelope = testEnvelope(1, processes.len, gpus.len, 1, protocol.EnvelopeFlags.cpu_snapshot_complete | protocol.EnvelopeFlags.gpu_snapshot_complete);
+        var outputs: [16]protocol.ScoreOutput = undefined;
+        envelope.output_capacity = outputs.len;
+        var snapshot = std.mem.zeroes(protocol.Snapshot);
+        try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+            session,
+            &envelope,
+            &processes,
+            processes.len,
+            &gpus,
+            gpus.len,
+            &outputs,
+            outputs.len,
+            &snapshot,
+        ));
+        try std.testing.expect(snapshot.invalid_fact_count > 0);
+        try std.testing.expectEqual(if (kind < 4) @as(u32, 1) else 2, snapshot.process_cpu_output_count);
+        try std.testing.expectEqual(@as(u32, 1), snapshot.process_gpu_output_count);
+        for (outputSection(&outputs, &snapshot, .process_gpu)) |row|
+            try std.testing.expectEqual(@as(u32, 20), gpus[row.input_index].process_id);
+    }
+}

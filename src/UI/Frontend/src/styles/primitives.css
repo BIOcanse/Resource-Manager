@@ -1,0 +1,236 @@
+.dialog-heading {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.dialog-heading h2,
+.dialog-heading p {
+  margin: 0;
+}
+
+.dialog-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.dialog-form {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+
+.ui-tabs-list {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.ui-tabs-trigger {
+  min-height: var(--control-height-compact);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 0 11px;
+}
+
+/* Keep outgoing panel copies inside the tab group. */
+.ui-tabs-root {
+  position: relative;
+}
+
+.ui-tabs-panel {
+  min-height: 0;
+  outline: 0;
+}
+
+/* Use opaque accent color to preserve focus contrast. */
+.ui-tabs-panel:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* The runtime drives disclosure openness; layout changes immediately, so do not add CSS transitions. */
+.ui-disclosure {
+  position: relative;
+  min-width: 0;
+}
+
+.ui-disclosure-header {
+  min-height: var(--control-height-compact);
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  padding: 0 8px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: start;
+}
+
+.ui-disclosure-header:not(:disabled):hover {
+  background: var(--hover-bg);
+}
+
+.ui-disclosure-header:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.ui-disclosure-chevron {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  margin: 0 2px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  rotate: calc(-45deg + var(--disclosure-openness, 0) * 90deg);
+  translate: calc(-1px + var(--disclosure-openness, 0) * 1px) calc(var(--disclosure-openness, 0) * -1px);
+}
+
+.ui-disclosure-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-disclosure-body {
+  min-width: 0;
+}
+
+/* Overlay label alternatives and size to the longest one to prevent button movement. */
+.stable-label {
+  display: inline-grid;
+  justify-items: center;
+}
+
+.stable-label > * {
+  grid-area: 1 / 1;
+}
+
+.stable-label > .stable-label-inactive {
+  visibility: hidden;
+}
+
+
+.title-with-hint {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Reset global primary styling for help icons; use the shared keyboard focus ring. */
+.help-hint {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  min-height: 0;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  background-image: none;
+  color: var(--muted);
+  cursor: help;
+  /* Keep help buttons from increasing text or flex-row height. */
+  vertical-align: middle;
+  margin-block: -3px;
+}
+
+.help-hint:hover,
+.help-hint.open {
+  background-color: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* Portal help popovers to the shared overlay layer; hide until positioned and allow text selection. */
+.help-hint-popover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1200;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 7px 10px 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: var(--elev-3), var(--edge-highlight);
+  outline: none;
+  cursor: text;
+  user-select: text;
+}
+
+/* Tooltips share overlay styling, preserve line breaks and ignore pointer input. */
+.hover-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1200;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  pointer-events: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 5px 9px 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: var(--elev-3), var(--edge-highlight);
+}
+
+
+.help-hint-popover p {
+  margin: 0;
+}
+
+.help-hint-popover p + p {
+  margin-top: 6px;
+}
+
+.help-hint-entry > strong {
+  display: block;
+  font-weight: 700;
+}
+
+/* Keep a control and its help hint together as one layout item. */
+.with-help-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.help-hint-popover:not([data-placement]),
+.hover-tooltip:not([data-placement]) {
+  visibility: hidden;
+}
+
+@media (forced-colors: active) {
+  .help-hint-popover,
+  .hover-tooltip {
+    outline: 1px solid CanvasText;
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "resource-manager/ledger-release-summary/v1",
+  "version": "0.1.0-dev.9",
+  "status": "accepted-package-consumer",
+  "fixCommit": "1cabfce986774ef47303aa91a72cbc54ec64eb3b",
+  "manifestSha256": "f94a9e94e5067879c6a2c3ce06494818fb22afc6e4d6d3186493c19e9770b707",
+  "requiredZigVersion": "0.17.0",
+  "windows": "Maintenance passed four installed UID/statistics profiles x 15 cases, including scoped native operation access, workspace admission and exception cleanup.",
+  "linux": {
+    "target": "x86_64-linux-musl",
+    "binding": "packaged example, generated LedgerBinding public C ABI",
+    "passed": null,
+    "cases": [],
+    "status": "not-rerun-for-dev.9",
+    "priorQualification": "dev.8 release summary records its Windows write-watch and Linux region/static fixtures; those results are historical, not dev.9 runs."
+  },
+  "scope": "Windows installed-package qualification only. The dev.8 write-watch fix is retained; its separate before/after region and Linux static fixtures were not rerun for dev.9. Not GDC product migration, Linux C#, Android or full-capacity qualification.",
+  "nativePairing": "Use same-release SDK, generated identity and Native; ABI v1 alone does not qualify mixing dev.2-4 with dev.5+ end semantics."
+}

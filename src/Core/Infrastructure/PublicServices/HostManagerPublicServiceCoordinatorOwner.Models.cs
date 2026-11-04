@@ -1,0 +1,251 @@
+using ResourceManager.App.Application.PublicServices.AiModels;
+using ResourceManager.App.Domain.PublicServices.AiModels;
+using ResourceManager.App.Infrastructure.NativeCore;
+
+namespace ResourceManager.App.Infrastructure.PublicServices;
+
+public sealed partial class HostManagerPublicServiceCoordinatorOwner
+{
+    public Task<AiModelRuntimeStatus> GetStatusAsync(CancellationToken cancellationToken)
+        => runtimeProvider.GetStatusAsync(cancellationToken);
+
+    public Task<IReadOnlyList<AiModelDescriptor>> ListModelsAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var holder = AcquireCurrent();
+        try
+        {
+            lock (holder.ModelGate)
+            {
+                var state = holder.Workspace.ReadSnapshot();
+                var flags = (NativePublicServiceCoordinatorSnapshotFlags)state.Flags;
+                if (!flags.HasFlag(
+                        NativePublicServiceCoordinatorSnapshotFlags.ModelCatalogUsable))
+                {
+                    QueueModelRefresh();
+                    throw new AiModelRuntimeUnavailableException(
+                        "The native local-model catalog has no usable provider snapshot.");
+                }
+                var payloads = holder.Workspace.CaptureModels();
+                if (payloads.Descriptors.Count != state.ModelCount)
+                {
+                    throw new InvalidOperationException(
+                        "The native local-model catalog and its transport payloads diverged.");
+                }
+                return Task.FromResult(payloads.Descriptors);
+            }
+        }
+        finally
+        {
+            holder.Release();
+        }
+    }
+
+    public Task<bool> IsAllowedAsync(
+        string model,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrEmpty(model))
+        {
+            return Task.FromResult(false);
+        }
+        var holder = AcquireCurrent();
+        try
+        {
+            lock (holder.ModelGate)
+            {
+                var output = holder.Workspace.ResolveModel(model);
+                if ((NativePublicServiceModelResolveStatus)output.Status
+                    == NativePublicServiceModelResolveStatus.CatalogUnavailable)
+                {
+                    QueueModelRefresh();
+                    throw new AiModelRuntimeUnavailableException(
+                        "The native local-model catalog has no usable provider snapshot.");
+                }
+                return Task.FromResult(
+                    (NativePublicServiceModelResolveStatus)output.Status
+                        == NativePublicServiceModelResolveStatus.Matched);
+            }
+        }
+        finally
+        {
+            holder.Release();
+        }
+    }
+
+    public Task<AiModelLoadResult> LoadAsync(
+        AiModelLoadRequest request,
+        CancellationToken cancellationToken)
+        => EnqueueLoadAsync(request, cancellationToken);
+
+    public Task<AiModelUnloadResult> UnloadAsync(
+        AiModelUnloadRequest request,
+        CancellationToken cancellationToken)
+        => EnqueueUnloadAsync(request, cancellationToken);
+
+    public Task ForwardAsync(
+        HttpContext context,
+        string relativePath,
+        CancellationToken cancellationToken)
+        => runtimeProvider.ForwardAsync(context, relativePath, cancellationToken);
+
+    private async Task RunModelAcquisitionLoopAsync(CancellationToken cancellationToken)
+    {
+        // A catalog refresh is finite work queued by the query API; this signal
+        // schedules that work within the already running owner.
+        await modelWake.WaitAsync(cancellationToken).ConfigureAwait(false);
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            WorkspaceHolder? holder = null;
+            ulong nextWake = 0;
+            try
+            {
+                holder = AcquireRunWorkspace();
+                var plan = holder.Workspace.PlanModelAcquisition();
+                nextWake = plan.NextWakeMonotonicMilliseconds;
+                switch ((NativePublicServiceModelAcquisitionPlanStatus)plan.Status)
+                {
+                    case NativePublicServiceModelAcquisitionPlanStatus.Start:
+                        Interlocked.Increment(ref activeModelAcquisitions);
+                        Interlocked.Exchange(ref modelRefreshQueued, 0);
+                        PublishPendingTasks();
+                        try
+                        {
+                            await AcquireModelCatalogAsync(holder, plan, cancellationToken).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            Interlocked.Decrement(ref activeModelAcquisitions);
+                            PublishPendingTasks();
+                        }
+                        // Planning is a command: if already due it creates the next
+                        // attempt. Let the next iteration consume its entire output,
+                        // rather than starting an attempt only to discard its ticket.
+                        continue;
+                    case NativePublicServiceModelAcquisitionPlanStatus.NotDue:
+                    case NativePublicServiceModelAcquisitionPlanStatus.Running:
+                        Interlocked.Exchange(ref modelRefreshQueued, 0);
+                        PublishPendingTasks();
+                        break;
+                    default:
+                        throw new InvalidOperationException(
+                            $"Unknown native model-acquisition plan status {plan.Status}.");
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger.LogCritical(ex, "The native local-model acquisition loop faulted.");
+                throw;
+            }
+            finally
+            {
+                holder?.Release();
+            }
+
+            await WaitUntilAsync(modelWake, nextWake, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task AcquireModelCatalogAsync(
+        WorkspaceHolder holder,
+        NativePublicServiceModelAcquisitionPlanOutput plan,
+        CancellationToken cancellationToken)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var now = NativePublicServiceCoordinatorWorkspace.MonotonicMilliseconds();
+        deadline.CancelAfter(TimeSpan.FromMilliseconds(
+            plan.DeadlineMonotonicMilliseconds > now ? plan.DeadlineMonotonicMilliseconds - now : 0));
+        try
+        {
+            var descriptors = await runtimeProvider.ListModelsIfRunningAsync(deadline.Token)
+                .WaitAsync(deadline.Token)
+                .ConfigureAwait(false);
+            if (plan.ModelGenerationAtStart == ulong.MaxValue)
+            {
+                throw new InvalidOperationException(
+                    "The native local-model catalog generation is exhausted.");
+            }
+            lock (holder.ModelGate)
+            {
+                var projection = holder.Models.Project(
+                    descriptors,
+                    holder.Plan.HotPublish.AiProviderHandle);
+                holder.Workspace.PublishModels(
+                    plan.AttemptHandle,
+                    plan.ModelGenerationAtStart + 1,
+                    projection);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested)
+        {
+            CompleteFailedAcquisition(holder, plan.AttemptHandle,
+                NativePublicServiceModelAcquisitionCompletionStatus.Failed,
+                new TimeoutException("The local-model catalog acquisition exceeded its native deadline."),
+                plan.DeadlineMonotonicMilliseconds);
+        }
+        catch (Exception ex) when (
+            holder.Workspace.ReadSnapshot().ModelGeneration > plan.ModelGenerationAtStart)
+        {
+            logger.LogError(ex,
+                "The local-model catalog was accepted, but returning its work area failed; the next model operation will retry the return.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            CompleteFailedAcquisition(
+                holder,
+                plan.AttemptHandle,
+                NativePublicServiceModelAcquisitionCompletionStatus.Failed,
+                new OperationCanceledException(
+                    "The local-model catalog acquisition was cancelled by Host Manager shutdown.",
+                    cancellationToken), plan.DeadlineMonotonicMilliseconds);
+            throw;
+        }
+        catch (AiModelRuntimeUnavailableException ex)
+        {
+            CompleteFailedAcquisition(
+                holder,
+                plan.AttemptHandle,
+                NativePublicServiceModelAcquisitionCompletionStatus.Unavailable,
+                ex, plan.DeadlineMonotonicMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            CompleteFailedAcquisition(
+                holder,
+                plan.AttemptHandle,
+                NativePublicServiceModelAcquisitionCompletionStatus.Failed,
+                ex, plan.DeadlineMonotonicMilliseconds);
+        }
+        finally
+        {
+            RetryDesiredPlan();
+        }
+    }
+
+    private void CompleteFailedAcquisition(
+        WorkspaceHolder holder,
+        ulong attemptHandle,
+        NativePublicServiceModelAcquisitionCompletionStatus status,
+        Exception acquisitionFailure,
+        ulong deadlineMonotonicMilliseconds)
+    {
+        try
+        {
+            holder.Workspace.CompleteModelAcquisition(attemptHandle, status, deadlineMonotonicMilliseconds);
+        }
+        catch (Exception completionFailure)
+        {
+            throw new AggregateException(acquisitionFailure, completionFailure);
+        }
+        logger.LogDebug(
+            acquisitionFailure,
+            "Local-model provider catalog acquisition completed as {Status}.",
+            status);
+    }
+}

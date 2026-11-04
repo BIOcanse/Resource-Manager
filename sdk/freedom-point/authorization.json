@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "scope": "FreedomPoint first-party Apache-2.0 content in the listed original packages; third-party content retains its own terms",
+  "licenseId": "Apache-2.0",
+  "copyrightOwner": "BIOcanse",
+  "ownerConfirmationDate": "2026-10-21",
+  "license": {
+    "path": "LICENSE",
+    "bytes": 11358,
+    "sha256": "CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30"
+  },
+  "notice": {
+    "path": "NOTICE",
+    "bytes": 465,
+    "sha256": "78344BA292CED48782F62012B45C06411034834465A4E49E05377930D1B93EED"
+  },
+  "packages": [
+    {
+      "id": "FreedomPoint.Core",
+      "version": "0.1.0-dev.39",
+      "fileName": "FreedomPoint.Core.0.1.0-dev.39.nupkg",
+      "bytes": 65981,
+      "sha256": "35D528C284D34BD0B50F7EF46F906AB2EAA2E303FC5E044D6E6F718E9976C9AA",
+      "originalBytes": 66137,
+      "originalSha256": "6E914DD4AEE911B26850A79156DCE3CDD68467A2BB910F15445689DD5739CBD7"
+    },
+    {
+      "id": "FreedomPoint.Generators",
+      "version": "0.1.0-dev.39",
+      "fileName": "FreedomPoint.Generators.0.1.0-dev.39.nupkg",
+      "bytes": 28769,
+      "sha256": "AB012DC6A88885FBA41C79F251541B89F6DC565B5996C49BA7BB3F6D4D74553A",
+      "originalBytes": 28880,
+      "originalSha256": "5B48217611A902F877E4CC3DCF7F8DC5642F4BD6C91A242D4B595012599296C1"
+    },
+    {
+      "version": "0.1.0-dev.48",
+      "fileName": "FreedomPoint.Core.0.1.0-dev.48.nupkg",
+      "bytes": 182916,
+      "id": "FreedomPoint.Core",
+      "sha256": "03FA3AF6A643F0CB0CBED51CBAAC55E9FF90B53B4EE411644252E449DB17517E"
+    },
+    {
+      "version": "0.1.0-dev.48",
+      "fileName": "FreedomPoint.Generators.0.1.0-dev.48.nupkg",
+      "bytes": 56673,
+      "id": "FreedomPoint.Generators",
+      "sha256": "FDB0A3CF06963BE6D3A7ACF50EA24D5ADB72420ACE5CAE4397ECAE1ED4DC35A6"
+    },
+    {
+      "version": "0.1.0-dev.48",
+      "fileName": "FreedomPoint.SourceTracking.0.1.0-dev.48.nupkg",
+      "bytes": 12250296,
+      "id": "FreedomPoint.SourceTracking",
+      "sha256": "07F67540E354994F18874BB378815200972B08BC3BA8A4851A8B690BBD5EB8E5"
+    }
+  ],
+  "firstPartyPublicLicensePending": false,
+  "firstPartyRedistributionReady": true,
+  "originalPackageBytesUnmodified": false,
+  "oldNuspecLicenseFieldsRetrofitted": false,
+  "thirdPartyLicenseChanged": false,
+  "dependencyDebugPathNormalization": "../../build/dependencies/debug-path-normalization.json"
+}
