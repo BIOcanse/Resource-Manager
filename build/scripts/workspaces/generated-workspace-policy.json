@@ -87,6 +87,8 @@
       "id": "rm-active-workspaces",
       "path": "{ActiveWorkRoot}\\Resource-Manager-Workspaces",
       "maxBytes": 8589934592,
+      "maxNodes": 4000000,
+      "maxMilliseconds": 900000,
       "excludedNames": []
     },
     {
