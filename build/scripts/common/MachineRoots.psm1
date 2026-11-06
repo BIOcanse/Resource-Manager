@@ -263,4 +263,4 @@ function Assert-RmRunningWorkspace {
     $null = Resolve-GeneratedWorkspaceRoot -WorkspacePath $owner -Policy $Policy
 }
 
-Export-ModuleMember -Function Get-MachineRoot, Resolve-MachinePathTokens, Get-RmStoragePath, Get-RmWorkerPaths, Get-RmMainCheckout, Assert-RmRunningWorkspace
+Export-ModuleMember -Function Get-MachineRoot, Resolve-MachinePathTokens, Get-RmStoragePath, Get-RmWorkerPaths, Get-RmMainCheckout, Assert-RmRunningWorkspace, Find-RmRunningWorkerLedger
