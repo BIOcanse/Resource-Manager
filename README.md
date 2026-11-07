@@ -72,7 +72,7 @@ Turn on **Memory**, **CPU** and **GPU** scheduling separately, in any combinatio
 
 - **🧠 Memory** relieves memory pressure.
 - **⚙️ CPU** gives higher-scored programs the faster, less busy cores. No program is locked out of any core unless you ask for it.
-- **⚡ GPU** watches GPU load and video memory, and can move background programs from the discrete GPU to the integrated one.
+- **⚡ GPU** watches GPU load and video memory, and can move programs between any of your GPUs. On most PCs that means moving background programs to the integrated GPU.
 
 Moving a running program to another GPU works only for programs that support it. Games and professional software are left alone by default.
 
@@ -176,7 +176,7 @@ Local programs can read data and request actions through the local API and the a
     <tr><th scope="col">AMD</th><th scope="col">Intel</th><th scope="col">NVIDIA</th><th scope="col">AMD</th><th scope="col">Intel</th><th scope="col">NVIDIA</th><th scope="col">AMD</th><th scope="col">Intel</th><th scope="col">NVIDIA</th></tr>
   </thead>
   <tbody>
-    <tr><th scope="row">💻 Laptop</th><td align="center">🟡</td><td align="center">🟡</td><td align="center">❌</td><td align="center">❌</td><td align="center">❌</td><td align="center">🟡</td><td align="center">🟡</td><td align="center">🟡</td><td align="center">❌</td></tr>
+    <tr><th scope="row">💻 Laptop</th><td align="center">✅</td><td align="center">🟡</td><td align="center">❌</td><td align="center">❌</td><td align="center">❌</td><td align="center">✅</td><td align="center">✅</td><td align="center">🟡</td><td align="center">❌</td></tr>
     <tr><th scope="row">🖥️ Desktop</th><td align="center">🟡</td><td align="center">🟡</td><td align="center">❌</td><td align="center">🟡</td><td align="center">❌</td><td align="center">🟡</td><td align="center">🟡</td><td align="center">🟡</td><td align="center">❌</td></tr>
   </tbody>
 </table>
@@ -195,7 +195,7 @@ Local programs can read data and request actions through the local API and the a
 
 | Device | Status | What you can do |
 | --- | :---: | --- |
-| 💻 Laptop | 🟡 | Automatic or full speed, firmware curves, software curves, on compatible laptops |
+| 💻 Laptop | ✅ Uniwill / Tongfang · 🟡 ASUS, HP OMEN / Victus, Lenovo Legion, Acer Predator / Nitro | Automatic or full speed, firmware curves, software curves, as far as each model's firmware allows |
 | 🖥️ Desktop | 🟡 | Motherboard fan headers; minimum speed and target RPM on AMD graphics cards |
 
 ### Monitoring
@@ -203,12 +203,12 @@ Local programs can read data and request actions through the local API and the a
 | Device | Status | What you can see |
 | --- | :---: | --- |
 | 🧠 CPU | ✅ AMD · 🟡 Intel | Load per core and thread, clocks, power, voltage, temperature |
-| 🎮 Discrete GPU | 🟡 | Load, video memory, clocks, power, temperature, fans |
+| 🎮 Discrete GPU | ✅ NVIDIA · 🟡 AMD | Load, video memory, clocks, power, temperature, fans |
 | 🖼️ Integrated GPU | ✅ AMD · 🟡 Intel | Load, shared memory, clocks, power, temperature |
 | 🤖 NPU | 🟡 | Load and memory |
 | 🧮 Memory | ✅ | Physical and virtual memory, cache, kernel pools |
 | 💽 Disks | ✅ | Activity, read and write speed, queue |
-| 💾 NVMe and SATA drives | 🟡 | Health, temperature, wear, data written |
+| 💾 NVMe and SATA drives | ✅ NVMe · 🟡 SATA | Health, temperature, wear, data written |
 | 🌐 Network | ✅ | Speed and traffic per adapter |
 | 🔋 Battery | ✅ | Charge, rate, capacity, wear |
 | 🌀 Desktop fans and sensors | 🟡 | Fan speed, motherboard temperatures and voltages |

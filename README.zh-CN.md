@@ -72,7 +72,7 @@
 
 - **🧠 内存调度**：缓解内存压力。
 - **⚙️ 处理器调度**：评分高的程序优先使用更快、更空闲的核心。除非你主动设置，不会禁止任何程序使用任何核心。
-- **⚡ 显卡调度**：关注显卡负载和显存，可以把后台程序从独立显卡移到核芯显卡。
+- **⚡ 显卡调度**：关注显卡负载和显存，可以让程序在任意显卡之间调度。在大多数电脑上，就是把后台程序移到核芯显卡。
 
 只有支持切换的程序才能在运行中换到另一块显卡。游戏和专业软件默认不参与。
 
@@ -176,7 +176,7 @@
     <tr><th scope="col">AMD</th><th scope="col">英特尔</th><th scope="col">英伟达</th><th scope="col">AMD</th><th scope="col">英特尔</th><th scope="col">英伟达</th><th scope="col">AMD</th><th scope="col">英特尔</th><th scope="col">英伟达</th></tr>
   </thead>
   <tbody>
-    <tr><th scope="row">💻 笔记本</th><td align="center">🟡</td><td align="center">🟡</td><td align="center">❌</td><td align="center">❌</td><td align="center">❌</td><td align="center">🟡</td><td align="center">🟡</td><td align="center">🟡</td><td align="center">❌</td></tr>
+    <tr><th scope="row">💻 笔记本</th><td align="center">✅</td><td align="center">🟡</td><td align="center">❌</td><td align="center">❌</td><td align="center">❌</td><td align="center">✅</td><td align="center">✅</td><td align="center">🟡</td><td align="center">❌</td></tr>
     <tr><th scope="row">🖥️ 台式机</th><td align="center">🟡</td><td align="center">🟡</td><td align="center">❌</td><td align="center">🟡</td><td align="center">❌</td><td align="center">🟡</td><td align="center">🟡</td><td align="center">🟡</td><td align="center">❌</td></tr>
   </tbody>
 </table>
@@ -195,7 +195,7 @@
 
 | 设备 | 状态 | 可以做什么 |
 | --- | :---: | --- |
-| 💻 笔记本 | 🟡 | 兼容机型上的自动或全速、固件曲线、软件曲线 |
+| 💻 笔记本 | ✅ 同方模具 · 🟡 华硕、惠普暗影精灵 / 光影精灵、联想拯救者、宏碁掠夺者 / 暗影骑士 | 自动或全速、固件曲线、软件曲线，以各机型固件允许的为准 |
 | 🖥️ 台式机 | 🟡 | 主板风扇接口；AMD 显卡的最低转速和目标转速 |
 
 ### 监控
@@ -203,12 +203,12 @@
 | 设备 | 状态 | 可以看到 |
 | --- | :---: | --- |
 | 🧠 处理器 | ✅ AMD · 🟡 英特尔 | 每个核心和线程的负载、频率、功耗、电压、温度 |
-| 🎮 独立显卡 | 🟡 | 负载、显存、频率、功耗、温度、风扇 |
+| 🎮 独立显卡 | ✅ 英伟达 · 🟡 AMD | 负载、显存、频率、功耗、温度、风扇 |
 | 🖼️ 核芯显卡 | ✅ AMD · 🟡 英特尔 | 负载、共享显存、频率、功耗、温度 |
 | 🤖 神经网络处理器 | 🟡 | 负载和内存 |
 | 🧮 内存 | ✅ | 物理内存、虚拟内存、缓存、内核池 |
 | 💽 磁盘 | ✅ | 活动时间、读写速度、队列 |
-| 💾 固态硬盘和机械硬盘 | 🟡 | 健康状况、温度、磨损、写入量 |
+| 💾 固态硬盘和机械硬盘 | ✅ NVMe · 🟡 SATA | 健康状况、温度、磨损、写入量 |
 | 🌐 网络 | ✅ | 每块网卡的速度和流量 |
 | 🔋 电池 | ✅ | 电量、充放电速率、容量、损耗 |
 | 🌀 台式机风扇和传感器 | 🟡 | 风扇转速、主板温度和电压 |
